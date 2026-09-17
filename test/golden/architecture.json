@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "acme-platform",
+  "generatedBy": "archmap scan 0.1.0",
+  "generatedAt": "2026-09-16T10:00:00Z",
+  "layers": ["clients", "edge", "services", "data", "third-party"],
+  "nodes": [
+    { "id": "web", "type": "frontend", "name": "web-app", "layer": "clients",
+      "path": "apps/web", "tech": ["React 19", "TanStack Router"],
+      "description": "Customer-facing dashboard. Renders invoices, billing and org settings.",
+      "files": ["apps/web/src/routes/invoices.tsx", "apps/web/src/lib/api-client.ts"] },
+    { "id": "gateway", "type": "gateway", "name": "api-gateway", "layer": "edge",
+      "path": "infra/gateway", "tech": ["Envoy"],
+      "description": "Terminates TLS, validates JWTs and routes /v1/* to services." },
+    { "id": "api", "type": "service", "name": "invoices-api", "layer": "services",
+      "path": "services/invoices-api", "tech": ["Node 22", "Express", "Zod"],
+      "description": "Core business service. Handles invoice CRUD, validation and emits domain events.",
+      "notes": "Validation lives in routes/, not in the service layer. Known flaky: currency enum.",
+      "files": [
+        "services/invoices-api/src/app.ts",
+        "services/invoices-api/src/routes/invoices/invoices.routes.ts",
+        "services/invoices-api/src/routes/invoices/invoices.service.ts",
+        "services/invoices-api/src/repositories/invoices.repo.ts"
+      ] },
+    { "id": "api-routes", "type": "module", "name": "routes", "parent": "api",
+      "path": "services/invoices-api/src/routes",
+      "description": "Express routers and Zod request schemas." },
+    { "id": "api-repo", "type": "module", "name": "repositories", "parent": "api",
+      "path": "services/invoices-api/src/repositories",
+      "description": "SQL access. Only place that writes invoices." },
+    { "id": "db", "type": "datastore", "name": "postgres", "layer": "data",
+      "tech": ["Postgres 16"], "description": "Primary relational store." },
+    { "id": "bus", "type": "queue", "name": "events-bus", "layer": "data",
+      "tech": ["SQS"], "description": "Durable pub/sub for invoice.* topics." },
+    { "id": "stripe", "type": "external", "name": "Stripe", "layer": "third-party",
+      "description": "Payment provider." },
+    { "id": "w-validate", "type": "step", "name": "Validate", "description": "Zod schema check." },
+    { "id": "w-persist", "type": "step", "name": "Insert row" }
+  ],
+  "edges": [
+    { "from": "web", "to": "gateway", "label": "REST", "kind": "sync" },
+    { "from": "gateway", "to": "api", "label": "/v1/invoices", "kind": "sync" },
+    { "from": "api", "to": "db", "label": "sql", "kind": "data" },
+    { "from": "api", "to": "bus", "label": "invoice.created", "kind": "event" },
+    { "from": "api", "to": "stripe", "label": "charge", "kind": "sync" },
+    { "from": "api-routes", "to": "api-repo", "label": "calls", "kind": "sync" }
+  ],
+  "workflows": [
+    { "id": "create-invoice", "name": "Create invoice", "description": "POST /v1/invoices end to end",
+      "steps": ["web", "gateway", "api", "w-validate", "w-persist", "db", "bus"] }
+  ]
+}

@@ -1,0 +1,27 @@
+[archmap context]
+node: invoices-api (service) id=api
+path: services/invoices-api
+description: Core business service. Handles invoice CRUD, validation and emits domain events.
+notes: Validation lives in routes/, not in the service layer. Known flaky: currency enum.
+tech: Node 22, Express, Zod
+layer: services
+children: routes (module); repositories (module)
+files:
+- services/invoices-api/src/app.ts
+- services/invoices-api/src/routes/invoices/invoices.routes.ts
+- services/invoices-api/src/routes/invoices/invoices.service.ts
+- services/invoices-api/src/repositories/invoices.repo.ts
+incoming:
+- api-gateway (gateway) path=infra/gateway -> THIS [/v1/invoices] [sync]
+outgoing:
+- THIS -> postgres (datastore) [sql] [data]
+- THIS -> events-bus (queue) [invoice.created] [event]
+- THIS -> Stripe (external) [charge] [sync]
+neighbors: api-gateway, postgres, events-bus, Stripe
+workflows:
+- Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
+[/archmap context]
+
+The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
+
+there might be a bug in how invoices are validated
