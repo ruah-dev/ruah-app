@@ -8,8 +8,10 @@
   "engines": {
     "node": ">=22"
   },
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "desktop": "electron .",
     "build": "tsup src/cli.ts --format esm --target node22 --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -23,6 +25,7 @@
   "devDependencies": {
     "@types/node": "^22.20.3",
     "@types/ws": "^8.18.1",
+    "electron": "^44.4.1",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
