@@ -55,11 +55,14 @@ export function serveStatic(viewerDir: string | undefined, urlPath: string): Sta
     return { status: 200, contentType: "text/html; charset=utf-8", body: NO_VIEWER_PAGE };
   }
   const decoded = decodeURIComponent(urlPath);
-  if (decoded.includes("..") || path.isAbsolute(decoded)) {
+  if (decoded.includes("..")) {
     return notFound();
   }
   let rel = decoded.replace(/^\/+/, "");
   if (rel === "") rel = "index.html";
+  if (path.isAbsolute(rel)) {
+    return notFound();
+  }
   const abs = path.resolve(viewerDir, rel);
   const rootAbs = path.resolve(viewerDir);
   if (!abs.startsWith(rootAbs + path.sep) && abs !== rootAbs) {
