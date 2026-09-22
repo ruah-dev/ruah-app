@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Check,
   ChevronsDown,
+  ClipboardCopy,
   Code2,
   Link2,
   Maximize2,
@@ -34,7 +36,37 @@ type Props = {
   onDrill: (node: NodeType) => void;
   onOpenCode: (node: NodeType) => void;
   onAsk: (node: NodeType) => void;
+  /** Copies the daemon's context pack for the node (GET /api/context/:id). Resolves false on failure. */
+  onCopyContext?: (node: NodeType) => Promise<boolean>;
 };
+
+function CopyContextButton({
+  node,
+  onCopy,
+}: {
+  node: NodeType;
+  onCopy: (node: NodeType) => Promise<boolean>;
+}) {
+  const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const t = setTimeout(() => setState("idle"), 1400);
+    return () => clearTimeout(t);
+  }, [state]);
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("size-6", state === "fail" ? "text-bad" : state === "ok" ? "text-ok" : "")}
+      aria-label="Copy context"
+      title={state === "fail" ? "Copy context failed (no daemon?)" : "Copy context"}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => void onCopy(node).then((ok) => setState(ok ? "ok" : "fail"))}
+    >
+      {state === "ok" ? <Check className="size-3.5" /> : <ClipboardCopy className="size-3.5" />}
+    </Button>
+  );
+}
 
 const GRID = 8;
 const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -54,6 +86,7 @@ export function EditorCanvas({
   onDrill,
   onOpenCode,
   onAsk,
+  onCopyContext,
 }: Props) {
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState({ x: 16, y: 12 });
@@ -62,13 +95,56 @@ export function EditorCanvas({
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const panRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
-  const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    dx: number;
+    dy: number;
+    sx: number;
+    sy: number;
+    moved: boolean;
+  } | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+
+  // Fit the whole diagram into view when a diagram opens (scanned repos can be wide).
+  const fit = useCallback(() => {
+    const rect = shellRef.current?.getBoundingClientRect();
+    const boxes = [
+      ...diagram.nodes.map((n) => ({
+        x: n.x,
+        y: n.y,
+        r: n.x + (n.w ?? NODE_W),
+        b: n.y + (n.h ?? NODE_H),
+      })),
+      ...(diagram.groups ?? []).map((g) => ({ x: g.x, y: g.y - 12, r: g.x + g.w, b: g.y + g.h })),
+    ];
+    if (!rect || rect.width === 0 || boxes.length === 0) {
+      setZoom(0.85);
+      setPan({ x: 16, y: 12 });
+      return;
+    }
+    const minX = Math.min(...boxes.map((b) => b.x));
+    const minY = Math.min(...boxes.map((b) => b.y));
+    const maxX = Math.max(...boxes.map((b) => b.r));
+    const maxY = Math.max(...boxes.map((b) => b.b));
+    const z = Math.min(
+      0.85,
+      Math.max(
+        0.35,
+        Math.min((rect.width - 48) / (maxX - minX), (rect.height - 72) / (maxY - minY)),
+      ),
+    );
+    setZoom(z);
+    setPan({ x: 24 - minX * z, y: 20 - minY * z });
+  }, [diagram.nodes, diagram.groups]);
+
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
 
   useEffect(() => {
     setEditingId(null);
     setLinkFrom(null);
-  }, [diagram.id]);
+    fitRef.current();
+  }, [diagram.id, diagram.nodes.length === 0]);
 
   const nodeById = useMemo(() => {
     const map = new Map<string, NodeType>();
@@ -118,6 +194,9 @@ export function EditorCanvas({
       }
       const drag = dragRef.current;
       if (drag) {
+        // A click is not a move: ignore jitter below 4 px so selecting never rewrites positions.
+        if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+        drag.moved = true;
         const p = toGraph(e.clientX, e.clientY);
         onMoveNode(drag.id, snap(p.x - drag.dx), snap(p.y - drag.dy));
       }
@@ -232,8 +311,7 @@ export function EditorCanvas({
               const from = nodeById.get(edge.from);
               const to = nodeById.get(edge.to);
               if (!from || !to) return null;
-              const isSelected =
-                selectedEdge?.from === edge.from && selectedEdge?.to === edge.to;
+              const isSelected = selectedEdge?.from === edge.from && selectedEdge?.to === edge.to;
               const touching = focusId === edge.from || focusId === edge.to;
               const state = isSelected || touching ? "active" : focusId ? "dimmed" : "idle";
               return (
@@ -296,7 +374,14 @@ export function EditorCanvas({
                   }
                   if (editable && editingId !== node.id) {
                     const p = toGraph(e.clientX, e.clientY);
-                    dragRef.current = { id: node.id, dx: p.x - node.x, dy: p.y - node.y };
+                    dragRef.current = {
+                      id: node.id,
+                      dx: p.x - node.x,
+                      dy: p.y - node.y,
+                      sx: e.clientX,
+                      sy: e.clientY,
+                      moved: false,
+                    };
                   }
                 }}
                 onDoubleClick={(e) => {
@@ -374,6 +459,9 @@ export function EditorCanvas({
                       >
                         <Sparkles className="size-3.5" />
                       </Button>
+                      {onCopyContext ? (
+                        <CopyContextButton node={node} onCopy={onCopyContext} />
+                      ) : null}
                       {editable ? (
                         <>
                           <Button
@@ -455,11 +543,8 @@ export function EditorCanvas({
           variant="ghost"
           size="icon"
           className="size-6"
-          aria-label="Reset view"
-          onClick={() => {
-            setZoom(0.85);
-            setPan({ x: 16, y: 12 });
-          }}
+          aria-label="Fit to view"
+          onClick={fit}
         >
           <Maximize2 className="size-3.5" />
         </Button>
