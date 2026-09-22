@@ -73,6 +73,13 @@ export type DiagramNode = {
   endpoints?: string[];
   health?: { label: string; tone: "ok" | "warn" | "bad" }[];
   files?: CodeFile[];
+  /** Fields carried over from architecture.json (see src/lib/architecture.ts). */
+  type?: string;
+  path?: string;
+  notes?: string;
+  layer?: string;
+  parent?: string;
+  filePaths?: string[];
 };
 
 export type DiagramEdge = {
@@ -80,6 +87,7 @@ export type DiagramEdge = {
   to: string;
   label?: string;
   animated?: boolean;
+  kind?: string;
 };
 
 export type DiagramGroup = {
