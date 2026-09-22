@@ -168,6 +168,7 @@ export interface PermissionOption {
 
 export type ErrorCode =
   | "bad_message" // frame failed validation
+  | "save_rejected" // architecture.save failed validation or could not be written
   | "unknown_node" // prompt.nodeId not in current architecture
   | "busy" // a turn is active; prompt rejected
   | "no_turn" // cancel/permission.response for an unknown turn or request

@@ -401,7 +401,7 @@ function handle(msg: ServerMessage) {
         }));
         return;
       }
-      if (msg.message.startsWith("save failed")) {
+      if (msg.code === "save_rejected" || msg.message.startsWith("save failed")) {
         // Daemon rejected the edit (validation): drop the draft, show why.
         savesInFlight = Math.max(0, savesInFlight - 1);
         if (!editsPending()) draft = null;
