@@ -11,5 +11,8 @@ export default defineConfig({
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    // L6: static single-page build (.output/public/index.html + assets/) that any file
+    // server can host; the archmap daemon serves it with `archmap serve --viewer <dir>`.
+    spa: { enabled: true, prerender: { outputPath: "/index.html" } },
   },
 });
