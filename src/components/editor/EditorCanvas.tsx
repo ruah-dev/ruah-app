@@ -1,0 +1,484 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronsDown,
+  Code2,
+  Link2,
+  Maximize2,
+  Minus,
+  MousePointer2,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import type { DiagramNode as NodeType, NodeKind } from "@/data/graphs";
+import type { Diagram } from "@/lib/workspace";
+import { DiagramEdge } from "@/components/explorer/DiagramEdge";
+import { NODE_H, NODE_W, groupIcon as GroupIcon, kindStyles } from "@/components/explorer/kinds";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+export type EdgeRef = { from: string; to: string };
+
+type Props = {
+  diagram: Diagram;
+  editable: boolean;
+  selectedNodeId: string | null;
+  selectedEdge: EdgeRef | null;
+  onSelectNode: (id: string | null) => void;
+  onSelectEdge: (edge: EdgeRef | null) => void;
+  onMoveNode: (id: string, x: number, y: number) => void;
+  onAddNode: (kind: NodeKind, x: number, y: number) => void;
+  onRenameNode: (id: string, label: string) => void;
+  onConnect: (from: string, to: string) => void;
+  onDeleteNode: (id: string) => void;
+  onDrill: (node: NodeType) => void;
+  onOpenCode: (node: NodeType) => void;
+  onAsk: (node: NodeType) => void;
+};
+
+const GRID = 8;
+const snap = (v: number) => Math.round(v / GRID) * GRID;
+
+export function EditorCanvas({
+  diagram,
+  editable,
+  selectedNodeId,
+  selectedEdge,
+  onSelectNode,
+  onSelectEdge,
+  onMoveNode,
+  onAddNode,
+  onRenameNode,
+  onConnect,
+  onDeleteNode,
+  onDrill,
+  onOpenCode,
+  onAsk,
+}: Props) {
+  const [zoom, setZoom] = useState(0.85);
+  const [pan, setPan] = useState({ x: 16, y: 12 });
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [linkFrom, setLinkFrom] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const dragRef = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setEditingId(null);
+    setLinkFrom(null);
+  }, [diagram.id]);
+
+  const nodeById = useMemo(() => {
+    const map = new Map<string, NodeType>();
+    diagram.nodes.forEach((n) => map.set(n.id, n));
+    return map;
+  }, [diagram.nodes]);
+
+  const focusId = hoverId ?? selectedNodeId;
+  const connected = useMemo(() => {
+    if (!focusId) return null;
+    const set = new Set<string>([focusId]);
+    diagram.edges.forEach((e) => {
+      if (e.from === focusId) set.add(e.to);
+      if (e.to === focusId) set.add(e.from);
+    });
+    return set;
+  }, [focusId, diagram.edges]);
+
+  const toGraph = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = shellRef.current?.getBoundingClientRect();
+      return {
+        x: (clientX - (rect?.left ?? 0) - pan.x) / zoom,
+        y: (clientY - (rect?.top ?? 0) - pan.y) / zoom,
+      };
+    },
+    [pan, zoom],
+  );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if ((e.target as HTMLElement).closest("[data-node]")) return;
+      onSelectNode(null);
+      onSelectEdge(null);
+      setLinkFrom(null);
+      panRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+    },
+    [pan, onSelectNode, onSelectEdge],
+  );
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (panRef.current) {
+        const d = panRef.current;
+        setPan({ x: d.px + (e.clientX - d.x), y: d.py + (e.clientY - d.y) });
+        return;
+      }
+      const drag = dragRef.current;
+      if (drag) {
+        const p = toGraph(e.clientX, e.clientY);
+        onMoveNode(drag.id, snap(p.x - drag.dx), snap(p.y - drag.dy));
+      }
+    };
+    const up = () => {
+      panRef.current = null;
+      dragRef.current = null;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [toGraph, onMoveNode]);
+
+  useEffect(() => {
+    if (!editable) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /input|textarea|select/i.test(target.tagName)) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId) {
+        e.preventDefault();
+        onDeleteNode(selectedNodeId);
+      }
+      if (e.key === "Escape") setLinkFrom(null);
+      if (e.key.toLowerCase() === "n" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        const kind: NodeKind = diagram.mode === "workflow" ? "step" : "service";
+        onAddNode(kind, snap(120 + Math.random() * 300), snap(100 + Math.random() * 200));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editable, selectedNodeId, onDeleteNode, onAddNode, diagram.mode]);
+
+  const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) : undefined;
+  const linkSource = linkFrom ? nodeById.get(linkFrom) : undefined;
+
+  return (
+    <div
+      ref={shellRef}
+      className="relative min-h-0 flex-1 touch-none overflow-hidden select-none"
+      onPointerDown={onPointerDown}
+      onPointerMove={(e) => {
+        if (linkFrom) setCursor(toGraph(e.clientX, e.clientY));
+      }}
+      onDoubleClick={(e) => {
+        if (!editable) return;
+        if ((e.target as HTMLElement).closest("[data-node]")) return;
+        const p = toGraph(e.clientX, e.clientY);
+        onAddNode(diagram.mode === "workflow" ? "step" : "service", snap(p.x), snap(p.y));
+      }}
+      onDragOver={(e) => {
+        if (!editable) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(e) => {
+        if (!editable) return;
+        const kind = e.dataTransfer.getData("application/atlas-kind") as NodeKind;
+        if (!kind) return;
+        e.preventDefault();
+        const p = toGraph(e.clientX, e.clientY);
+        onAddNode(kind, snap(p.x - NODE_W / 2), snap(p.y - NODE_H / 2));
+      }}
+      onWheel={(e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        setZoom((z) => Math.min(1.8, Math.max(0.35, z - e.deltaY * 0.0015)));
+      }}
+    >
+      <div className="grid-canvas absolute inset-0" />
+
+      <div
+        className="absolute top-0 left-0 origin-top-left"
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+      >
+        <div className="relative" style={{ width: 1400, height: 760 }}>
+          {diagram.groups?.map((g) => (
+            <div
+              key={g.id}
+              className="absolute rounded-md border border-dashed border-hairline/70 bg-surface-1/10"
+              style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
+            >
+              <span className="absolute -top-2.5 left-3 flex items-center gap-1 bg-canvas px-1.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+                <GroupIcon className="size-3" />
+                {g.label}
+              </span>
+            </div>
+          ))}
+
+          <svg className="absolute inset-0 h-[760px] w-[1400px] overflow-visible">
+            <defs>
+              <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                <path d="M0,0 L7,3.5 L0,7 z" fill="var(--edge)" />
+              </marker>
+              <marker
+                id="arrow-active"
+                markerWidth="7"
+                markerHeight="7"
+                refX="6"
+                refY="3.5"
+                orient="auto"
+              >
+                <path d="M0,0 L7,3.5 L0,7 z" fill="var(--edge-active)" />
+              </marker>
+            </defs>
+            {diagram.edges.map((edge, i) => {
+              const from = nodeById.get(edge.from);
+              const to = nodeById.get(edge.to);
+              if (!from || !to) return null;
+              const isSelected =
+                selectedEdge?.from === edge.from && selectedEdge?.to === edge.to;
+              const touching = focusId === edge.from || focusId === edge.to;
+              const state = isSelected || touching ? "active" : focusId ? "dimmed" : "idle";
+              return (
+                <g
+                  key={`${edge.from}-${edge.to}-${i}`}
+                  className="cursor-pointer"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    onSelectEdge({ from: edge.from, to: edge.to });
+                    onSelectNode(null);
+                  }}
+                >
+                  <DiagramEdge edge={edge} from={from} to={to} state={state} />
+                </g>
+              );
+            })}
+            {linkSource && cursor ? (
+              <line
+                x1={linkSource.x + (linkSource.w ?? NODE_W)}
+                y1={linkSource.y + (linkSource.h ?? NODE_H) / 2}
+                x2={cursor.x}
+                y2={cursor.y}
+                stroke="var(--edge-active)"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+              />
+            ) : null}
+          </svg>
+
+          {diagram.nodes.map((node) => {
+            const style = kindStyles[node.kind];
+            const Icon = style.icon;
+            const isSelected = selectedNodeId === node.id;
+            const dimmed = !!connected && !connected.has(node.id);
+            return (
+              <div
+                key={node.id}
+                data-node
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  width: node.w ?? NODE_W,
+                  height: node.h ?? NODE_H,
+                }}
+                className={cn(
+                  "node-elevated group absolute flex flex-col justify-center gap-0.5 rounded-md border bg-surface-1 px-3 transition-[opacity,border-color,background-color] duration-150",
+                  style.border,
+                  editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+                  isSelected ? "border-ring/70 bg-surface-2 ring-1 ring-ring/20" : "",
+                  dimmed ? "opacity-35" : "opacity-100",
+                )}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onSelectNode(node.id);
+                  onSelectEdge(null);
+                  if (linkFrom && linkFrom !== node.id) {
+                    onConnect(linkFrom, node.id);
+                    setLinkFrom(null);
+                    return;
+                  }
+                  if (editable && editingId !== node.id) {
+                    const p = toGraph(e.clientX, e.clientY);
+                    dragRef.current = { id: node.id, dx: p.x - node.x, dy: p.y - node.y };
+                  }
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  dragRef.current = null;
+                  if (editable) setEditingId(node.id);
+                  else if (node.drill) onDrill(node);
+                }}
+                onMouseEnter={() => setHoverId(node.id)}
+                onMouseLeave={() => setHoverId(null)}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-[4px] border border-hairline bg-surface-3/40">
+                    <Icon className={cn("size-3.5", style.color)} />
+                  </span>
+                  {editingId === node.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={node.label}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onBlur={(e) => {
+                        onRenameNode(node.id, e.target.value.trim() || node.label);
+                        setEditingId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      className="w-full min-w-0 rounded-[3px] border border-ring/50 bg-surface-3 px-1 font-mono text-[12px] text-foreground outline-none"
+                    />
+                  ) : (
+                    <span className="truncate font-mono text-[12px] font-medium text-foreground">
+                      {node.label}
+                    </span>
+                  )}
+                </span>
+                {node.subtitle ? (
+                  <span className="truncate pl-8 text-[10.5px] text-muted-foreground">
+                    {node.subtitle}
+                  </span>
+                ) : null}
+
+                {isSelected ? (
+                  <>
+                    <div className="absolute -top-8 left-0 flex items-center gap-0.5 rounded-md border border-hairline bg-surface-2 p-0.5 shadow-sm">
+                      {node.drill ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                          aria-label="Drill in"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => onDrill(node)}
+                        >
+                          <ChevronsDown className="size-3.5" />
+                        </Button>
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-6"
+                        aria-label="Open code"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => onOpenCode(node)}
+                      >
+                        <Code2 className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-6"
+                        aria-label="Ask agent"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => onAsk(node)}
+                      >
+                        <Sparkles className="size-3.5" />
+                      </Button>
+                      {editable ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn("size-6", linkFrom === node.id ? "text-primary" : "")}
+                            aria-label="Connect to another element"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setLinkFrom((v) => (v === node.id ? null : node.id))}
+                          >
+                            <Link2 className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-muted-foreground hover:text-destructive"
+                            aria-label="Delete element"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => onDeleteNode(node.id)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                    {editable ? (
+                      <button
+                        type="button"
+                        aria-label="Drag a connection"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          setLinkFrom(node.id);
+                        }}
+                        className="absolute top-1/2 -right-1.5 size-3 -translate-y-1/2 rounded-full border border-ring bg-surface-1"
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {diagram.nodes.length === 0 ? (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="text-center">
+            <p className="font-display text-[13px] text-foreground">Empty diagram</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Drag an element from the palette, double-click the canvas, or press N.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="control-glass absolute bottom-4 left-4 z-20 flex items-center gap-0.5 rounded-md border border-hairline p-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label="Zoom out"
+          onClick={() => setZoom((z) => Math.max(0.35, z - 0.15))}
+        >
+          <Minus className="size-3.5" />
+        </Button>
+        <span className="w-9 text-center font-mono text-[10.5px] text-muted-foreground">
+          {Math.round(zoom * 100)}%
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label="Zoom in"
+          onClick={() => setZoom((z) => Math.min(1.8, z + 0.15))}
+        >
+          <Plus className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label="Reset view"
+          onClick={() => {
+            setZoom(0.85);
+            setPan({ x: 16, y: 12 });
+          }}
+        >
+          <Maximize2 className="size-3.5" />
+        </Button>
+      </div>
+
+      <span className="absolute bottom-6 left-44 z-10 hidden items-center gap-1.5 font-mono text-[9.5px] text-muted-foreground/70 md:inline-flex">
+        <MousePointer2 className="size-3" />
+        {editable
+          ? linkFrom
+            ? "click a target element to connect · esc to cancel"
+            : "drag nodes · N new · del remove · ⌘+scroll zoom"
+          : "drag to pan · ⌘ + scroll to zoom"}
+      </span>
+
+      {selectedNode && editable && linkFrom === selectedNode.id ? (
+        <div className="absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-ring/40 bg-surface-2 px-2.5 py-1 font-mono text-[10.5px] text-primary">
+          connecting from {selectedNode.label}
+        </div>
+      ) : null}
+    </div>
+  );
+}
