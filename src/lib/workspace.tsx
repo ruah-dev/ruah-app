@@ -1,13 +1,31 @@
+// Workspace state. The project and its diagrams are DERIVED from architecture.json
+// (served by the archmap daemon, or the bundled sample when no daemon is reachable);
+// editor operations become architecture.json edits that are saved back to the daemon
+// (src/lib/architecture-edit.ts + editArchitecture in src/lib/daemon.ts).
+// localStorage only keeps UI layout (panes, tabs, workflow node positions), keyed per repo root.
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { graphs, type DiagramNode, type Graph, type NodeKind } from "@/data/graphs";
+import type { DiagramNode, Graph, NodeKind } from "@/data/graphs";
+import type { Architecture } from "./contracts";
+import {
+  EMPTY_ARCHITECTURE,
+  ROOT_DIAGRAM_ID,
+  diagramsFromArchitecture,
+  levelDiagramId,
+  parseDiagramId,
+  workflowDiagramId,
+  type Positions,
+} from "./architecture";
+import * as edit from "./architecture-edit";
+import { canEdit, editArchitecture, reportLocalError, useDaemon, type DaemonState } from "./daemon";
 
 export type DiagramMode = "architecture" | "workflow";
 
@@ -42,107 +60,79 @@ export type Workspace = {
   activeAppId: string;
 };
 
-const STORAGE_KEY = "atlas.workspace.v3";
+/** v4: UI layout only (v3 stored whole demo projects; those are ignored). */
+const STORAGE_PREFIX = "atlas.ui.v4:";
 
 export const uid = (prefix = "id") =>
   `${prefix}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-3)}`;
 
-const seedGroups: Record<string, string> = {
-  system: "Cloud topology",
-  "backend-internals": "Backend services",
-  "routes-module": "Backend services",
-  "frontend-internals": "Client apps",
-  "frontend-module": "Client apps",
-  "workflow-jira": "Delivery process",
-  "workflow-request": "Runtime flows",
-};
-
 export const defaultGroupFor = (mode: DiagramMode) =>
-  mode === "workflow" ? "Other flows" : "Other diagrams";
+  mode === "workflow" ? "Workflows" : "Components";
 
-function seedDiagrams(): Diagram[] {
-  return Object.values(graphs).map((g) => {
-    const mode: DiagramMode = g.id.startsWith("workflow") ? "workflow" : "architecture";
-    return {
-      ...structuredClone(g),
-      mode,
-      group: seedGroups[g.id] ?? defaultGroupFor(mode),
-    };
-  });
-}
-
-function blankDiagram(mode: DiagramMode, index: number): Diagram {
-  return {
-    id: uid("dg"),
-    mode,
-    group: defaultGroupFor(mode),
-    title: mode === "architecture" ? `Architecture ${index}` : `Workflow ${index}`,
-    subtitle: mode === "architecture" ? "new diagram" : "new process flow",
-    nodes: [],
-    edges: [],
-    groups: [],
-  };
-}
+type UiPrefs = {
+  panes: Pane[];
+  activePaneId: string;
+  /** Workflow node positions per workflow diagram (not part of architecture.json). */
+  flowPositions: Record<string, Positions>;
+};
 
 function makePane(diagramId: string): Pane {
   const tab: PaneTab = { id: uid("tab"), type: "diagram", diagramId };
   return { id: uid("pane"), tabs: [tab], activeTabId: tab.id };
 }
 
-function seedApp(): AppProject {
-  const diagrams = seedDiagrams();
-  const pane = makePane("system");
-  return {
-    id: uid("app"),
-    name: "acme/platform",
-    repo: "acme/platform",
-    branch: "main",
-    diagrams,
-    panes: [pane],
-    activePaneId: pane.id,
-  };
+function defaultPrefs(): UiPrefs {
+  const pane = makePane(ROOT_DIAGRAM_ID);
+  return { panes: [pane], activePaneId: pane.id, flowPositions: {} };
 }
 
-export function newApp(name: string): AppProject {
-  const arch = blankDiagram("architecture", 1);
-  const flow = blankDiagram("workflow", 1);
-  arch.title = "System topology";
-  arch.subtitle = "draft";
-  arch.group = "Cloud topology";
-  flow.title = "Delivery flow";
-  flow.subtitle = "draft";
-  flow.group = "Delivery process";
-  const pane = makePane(arch.id);
-  return {
-    id: uid("app"),
-    name,
-    repo: name,
-    branch: "main",
-    diagrams: [arch, flow],
-    panes: [pane],
-    activePaneId: pane.id,
-  };
+function loadPrefs(key: string): UiPrefs {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_PREFIX + key);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<UiPrefs>;
+      if (parsed.panes?.length && parsed.activePaneId) {
+        return {
+          panes: parsed.panes,
+          activePaneId: parsed.activePaneId,
+          flowPositions: parsed.flowPositions ?? {},
+        };
+      }
+    }
+  } catch {
+    /* ignore malformed storage */
+  }
+  return defaultPrefs();
 }
 
-function initialWorkspace(): Workspace {
-  const app = seedApp();
-  return { apps: [app], activeAppId: app.id };
+export function repoBasename(root: string | null): string | null {
+  if (!root) return null;
+  const parts = root.replace(/[\\/]+$/, "").split(/[\\/]/);
+  return parts[parts.length - 1] || root;
+}
+
+export function storageKeyFor(daemon: Pick<DaemonState, "source" | "root">): string | null {
+  if (daemon.source === "daemon") return daemon.root ?? "daemon";
+  if (daemon.source === "sample") return "sample";
+  return null;
 }
 
 type Ctx = {
   workspace: Workspace;
   app: AppProject;
+  architecture: Architecture;
+  daemon: DaemonState;
+  /** Editing needs a connected daemon (edits are saved to architecture.json). */
+  editable: boolean;
   setActiveApp: (id: string) => void;
-  createApp: (name: string) => void;
-  closeApp: (id: string) => void;
-  renameApp: (id: string, name: string) => void;
   resetWorkspace: () => void;
   // diagrams
-  addDiagram: (mode: DiagramMode) => string;
+  addDiagram: (mode: DiagramMode) => string | null;
   updateDiagram: (id: string, patch: Partial<Omit<Diagram, "nodes" | "edges">>) => void;
   deleteDiagram: (id: string) => void;
   // nodes + edges
-  addNode: (diagramId: string, node: DiagramNode) => void;
+  /** `placed` = the user chose the position (drop / double-click); workflow quick-adds auto-layout. */
+  addNode: (diagramId: string, node: DiagramNode, placed?: boolean) => void;
   updateNode: (diagramId: string, nodeId: string, patch: Partial<DiagramNode>) => void;
   deleteNode: (diagramId: string, nodeId: string) => void;
   addEdge: (diagramId: string, from: string, to: string) => void;
@@ -165,196 +155,223 @@ type Ctx = {
 const WorkspaceContext = createContext<Ctx | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [workspace, setWorkspace] = useState<Workspace>(() => initialWorkspace());
-  const [hydrated, setHydrated] = useState(false);
+  const daemon = useDaemon();
+  const architecture = daemon.architecture ?? EMPTY_ARCHITECTURE;
+  const storageKey = storageKeyFor(daemon);
+  const [prefs, setPrefs] = useState<UiPrefs>(defaultPrefs);
+  const loadedKey = useRef<string | null>(null);
+
+  // Load layout prefs for this repo (client only, after the store knows which repo it is).
+  useEffect(() => {
+    if (storageKey === null || loadedKey.current === storageKey) return;
+    loadedKey.current = storageKey;
+    setPrefs(loadPrefs(storageKey));
+  }, [storageKey]);
 
   useEffect(() => {
+    if (storageKey === null || loadedKey.current !== storageKey) return;
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Workspace;
-        if (parsed?.apps?.length) setWorkspace(parsed);
-      }
-    } catch {
-      /* ignore malformed storage */
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
+      window.localStorage.setItem(STORAGE_PREFIX + storageKey, JSON.stringify(prefs));
     } catch {
       /* storage full or unavailable */
     }
-  }, [workspace, hydrated]);
+  }, [prefs, storageKey]);
 
-  const mutate = useCallback((fn: (w: Workspace) => void) => {
-    setWorkspace((prev) => {
+  const diagrams = useMemo<Diagram[]>(
+    () => diagramsFromArchitecture(architecture, prefs.flowPositions),
+    [architecture, prefs.flowPositions],
+  );
+
+  // Tabs pointing at diagrams that no longer exist (node deleted on disk) fall back to the top level.
+  const panes = useMemo(() => {
+    const ids = new Set(diagrams.map((d) => d.id));
+    return prefs.panes.map((p) => ({
+      ...p,
+      tabs: p.tabs.map((t) => (ids.has(t.diagramId) ? t : { ...t, diagramId: ROOT_DIAGRAM_ID })),
+    }));
+  }, [prefs.panes, diagrams]);
+
+  const repo =
+    daemon.source === "daemon"
+      ? (repoBasename(daemon.root) ?? architecture.name)
+      : daemon.source === "sample"
+        ? `${architecture.name} (sample)`
+        : "connecting…";
+
+  const app: AppProject = useMemo(
+    () => ({
+      id: storageKey ?? "pending",
+      name: architecture.name || repo,
+      repo,
+      branch: "",
+      diagrams,
+      panes,
+      activePaneId: panes.some((p) => p.id === prefs.activePaneId)
+        ? prefs.activePaneId
+        : panes[0]!.id,
+    }),
+    [storageKey, architecture.name, repo, diagrams, panes, prefs.activePaneId],
+  );
+
+  const workspace: Workspace = useMemo(() => ({ apps: [app], activeAppId: app.id }), [app]);
+  const editable = canEdit(daemon);
+
+  const mutatePrefs = useCallback((fn: (p: UiPrefs) => void) => {
+    setPrefs((prev) => {
       const next = structuredClone(prev);
       fn(next);
       return next;
     });
   }, []);
 
-  const activeApp = useMemo(
-    () => workspace.apps.find((a) => a.id === workspace.activeAppId) ?? workspace.apps[0]!,
-    [workspace],
-  );
+  const apply = useCallback((fn: (a: Architecture) => Architecture | null, refusal?: string) => {
+    let refused = false;
+    editArchitecture((a) => {
+      const next = fn(a);
+      if (!next) refused = true;
+      return next;
+    });
+    if (refused && refusal) reportLocalError(refusal);
+  }, []);
 
-  const mutateApp = useCallback(
-    (fn: (a: AppProject) => void) => {
-      mutate((w) => {
-        const app = w.apps.find((a) => a.id === w.activeAppId) ?? w.apps[0];
-        if (app) fn(app);
-      });
-    },
-    [mutate],
-  );
-
-  const withDiagram = useCallback(
-    (diagramId: string, fn: (d: Diagram) => void) => {
-      mutateApp((app) => {
-        const d = app.diagrams.find((x) => x.id === diagramId);
-        if (d) fn(d);
-      });
-    },
-    [mutateApp],
-  );
+  const openTabIn = useCallback((p: UiPrefs, paneId: string, type: TabType, diagramId: string) => {
+    const pane = p.panes.find((x) => x.id === paneId) ?? p.panes[0];
+    if (!pane) return;
+    const existing = pane.tabs.find((t) => t.type === type && t.diagramId === diagramId);
+    if (existing) {
+      pane.activeTabId = existing.id;
+    } else {
+      const tab: PaneTab = { id: uid("tab"), type, diagramId };
+      pane.tabs.push(tab);
+      pane.activeTabId = tab.id;
+    }
+    p.activePaneId = pane.id;
+  }, []);
 
   const value: Ctx = useMemo(
     () => ({
       workspace,
-      app: activeApp,
-      setActiveApp: (id) => mutate((w) => void (w.activeAppId = id)),
-      createApp: (name) =>
-        mutate((w) => {
-          const app = newApp(name || `project-${w.apps.length + 1}`);
-          w.apps.push(app);
-          w.activeAppId = app.id;
-        }),
-      closeApp: (id) =>
-        mutate((w) => {
-          if (w.apps.length <= 1) return;
-          w.apps = w.apps.filter((a) => a.id !== id);
-          if (w.activeAppId === id) w.activeAppId = w.apps[0]!.id;
-        }),
-      renameApp: (id, name) =>
-        mutate((w) => {
-          const app = w.apps.find((a) => a.id === id);
-          if (app) app.name = name;
-        }),
-      resetWorkspace: () => {
-        try {
-          window.localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          /* noop */
-        }
-        setWorkspace(initialWorkspace());
-      },
+      app,
+      architecture,
+      daemon,
+      editable,
+      setActiveApp: () => {},
+      resetWorkspace: () => setPrefs(defaultPrefs()),
 
       addDiagram: (mode) => {
-        const created = blankDiagram(
-          mode,
-          activeApp.diagrams.filter((d) => d.mode === mode).length + 1,
-        );
-        mutateApp((app) => {
-          app.diagrams.push(created);
-          const pane = app.panes.find((p) => p.id === app.activePaneId) ?? app.panes[0];
-          if (pane) {
-            const tab: PaneTab = { id: uid("tab"), type: "diagram", diagramId: created.id };
-            pane.tabs.push(tab);
-            pane.activeTabId = tab.id;
+        if (!editable) return null;
+        let created: string | null = null;
+        editArchitecture((a) => {
+          if (mode === "architecture") {
+            const r = edit.addArchitectureDiagram(a);
+            created = levelDiagramId(r.parentId);
+            return r.arch;
           }
+          const r = edit.addWorkflow(a, a.workflows.length + 1);
+          created = workflowDiagramId(r.workflowId);
+          return r.arch;
         });
-        return created.id;
+        const id = created as string | null;
+        if (id !== null) mutatePrefs((p) => openTabIn(p, p.activePaneId, "diagram", id));
+        return id;
       },
-      updateDiagram: (id, patch) => withDiagram(id, (d) => Object.assign(d, patch)),
+      updateDiagram: (id, patch) => {
+        const { title, subtitle } = patch;
+        if (title === undefined && subtitle === undefined) return;
+        apply((a) =>
+          edit.patchDiagram(a, id, {
+            ...(title !== undefined ? { title } : {}),
+            ...(subtitle !== undefined ? { subtitle } : {}),
+          }),
+        );
+      },
       deleteDiagram: (id) =>
-        mutateApp((app) => {
-          if (app.diagrams.length <= 1) return;
-          app.diagrams = app.diagrams.filter((d) => d.id !== id);
-          const fallback = app.diagrams[0]!.id;
-          app.panes.forEach((p) => {
-            p.tabs = p.tabs.map((t) => (t.diagramId === id ? { ...t, diagramId: fallback } : t));
-          });
-        }),
+        apply((a) => edit.deleteWorkflow(a, id), "Only workflows can be deleted from the list."),
 
-      addNode: (diagramId, node) => withDiagram(diagramId, (d) => void d.nodes.push(node)),
-      updateNode: (diagramId, nodeId, patch) =>
-        withDiagram(diagramId, (d) => {
-          const n = d.nodes.find((x) => x.id === nodeId);
-          if (n) Object.assign(n, patch);
-        }),
+      addNode: (diagramId, node, placed = true) => {
+        apply((a) => edit.addNode(a, diagramId, node));
+        if (placed && parseDiagramId(diagramId)?.mode === "workflow") {
+          mutatePrefs((p) => {
+            p.flowPositions[diagramId] = {
+              ...p.flowPositions[diagramId],
+              [node.id]: { x: node.x, y: node.y },
+            };
+          });
+        }
+      },
+      updateNode: (diagramId, nodeId, patch) => {
+        const ref = parseDiagramId(diagramId);
+        const { x, y, ...rest } = patch;
+        if (ref?.mode === "workflow" && x !== undefined && y !== undefined) {
+          if (!editable) return;
+          // Workflow layout is per-viewer: architecture.json has no workflow coordinates.
+          mutatePrefs((p) => {
+            p.flowPositions[diagramId] = { ...p.flowPositions[diagramId], [nodeId]: { x, y } };
+          });
+        }
+        const archPatch: edit.NodePatch = {};
+        if (ref?.mode === "architecture") {
+          if (x !== undefined) archPatch.x = x;
+          if (y !== undefined) archPatch.y = y;
+        }
+        if (rest.label !== undefined) archPatch.label = rest.label;
+        if (rest.kind !== undefined) archPatch.kind = rest.kind;
+        if ("description" in rest) archPatch.description = rest.description ?? "";
+        if ("notes" in rest) archPatch.notes = rest.notes ?? "";
+        if ("tech" in rest) archPatch.tech = rest.tech ?? [];
+        if ("path" in rest) archPatch.path = rest.path ?? "";
+        if (Object.keys(archPatch).length)
+          apply((a) => edit.patchNode(a, diagramId, nodeId, archPatch));
+      },
       deleteNode: (diagramId, nodeId) =>
-        withDiagram(diagramId, (d) => {
-          d.nodes = d.nodes.filter((n) => n.id !== nodeId);
-          d.edges = d.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
-        }),
-      addEdge: (diagramId, from, to) =>
-        withDiagram(diagramId, (d) => {
-          if (from === to) return;
-          if (d.edges.some((e) => e.from === from && e.to === to)) return;
-          d.edges.push({ from, to });
-        }),
+        apply((a) => edit.deleteNode(a, diagramId, nodeId), "A workflow needs at least two steps."),
+      addEdge: (diagramId, from, to) => apply((a) => edit.addEdge(a, diagramId, from, to)),
       updateEdge: (diagramId, from, to, patch) =>
-        withDiagram(diagramId, (d) => {
-          const e = d.edges.find((x) => x.from === from && x.to === to);
-          if (e) Object.assign(e, patch);
-        }),
+        apply(
+          (a) => edit.patchEdge(a, diagramId, from, to, patch),
+          "Workflow arrows follow the step order; edit the steps instead.",
+        ),
       deleteEdge: (diagramId, from, to) =>
-        withDiagram(diagramId, (d) => {
-          d.edges = d.edges.filter((e) => !(e.from === from && e.to === to));
-        }),
+        apply(
+          (a) => edit.deleteEdge(a, diagramId, from, to),
+          "A workflow needs at least two steps.",
+        ),
 
       openTab: (paneId, type, diagramId) =>
-        mutateApp((app) => {
-          const pane = app.panes.find((p) => p.id === paneId) ?? app.panes[0];
-          if (!pane) return;
-          const existing = pane.tabs.find((t) => t.type === type && t.diagramId === diagramId);
-          if (existing) {
-            pane.activeTabId = existing.id;
-            return;
-          }
-          const tab: PaneTab = { id: uid("tab"), type, diagramId };
-          pane.tabs.push(tab);
-          pane.activeTabId = tab.id;
-          app.activePaneId = pane.id;
-        }),
+        mutatePrefs((p) => openTabIn(p, paneId, type, diagramId)),
       closeTab: (paneId, tabId) =>
-        mutateApp((app) => {
-          const pane = app.panes.find((p) => p.id === paneId);
+        mutatePrefs((p) => {
+          const pane = p.panes.find((x) => x.id === paneId);
           if (!pane || pane.tabs.length <= 1) return;
           const idx = pane.tabs.findIndex((t) => t.id === tabId);
           pane.tabs = pane.tabs.filter((t) => t.id !== tabId);
-          if (pane.activeTabId === tabId) {
+          if (pane.activeTabId === tabId)
             pane.activeTabId = (pane.tabs[idx - 1] ?? pane.tabs[0])!.id;
-          }
         }),
       setActiveTab: (paneId, tabId) =>
-        mutateApp((app) => {
-          const pane = app.panes.find((p) => p.id === paneId);
+        mutatePrefs((p) => {
+          const pane = p.panes.find((x) => x.id === paneId);
           if (!pane) return;
           pane.activeTabId = tabId;
-          app.activePaneId = paneId;
+          p.activePaneId = paneId;
         }),
-      setActivePane: (paneId) => mutateApp((app) => void (app.activePaneId = paneId)),
+      setActivePane: (paneId) =>
+        setPrefs((p) => (p.activePaneId === paneId ? p : { ...p, activePaneId: paneId })),
       splitPane: (diagramId) =>
-        mutateApp((app) => {
-          if (app.panes.length >= 3) return;
+        mutatePrefs((p) => {
+          if (p.panes.length >= 3) return;
           const pane = makePane(diagramId);
-          app.panes.push(pane);
-          app.activePaneId = pane.id;
+          p.panes.push(pane);
+          p.activePaneId = pane.id;
         }),
       closePane: (paneId) =>
-        mutateApp((app) => {
-          if (app.panes.length <= 1) return;
-          app.panes = app.panes.filter((p) => p.id !== paneId);
-          if (app.activePaneId === paneId) app.activePaneId = app.panes[0]!.id;
+        mutatePrefs((p) => {
+          if (p.panes.length <= 1) return;
+          p.panes = p.panes.filter((x) => x.id !== paneId);
+          if (p.activePaneId === paneId) p.activePaneId = p.panes[0]!.id;
         }),
     }),
-    [workspace, activeApp, mutate, mutateApp, withDiagram],
+    [workspace, app, architecture, daemon, editable, apply, mutatePrefs, openTabIn],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
@@ -390,9 +407,10 @@ export const architectureKinds: NodeKind[] = flatten(architectureKindGroups);
 
 export const workflowKinds: NodeKind[] = flatten(workflowKindGroups);
 
+/** New node ids follow the architecture.json id rule: ^[a-z0-9][a-z0-9._-]{0,63}$ */
 export function makeNode(kind: NodeKind, x: number, y: number, label?: string): DiagramNode {
   return {
-    id: uid("n"),
+    id: uid(kind.replace(/[^a-z0-9]/g, "") || "n"),
     label: label ?? `New ${kind}`,
     subtitle: "",
     kind,

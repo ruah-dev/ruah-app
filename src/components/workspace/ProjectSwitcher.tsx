@@ -16,11 +16,23 @@ import { cn } from "@/lib/utils";
 type Props = {
   workspace: Workspace;
   onSelect: (id: string) => void;
-  onCreate: (name: string) => void;
-  onClose: (id: string) => void;
+  /** Omitted when the daemon serves a single repo (a browser cannot open another one). */
+  onCreate?: ((name: string) => void) | undefined;
+  onClose?: ((id: string) => void) | undefined;
+  /** Status dot colour class for the active project (daemon/agent state). */
+  dotClass?: string;
+  /** Second line under each project, e.g. the repo root on the daemon host. */
+  detail?: string | null;
 };
 
-export function ProjectSwitcher({ workspace, onSelect, onCreate, onClose }: Props) {
+export function ProjectSwitcher({
+  workspace,
+  onSelect,
+  onCreate,
+  onClose,
+  dotClass = "bg-primary",
+  detail,
+}: Props) {
   const [open, setOpen] = useState(false);
   const active = workspace.apps.find((a) => a.id === workspace.activeAppId) ?? workspace.apps[0]!;
 
@@ -42,7 +54,7 @@ export function ProjectSwitcher({ workspace, onSelect, onCreate, onClose }: Prop
           variant="outline"
           className="h-7 max-w-64 gap-2 rounded-md border-hairline bg-surface-2 px-2.5 text-[11px] font-normal shadow-none hover:bg-surface-3"
         >
-          <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+          <span className={cn("size-1.5 shrink-0 rounded-full", dotClass)} />
           <span className="truncate font-mono text-[11px] text-foreground">{active.name}</span>
           <span className="ml-1 hidden shrink-0 font-mono text-[9.5px] text-muted-foreground sm:inline">
             ⌘K
@@ -91,10 +103,11 @@ export function ProjectSwitcher({ workspace, onSelect, onCreate, onClose }: Prop
                           <Workflow className="size-2.5" />
                           {flows}
                         </span>
-                        <span>{a.branch}</span>
+                        {a.branch ? <span>{a.branch}</span> : null}
+                        {detail ? <span className="truncate">{detail}</span> : null}
                       </span>
                     </span>
-                    {workspace.apps.length > 1 ? (
+                    {onClose && workspace.apps.length > 1 ? (
                       <button
                         type="button"
                         aria-label={`Close ${a.name}`}
@@ -111,20 +124,25 @@ export function ProjectSwitcher({ workspace, onSelect, onCreate, onClose }: Prop
                 );
               })}
             </CommandGroup>
-            <CommandGroup heading="Actions">
-              <CommandItem
-                value="new project"
-                onSelect={() => {
-                  const name = window.prompt("Project name", `project-${workspace.apps.length + 1}`);
-                  if (name) onCreate(name);
-                  setOpen(false);
-                }}
-                className="gap-2 rounded-[4px] text-[11.5px]"
-              >
-                <FolderPlus className="size-3.5 text-muted-foreground" />
-                New project
-              </CommandItem>
-            </CommandGroup>
+            {onCreate ? (
+              <CommandGroup heading="Actions">
+                <CommandItem
+                  value="new project"
+                  onSelect={() => {
+                    const name = window.prompt(
+                      "Project name",
+                      `project-${workspace.apps.length + 1}`,
+                    );
+                    if (name) onCreate(name);
+                    setOpen(false);
+                  }}
+                  className="gap-2 rounded-[4px] text-[11.5px]"
+                >
+                  <FolderPlus className="size-3.5 text-muted-foreground" />
+                  New project
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>

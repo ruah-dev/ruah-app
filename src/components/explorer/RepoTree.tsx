@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, FileCode2, Folder, GitBranch } from "lucide-react";
-import { repoTree, type RepoTreeNode } from "@/data/graphs";
+import type { RepoTreeNode } from "@/lib/architecture";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  onOpen: (graphId: string, nodeId: string) => void;
+  onOpen: (nodeId: string, path: string) => void;
   activeNodeId: string | null;
 };
 
-function TreeRow({ node, depth, onOpen, activeNodeId }: Props & { node: RepoTreeNode; depth: number }) {
+function TreeRow({
+  node,
+  depth,
+  onOpen,
+  activeNodeId,
+}: Props & { node: RepoTreeNode; depth: number }) {
   const [open, setOpen] = useState(depth < 1);
   const hasChildren = !!node.children?.length;
   const isActive = !!node.nodeId && node.nodeId === activeNodeId;
@@ -17,14 +22,17 @@ function TreeRow({ node, depth, onOpen, activeNodeId }: Props & { node: RepoTree
     <div>
       <button
         type="button"
+        title={node.path}
         onClick={() => {
           if (hasChildren) setOpen((o) => !o);
-          if (node.graphId && node.nodeId) onOpen(node.graphId, node.nodeId);
+          if (node.nodeId) onOpen(node.nodeId, node.path);
         }}
         style={{ paddingLeft: 6 + depth * 12 }}
         className={cn(
           "relative mx-1 flex h-7 w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-[4px] pr-2 text-left font-mono text-[11px] transition-colors duration-150",
-          isActive ? "bg-surface-3 text-foreground before:absolute before:inset-y-1 before:left-0 before:w-px before:bg-primary" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+          isActive
+            ? "bg-surface-3 text-foreground before:absolute before:inset-y-1 before:left-0 before:w-px before:bg-primary"
+            : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
         )}
       >
         {hasChildren ? (
@@ -46,7 +54,7 @@ function TreeRow({ node, depth, onOpen, activeNodeId }: Props & { node: RepoTree
       {open && hasChildren
         ? node.children!.map((child) => (
             <TreeRow
-              key={child.name}
+              key={child.path}
               node={child}
               depth={depth + 1}
               onOpen={onOpen}
@@ -58,16 +66,26 @@ function TreeRow({ node, depth, onOpen, activeNodeId }: Props & { node: RepoTree
   );
 }
 
-export function RepoTree({ onOpen, activeNodeId }: Props) {
+export function RepoTree({
+  tree,
+  repo,
+  onOpen,
+  activeNodeId,
+}: Props & { tree: RepoTreeNode[]; repo: string }) {
   return (
     <div className="min-h-0">
       <div className="flex h-8 items-center gap-1.5 px-3 text-[10px] font-semibold text-muted-foreground uppercase">
         <GitBranch className="size-3" />
-        acme/platform · main
+        <span className="truncate normal-case">{repo}</span>
       </div>
-      {repoTree.map((node) => (
+      {tree.length === 0 ? (
+        <p className="px-3 text-[10.5px] text-muted-foreground">
+          No paths in architecture.json yet.
+        </p>
+      ) : null}
+      {tree.map((node) => (
         <TreeRow
-          key={node.name}
+          key={node.path}
           node={node}
           depth={0}
           onOpen={onOpen}

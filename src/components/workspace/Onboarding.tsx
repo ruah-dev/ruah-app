@@ -17,7 +17,7 @@ const KEY = "atlas.onboarded.v1";
 const steps = [
   {
     title: "Map your system",
-    body: "Every project holds architecture diagrams and process flows. Pick one on the left to open it in a window.",
+    body: "Diagrams come from the repo's architecture.json: the top level, one per element you can drill into, and every workflow. Pick one on the left to open it in a window.",
     points: [
       { icon: Layers, text: "Architecture: cloud, services, data, edge, code" },
       { icon: Workflow, text: "Workflows: how work moves, step by step" },
@@ -36,7 +36,7 @@ const steps = [
     body: "Split the board to compare a diagram with a flow, and switch projects any time with ⌘K.",
     points: [
       { icon: Columns2, text: "Up to three windows at once" },
-      { icon: FolderPlus, text: "Everything is saved on this device" },
+      { icon: FolderPlus, text: "Edits are saved to the repo's architecture.json" },
     ],
   },
 ];
@@ -63,9 +63,7 @@ export function Onboarding({
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : finish())}>
-      <DialogContent
-        className="w-[92vw] max-w-md gap-0 rounded-lg border-hairline bg-surface-1 p-0"
-      >
+      <DialogContent className="w-[92vw] max-w-md gap-0 rounded-lg border-hairline bg-surface-1 p-0">
         <div className="border-b border-hairline px-5 py-4">
           <p className="font-mono text-[9.5px] text-muted-foreground uppercase">
             Getting started · {step + 1} of {steps.length}
@@ -95,10 +93,7 @@ export function Onboarding({
             {steps.map((s, i) => (
               <span
                 key={s.title}
-                className={cn(
-                  "h-1 w-5 rounded-full",
-                  i === step ? "bg-primary" : "bg-surface-3",
-                )}
+                className={cn("h-1 w-5 rounded-full", i === step ? "bg-primary" : "bg-surface-3")}
               />
             ))}
           </div>

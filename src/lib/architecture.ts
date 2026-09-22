@@ -1,13 +1,7 @@
 // Pure mapping between architecture.json (src/lib/contracts.ts) and the viewer's
 // diagram model (src/data/graphs.ts). CONTRACTS.md §1.3. No React, no I/O.
 import type { Architecture, ArchEdge, ArchNode, Workflow } from "./contracts";
-import type {
-  DiagramEdge,
-  DiagramGroup,
-  DiagramNode,
-  Graph,
-  NodeKind,
-} from "@/data/graphs";
+import type { DiagramEdge, DiagramGroup, DiagramNode, Graph, NodeKind } from "@/data/graphs";
 
 export const NODE_W = 200;
 export const NODE_H = 64;
@@ -24,8 +18,7 @@ export const levelDiagramId = (nodeId: string) => `arch:${nodeId}`;
 export const workflowDiagramId = (workflowId: string) => `flow:${workflowId}`;
 
 export type DiagramRef =
-  | { mode: "architecture"; parentId: string | null }
-  | { mode: "workflow"; workflowId: string };
+  { mode: "architecture"; parentId: string | null } | { mode: "workflow"; workflowId: string };
 
 export function parseDiagramId(id: string): DiagramRef | null {
   if (id === ROOT_DIAGRAM_ID) return { mode: "architecture", parentId: null };
@@ -46,14 +39,45 @@ export const EMPTY_ARCHITECTURE: Architecture = {
 // type <-> kind
 
 const KNOWN_KINDS = new Set<string>([
-  "service", "function", "container", "cluster", "worker",
-  "database", "cache", "storage", "warehouse", "search",
-  "queue", "topic", "stream", "webhook", "scheduler",
-  "gateway", "loadbalancer", "cdn", "dns", "firewall",
-  "auth", "secret", "monitoring", "analytics", "config", "ml",
-  "frontend", "mobile", "user", "external",
-  "module", "file", "api",
-  "step", "decision", "event", "timer", "approval", "actor",
+  "service",
+  "function",
+  "container",
+  "cluster",
+  "worker",
+  "database",
+  "cache",
+  "storage",
+  "warehouse",
+  "search",
+  "queue",
+  "topic",
+  "stream",
+  "webhook",
+  "scheduler",
+  "gateway",
+  "loadbalancer",
+  "cdn",
+  "dns",
+  "firewall",
+  "auth",
+  "secret",
+  "monitoring",
+  "analytics",
+  "config",
+  "ml",
+  "frontend",
+  "mobile",
+  "user",
+  "external",
+  "module",
+  "file",
+  "api",
+  "step",
+  "decision",
+  "event",
+  "timer",
+  "approval",
+  "actor",
 ]);
 
 // Obvious synonyms the scanner or hand-written files use. Anything else -> "module".
@@ -103,6 +127,13 @@ export function kindFor(type: string): NodeKind {
   return "module";
 }
 
+const FLOW_KINDS = new Set<NodeKind>(["step", "decision", "event", "timer", "approval"]);
+
+/** Node types that describe process steps rather than system parts. */
+export function isFlowType(type: string): boolean {
+  return FLOW_KINDS.has(kindFor(type));
+}
+
 /** Inverse used when the editor changes a node's kind. */
 export function typeFor(kind: NodeKind): string {
   return kind === "database" ? "datastore" : kind;
@@ -127,11 +158,12 @@ export function indexArchitecture(arch: Architecture): ArchIndex {
     list.push(n);
     children.set(key, list);
   }
-  // Step nodes that only exist to be workflow steps are not drawn on architecture levels.
+  // Process nodes (step/decision/event/wait/approval) used by a workflow are drawn on the
+  // workflow only, not on architecture levels.
   const inWorkflow = new Set(arch.workflows.flatMap((w) => w.steps));
   const workflowOnly = new Set(
     arch.nodes
-      .filter((n) => kindFor(n.type) === "step" && inWorkflow.has(n.id) && !children.has(n.id))
+      .filter((n) => isFlowType(n.type) && inWorkflow.has(n.id) && !children.has(n.id))
       .map((n) => n.id),
   );
   return { byId, children, workflowOnly };
@@ -233,11 +265,17 @@ function kindSummary(nodes: DiagramNode[]): string {
 // graphs
 
 /** One drill level: the nodes whose `parent` is `parentId` (null = top level). */
-export function toGraph(arch: Architecture, parentId: string | null, index = indexArchitecture(arch)): Graph {
+export function toGraph(
+  arch: Architecture,
+  parentId: string | null,
+  index = indexArchitecture(arch),
+): Graph {
   const level = (index.children.get(parentId) ?? []).filter((n) => !index.workflowOnly.has(n.id));
   const nodes = level.map((n) => toDiagramNode(n, index, (n.x ?? 0) + ORIGIN, (n.y ?? 0) + ORIGIN));
   const visible = new Set(nodes.map((n) => n.id));
-  const edges = arch.edges.filter((e) => visible.has(e.from) && visible.has(e.to)).map(toDiagramEdge);
+  const edges = arch.edges
+    .filter((e) => visible.has(e.from) && visible.has(e.to))
+    .map(toDiagramEdge);
   const parent = parentId === null ? undefined : index.byId.get(parentId);
   const summary = kindSummary(nodes);
   return {
@@ -307,7 +345,9 @@ export function diagramsFromArchitecture(
   flowPositions: Record<string, Positions> = {},
 ): DerivedDiagram[] {
   const index = indexArchitecture(arch);
-  const out: DerivedDiagram[] = [{ ...toGraph(arch, null, index), mode: "architecture", group: "System" }];
+  const out: DerivedDiagram[] = [
+    { ...toGraph(arch, null, index), mode: "architecture", group: "System" },
+  ];
   const containers = arch.nodes.filter((n) => hasChildren(index, n.id));
   // Order: depth-first in file order so a parent's diagram precedes its children's.
   const visit = (parentId: string | null) => {
@@ -325,13 +365,21 @@ export function diagramsFromArchitecture(
   if (containers.length) visit(null);
   for (const wf of arch.workflows) {
     const id = workflowDiagramId(wf.id);
-    out.push({ ...workflowGraph(arch, wf.id, flowPositions[id] ?? {}, index), mode: "workflow", group: "Workflows" });
+    out.push({
+      ...workflowGraph(arch, wf.id, flowPositions[id] ?? {}, index),
+      mode: "workflow",
+      group: "Workflows",
+    });
   }
   return out;
 }
 
 /** The diagram a node is drawn on: its drill level, or the first workflow for workflow-only steps. */
-export function homeDiagramId(arch: Architecture, nodeId: string, index = indexArchitecture(arch)): string | null {
+export function homeDiagramId(
+  arch: Architecture,
+  nodeId: string,
+  index = indexArchitecture(arch),
+): string | null {
   const node = index.byId.get(nodeId);
   if (!node) return null;
   if (index.workflowOnly.has(nodeId)) {
@@ -367,7 +415,13 @@ const looksLikeFile = (p: string) => /\.[A-Za-z0-9]+$/.test(p.split("/").pop() ?
  * (the deepest node that lists them). */
 export function toRepoTree(arch: Architecture): RepoTreeNode[] {
   const index = indexArchitecture(arch);
-  const root: MutableTree = { name: "", path: "", children: new Map(), ownerDepth: -1, fromFiles: false };
+  const root: MutableTree = {
+    name: "",
+    path: "",
+    children: new Map(),
+    ownerDepth: -1,
+    fromFiles: false,
+  };
   const insert = (rawPath: string, nodeId: string, fromFiles: boolean) => {
     const clean = rawPath.replace(/^\.\//, "").replace(/\/+$/, "");
     if (!clean || clean === ".") return;
@@ -396,7 +450,9 @@ export function toRepoTree(arch: Architecture): RepoTreeNode[] {
   const finish = (t: MutableTree): RepoTreeNode => {
     const kids = [...t.children.values()].map(finish);
     const isDir = kids.length > 0 || (!t.fromFiles && !looksLikeFile(t.path));
-    kids.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "dir" ? -1 : 1));
+    kids.sort((a, b) =>
+      a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "dir" ? -1 : 1,
+    );
     let out: RepoTreeNode = {
       name: t.name,
       path: t.path,
@@ -424,9 +480,18 @@ export function toRepoTree(arch: Architecture): RepoTreeNode[] {
 // ---------------------------------------------------------------------------
 // neighbours (inspector "Links" section)
 
-export type NodeLink = { nodeId: string; name: string; type: string; label?: string; kind?: string };
+export type NodeLink = {
+  nodeId: string;
+  name: string;
+  type: string;
+  label?: string;
+  kind?: string;
+};
 
-export function linksFor(arch: Architecture, nodeId: string): { incoming: NodeLink[]; outgoing: NodeLink[] } {
+export function linksFor(
+  arch: Architecture,
+  nodeId: string,
+): { incoming: NodeLink[]; outgoing: NodeLink[] } {
   const byId = new Map(arch.nodes.map((n) => [n.id, n]));
   const link = (otherId: string, e: ArchEdge): NodeLink => {
     const other = byId.get(otherId);
@@ -446,4 +511,34 @@ export function linksFor(arch: Architecture, nodeId: string): { incoming: NodeLi
 
 export function workflowsFor(arch: Architecture, nodeId: string): Workflow[] {
   return arch.workflows.filter((w) => w.steps.includes(nodeId));
+}
+
+// ---------------------------------------------------------------------------
+// paths
+
+/** The `@path` shown next to a node (agent context badge, inspector). */
+export function contextPathOf(node: Pick<ArchNode, "path" | "files" | "name">): string {
+  return node.path ?? node.files?.[0] ?? node.name;
+}
+
+/** Files the Code tab can show: `files[]`, else `path` when it looks like a file. */
+export function codeFilesOf(node: Pick<ArchNode, "path" | "files">): string[] {
+  if (node.files?.length) return node.files;
+  if (node.path && looksLikeFile(node.path)) return [node.path];
+  return [];
+}
+
+/** The node that owns a repo path: deepest node listing it in files[], else the node with the
+ * longest `path` prefix. */
+export function nodeForPath(arch: Architecture, filePath: string): ArchNode | null {
+  const index = indexArchitecture(arch);
+  const depth = (n: ArchNode) => ancestry(index, n.id).length;
+  const listed = arch.nodes.filter((n) => n.files?.includes(filePath) || n.path === filePath);
+  if (listed.length) return listed.sort((a, b) => depth(b) - depth(a))[0]!;
+  let best: ArchNode | null = null;
+  for (const n of arch.nodes) {
+    if (!n.path || !filePath.startsWith(`${n.path}/`)) continue;
+    if (!best || n.path.length > (best.path?.length ?? 0)) best = n;
+  }
+  return best;
 }
