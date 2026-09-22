@@ -61,27 +61,33 @@ const toneClass: Record<Token["tone"], string> = {
   type: "text-node-gateway",
 };
 
-export function CodePreview({ file }: { file: CodeFile }) {
+export function CodePreview({ file, href }: { file: CodeFile; href?: string | undefined }) {
   const lines = file.code.split("\n");
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-9 items-center gap-2 border-b border-hairline px-4">
         <FileCode2 className="size-3.5 shrink-0 text-node-file" />
         <span className="truncate font-mono text-[11.5px] text-foreground">{file.path}</span>
-        <Badge variant="outline" className="ml-auto h-4 rounded-sm px-1 font-mono text-[9.5px]">
-          {file.branch}
-        </Badge>
-        <a
-          href="#"
-          onClick={(e) => e.preventDefault()}
-          className="flex items-center gap-1 font-mono text-[10.5px] text-primary hover:underline"
-        >
-          repo <ExternalLink className="size-3" />
-        </a>
+        {file.branch ? (
+          <Badge variant="outline" className="ml-auto h-4 rounded-sm px-1 font-mono text-[9.5px]">
+            {file.branch}
+          </Badge>
+        ) : (
+          <span className="ml-auto" />
+        )}
+        {href ? (
+          <a
+            href={href}
+            title="Open in repo (VS Code)"
+            className="flex shrink-0 items-center gap-1 font-mono text-[10.5px] text-primary hover:underline"
+          >
+            Open in repo <ExternalLink className="size-3" />
+          </a>
+        ) : null}
       </div>
 
-       <div className="min-h-0 flex-1 overflow-auto bg-canvas">
+      <div className="min-h-0 flex-1 overflow-auto bg-canvas">
         <pre className="py-2 font-mono text-[11.5px] leading-[1.55]">
           {lines.map((line, i) => {
             const n = i + 1;
