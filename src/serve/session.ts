@@ -614,7 +614,7 @@ export class SessionHub {
       return;
     }
     mapOps.undoTurn(turnId).catch((err: unknown) => {
-      if (socket !== undefined) this.error(socket, "save_rejected", `undo failed: ${err instanceof Error ? err.message : String(err)}`);
+      if (socket !== undefined) this.error(socket, "bad_message", `undo failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
 

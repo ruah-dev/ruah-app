@@ -30,7 +30,7 @@ export interface AgentMapTools {
   instructions: string;
   /** Claude Agent SDK: a fresh in-process MCP server config (createSdkMcpServer) — one per query(). */
   sdkServer(): unknown;
-  /** Fully qualified tool names the Claude Agent SDK runs without asking (they only touch architecture.json, undoable per turn). */
+  /** Fully qualified tool names the Claude Agent SDK's canUseTool allows without asking (they only touch architecture.json, undoable per turn). */
   allowedTools: string[];
   /** ACP: the stdio MCP server to pass in session/new; undefined while the daemon URL is unknown. */
   stdio(): Promise<StdioMcpServerSpec | undefined>;

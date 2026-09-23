@@ -496,6 +496,21 @@ describe("bridges get the map tools", () => {
     expect(stderr).toContain(`mcp=ruah:${process.execPath}`);
   });
 
+  it("ACP permission requests for the map tools are allowed without asking; others are not", () => {
+    const service = new MapOpsService(() => undefined, { version: "t" });
+    const bridge = new AcpProcessBridge({ root: "/r", preset: { command: "none", args: [] }, clientVersion: "t", mapTools: service.toolsFor({ agentId: "cursor", root: "/r" }) });
+    const options = [
+      { optionId: "yes", name: "Allow", kind: "allow_once" },
+      { optionId: "no", name: "Reject", kind: "reject_once" },
+    ];
+    const ask = (title: string) => (bridge as unknown as { mapToolPermission(p: unknown): string | undefined }).mapToolPermission({ sessionId: "s", toolCall: { toolCallId: "t", title }, options });
+    expect(ask("ruah-ruah_apply: ruah_apply")).toBe("yes");
+    expect(ask("mcp__ruah__ruah_connect")).toBe("yes");
+    expect(ask("ruah-ruah_delete_everything: x")).toBeUndefined();
+    expect(ask("other-ruah_apply")).toBeUndefined();
+    expect(ask("Edit src/app.ts")).toBeUndefined();
+  });
+
   it("the Claude Agent SDK gets an in-process server with every tool", () => {
     const service = new MapOpsService(() => undefined, { version: "t" });
     const tools = service.toolsFor({ agentId: "claude", root: "/r" });

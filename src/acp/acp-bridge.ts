@@ -778,6 +778,10 @@ export class AcpProcessBridge implements AcpBridge {
     if (rt !== this.runtime || turn === undefined || turn.finished || turn.cancelRequested || params.sessionId !== this.sessionId) {
       return Promise.resolve({ outcome: { outcome: "cancelled" } });
     }
+    // The ruah_* map tools (CONTRACTS §1.7) run without asking the user, as with Claude: they only
+    // touch architecture.json through the daemon and a turn's map changes can be undone.
+    const mapAllow = this.mapToolPermission(params);
+    if (mapAllow !== undefined) return Promise.resolve({ outcome: { outcome: "selected", optionId: mapAllow } });
     this.permCounter += 1;
     const requestId = `perm_${this.permCounter}`;
     const toolCall = turn.normalizer.permissionView(params.toolCall);
@@ -805,6 +809,19 @@ export class AcpProcessBridge implements AcpBridge {
       signal.addEventListener("abort", onAbort, { once: true });
       this.emit({ type: "permission", turnId: turn.turnId, requestId, toolCall, options });
     });
+  }
+
+  /**
+   * The allow-once option when the request is for one of our map tools. Agents name MCP tools
+   * after the server ("ruah-ruah_apply: …" in Cursor, "mcp__ruah__ruah_apply" in Claude's adapter).
+   */
+  private mapToolPermission(params: RequestPermissionRequest): string | undefined {
+    const tools = this.options.mapTools;
+    if (tools === undefined) return undefined;
+    const title = params.toolCall.title ?? "";
+    const match = /(?:^|\b)(?:mcp__)?ruah(?:__|[-_:.\s]+)(ruah_[a-z_]+)\b/.exec(title);
+    if (match === null || !tools.allowedTools.includes(`mcp__ruah__${match[1]}`)) return undefined;
+    return params.options.find((o) => o.kind === "allow_once")?.optionId ?? params.options.find((o) => o.kind === "allow_always")?.optionId;
   }
 
   // ---------- events ----------

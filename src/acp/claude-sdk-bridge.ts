@@ -813,13 +813,12 @@ export class ClaudeSdkBridge implements AcpBridge {
         ...(this.mapTools !== undefined ? { append: this.mapTools.instructions } : {}),
       },
       settingSources: [...CLAUDE_SETTING_SOURCES],
-      // Map tools run without a permission prompt: they only touch architecture.json
-      // (validated by the daemon) and the user can undo a turn's map changes.
+      // The ruah_* map tools, in-process. They run without a permission prompt
+      // (canUseTool allows them: they only touch architecture.json, validated by
+      // the daemon, and the user can undo a turn's map changes). Not through
+      // `allowedTools`: that would shadow canUseTool and the SDK warns on every query.
       ...(this.mapTools !== undefined
-        ? {
-            mcpServers: { ruah: this.mapTools.sdkServer() as NonNullable<ClaudeQueryOptions["mcpServers"]>[string] },
-            allowedTools: [...this.mapTools.allowedTools],
-          }
+        ? { mcpServers: { ruah: this.mapTools.sdkServer() as NonNullable<ClaudeQueryOptions["mcpServers"]>[string] } }
         : {}),
       permissionMode: this.mode,
       // Lets setMode() switch into bypassPermissions later; the mode itself
@@ -1100,7 +1099,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     if (turn === undefined || turn.cancelled) {
       return { behavior: "deny", message: "No active archmap turn.", interrupt: true };
     }
-    // The ruah_* map tools never prompt (allowedTools normally short-circuits this already).
+    // The ruah_* map tools never prompt.
     if (this.mapTools !== undefined && this.mapTools.allowedTools.includes(toolName)) {
       return { behavior: "allow", updatedInput: toolInput };
     }
