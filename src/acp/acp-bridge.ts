@@ -174,6 +174,8 @@ export class AcpProcessBridge implements AcpBridge {
   private sessionCostUsd: number | undefined;
   private crashRespawns = 0;
   private stopRequested = false;
+  /** useSession(id): the session the next openSession() loads instead of creating one. */
+  private requestedSession: string | undefined;
 
   constructor(private readonly options: BridgeOptions, tuning: AcpBridgeTuning = {}) {
     this.root = path.resolve(options.root);
@@ -345,6 +347,50 @@ export class AcpProcessBridge implements AcpBridge {
     this.emitStatus(this.turn === undefined ? "idle" : "busy");
   }
 
+  /**
+   * Chats: continue session `sessionId` with `session/load` when the agent
+   * advertises `agentCapabilities.loadSession` (the agent replays the history
+   * as notifications, which are dropped: the viewer draws the stored turns),
+   * otherwise a new session. undefined = a fresh session. A stopped bridge
+   * only records the choice for start().
+   */
+  async useSession(sessionId: string | undefined): Promise<void> {
+    if (this.turn !== undefined) await this.cancel(this.turn.turnId);
+    if (this.starting !== undefined) await this.starting.catch(() => {});
+    if (sessionId !== undefined && sessionId === this.sessionId && this.runtime?.session !== undefined) return;
+    this.requestedSession = sessionId;
+    const rt = this.runtime;
+    if (rt === undefined || rt.session === undefined || this.state === "stopped" || this.state === "error") {
+      // start() (now or later) opens the requested session.
+      if (this.state !== "stopped") await this.start();
+      return;
+    }
+    const oldSessionId = this.sessionId;
+    rt.session.dispose();
+    rt.session = undefined;
+    this.sessionId = undefined;
+    this.modes = undefined;
+    this.modeSelector = undefined;
+    this.models = undefined;
+    this.modelSelector = undefined;
+    if (oldSessionId !== undefined && this.canCloseSession(rt)) {
+      try {
+        await rt.conn.agent.request("session/close", { sessionId: oldSessionId });
+      } catch {
+        // Best effort.
+      }
+    }
+    this.emitStatus("starting");
+    try {
+      await this.openSession(rt);
+    } catch (err) {
+      const message = `session switch failed: ${errorMessage(err)}`;
+      this.emitStatus("error", message);
+      throw new Error(message);
+    }
+    this.emitStatus(this.turn === undefined ? "idle" : "busy");
+  }
+
   async stop(): Promise<void> {
     this.stopRequested = true;
     const rt = this.runtime;
@@ -431,7 +477,18 @@ export class AcpProcessBridge implements AcpBridge {
   }
 
   private async openSession(rt: Runtime): Promise<void> {
-    const session = await this.raceExit(rt, rt.conn.agent.buildSession(this.root).start());
+    const load = this.requestedSession;
+    this.requestedSession = undefined;
+    let session: ActiveSession | undefined;
+    if (load !== undefined && rt.init?.agentCapabilities?.loadSession === true) {
+      try {
+        session = await this.loadSession(rt, load);
+      } catch (err) {
+        if (rt.proc.hasExited) throw err;
+        this.options.onStderr?.(`archmap: session/load ${load} failed (${errorMessage(err)}); starting a new session\n`);
+      }
+    }
+    session ??= await this.raceExit(rt, rt.conn.agent.buildSession(this.root).start());
     rt.session = session;
     this.sessionId = session.sessionId;
     this.sessionCostUsd = undefined;
@@ -439,6 +496,19 @@ export class AcpProcessBridge implements AcpBridge {
     this.readModels(session.newSessionResponse);
     void this.pump(rt, session);
     await this.reapplyModel(rt, session.sessionId);
+  }
+
+  /**
+   * session/load, then the SDK's (TS-private) attachSession so the loaded
+   * session gets the same ActiveSession update routing as session/new. The
+   * history replay arrives before the response, i.e. before routing exists,
+   * and is dropped.
+   */
+  private async loadSession(rt: Runtime, sessionId: string): Promise<ActiveSession> {
+    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: [] }));
+    const agent = rt.conn.agent as unknown as { attachSession?: (response: NewSessionResponse) => ActiveSession };
+    if (typeof agent.attachSession !== "function") throw new Error("the ACP SDK cannot attach a loaded session");
+    return agent.attachSession.call(rt.conn.agent, { ...(response ?? {}), sessionId } as NewSessionResponse);
   }
 
   private readModes(response: NewSessionResponse): void {

@@ -10,6 +10,7 @@
 // and setModel() only records the choice.
 import type { AcpBridge, BridgeEvent, BridgeOptions, TurnHandle } from "./bridge.js";
 import { BusyError } from "./bridge.js";
+import { randomUUID } from "node:crypto";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import type { AgentState, ModelState, StopReason, StreamEvent, ToolCallView } from "../contracts/ws.js";
 
@@ -52,6 +53,7 @@ export class MockBridge implements AcpBridge {
   private finishActive: ((stopReason: StopReason) => void) | undefined;
   private readonly delay: number;
   private modelId = "default";
+  private sessionId = SESSION_ID;
 
   constructor(options: MockBridgeOptions) {
     this.delay = options.chunkDelayMs ?? 40;
@@ -59,7 +61,7 @@ export class MockBridge implements AcpBridge {
 
   async start(): Promise<void> {
     this.state = "idle";
-    this.emit({ type: "status", state: "idle", agent: { ...MOCK_AGENT }, sessionId: SESSION_ID, models: this.models() });
+    this.emit({ type: "status", state: "idle", agent: { ...MOCK_AGENT }, sessionId: this.sessionId, models: this.models() });
   }
 
   status(): AgentState {
@@ -71,7 +73,7 @@ export class MockBridge implements AcpBridge {
     const turn: ScriptedTurn = { turnId, cancelled: false, timers: [] };
     this.active = turn;
     this.state = "busy";
-    this.emit({ type: "status", state: "busy", sessionId: SESSION_ID });
+    this.emit({ type: "status", state: "busy", sessionId: this.sessionId });
 
     let resolveDone: (value: { stopReason: StopReason; error?: string }) => void = () => {};
     const done = new Promise<{ stopReason: StopReason; error?: string }>((resolve) => {
@@ -86,7 +88,7 @@ export class MockBridge implements AcpBridge {
       this.finishActive = undefined;
       this.state = "idle";
       this.emit({ type: "turn_finished", turnId, stopReason });
-      this.emit({ type: "status", state: "idle", sessionId: SESSION_ID });
+      this.emit({ type: "status", state: "idle", sessionId: this.sessionId });
       resolveDone({ stopReason });
     };
     this.finishActive = finish;
@@ -242,14 +244,26 @@ export class MockBridge implements AcpBridge {
   async setModel(modelId: string): Promise<void> {
     if (!MOCK_MODELS.some((model) => model.id === modelId)) throw new Error(`unknown model: ${modelId}`);
     this.modelId = modelId;
-    this.emit({ type: "status", state: this.state, sessionId: SESSION_ID, models: this.models() });
+    this.emit({ type: "status", state: this.state, sessionId: this.sessionId, models: this.models() });
   }
 
   async reset(): Promise<void> {
     // The mock keeps its scripted behaviour.
   }
 
+  /** Records the session id (a fresh random one for undefined); the script does not change. */
+  async useSession(sessionId: string | undefined): Promise<void> {
+    if (this.active !== undefined) await this.cancel(this.active.turnId);
+    this.sessionId = sessionId ?? `mock-session-${randomUUID()}`;
+    if (this.state !== "stopped") this.emit({ type: "status", state: this.state, agent: { ...MOCK_AGENT }, sessionId: this.sessionId, models: this.models() });
+  }
+
   async stop(): Promise<void> {
+    if (this.active !== undefined) {
+      this.active.cancelled = true;
+      this.pendingPermission = undefined;
+      this.finishActive?.("cancelled");
+    }
     this.state = "stopped";
     this.emit({ type: "status", state: "stopped" });
   }
