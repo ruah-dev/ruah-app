@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import type { NodeKind } from "@/data/graphs";
 import type { KindGroup } from "@/lib/workspace";
 import { kindStyles } from "@/components/explorer/kinds";
@@ -29,22 +29,18 @@ export function Palette({ groups, onQuickAdd }: Props) {
   }, [groups, query]);
 
   return (
-    <div className="border-b border-hairline px-2 py-2.5">
-      <p className="flex items-center justify-between px-1 pb-2 text-[9.5px] font-semibold text-muted-foreground uppercase">
-        Elements
-        <span className="font-mono text-[9px] normal-case">drag or click</span>
-      </p>
-      <div className="relative mb-2">
-        <Search className="absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted-foreground" />
+    <div className="space-y-2.5">
+      <div className="relative">
+        <Search className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter elements…"
-          className="h-7 rounded-[4px] border-hairline bg-surface-2 pl-7 font-mono text-[10.5px] shadow-none"
+          placeholder="Filter…"
+          className="h-7 rounded-md border-0 bg-foreground/[0.05] pl-7 text-[12.5px] shadow-none focus-visible:ring-1"
         />
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {filtered.map((group) => {
           const isCollapsed = !query && collapsed[group.label];
           return (
@@ -52,20 +48,15 @@ export function Palette({ groups, onQuickAdd }: Props) {
               <button
                 type="button"
                 onClick={() => setCollapsed((c) => ({ ...c, [group.label]: !c[group.label] }))}
-                className="flex w-full items-center gap-1 px-1 pb-1 text-[9.5px] font-semibold text-muted-foreground uppercase hover:text-foreground"
+                className="flex w-full items-center gap-1 px-0.5 pb-1 text-[11.5px] font-medium text-muted-foreground hover:text-foreground"
               >
-                {isCollapsed ? (
-                  <ChevronRight className="size-3" />
-                ) : (
-                  <ChevronDown className="size-3" />
-                )}
+                <ChevronRight
+                  className={cn("size-3 transition-transform", !isCollapsed && "rotate-90")}
+                />
                 {group.label}
-                <span className="ml-auto font-mono text-[9px] normal-case">
-                  {group.kinds.length}
-                </span>
               </button>
               {isCollapsed ? null : (
-                <div className="grid grid-cols-2 gap-1">
+                <div className="grid grid-cols-2 gap-0.5">
                   {group.kinds.map((kind) => {
                     const style = kindStyles[kind];
                     const Icon = style.icon;
@@ -75,15 +66,15 @@ export function Palette({ groups, onQuickAdd }: Props) {
                         type="button"
                         draggable
                         onDragStart={(e) => {
-                          e.dataTransfer.setData("application/atlas-kind", kind);
+                          e.dataTransfer.setData("application/ruah-kind", kind);
                           e.dataTransfer.effectAllowed = "copy";
                         }}
                         onClick={() => onQuickAdd(kind)}
-                        title={style.label}
-                        className="flex items-center gap-1.5 rounded-[4px] border border-hairline bg-surface-2 px-2 py-1.5 text-left transition-colors duration-150 hover:border-foreground/20 hover:bg-surface-3"
+                        title={`Add ${style.label} (drag or click)`}
+                        className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-accent"
                       >
                         <Icon className={cn("size-3.5 shrink-0", style.color)} />
-                        <span className="truncate font-mono text-[10.5px] text-foreground">
+                        <span className="truncate text-[12px] text-foreground/85">
                           {style.label}
                         </span>
                       </button>
@@ -95,7 +86,7 @@ export function Palette({ groups, onQuickAdd }: Props) {
           );
         })}
         {filtered.length === 0 ? (
-          <p className="px-1 text-[10.5px] text-muted-foreground">No element matches that.</p>
+          <p className="px-1 text-[12px] text-muted-foreground">No element matches that.</p>
         ) : null}
       </div>
     </div>

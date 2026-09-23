@@ -220,6 +220,15 @@ html.light {
     outline-offset: 1px;
   }
 
+  /* containers that receive programmatic focus (dialogs, sheets, menus) draw no ring */
+  [role="dialog"]:focus-visible,
+  [role="alertdialog"]:focus-visible,
+  [role="menu"]:focus-visible,
+  [role="listbox"]:focus-visible,
+  [cmdk-list]:focus-visible {
+    outline: none;
+  }
+
   button, a, textarea {
     letter-spacing: 0;
   }

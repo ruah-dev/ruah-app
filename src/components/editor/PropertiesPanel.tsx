@@ -34,9 +34,9 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-center justify-between text-[10px] font-semibold text-muted-foreground uppercase">
+      <Label className="flex items-center justify-between text-[12px] font-medium text-muted-foreground">
         {label}
-        {hint ? <span className="font-mono text-[9px] font-normal normal-case">{hint}</span> : null}
+        {hint ? <span className="text-[12px] font-normal text-muted-foreground/70">{hint}</span> : null}
       </Label>
       {children}
     </div>
@@ -44,7 +44,7 @@ function Field({
 }
 
 const inputClass =
-  "h-7 rounded-[4px] border-hairline bg-surface-2 px-2 font-mono text-[11px] text-foreground shadow-none";
+  "h-8 rounded-md border-hairline bg-transparent px-2.5 text-[12.5px] text-foreground shadow-none";
 
 /** Text input that keeps its own draft so comma-separated lists and paths can be typed freely. */
 function DraftInput({
@@ -95,9 +95,9 @@ export function PropertiesPanel({
   const kindChoices = node && !kinds.includes(node.kind) ? [node.kind, ...kinds] : kinds;
 
   return (
-    <div className="space-y-4 p-3">
+    <div className="space-y-4 px-5 py-5">
       {!editable ? (
-        <p className="rounded-[4px] border border-hairline bg-surface-2 px-2 py-1.5 text-[10.5px] text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           Read-only: editing saves to architecture.json and needs a connected archmap daemon.
         </p>
       ) : null}
@@ -125,10 +125,10 @@ export function PropertiesPanel({
                     disabled={disabled}
                     onClick={() => onNodePatch({ kind: k })}
                     className={
-                      "flex items-center gap-1 rounded-[4px] border px-1.5 py-1 font-mono text-[10px] transition-colors disabled:opacity-60 " +
+                      "flex h-6 items-center gap-1 rounded-md px-1.5 text-[11.5px] transition-colors disabled:opacity-60 " +
                       (node.kind === k
-                        ? "border-ring/60 bg-surface-3 text-foreground"
-                        : "border-hairline bg-surface-2 text-muted-foreground hover:text-foreground")
+                        ? "bg-primary/15 text-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground")
                     }
                   >
                     <Icon className="size-3" />
@@ -167,7 +167,7 @@ export function PropertiesPanel({
               disabled={disabled}
               placeholder="what this element does (1–2 sentences)"
               onChange={(e) => onNodePatch({ description: e.target.value })}
-              className="min-h-20 rounded-[4px] border-hairline bg-surface-2 text-[11px] shadow-none"
+              className="min-h-20 rounded-md border-hairline bg-transparent text-[12.5px] shadow-none"
             />
           </Field>
           <Field label="Notes" hint="sent to the agent">
@@ -176,11 +176,11 @@ export function PropertiesPanel({
               disabled={disabled}
               placeholder="gotchas, conventions, known issues"
               onChange={(e) => onNodePatch({ notes: e.target.value })}
-              className="min-h-16 rounded-[4px] border-hairline bg-surface-2 text-[11px] shadow-none"
+              className="min-h-16 rounded-md border-hairline bg-transparent text-[12.5px] shadow-none"
             />
           </Field>
           <Field label="Drill-down">
-            <p className="font-mono text-[10.5px] text-muted-foreground">
+            <p className="font-mono text-[11.5px] text-muted-foreground">
               {node.drill
                 ? "has nested elements (their `parent` is this element)"
                 : "none: elements drill in when others name this one as their parent"}
@@ -191,7 +191,7 @@ export function PropertiesPanel({
               variant="outline"
               size="sm"
               onClick={onDeleteNode}
-              className="h-7 w-full gap-1.5 rounded-[4px] border-hairline bg-surface-2 text-[11px] text-muted-foreground shadow-none hover:text-destructive"
+              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-[12.5px] text-muted-foreground shadow-none hover:text-destructive"
             >
               <Trash2 className="size-3.5" />
               {diagram.mode === "workflow" ? "Remove step" : "Delete element"}
@@ -200,7 +200,7 @@ export function PropertiesPanel({
         </>
       ) : edgeData ? (
         <>
-          <p className="font-mono text-[11px] text-muted-foreground">
+          <p className="font-mono text-[12px] text-muted-foreground">
             {nameOf(edgeData.from)} → {nameOf(edgeData.to)}
             {edgeData.kind ? ` · ${edgeData.kind}` : ""}
           </p>
@@ -216,7 +216,7 @@ export function PropertiesPanel({
                   className={inputClass}
                 />
               </Field>
-              <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                 <input
                   type="checkbox"
                   disabled={disabled}
@@ -227,7 +227,7 @@ export function PropertiesPanel({
               </label>
             </>
           ) : (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               Workflow arrows follow the step order. Deleting this arrow removes the next step from
               the sequence.
             </p>
@@ -237,7 +237,7 @@ export function PropertiesPanel({
               variant="outline"
               size="sm"
               onClick={onDeleteEdge}
-              className="h-7 w-full gap-1.5 rounded-[4px] border-hairline bg-surface-2 text-[11px] text-muted-foreground shadow-none hover:text-destructive"
+              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-[12.5px] text-muted-foreground shadow-none hover:text-destructive"
             >
               <Trash2 className="size-3.5" />
               Delete connection
@@ -254,7 +254,7 @@ export function PropertiesPanel({
             />
           </Field>
           <Field label="Group">
-            <p className="font-mono text-[10.5px] text-muted-foreground">{diagram.group ?? "—"}</p>
+            <p className="font-mono text-[11.5px] text-muted-foreground">{diagram.group ?? "—"}</p>
           </Field>
           {diagram.mode === "workflow" ? (
             <Field label="Description">
@@ -265,7 +265,7 @@ export function PropertiesPanel({
               />
             </Field>
           ) : null}
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-[12px] leading-relaxed text-muted-foreground">
             Select an element or a connection to edit it. Drag from the palette, double-click the
             canvas, or press N to add.
           </p>

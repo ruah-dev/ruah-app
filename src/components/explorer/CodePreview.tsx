@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ExternalLink, FileCode2 } from "lucide-react";
 import type { CodeFile } from "@/data/graphs";
 import { cn } from "@/lib/utils";
@@ -61,14 +62,27 @@ const toneClass: Record<Token["tone"], string> = {
   type: "text-node-gateway",
 };
 
-export function CodePreview({ file, href }: { file: CodeFile; href?: string | undefined }) {
+export function CodePreview({
+  file,
+  href,
+  pathSlot,
+}: {
+  file: CodeFile;
+  href?: string | undefined;
+  /** Replaces the path label (e.g. a file switcher). */
+  pathSlot?: ReactNode;
+}) {
   const lines = file.code.split("\n");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-9 items-center gap-2 border-b border-hairline px-4">
-        <FileCode2 className="size-3.5 shrink-0 text-node-file" />
-        <span className="truncate font-mono text-[11.5px] text-foreground">{file.path}</span>
+      <div className="flex h-10 shrink-0 items-center gap-2 px-3">
+        {pathSlot ?? (
+          <span className="flex min-w-0 items-center gap-2 px-1">
+            <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate font-mono text-[12px] text-foreground/90">{file.path}</span>
+          </span>
+        )}
         {file.branch ? (
           <Badge variant="outline" className="ml-auto h-4 rounded-sm px-1 font-mono text-[9.5px]">
             {file.branch}
@@ -79,16 +93,16 @@ export function CodePreview({ file, href }: { file: CodeFile; href?: string | un
         {href ? (
           <a
             href={href}
-            title="Open in repo (VS Code)"
-            className="flex shrink-0 items-center gap-1 font-mono text-[10.5px] text-primary hover:underline"
+            title="Open in VS Code"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            Open in repo <ExternalLink className="size-3" />
+            Open <ExternalLink className="size-3" />
           </a>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-canvas">
-        <pre className="py-2 font-mono text-[11.5px] leading-[1.55]">
+      <div className="min-h-0 flex-1 overflow-auto bg-background/60">
+        <pre className="py-2 font-mono text-[12px] leading-[1.6]">
           {lines.map((line, i) => {
             const n = i + 1;
             const hot = file.highlight && n >= file.highlight[0] && n <= file.highlight[1];
@@ -100,7 +114,7 @@ export function CodePreview({ file, href }: { file: CodeFile; href?: string | un
                   hot ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--edge-active)]" : "",
                 )}
               >
-                <span className="w-8 shrink-0 pr-3 text-right text-muted-foreground/60 select-none">
+                <span className="w-9 shrink-0 pr-4 text-right text-muted-foreground/40 select-none">
                   {n}
                 </span>
                 <code className="whitespace-pre">
@@ -118,7 +132,7 @@ export function CodePreview({ file, href }: { file: CodeFile; href?: string | un
 
       {file.deps?.length ? (
         <div className="border-t border-hairline px-3 py-2">
-          <p className="pb-1.5 text-[10.5px] tracking-wide text-muted-foreground uppercase">
+          <p className="pb-1.5 text-[12px] font-medium text-muted-foreground">
             Imports
           </p>
           <div className="flex flex-wrap gap-1">

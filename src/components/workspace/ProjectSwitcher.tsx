@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, ChevronsUpDown, FolderPlus, Layers, Workflow, X } from "lucide-react";
 import type { Workspace } from "@/lib/workspace";
-import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
@@ -50,26 +49,26 @@ export function ProjectSwitcher({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className="h-7 max-w-64 gap-2 rounded-md border-hairline bg-surface-2 px-2.5 text-[11px] font-normal shadow-none hover:bg-surface-3"
+        <button
+          type="button"
+          title={`${detail ?? active.name} · switch project (⌘K)`}
+          className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent data-[state=open]:bg-accent"
         >
-          <span className={cn("size-1.5 shrink-0 rounded-full", dotClass)} />
-          <span className="truncate font-mono text-[11px] text-foreground">{active.name}</span>
-          <span className="ml-1 hidden shrink-0 font-mono text-[9.5px] text-muted-foreground sm:inline">
-            ⌘K
+          <span className={cn("size-2 shrink-0 rounded-full", dotClass)} />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+            {active.name}
           </span>
-          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-        </Button>
+          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/70" />
+        </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-80 rounded-md border-hairline bg-surface-1 p-0 shadow-lg"
+        className="w-80 rounded-xl border-hairline bg-popover p-0 shadow-xl"
       >
         <Command className="bg-transparent">
-          <CommandInput placeholder="Switch project…" className="text-[12px]" />
+          <CommandInput placeholder="Switch project…" className="text-[13px]" />
           <CommandList>
-            <CommandEmpty className="py-4 text-center text-[11px] text-muted-foreground">
+            <CommandEmpty className="py-4 text-center text-[12.5px] text-muted-foreground">
               No project with that name.
             </CommandEmpty>
             <CommandGroup heading="Projects">
@@ -85,16 +84,16 @@ export function ProjectSwitcher({
                       onSelect(a.id);
                       setOpen(false);
                     }}
-                    className="group/proj gap-2 rounded-[4px] text-[11.5px]"
+                    className="group/proj gap-2 rounded-md text-[13px]"
                   >
                     <Check
                       className={cn("size-3.5 shrink-0", isActive ? "text-primary" : "opacity-0")}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11.5px] text-foreground">
+                      <span className="block truncate text-[13px] text-foreground">
                         {a.name}
                       </span>
-                      <span className="flex items-center gap-2 font-mono text-[9.5px] text-muted-foreground">
+                      <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Layers className="size-2.5" />
                           {arch}
@@ -136,7 +135,7 @@ export function ProjectSwitcher({
                     if (name) onCreate(name);
                     setOpen(false);
                   }}
-                  className="gap-2 rounded-[4px] text-[11.5px]"
+                  className="gap-2 rounded-md text-[13px]"
                 >
                   <FolderPlus className="size-3.5 text-muted-foreground" />
                   New project

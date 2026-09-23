@@ -149,7 +149,9 @@ export function AgentPanel({
                   ? "The agent runs inside the Ruah daemon. Start `archmap serve <repo>` and open the page it serves."
                   : node
                     ? "Its path, files, links and workflows are attached to your message."
-                    : "Select an element on the diagram. Its context is attached to what you ask."}
+                    : onPickContext
+                      ? "Add an element as context, or select one on the map. Its path, files and links travel with your message."
+                      : "Select an element on the diagram. Its context is attached to what you ask."}
               </p>
             </div>
             {connected && node ? (

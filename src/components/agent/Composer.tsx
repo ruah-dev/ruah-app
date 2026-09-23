@@ -94,7 +94,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     : running
       ? "The agent is working…"
       : reason
-        ? "Chat needs a connected daemon"
+        ? connected
+          ? "The agent is not ready"
+          : "Chat needs a connected daemon"
         : node
           ? `Ask about ${node.label}…`
           : onPickContext

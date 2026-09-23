@@ -259,7 +259,7 @@ export function EditorCanvas({
       }}
       onDrop={(e) => {
         if (!editable) return;
-        const kind = e.dataTransfer.getData("application/atlas-kind") as NodeKind;
+        const kind = e.dataTransfer.getData("application/ruah-kind") as NodeKind;
         if (!kind) return;
         e.preventDefault();
         const p = toGraph(e.clientX, e.clientY);
@@ -281,11 +281,11 @@ export function EditorCanvas({
           {diagram.groups?.map((g) => (
             <div
               key={g.id}
-              className="absolute rounded-md border border-dashed border-hairline/70 bg-surface-1/10"
+              className="absolute rounded-xl border border-hairline bg-foreground/[0.015]"
               style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
             >
-              <span className="absolute -top-2.5 left-3 flex items-center gap-1 bg-canvas px-1.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-                <GroupIcon className="size-3" />
+              <span className="absolute -top-2.5 left-3 flex items-center gap-1.5 bg-canvas px-1.5 text-[11px] text-muted-foreground">
+                <GroupIcon className="size-3 opacity-70" />
                 {g.label}
               </span>
             </div>
@@ -357,10 +357,11 @@ export function EditorCanvas({
                   height: node.h ?? NODE_H,
                 }}
                 className={cn(
-                  "node-elevated group absolute flex flex-col justify-center gap-0.5 rounded-md border bg-surface-1 px-3 transition-[opacity,border-color,background-color] duration-150",
-                  style.border,
+                  "node-elevated group absolute flex flex-col justify-center gap-0.5 rounded-lg border bg-surface-1 px-3 transition-[opacity,border-color,background-color,box-shadow] duration-150",
                   editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-                  isSelected ? "border-ring/70 bg-surface-2 ring-1 ring-ring/20" : "",
+                  isSelected
+                    ? "border-primary/70 bg-surface-2 ring-2 ring-primary/15"
+                    : "border-hairline hover:border-foreground/15 hover:bg-surface-2",
                   dimmed ? "opacity-35" : "opacity-100",
                 )}
                 onPointerDown={(e) => {
@@ -394,7 +395,7 @@ export function EditorCanvas({
                 onMouseLeave={() => setHoverId(null)}
               >
                 <span className="flex items-center gap-2">
-                  <span className="grid size-6 shrink-0 place-items-center rounded-[4px] border border-hairline bg-surface-3/40">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface-3/60">
                     <Icon className={cn("size-3.5", style.color)} />
                   </span>
                   {editingId === node.id ? (
@@ -410,23 +411,23 @@ export function EditorCanvas({
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                         if (e.key === "Escape") setEditingId(null);
                       }}
-                      className="w-full min-w-0 rounded-[3px] border border-ring/50 bg-surface-3 px-1 font-mono text-[12px] text-foreground outline-none"
+                      className="w-full min-w-0 rounded-md border border-ring/50 bg-surface-3 px-1 text-[13px] text-foreground outline-none"
                     />
                   ) : (
-                    <span className="truncate font-mono text-[12px] font-medium text-foreground">
+                    <span className="truncate text-[13px] font-medium text-foreground">
                       {node.label}
                     </span>
                   )}
                 </span>
                 {node.subtitle ? (
-                  <span className="truncate pl-8 text-[10.5px] text-muted-foreground">
+                  <span className="truncate pl-8 text-[11.5px] text-muted-foreground">
                     {node.subtitle}
                   </span>
                 ) : null}
 
                 {isSelected ? (
                   <>
-                    <div className="absolute -top-8 left-0 flex items-center gap-0.5 rounded-md border border-hairline bg-surface-2 p-0.5 shadow-sm">
+                    <div className="control-glass absolute -top-9 left-0 flex items-center gap-0.5 rounded-lg p-0.5">
                       {node.drill ? (
                         <Button
                           variant="ghost"
@@ -509,15 +510,17 @@ export function EditorCanvas({
       {diagram.nodes.length === 0 ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="text-center">
-            <p className="font-display text-[13px] text-foreground">Empty diagram</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Drag an element from the palette, double-click the canvas, or press N.
+            <p className="text-[13.5px] font-medium text-foreground">Empty diagram</p>
+            <p className="mt-1 text-[12.5px] text-muted-foreground">
+              {editable
+                ? "Drag an element from the tray, double-click the canvas, or press N."
+                : "Switch to Edit to add elements."}
             </p>
           </div>
         </div>
       ) : null}
 
-      <div className="control-glass absolute bottom-4 left-4 z-20 flex items-center gap-0.5 rounded-md border border-hairline p-0.5">
+      <div className="control-glass absolute right-3 bottom-3 z-20 flex items-center gap-0.5 rounded-lg p-0.5">
         <Button
           variant="ghost"
           size="icon"
@@ -527,7 +530,7 @@ export function EditorCanvas({
         >
           <Minus className="size-3.5" />
         </Button>
-        <span className="w-9 text-center font-mono text-[10.5px] text-muted-foreground">
+        <span className="w-9 text-center text-[11px] text-muted-foreground tabular-nums">
           {Math.round(zoom * 100)}%
         </span>
         <Button
@@ -550,17 +553,17 @@ export function EditorCanvas({
         </Button>
       </div>
 
-      <span className="absolute bottom-6 left-44 z-10 hidden items-center gap-1.5 font-mono text-[9.5px] text-muted-foreground/70 md:inline-flex">
-        <MousePointer2 className="size-3" />
-        {editable
-          ? linkFrom
-            ? "click a target element to connect · esc to cancel"
-            : "drag nodes · N new · del remove · ⌘+scroll zoom"
-          : "drag to pan · ⌘ + scroll to zoom"}
-      </span>
+      {editable ? (
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-[11px] text-muted-foreground/60 md:inline-flex">
+          <MousePointer2 className="size-3" />
+          {linkFrom
+            ? "Click a target element to connect · Esc cancels"
+            : "Drag to move · N new · Del removes · ⌘ scroll zooms"}
+        </span>
+      ) : null}
 
       {selectedNode && editable && linkFrom === selectedNode.id ? (
-        <div className="absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-md border border-ring/40 bg-surface-2 px-2.5 py-1 font-mono text-[10.5px] text-primary">
+        <div className="control-glass absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-lg px-2.5 py-1 text-[12px] text-primary">
           connecting from {selectedNode.label}
         </div>
       ) : null}
