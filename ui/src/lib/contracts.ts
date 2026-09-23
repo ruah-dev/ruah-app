@@ -78,7 +78,14 @@ export type ClientMessage =
   | { type: "session.reset" } // Phase 3: new ACP session (drops agent memory)
   | { type: "mode.set"; modeId: string } // Phase 3: session/set_mode
   | { type: "model.set"; modelId: string } // switch the agent's model (one of agent.status.models.available)
-  | { type: "agent.set"; agentId: string } // switch coding agent (one of agent.status.agents.available); new session
+  | { type: "agent.set"; agentId: string } // switch coding agent (one of agent.status.agents.available); instant when warm
+  | { type: "agent.prewarm"; agentIds?: string[] } // start agents in the background (default: all installed but the current) (§5.7)
+  | {
+      type: "defaults.set";
+      agentId?: string;
+      models?: Record<string, string | null>;
+      modes?: Record<string, string | null>;
+    } // Settings → Agents: saved defaults (§5.7); null clears
   | { type: "architecture.save"; architecture: Architecture } // Phase 3: daemon validates + writes the file
   // §5.2 chats (turns always belong to the active chat; new/open cancel a running turn first)
   | { type: "chat.new" }
@@ -106,6 +113,7 @@ export type ServerMessage =
       models?: ModelState; // absent when the agent does not offer a model choice
       agents?: AgentChoiceState; // absent when the daemon cannot switch agents
       error?: string;
+      defaults?: AgentDefaults; // saved defaults (§5.7)
     }
   | {
       type: "turn.started";
@@ -114,6 +122,7 @@ export type ServerMessage =
       contextPack: string;
       text: string;
       attachments?: AttachmentMeta[];
+      queued?: true; // the agent is still starting; sent (and re-announced without it) once idle
     }
   | { type: "stream"; turnId: string; event: StreamEvent }
   | {
@@ -169,7 +178,21 @@ export interface AgentChoiceState {
     description?: string;
     installHint?: string; // shown when installed is false
     images?: boolean; // takes images in prompts (§5.6); absent = not known yet
+    warm?: WarmState; // installed agents, open project (§5.7)
+    warmError?: string; // why the last pre-warm failed
+    models?: ModelState; // last reported by that agent (non-current agents)
+    modes?: ModeState;
   }[];
+}
+
+/** Pre-warm state of an agent: ready = switching is instant, starting = on its way, cold = not running. */
+export type WarmState = "ready" | "starting" | "cold";
+
+/** Saved defaults (daemon settings.json, §5.7); modes include the built-in edit-without-asking modes. */
+export interface AgentDefaults {
+  agentId: string;
+  models: Record<string, string>;
+  modes: Record<string, string>;
 }
 
 // Image attachments (CONTRACTS.md §5.6)

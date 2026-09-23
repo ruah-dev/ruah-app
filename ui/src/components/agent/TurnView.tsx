@@ -265,7 +265,12 @@ export function TurnView({
         {turn.permission ? (
           <PermissionCard request={turn.permission} onOpenPath={onOpenPath} keyboard={keyboard} />
         ) : null}
-        {showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
+        {showCursor && turn.waitingFor && segs.length === 0 ? (
+          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground" role="status">
+            <span className="size-1.5 animate-pulse rounded-full bg-warn" />
+            Waiting for {turn.waitingFor}…
+          </p>
+        ) : showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
           <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-ai" />
             Working…

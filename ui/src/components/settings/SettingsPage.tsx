@@ -1,14 +1,17 @@
-// Settings: agent, model and permission mode (live on the daemon: agent.set / model.set /
-// mode.set), appearance, onboarding, about. Layout in the flat Cursor settings idiom: labelled
-// rows separated by hairlines, the control on the right.
-import { useEffect, useState, type ReactNode } from "react";
+// Settings: the current agent (live: agent.set), each agent's saved defaults — default agent,
+// model and permission mode (daemon settings.json via defaults.set, CONTRACTS §5.7) —
+// appearance, onboarding, about. Layout in the flat Cursor settings idiom: labelled rows
+// separated by hairlines, the control on the right.
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { CLIENT_ID, setAgent, setAgentMode, setModel } from "@/lib/daemon";
+import { CLIENT_ID, setAgent, setDefaults, type DaemonState } from "@/lib/daemon";
+import type { AgentChoiceState } from "@/lib/contracts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { usePalette, useTheme, type PalettePref, type ThemePref } from "@/lib/theme";
-import { AgentMark, modeLabel, plain } from "@/components/agent/ComposerControls";
+import { AgentMark, WarmDot, modeLabel, plain } from "@/components/agent/ComposerControls";
 import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { cn } from "@/lib/utils";
@@ -78,6 +81,153 @@ function Choice({
   );
 }
 
+/** Radix Select items need a non-empty value: this one stands for "no saved choice". */
+const AGENT_DEFAULT = "__agent_default__";
+
+function DefaultSelect({
+  label,
+  value,
+  options,
+  fallback,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string | undefined;
+  options: { id: string; name: string }[];
+  /** Shown for "no saved choice". */
+  fallback: string;
+  onChange: (value: string | null) => void;
+  disabled?: boolean;
+}) {
+  const known = value === undefined || options.some((o) => o.id === value);
+  return (
+    <Select
+      value={value ?? AGENT_DEFAULT}
+      disabled={disabled === true}
+      onValueChange={(v) => onChange(v === AGENT_DEFAULT ? null : v)}
+    >
+      <SelectTrigger
+        aria-label={label}
+        className="h-7 w-44 gap-1.5 border-hairline bg-transparent px-2 text-[12.5px] max-sm:w-full"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={AGENT_DEFAULT} className="text-[12.5px] text-muted-foreground">
+          {fallback}
+        </SelectItem>
+        {!known && value ? (
+          <SelectItem value={value} className="text-[12.5px]">
+            {value}
+          </SelectItem>
+        ) : null}
+        {options.map((o) => (
+          <SelectItem key={o.id} value={o.id} className="text-[12.5px]">
+            {o.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Settings → Agents: default agent, and the model and permission mode each agent starts with. */
+function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: AgentChoiceState }) {
+  const defaults = daemon.agent?.defaults;
+  const [saved, setSaved] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const save = (key: string, patch: Parameters<typeof setDefaults>[0]) => {
+    if (!setDefaults(patch)) return;
+    setSaved(key);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSaved(null), 2200);
+  };
+  const installed = agents.available.filter((a) => a.installed);
+  const savedMark = (key: string) =>
+    saved === key ? (
+      <span className="flex items-center gap-1 text-[11.5px] text-ok" role="status">
+        <Check className="size-3.5" /> Saved
+      </span>
+    ) : null;
+
+  if (!defaults) {
+    return (
+      <p className="py-3 text-[12.5px] text-muted-foreground">
+        This daemon does not keep saved defaults — update Ruah to choose them here.
+      </p>
+    );
+  }
+  return (
+    <>
+      <Row label="Default agent" hint="Started when Ruah opens. Switching agents in the composer updates it.">
+        {savedMark("agent")}
+        <DefaultSelect
+          label="Default agent"
+          value={defaults.agentId}
+          options={installed.map((a) => ({ id: a.id, name: a.name }))}
+          fallback="Claude Code"
+          onChange={(v) => v && save("agent", { agentId: v })}
+        />
+      </Row>
+      {installed.map((a) => {
+        const isCurrent = a.id === agents.currentAgentId;
+        const models = (isCurrent ? daemon.agent?.models : undefined) ?? a.models ?? daemon.modelsByAgent[a.id];
+        const modes = (isCurrent ? daemon.agent?.modes : undefined) ?? a.modes ?? daemon.modesByAgent[a.id];
+        const modeOptions = (modes?.available ?? []).map((m) => ({ id: m.id, name: modeLabel(m) }));
+        const unknown = !models?.available.length && !modeOptions.length;
+        return (
+          <div key={a.id} className="flex flex-col gap-2 py-3">
+            <div className="flex items-center gap-2">
+              <AgentMark name={a.name} className="size-5 text-[9px]" />
+              <span className="text-[13px] text-foreground">{a.name}</span>
+              {isCurrent ? (
+                <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
+              ) : (
+                <WarmDot warm={a.warm} error={a.warmError} />
+              )}
+              <span className="ms-auto">{savedMark(a.id)}</span>
+            </div>
+            {unknown ? (
+              <p className="text-[12px] text-muted-foreground">
+                Its models and modes show up here once it has run (open the agent picker to start it).
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 ps-7">
+                {models?.available.length ? (
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                    Model
+                    <DefaultSelect
+                      label={`${a.name} default model`}
+                      value={defaults.models[a.id]}
+                      options={models.available}
+                      fallback="Agent's default"
+                      onChange={(v) => save(a.id, { models: { [a.id]: v } })}
+                    />
+                  </label>
+                ) : null}
+                {modeOptions.length ? (
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                    Permissions
+                    <DefaultSelect
+                      label={`${a.name} default permission mode`}
+                      value={defaults.modes[a.id]}
+                      options={modeOptions}
+                      fallback="Agent's default"
+                      onChange={(v) => save(a.id, { modes: { [a.id]: v } })}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function SettingsPage() {
   const { daemon } = useWorkspace();
   const wb = useWorkbench();
@@ -87,8 +237,6 @@ export function SettingsPage() {
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const running = daemon.turns.some((t) => !t.stopReason);
   const agents = daemon.agent?.agents;
-  const models = daemon.agent?.models;
-  const modes = daemon.agent?.modes;
 
   useEffect(() => {
     if (!daemon.httpOrigin || daemon.source !== "daemon") return;
@@ -112,8 +260,8 @@ export function SettingsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-10 px-6 py-8 max-md:px-4">
           <Group
-            title="Agent"
-            description="Applies to the daemon's session right away; switching agents starts a new session."
+            title="Current agent"
+            description="Applies right away. Agents you have used stay warm, so switching back is instant."
           >
             {!connected ? (
               offline
@@ -138,37 +286,12 @@ export function SettingsPage() {
             )}
           </Group>
 
-          {connected && (models?.available.length || daemon.agentSwitch) ? (
-            <Group title="Model">
-              {daemon.agentSwitch ? (
-                <p className="py-3 text-[12.5px] text-muted-foreground">Starting {daemon.agentSwitch.name}…</p>
-              ) : (
-                models!.available.map((m) => (
-                  <Choice
-                    key={m.id}
-                    active={m.id === models!.currentModelId}
-                    disabled={running}
-                    onClick={() => m.id !== models!.currentModelId && setModel(m.id)}
-                    title={m.name}
-                    description={m.description}
-                  />
-                ))
-              )}
-            </Group>
-          ) : null}
-
-          {connected && modes?.available.length ? (
-            <Group title="Permission mode" description="How the agent asks before it changes files.">
-              {modes.available.map((m) => (
-                <Choice
-                  key={m.id}
-                  active={m.id === modes.currentModeId}
-                  disabled={running}
-                  onClick={() => m.id !== modes.currentModeId && setAgentMode(m.id)}
-                  title={modeLabel(m)}
-                  description={m.description}
-                />
-              ))}
+          {connected && agents?.available.length ? (
+            <Group
+              title="Agents"
+              description="What each agent starts with, saved on this Mac. By default agents edit files without asking; shell commands still ask. Picking a model or mode in the composer saves it here too."
+            >
+              <AgentDefaultsGroup daemon={daemon} agents={agents} />
             </Group>
           ) : null}
 

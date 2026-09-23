@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ProviderModelPicker.tsx,
 // ComposerControl.tsx and CompactComposerControlsMenu.tsx (MIT): quiet ghost controls inside
 // the composer's bottom row, one combined agent + model dropdown grouped by agent.
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -13,7 +13,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import type { AgentChoiceState, ModeState, ModelState } from "@/lib/contracts";
+import type { AgentChoiceState, AgentDefaults, ModeState, ModelState, WarmState } from "@/lib/contracts";
 import type { AgentSwitch } from "@/lib/daemon";
 import {
   DropdownMenu,
@@ -63,6 +63,24 @@ export function AgentMark({ name, className }: { name: string; className?: strin
   );
 }
 
+/** Pre-warm dot next to an agent: sage = ready (switching is instant), amber pulse = starting,
+ * nothing when cold. */
+export function WarmDot({ warm, error }: { warm: WarmState | undefined; error?: string | undefined }) {
+  if (warm !== "ready" && warm !== "starting") return null;
+  const label = warm === "ready" ? "Ready — switching is instant" : "Starting in the background…";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={error ?? label}
+      className={cn(
+        "inline-block size-1.5 shrink-0 rounded-full",
+        warm === "ready" ? "bg-ok" : "animate-pulse bg-warn",
+      )}
+    />
+  );
+}
+
 /** Descriptions come from the daemon with markdown code ticks; show them as plain text. */
 export const plain = (s: string | undefined) => (s ?? "").replace(/`/g, "");
 
@@ -87,6 +105,7 @@ export function AgentModelPicker({
   agents,
   models,
   modelsByAgent = {},
+  defaults,
   switching,
   disabled,
   open: openProp,
@@ -94,10 +113,13 @@ export function AgentModelPicker({
   onModel,
   onAgent,
   onAgentModel,
+  onPrewarm,
 }: {
   agents: AgentChoiceState | undefined;
   models: ModelState | undefined;
   modelsByAgent?: Record<string, ModelState>;
+  /** Saved defaults: the default model of each agent gets a small "default" tag. */
+  defaults?: AgentDefaults | undefined;
   switching: AgentSwitch | null;
   disabled: boolean;
   open?: boolean;
@@ -106,6 +128,8 @@ export function AgentModelPicker({
   onAgent: (agentId: string) => void;
   /** Switch to another agent and pick one of its models in one step. */
   onAgentModel?: (agentId: string, modelId: string) => void;
+  /** Start agents in the background (all when no ids): on open, and for the row under the pointer. */
+  onPrewarm?: (agentIds?: string[]) => void;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -113,6 +137,12 @@ export function AgentModelPicker({
     setOpenState(v);
     onOpenChange?.(v);
   };
+  // Opening the picker starts the other agents, so the one the user picks is ready by the click.
+  const prewarmRef = useRef(onPrewarm);
+  prewarmRef.current = onPrewarm;
+  useEffect(() => {
+    if (open) prewarmRef.current?.();
+  }, [open]);
   const hasModels = !!models?.available.length;
   const hasAgents = !!agents?.available.length;
   if (!hasModels && !hasAgents && !switching) return null;
@@ -151,17 +181,33 @@ export function AgentModelPicker({
     else onAgent(agentId);
   };
 
-  const modelItem = (agentId: string | null, agentName: string, m: { id: string; name: string; description?: string }, active: boolean) => (
-    <CommandItem
-      key={`${agentId ?? "-"}:${m.id}`}
-      value={`${agentName} ${m.name} ${m.id}`.trim()}
-      onSelect={() => choose(agentId, m.id)}
-      className={cmdItemClass}
-    >
-      <OptionText name={m.name} description={plain(m.description)} />
-      <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !active && "invisible")} />
-    </CommandItem>
+  const defaultTag = (
+    <span className="ms-1.5 rounded-pill bg-foreground/[0.07] px-1.5 align-[1px] text-[10px] font-medium text-muted-foreground">
+      default
+    </span>
   );
+  const modelItem = (agentId: string | null, agentName: string, m: { id: string; name: string; description?: string }, active: boolean) => {
+    const isDefault = !!defaults && defaults.models[agentId ?? agents?.currentAgentId ?? ""] === m.id;
+    return (
+      <CommandItem
+        key={`${agentId ?? "-"}:${m.id}`}
+        value={`${agentName} ${m.name} ${m.id}`.trim()}
+        onSelect={() => choose(agentId, m.id)}
+        className={cmdItemClass}
+      >
+        <OptionText
+          name={
+            <>
+              {m.name}
+              {isDefault ? defaultTag : null}
+            </>
+          }
+          description={plain(m.description)}
+        />
+        <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !active && "invisible")} />
+      </CommandItem>
+    );
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -200,16 +246,24 @@ export function AgentModelPicker({
             {hasAgents ? (
               ordered.map((a) => {
                 const isCurrent = a.id === agents!.currentAgentId;
-                const list = isCurrent ? models : modelsByAgent[a.id];
+                const list = isCurrent ? models : (a.models ?? modelsByAgent[a.id]);
                 return (
                   <CommandGroup
                     key={a.id}
+                    onPointerEnter={isCurrent ? undefined : () => onPrewarm?.([a.id])}
                     heading={
                       <span className="flex items-center gap-2">
                         <AgentMark name={a.name} />
                         {a.name}
                         {isCurrent ? (
                           <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
+                        ) : (
+                          <WarmDot warm={a.warm} error={a.warmError} />
+                        )}
+                        {!isCurrent && a.warm === "cold" && a.warmError ? (
+                          <span className="min-w-0 truncate text-[10.5px] font-normal text-faint" title={a.warmError}>
+                            didn't start
+                          </span>
                         ) : null}
                       </span>
                     }

@@ -10,6 +10,7 @@ import { kindStyles } from "@/components/explorer/kinds";
 import {
   MAX_ATTACHMENTS,
   agentTakesImages,
+  prewarmAgents,
   setAgent,
   setAgentMode,
   setAgentModel,
@@ -114,7 +115,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // agent that failed to start must stay possible.
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const switching = daemon.agentSwitch;
-  const inputDisabled = !!reason || running || !!switching;
+  // Typing never waits for an agent to start: a prompt sent meanwhile is queued by the daemon.
+  const inputDisabled = !!reason || running;
   const imageReason = imageBlockedReason(daemon);
   const attachDisabled = inputDisabled || !!imageReason;
   const items = attachments.items;
@@ -210,7 +212,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   )?.name;
 
   const placeholder = switching
-    ? `Starting ${switching.name}…`
+    ? `${switching.name} is starting — type away, it sends when ready`
     : running
       ? "The agent is working…"
       : reason
@@ -338,6 +340,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             agents={connected ? daemon.agent?.agents : undefined}
             models={connected ? daemon.agent?.models : undefined}
             modelsByAgent={daemon.modelsByAgent}
+            defaults={daemon.agent?.defaults}
+            onPrewarm={prewarmAgents}
             switching={switching}
             disabled={!connected || running}
             open={pickerOpen && connected && !running}

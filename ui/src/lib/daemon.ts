@@ -4,6 +4,7 @@
 // SPA prerender never touches window/location.
 import { useEffect, useSyncExternalStore } from "react";
 import type {
+  AgentDefaults,
   AgentState,
   Architecture,
   AttachmentInfo,
@@ -45,6 +46,8 @@ export interface AgentStatus {
   models?: ModelState;
   agents?: AgentChoiceState;
   error?: string;
+  /** Saved defaults (§5.7). */
+  defaults?: AgentDefaults;
 }
 
 /** Set by setAgent until agent.status reports the new agent idle (or failing). */
@@ -83,6 +86,8 @@ export interface Turn {
   resolved: PermissionRecord[];
   stopReason?: StopReason;
   error?: string;
+  /** The prompt waits for this agent to finish starting (queued by the daemon, §2.2 rule 3). */
+  waitingFor?: string;
   /** Epoch ms, viewer clock. */
   startedAt: number;
   finishedAt?: number;
@@ -134,6 +139,8 @@ export interface DaemonState {
   chatLoading: boolean;
   /** Last model list seen per agent (agent.status only carries the current agent's). */
   modelsByAgent: Record<string, ModelState>;
+  /** Last permission-mode list seen per agent. */
+  modesByAgent: Record<string, ModeState>;
 }
 
 const INITIAL: DaemonState = {
@@ -161,6 +168,7 @@ const INITIAL: DaemonState = {
   activeChatId: null,
   chatLoading: false,
   modelsByAgent: {},
+  modesByAgent: {},
 };
 
 let state: DaemonState = INITIAL;
@@ -335,6 +343,7 @@ export function startDaemon() {
 // projects + chats (§5): incoming frames
 
 const MODEL_CACHE_KEY = "ruah.models.v1";
+const MODE_CACHE_KEY = "ruah.modes.v1";
 const SWITCH_TIMEOUT_MS = 30_000;
 
 /** Model choice for an agent that is not running yet: applied once it reports idle. */
@@ -349,6 +358,8 @@ function loadModelCache() {
   try {
     const raw = window.localStorage.getItem(MODEL_CACHE_KEY);
     if (raw) set({ modelsByAgent: JSON.parse(raw) as Record<string, ModelState> });
+    const modes = window.localStorage.getItem(MODE_CACHE_KEY);
+    if (modes) set({ modesByAgent: JSON.parse(modes) as Record<string, ModeState> });
   } catch {
     /* ignore */
   }
@@ -357,9 +368,24 @@ function loadModelCache() {
 function persistModelCache() {
   try {
     window.localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify(state.modelsByAgent));
+    window.localStorage.setItem(MODE_CACHE_KEY, JSON.stringify(state.modesByAgent));
   } catch {
     /* ignore */
   }
+}
+
+/** Model / mode lists of every agent this status describes (the current one's are top-level). */
+function knownLists(msg: Extract<ServerMessage, { type: "agent.status" }>) {
+  const current = msg.agents?.currentAgentId ?? state.agent?.agents?.currentAgentId ?? "default";
+  const models: Record<string, ModelState> = {};
+  const modes: Record<string, ModeState> = {};
+  for (const a of msg.agents?.available ?? []) {
+    if (a.models?.available.length) models[a.id] = a.models;
+    if (a.modes?.available.length) modes[a.id] = a.modes;
+  }
+  if (msg.models) models[current] = msg.models;
+  if (msg.modes) modes[current] = msg.modes;
+  return { models, modes };
 }
 
 export function sameRoot(a: string, b: string) {
@@ -553,6 +579,7 @@ function handle(msg: ServerMessage) {
           msg.state === "stopped" ||
           (msg.state === "idle" && (msg.agents?.currentAgentId ?? switching.agentId) === switching.agentId));
       const keepModels = !switching || msg.models !== undefined;
+      const known = knownLists(msg);
       set({
         agentSwitch: switchDone ? null : switching,
         agent: {
@@ -567,18 +594,12 @@ function handle(msg: ServerMessage) {
             : {}),
           ...((msg.agents ?? prev?.agents) ? { agents: (msg.agents ?? prev?.agents)! } : {}),
           ...(msg.error !== undefined ? { error: msg.error } : {}),
+          ...((msg.defaults ?? prev?.defaults) ? { defaults: (msg.defaults ?? prev?.defaults)! } : {}),
         },
-        ...(msg.models
-          ? {
-              modelsByAgent: {
-                ...state.modelsByAgent,
-                [msg.agents?.currentAgentId ?? prev?.agents?.currentAgentId ?? "default"]:
-                  msg.models,
-              },
-            }
-          : {}),
+        modelsByAgent: { ...state.modelsByAgent, ...known.models },
+        modesByAgent: { ...state.modesByAgent, ...known.modes },
       });
-      if (msg.models) persistModelCache();
+      if (Object.keys(known.models).length || Object.keys(known.modes).length) persistModelCache();
       // A model picked for another agent is applied once that agent is up.
       if (pendingModel && msg.state === "idle" && msg.models) {
         const { agentId, modelId } = pendingModel;
@@ -605,13 +626,18 @@ function handle(msg: ServerMessage) {
       handleHistory(msg.chatId, msg.turns);
       return;
     case "turn.started": {
+      const waitingFor = msg.queued ? currentAgentName() : undefined;
       if (state.turns.some((t) => t.id === msg.turnId)) {
-        updateTurn(msg.turnId, (t) => ({
-          ...t,
-          contextPack: msg.contextPack,
-          nodeId: msg.nodeId,
-          ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
-        }));
+        updateTurn(msg.turnId, (t) => {
+          const { waitingFor: _was, ...rest } = t;
+          return {
+            ...rest,
+            contextPack: msg.contextPack,
+            nodeId: msg.nodeId,
+            ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
+            ...(waitingFor ? { waitingFor } : {}),
+          };
+        });
       } else {
         // Started from another viewer tab: show it here too.
         set({
@@ -623,6 +649,7 @@ function handle(msg: ServerMessage) {
               text: msg.text,
               contextPack: msg.contextPack,
               ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
+              ...(waitingFor ? { waitingFor } : {}),
               events: [],
               permission: null,
               resolved: [],
@@ -634,7 +661,10 @@ function handle(msg: ServerMessage) {
       return;
     }
     case "stream":
-      updateTurn(msg.turnId, (t) => ({ ...t, events: [...t.events, msg.event] }));
+      updateTurn(msg.turnId, (t) => {
+        const { waitingFor: _was, ...rest } = t;
+        return { ...rest, events: [...t.events, msg.event] };
+      });
       return;
     case "permission.request":
       updateTurn(msg.turnId, (t) => ({
@@ -668,7 +698,7 @@ function handle(msg: ServerMessage) {
       });
       return;
     case "turn.finished":
-      updateTurn(msg.turnId, (t) => ({
+      updateTurn(msg.turnId, ({ waitingFor: _was, ...t }) => ({
         ...t,
         permission: null,
         stopReason: msg.stopReason,
@@ -711,13 +741,27 @@ const newId = () =>
     ? crypto.randomUUID()
     : `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
+/** Display name of the current agent. */
+function currentAgentName(): string {
+  const agents = state.agent?.agents;
+  return (
+    state.agentSwitch?.name ??
+    agents?.available.find((a) => a.id === agents.currentAgentId)?.name ??
+    state.agent?.agent?.name ??
+    "the agent"
+  );
+}
+
 export function sendPrompt(nodeId: string, text: string, attachments: AttachmentMeta[] = []): string {
+  // Sent while the agent starts: the daemon queues it (§2.2 rule 3); say so right away.
+  const starting = !!state.agentSwitch || state.agent?.state === "starting";
   const turn: Turn = {
     id: newId(),
     nodeId,
     text,
     contextPack: "",
     ...(attachments.length ? { attachments } : {}),
+    ...(starting ? { waitingFor: currentAgentName() } : {}),
     events: [],
     permission: null,
     resolved: [],
@@ -735,6 +779,7 @@ export function sendPrompt(nodeId: string, text: string, attachments: Attachment
         : {}),
     });
   if (!ok) {
+    delete turn.waitingFor;
     turn.stopReason = "error";
     turn.error =
       "No archmap daemon connected. Start one with `archmap serve <repo>` to talk to the agent.";
@@ -792,19 +837,79 @@ export function sendModel(modelId: string): boolean {
 
 export const setModel = sendModel;
 
-/** Switch coding agent. The daemon stops any running turn and starts a new session; until the
- * new agent reports idle the UI shows a quiet "Starting …" state (state.agentSwitch). */
+/** Switch coding agent. The daemon stops any running turn; a pre-warmed agent (warm "ready") is
+ * swapped in at once, any other one starts — until it reports idle the UI shows a quiet
+ * "Starting …" state (state.agentSwitch) and the composer keeps working (prompts are queued). */
 export function setAgent(agentId: string): boolean {
   const agents = state.agent?.agents;
   const choice = agents?.available.find((a) => a.id === agentId);
   if (!state.agent || !agents || !choice || !choice.installed) return false;
   if (agents.currentAgentId === agentId) return true;
   if (!send({ type: "agent.set", agentId })) return false;
-  const { models: _dropped, ...rest } = state.agent;
+  const { models: _dropped, modes: _modes, ...rest } = state.agent;
+  const ready = choice.warm === "ready";
+  const models = choice.models ?? state.modelsByAgent[agentId];
+  const modes = choice.modes ?? state.modesByAgent[agentId];
   set({
-    agentSwitch: { agentId, name: choice.name },
-    agent: { ...rest, state: "starting", agents: { ...agents, currentAgentId: agentId } },
+    agentSwitch: ready ? null : { agentId, name: choice.name },
+    agent: {
+      ...rest,
+      state: ready ? "idle" : "starting",
+      ...(ready && models ? { models } : {}),
+      ...(ready && modes ? { modes } : {}),
+      agents: { ...agents, currentAgentId: agentId },
+    },
   });
+  return true;
+}
+
+let lastPrewarm: { key: string; at: number } | null = null;
+
+/** Ask the daemon to start agents in the background (default: every installed agent but the
+ * current one) so switching to them is instant. Repeats within a few seconds are dropped. */
+export function prewarmAgents(agentIds?: string[]): void {
+  const agents = state.agent?.agents;
+  if (!agents || state.source !== "daemon" || !state.project) return;
+  const ids = agentIds?.filter((id) => {
+    const a = agents.available.find((x) => x.id === id);
+    return !!a && a.installed && a.id !== agents.currentAgentId && a.warm !== "ready" && a.warm !== "starting";
+  });
+  if (ids && ids.length === 0) return;
+  const key = ids ? ids.join(",") : "*";
+  const now = Date.now();
+  if (lastPrewarm && lastPrewarm.key === key && now - lastPrewarm.at < 5000) return;
+  lastPrewarm = { key, at: now };
+  send({ type: "agent.prewarm", ...(ids ? { agentIds: ids } : {}) });
+}
+
+/** Settings → Agents: save defaults on the daemon (null clears one). */
+export function setDefaults(patch: {
+  agentId?: string;
+  models?: Record<string, string | null>;
+  modes?: Record<string, string | null>;
+}): boolean {
+  if (!send({ type: "defaults.set", ...patch })) return false;
+  const d = state.agent?.defaults;
+  if (state.agent && d) {
+    const apply = (base: Record<string, string>, p?: Record<string, string | null>) => {
+      const next = { ...base };
+      for (const [k, v] of Object.entries(p ?? {})) {
+        if (v === null) delete next[k];
+        else next[k] = v;
+      }
+      return next;
+    };
+    set({
+      agent: {
+        ...state.agent,
+        defaults: {
+          agentId: patch.agentId ?? d.agentId,
+          models: apply(d.models, patch.models),
+          modes: apply(d.modes, patch.modes),
+        },
+      },
+    });
+  }
   return true;
 }
 
@@ -1172,6 +1277,8 @@ export const daemonActions = {
   setAgentMode,
   setModel,
   setAgent,
+  prewarmAgents,
+  setDefaults,
   resetSession,
   editArchitecture,
   fetchFile,
