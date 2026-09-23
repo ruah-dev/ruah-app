@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { ExternalLink, FileCode2 } from "lucide-react";
 import type { CodeFile } from "@/data/graphs";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,12 @@ export function CodePreview({
   pathSlot?: ReactNode;
 }) {
   const lines = file.code.split("\n");
+  const firstHot = useRef<HTMLDivElement | null>(null);
+  const hl = file.highlight;
+  // Bring the highlighted range into view (a symbol opened from the map).
+  useEffect(() => {
+    firstHot.current?.scrollIntoView({ block: "center" });
+  }, [file.path, hl?.[0], hl?.[1]]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -109,6 +115,7 @@ export function CodePreview({
             return (
               <div
                 key={n}
+                ref={hot && n === file.highlight![0] ? firstHot : undefined}
                 className={cn(
                   "flex px-3",
                   hot ? "bg-primary/10 shadow-[inset_2px_0_0_0_var(--edge-active)]" : "",

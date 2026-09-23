@@ -23,9 +23,18 @@ import {
   type Pane,
   type PaneTab,
 } from "./workspace";
-import { contextPathOf, homeDiagramId, indexArchitecture, nodeForPath } from "./architecture";
+import { toast } from "sonner";
+import {
+  contextPathOf,
+  homeDiagramId,
+  indexArchitecture,
+  levelDiagramId,
+  nodeForPath,
+  parseDiagramId,
+} from "./architecture";
 import { fetchContext, setFocus } from "./daemon";
 import { isCloudNodeId } from "./integrations";
+import { isExpandedId, requestExpansion, requestPeek } from "./expand";
 
 export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
@@ -40,6 +49,12 @@ type Ctx = {
   selectNode: (id: string | null) => void;
   selectEdge: (edge: EdgeRef | null) => void;
   clearSelection: () => void;
+  /** What the agent talks about: the selection, else the element whose level is open. */
+  contextNode: DiagramNode | null;
+  /** The element whose level is open (null at the top level and on workflows). */
+  levelNode: DiagramNode | null;
+  /** Element id being expanded right now (drill-in pending). */
+  drillPending: string | null;
 
   activePane: Pane;
   activeTab: PaneTab;
@@ -50,6 +65,14 @@ type Ctx = {
   panelView: PanelView;
   setPanelView: (v: PanelView) => void;
   codePath: string | null;
+  /** Lines to highlight in the Code view (a symbol's range). */
+  codeRange: [number, number] | null;
+  /** Show a file in the Code view, optionally scrolled to a line range. */
+  openCode: (path: string, range?: [number, number] | null) => void;
+  /** Symbol on a file level: select it and show its lines. */
+  activateSymbol: (node: DiagramNode) => void;
+  /** Backspace / ⌥↑ / the breadcrumb: the level above, selecting the element you came from. */
+  goUp: () => void;
   showPanel: boolean;
   setShowPanel: (v: boolean | ((v: boolean) => boolean)) => void;
   editMode: boolean;
@@ -121,13 +144,17 @@ function writeFlag(key: string, on: boolean) {
 
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const ws = useWorkspace();
-  const { app, architecture } = ws;
+  const { app } = ws;
+  // The map's architecture: stored + expanded levels (drill-in below architecture.json).
+  const architecture = ws.mapArchitecture;
   const router = useRouter();
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EdgeRef | null>(null);
   const [panelView, setPanelViewState] = useState<PanelView>("agent");
   const [codePath, setCodePath] = useState<string | null>(null);
+  const [codeRange, setCodeRange] = useState<[number, number] | null>(null);
+  const [drillPending, setDrillPending] = useState<string | null>(null);
   const [showPanel, setShowPanel] = useState(true);
   const [editMode, setEditModeState] = useState(false);
   const [askSignal, setAskSignal] = useState(0);
@@ -210,6 +237,23 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setFocus(selectedNode?.id ?? null);
   }, [selectedNode?.id]);
 
+  // The element whose level is open: the default subject for the agent when nothing is selected.
+  const levelNode = useMemo(() => {
+    const ref = parseDiagramId(activeDiagram.id);
+    if (ref?.mode !== "architecture" || ref.parentId === null) return null;
+    return app.diagrams.flatMap((d) => d.nodes).find((n) => n.id === ref.parentId) ?? null;
+  }, [activeDiagram.id, app.diagrams]);
+  const contextNode = selectedNode ?? levelNode;
+
+  // "N inside" chips: ask the daemon how much is below each stored leaf on the open level.
+  useEffect(() => {
+    if (activeDiagram.mode !== "architecture") return;
+    const ids = activeDiagram.nodes
+      .filter((n) => !n.ephemeral && n.path && !n.drill && n.childCount === undefined && !isCloudNodeId(n.id))
+      .map((n) => n.id);
+    if (ids.length) requestPeek(ids);
+  }, [activeDiagram]);
+
   const setPanelView = useCallback((v: PanelView) => {
     setPanelViewState(v);
     setShowPanel(true);
@@ -233,18 +277,50 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       setSelectedEdge(null);
     };
     const openDiagram = (diagramId: string, paneId = activePane.id) => {
-      ws.openTab(paneId, "diagram", diagramId);
+      ws.navigate(paneId, diagramId);
       clearSelection();
       goToMap();
+      // Expanded levels are live data: refresh in the background when revisited.
+      const ref = parseDiagramId(diagramId);
+      if (ref?.mode === "architecture" && ref.parentId !== null && ws.expansions.entries.has(ref.parentId)) {
+        void requestExpansion(ref.parentId);
+      }
+    };
+    const drillInto = (node: DiagramNode) => {
+      const target = node.drill ?? levelDiagramId(node.id);
+      if (app.diagrams.some((d) => d.id === target && d.nodes.length > 0)) {
+        openDiagram(target);
+        return;
+      }
+      // On-demand level (§1.6): fetch it, then open.
+      setDrillPending(node.id);
+      void requestExpansion(node.id, { maxAge: 0 }).then((entry) => {
+        setDrillPending((p) => (p === node.id ? null : p));
+        if (entry.status === "ok") {
+          if (entry.expansion.architecture.nodes.length === 0) {
+            toast.message(`${node.label} has nothing inside to show`);
+            return;
+          }
+          openDiagram(levelDiagramId(node.id));
+        } else if (entry.status === "error") {
+          toast.error(`Cannot open ${node.label}`, { description: entry.error });
+        }
+      });
     };
     const openNode = (nodeId: string) => {
       if (!activeDiagram.nodes.some((n) => n.id === nodeId)) {
         const home = homeDiagramId(architecture, nodeId, archIndex);
-        if (home) ws.openTab(activePane.id, "diagram", home);
+        if (home) ws.navigate(activePane.id, home);
       }
       setSelectedNodeId(nodeId);
       setSelectedEdge(null);
       goToMap();
+    };
+    const openCode = (path: string, range: [number, number] | null = null) => {
+      setCodePath(path);
+      setCodeRange(range);
+      setPanelView("code");
+      setSheetOpen(true);
     };
     return {
       selectedNodeId,
@@ -254,6 +330,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         setSelectedNodeId(id);
         if (id) setSelectedEdge(null);
       },
+      contextNode,
+      levelNode,
+      drillPending,
       selectEdge: (edge) => {
         setSelectedEdge(edge);
         if (edge && editing) setPanelView("properties");
@@ -267,6 +346,24 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       panelView,
       setPanelView,
       codePath,
+      codeRange,
+      openCode,
+      activateSymbol: (node) => {
+        setSelectedNodeId(node.id);
+        setSelectedEdge(null);
+        if (node.path && node.symbol) openCode(node.path, [node.symbol.line, node.symbol.endLine]);
+      },
+      goUp: () => {
+        const ref = parseDiagramId(activeDiagram.id);
+        if (ref?.mode !== "architecture" || ref.parentId === null) return;
+        const from = ref.parentId;
+        const home = homeDiagramId(architecture, from, archIndex);
+        if (!home) return;
+        ws.navigate(activePane.id, home);
+        setSelectedNodeId(from);
+        setSelectedEdge(null);
+        goToMap();
+      },
       showPanel,
       setShowPanel,
       editMode,
@@ -306,20 +403,20 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       newProjectOpen,
       setNewProjectOpen,
       contextPathFor: (node) =>
-        contextPathOf({
-          name: node.label,
-          ...(node.path !== undefined ? { path: node.path } : {}),
-          ...(node.filePaths !== undefined ? { files: node.filePaths } : {}),
-        }),
+        node.symbol && node.path
+          ? `${node.path}:${node.symbol.line}`
+          : contextPathOf({
+              name: node.label,
+              ...(node.path !== undefined ? { path: node.path } : {}),
+              ...(node.filePaths !== undefined ? { files: node.filePaths } : {}),
+            }),
       openDiagram,
       openNode,
       openPath: (path) => {
         const owner = nodeForPath(architecture, path);
         if (owner) openNode(owner.id);
         else goToMap();
-        setCodePath(path);
-        setPanelView("code");
-        setSheetOpen(true);
+        openCode(path);
       },
       ask: (node) => {
         if (node) {
@@ -333,8 +430,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         setAskSignal((n) => n + 1);
       },
       drill: (node) => {
-        if (!node.drill || !app.diagrams.some((d) => d.id === node.drill)) return;
-        openDiagram(node.drill);
+        if (!node.drill && !isExpandedId(node.id)) return;
+        drillInto(node);
       },
       copyContext: async (node) => {
         try {
@@ -367,9 +464,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     selectedNodeId,
     selectedNode,
     selectedEdge,
+    contextNode,
+    levelNode,
+    drillPending,
     panelView,
     setPanelView,
     codePath,
+    codeRange,
     showPanel,
     editMode,
     setEditMode,

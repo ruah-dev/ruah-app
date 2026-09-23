@@ -2,6 +2,7 @@
 // diagram model (src/data/graphs.ts). CONTRACTS.md §1.3. No React, no I/O.
 import type { Architecture, ArchEdge, ArchNode, Workflow } from "./contracts";
 import type { DiagramEdge, DiagramGroup, DiagramNode, Graph, NodeKind } from "@/data/graphs";
+import type { ExpandedEdge, ExpandedNode } from "./expand";
 
 export const NODE_W = 200;
 export const NODE_H = 64;
@@ -72,6 +73,7 @@ const KNOWN_KINDS = new Set<string>([
   "module",
   "file",
   "api",
+  "symbol",
   "step",
   "decision",
   "event",
@@ -187,11 +189,29 @@ export function ancestry(index: ArchIndex, id: string | null): ArchNode[] {
 }
 
 export function subtitleFor(node: ArchNode): string {
+  const x = node as ExpandedNode;
+  if (x.symbol) {
+    const what = x.symbol.detail ?? `${x.symbol.exported ? "export " : ""}${x.symbol.kind === "const" ? "value" : x.symbol.kind}`;
+    return `L${x.symbol.line}–${x.symbol.endLine} · ${what}`;
+  }
+  if (x.ephemeral) {
+    const n = x.childCount ?? 0;
+    if (node.type === "file") return [n ? `${n} symbol${n === 1 ? "" : "s"}` : "", x.test ? "test" : ""].filter(Boolean).join(" · ") || "file";
+    return n ? `${n} item${n === 1 ? "" : "s"}` : "folder";
+  }
   if (node.tech?.length) return node.tech.slice(0, 2).join(" · ");
   return node.path ?? "";
 }
 
+/** Whether the element has a level below it: stored children, or an expandable path (§1.6). */
+export function canDrill(index: ArchIndex, node: ArchNode): boolean {
+  return hasChildren(index, node.id) || (node as ExpandedNode).expandable === true;
+}
+
 function toDiagramNode(node: ArchNode, index: ArchIndex, x: number, y: number): DiagramNode {
+  const ex = node as ExpandedNode;
+  const kids = index.children.get(node.id)?.length ?? 0;
+  const childCount = kids > 0 ? kids : ex.childCount;
   return {
     id: node.id,
     label: node.name,
@@ -200,7 +220,11 @@ function toDiagramNode(node: ArchNode, index: ArchIndex, x: number, y: number): 
     type: node.type,
     x,
     y,
-    ...(hasChildren(index, node.id) ? { drill: levelDiagramId(node.id) } : {}),
+    ...(canDrill(index, node) ? { drill: levelDiagramId(node.id) } : {}),
+    ...(childCount ? { childCount } : {}),
+    ...(ex.ephemeral ? { ephemeral: true } : {}),
+    ...(ex.symbol ? { symbol: ex.symbol } : {}),
+    ...(ex.test ? { test: true } : {}),
     ...(node.description !== undefined ? { description: node.description } : {}),
     ...(node.notes !== undefined ? { notes: node.notes } : {}),
     ...(node.tech !== undefined ? { tech: node.tech } : {}),
@@ -217,6 +241,7 @@ function toDiagramEdge(edge: ArchEdge): DiagramEdge {
     to: edge.to,
     ...(edge.label !== undefined ? { label: edge.label } : {}),
     ...(edge.kind !== undefined ? { kind: edge.kind } : {}),
+    ...((edge as ExpandedEdge).weight !== undefined ? { weight: (edge as ExpandedEdge).weight } : {}),
     animated: edge.kind === "async" || edge.kind === "event",
   };
 }

@@ -25,6 +25,8 @@ type Props = {
   onClearContext?: (() => void) | undefined;
   /** File the Code view should show first (from a tool call, the repo tree or the Files list). */
   codePath?: string | null | undefined;
+  /** Lines to highlight in that file (a symbol's range). */
+  codeRange?: [number, number] | null | undefined;
   /** Whether this instance owns the permission-card keyboard shortcuts. */
   keyboard?: boolean;
   /** Bumped by "Ask agent" to focus the composer. */
@@ -92,7 +94,7 @@ function Details({
 }: Pick<Props, "contextPath" | "onDrill" | "onSelectNode" | "onOpenPath"> & {
   node: DiagramNode;
 }) {
-  const { architecture } = useWorkspace();
+  const { mapArchitecture: architecture } = useWorkspace();
   const links = useMemo(() => linksFor(architecture, node.id), [architecture, node]);
   const flows = useMemo(() => workflowsFor(architecture, node.id), [architecture, node]);
   const parent = node.parent ? architecture.nodes.find((n) => n.id === node.parent) : undefined;
@@ -261,11 +263,12 @@ export function InspectorPanel({
   onOpenPath,
   onClearContext,
   codePath,
+  codeRange,
   keyboard = true,
   focusSignal = 0,
   focusTurnId = null,
 }: Props) {
-  const { architecture, daemon, app } = useWorkspace();
+  const { mapArchitecture: architecture, daemon, app } = useWorkspace();
 
   if (view === "agent") {
     return (
@@ -304,6 +307,7 @@ export function InspectorPanel({
           repo={app.repo}
           root={daemon.root}
           preferredPath={codePath}
+          range={codeRange}
           onDrill={onDrill}
         />
       </div>

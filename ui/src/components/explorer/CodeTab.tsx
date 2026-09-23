@@ -19,12 +19,15 @@ export function CodeTab({
   repo,
   root,
   preferredPath,
+  range,
   onDrill,
 }: {
   node: DiagramNode;
   repo: string;
   root: string | null;
   preferredPath?: string | null | undefined;
+  /** Lines to highlight and scroll to (a symbol's range). */
+  range?: [number, number] | null | undefined;
   onDrill: () => void;
 }) {
   const files = codeFilesOf({
@@ -52,6 +55,14 @@ export function CodeTab({
       live = false;
     };
   }, [path]);
+
+  // A symbol's own lines, unless a caller asked for another range.
+  const highlight: [number, number] | undefined =
+    range && path === preferredPath
+      ? range
+      : node.symbol && path === node.path
+        ? [node.symbol.line, node.symbol.endLine]
+        : undefined;
 
   if (!path) {
     return (
@@ -99,8 +110,19 @@ export function CodeTab({
         <div className="min-h-0 flex-1 overflow-hidden">
           <CodePreview
             pathSlot={fileSwitcher}
-            file={{ repo, branch: "", path: result.path, lang: result.lang, code: result.content }}
-            href={root ? `vscode://file/${root.replace(/\/+$/, "")}/${result.path}` : undefined}
+            file={{
+              repo,
+              branch: "",
+              path: result.path,
+              lang: result.lang,
+              code: result.content,
+              ...(highlight ? { highlight } : {}),
+            }}
+            href={
+              root
+                ? `vscode://file/${root.replace(/\/+$/, "")}/${result.path}${highlight ? `:${highlight[0]}` : ""}`
+                : undefined
+            }
           />
         </div>
       ) : (

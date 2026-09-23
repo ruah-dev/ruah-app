@@ -1,33 +1,46 @@
 // Map: the architecture / workflow canvas with the agent as its side panel.
 // Visual patterns adapted from t3code apps/web/src/components/chat/ChatHeader.tsx and
 // PanelLayoutControls.tsx (MIT): a borderless header row, quiet crumbs, icon controls on the right.
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
   Code2,
   Columns2,
+  HardDrive,
   Loader2,
   MessageSquare,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
+  Pin,
   Plus,
+  RefreshCw,
   ScanSearch,
   Sparkles,
   X,
 } from "lucide-react";
 import { useWorkspace, type Diagram, type Pane } from "@/lib/workspace";
 import { useWorkbench, type PanelView } from "@/lib/workbench";
-import { ROOT_DIAGRAM_ID, ancestry, indexArchitecture, levelDiagramId, parseDiagramId } from "@/lib/architecture";
+import {
+  ROOT_DIAGRAM_ID,
+  ancestry,
+  canDrill,
+  indexArchitecture,
+  kindFor,
+  levelDiagramId,
+  parseDiagramId,
+} from "@/lib/architecture";
+import type { ArchNode } from "@/lib/contracts";
+import { asExpanded, invalidateExpansions, requestExpansion } from "@/lib/expand";
 import { dismissError, rescan } from "@/lib/daemon";
 import { toast } from "sonner";
 import { isCloudDiagramId } from "@/lib/integrations";
-import { EditorCanvas } from "@/components/editor/EditorCanvas";
+import { EditorCanvas, type SearchHit } from "@/components/editor/EditorCanvas";
 import { Palette } from "@/components/editor/Palette";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { InspectorPanel } from "@/components/explorer/InspectorPanel";
-import { kindStyles } from "@/components/explorer/kinds";
+import { kindStyles, styleFor } from "@/components/explorer/kinds";
 import { NewSessionButton } from "@/components/agent/AgentPanel";
 import {
   DropdownMenu,
@@ -156,38 +169,118 @@ function EditToggle() {
   );
 }
 
+type Crumb = { label: string; id?: string; nodeId?: string; siblingsOf?: string | null };
+
+/** Siblings menu behind a breadcrumb separator: the other levels you can open from here. */
+function CrumbMenu({ parentId, currentId }: { parentId: string | null; currentId?: string | undefined }) {
+  const ws = useWorkspace();
+  const wb = useWorkbench();
+  const index = useMemo(() => indexArchitecture(ws.mapArchitecture), [ws.mapArchitecture]);
+  const items = (index.children.get(parentId) ?? []).filter((n) => !index.workflowOnly.has(n.id));
+  const open = (n: ArchNode) => {
+    if (canDrill(index, n)) {
+      const node = ws.app.diagrams.flatMap((d) => d.nodes).find((d) => d.id === n.id);
+      if (node) {
+        wb.drill(node);
+        return;
+      }
+    }
+    wb.openNode(n.id);
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="grid h-5 w-4 shrink-0 place-items-center rounded text-faint transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+        aria-label="Other elements at this level"
+      >
+        <ChevronRight className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+        {items.length === 0 ? <DropdownMenuItem disabled>Nothing here</DropdownMenuItem> : null}
+        {items.map((n) => {
+          const x = asExpanded(n);
+          const style = styleFor({ kind: kindFor(n.type), symbol: x?.symbol });
+          const Icon = style.icon;
+          const kids = index.children.get(n.id)?.length ?? x?.childCount;
+          const drillable = canDrill(index, n);
+          return (
+            <DropdownMenuItem key={n.id} onSelect={() => open(n)} className={cn(n.id === currentId && "bg-accent/60")}>
+              <Icon className={cn("size-3.5", style.color)} />
+              <span className="truncate">{n.name}</span>
+              {drillable ? (
+                <span className="ms-auto flex items-center gap-0.5 font-mono text-[10.5px] text-faint">
+                  {kids ? kids : null}
+                  <ChevronRight className="size-3" />
+                </span>
+              ) : null}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function Crumbs({ diagram }: { diagram: Diagram }) {
-  const { architecture, app } = useWorkspace();
+  const { mapArchitecture: architecture, app } = useWorkspace();
   const wb = useWorkbench();
   const ref = parseDiagramId(diagram.id);
-  const index = indexArchitecture(architecture);
+  const index = useMemo(() => indexArchitecture(architecture), [architecture]);
   const chain =
     ref && ref.mode === "architecture" && ref.parentId !== null ? ancestry(index, ref.parentId) : [];
-  const atRoot = ref?.mode === "architecture" && ref.parentId === null;
-  const root = diagram.mode === "workflow" ? "Workflows" : atRoot ? null : app.name;
-  const items: { label: string; id?: string }[] = [];
-  if (root) items.push({ label: root, ...(diagram.mode === "architecture" ? { id: ROOT_DIAGRAM_ID } : {}) });
-  if (diagram.mode === "architecture")
-    chain.forEach((n) => items.push({ label: n.name, id: levelDiagramId(n.id) }));
-  else items.push({ label: diagram.title });
-  if (isCloudDiagramId(diagram.id)) items.push({ label: diagram.title });
-  if (items.length === 0) items.push({ label: diagram.title });
+  const items: Crumb[] = [];
+  if (diagram.mode === "workflow") {
+    items.push({ label: app.name || "System", id: ROOT_DIAGRAM_ID }, { label: "Workflows" }, { label: diagram.title });
+  } else if (isCloudDiagramId(diagram.id)) {
+    items.push({ label: app.name, id: ROOT_DIAGRAM_ID }, { label: diagram.title });
+  } else {
+    // system › repo › package › folder › file: every crumb opens its level; the separator before
+    // it lists its siblings.
+    items.push({ label: app.name || "System", id: ROOT_DIAGRAM_ID });
+    chain.forEach((n) => items.push({ label: n.name, id: levelDiagramId(n.id), nodeId: n.id, siblingsOf: n.parent ?? null }));
+    if (chain.length === 0 && ref?.mode === "architecture" && ref.parentId !== null) items.push({ label: diagram.title });
+  }
+  // Long paths: keep the first crumb and the last three, fold the middle into a menu.
+  const folded = items.length > 5 ? items.slice(1, items.length - 3) : [];
+  const shown = folded.length ? [items[0]!, { label: "…" } as Crumb, ...items.slice(items.length - 3)] : items;
+  const inside = diagram.mode === "architecture" && !isCloudDiagramId(diagram.id);
+  const currentParent = ref?.mode === "architecture" ? ref.parentId : null;
+  const hasChildrenHere = inside && diagram.nodes.some((n) => n.drill);
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-[13px]">
-      {items.map((it, i) => {
-        const last = i === items.length - 1;
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden text-[13px]">
+      {shown.map((it, i) => {
+        const last = i === shown.length - 1;
+        const isFold = it.label === "…" && folded.length > 0;
         return (
-          <Fragment key={`${it.label}-${i}`}>
-            {i > 0 ? <ChevronRight className="size-3.5 shrink-0 text-faint" /> : null}
-            {last || !it.id ? (
-              <span className={cn("truncate", last ? "font-medium text-foreground" : "text-muted-foreground")}>
+          <Fragment key={`${it.id ?? it.label}-${i}`}>
+            {i > 0 ? (
+              inside && it.siblingsOf !== undefined ? (
+                <CrumbMenu parentId={it.siblingsOf} currentId={it.nodeId} />
+              ) : (
+                <ChevronRight className="size-3.5 shrink-0 text-faint" />
+              )
+            ) : null}
+            {isFold ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="shrink-0 rounded px-1 text-muted-foreground hover:bg-accent hover:text-foreground">…</DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {folded.map((f) => (
+                    <DropdownMenuItem key={f.id ?? f.label} onSelect={() => f.id && wb.openDiagram(f.id)}>
+                      {f.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : last || !it.id ? (
+              <span className={cn("max-w-56 truncate px-0.5", last ? "font-medium text-foreground" : "text-muted-foreground")} title={it.label}>
                 {it.label}
               </span>
             ) : (
               <button
                 type="button"
                 onClick={() => wb.openDiagram(it.id!)}
-                className="shrink-0 truncate text-muted-foreground transition-colors hover:text-foreground"
+                title={it.label}
+                className="max-w-40 shrink-0 truncate rounded px-0.5 text-muted-foreground transition-colors hover:text-foreground"
               >
                 {it.label}
               </button>
@@ -195,6 +288,7 @@ function Crumbs({ diagram }: { diagram: Diagram }) {
           </Fragment>
         );
       })}
+      {hasChildrenHere ? <CrumbMenu parentId={currentParent} /> : null}
     </nav>
   );
 }
@@ -233,6 +327,7 @@ function EmptyMap() {
     setScanning(true);
     try {
       const r = await rescan();
+      invalidateExpansions();
       toast.success(r.nodes ? `Found ${r.nodes} elements` : "The scan found no elements", {
         description: r.nodes ? `${r.edges} links · ${Math.round(r.ms)} ms` : "Add them by hand from the palette.",
       });
@@ -282,7 +377,38 @@ function EmptyMap() {
   );
 }
 
-function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) {
+/** Loading / live-from-disk / truncated notice for on-demand levels. */
+function LevelNotice({ diagram }: { diagram: Diagram }) {
+  const ws = useWorkspace();
+  const ref = parseDiagramId(diagram.id);
+  if (ref?.mode !== "architecture" || ref.parentId === null) return null;
+  const entry = ws.expansions.entries.get(ref.parentId);
+  if (!entry || ws.architecture.nodes.some((n) => n.parent === ref.parentId)) return null;
+  if (entry.status === "loading" && !entry.previous) {
+    return (
+      <span className="control-glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> Reading {diagram.title} from disk…
+      </span>
+    );
+  }
+  if (entry.status === "error") {
+    return <span className="control-glass rounded-lg px-3 py-1.5 text-[12px] text-bad">{entry.error}</span>;
+  }
+  const exp = entry.status === "ok" ? entry.expansion : entry.previous;
+  if (!exp) return null;
+  const t = exp.truncated;
+  return (
+    <span className="control-glass flex items-center gap-2 rounded-lg px-2.5 py-1 text-[11.5px] text-muted-foreground">
+      <HardDrive className="size-3 text-faint" />
+      Live from disk{exp.level === "file" ? " · symbols" : " · imports"}
+      {t.children ? ` · showing ${exp.architecture.nodes.length} of ${exp.total.children}` : ""}
+      {t.edges ? ` · strongest ${exp.architecture.edges.length} of ${exp.total.edges} links` : ""}
+      {entry.status === "loading" ? <Loader2 className="size-3 animate-spin" /> : null}
+    </span>
+  );
+}
+
+function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTray: boolean; active?: boolean }) {
   const ws = useWorkspace();
   const wb = useWorkbench();
   const emptyProject =
@@ -291,9 +417,26 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
     diagram.mode === "architecture";
   // The derived Cloud level is read-only: it is not part of architecture.json.
   const derived = isCloudDiagramId(diagram.id);
+  const index = useMemo(() => indexArchitecture(ws.mapArchitecture), [ws.mapArchitecture]);
+  const ref = parseDiagramId(diagram.id);
+  const depth = ref?.mode === "architecture" && ref.parentId !== null ? ancestry(index, ref.parentId).length : 0;
+  const searchIndex = useMemo<SearchHit[]>(
+    () =>
+      ws.mapArchitecture.nodes
+        .filter((n) => !index.workflowOnly.has(n.id))
+        .map((n) => ({ id: n.id, label: n.name, where: n.path ?? index.byId.get(n.parent ?? "")?.name ?? "top level" })),
+    [ws.mapArchitecture, index],
+  );
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <EditorCanvas
+        active={active}
+        depth={depth}
+        onGoUp={wb.goUp}
+        onActivateSymbol={wb.activateSymbol}
+        searchIndex={searchIndex}
+        onReveal={wb.openNode}
+        notice={<LevelNotice diagram={diagram} />}
         emptyHint={!emptyProject}
         diagram={diagram}
         editable={wb.editing && !derived}
@@ -312,8 +455,11 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
         onDrill={wb.drill}
         onOpenCode={(node) => {
           wb.selectNode(node.id);
-          wb.setPanelView("code");
-          wb.setSheetOpen(true);
+          if (node.symbol && node.path) wb.openCode(node.path, [node.symbol.line, node.symbol.endLine]);
+          else {
+            wb.setPanelView("code");
+            wb.setSheetOpen(true);
+          }
         }}
         onAsk={(node) => wb.ask(node)}
         onCopyContext={wb.copyContext}
@@ -333,6 +479,12 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
 
 function PaneMenu({ pane, diagram }: { pane: Pane; diagram: Diagram }) {
   const ws = useWorkspace();
+  const ref = parseDiagramId(diagram.id);
+  const levelId = ref?.mode === "architecture" ? ref.parentId : null;
+  const entry = levelId !== null ? ws.expansions.entries.get(levelId) : undefined;
+  const live = entry !== undefined && !ws.architecture.nodes.some((n) => n.parent === levelId);
+  const pinnable =
+    live && entry?.status === "ok" && entry.expansion.level === "folder" && ws.architecture.nodes.some((n) => n.id === levelId);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={iconButton} aria-label="Canvas options">
@@ -348,6 +500,23 @@ function PaneMenu({ pane, diagram }: { pane: Pane; diagram: Diagram }) {
         <DropdownMenuItem onSelect={() => ws.openTab(pane.id, "code", diagram.id)}>
           <Code2 className="text-muted-foreground" /> Open code in a tab
         </DropdownMenuItem>
+        {live && levelId !== null ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void requestExpansion(levelId, { maxAge: 0 })}>
+              <RefreshCw className="text-muted-foreground" /> Refresh from disk
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!pinnable || !ws.editable}
+              onSelect={() => {
+                ws.pinLevel(diagram.id);
+                toast.success("Pinned to the map", { description: "This level is now part of architecture.json." });
+              }}
+            >
+              <Pin className="text-muted-foreground" /> Pin this level to the map
+            </DropdownMenuItem>
+          </>
+        ) : null}
         {ws.app.panes.length > 1 ? (
           <>
             <DropdownMenuSeparator />
@@ -429,7 +598,7 @@ function PaneView({ pane, last }: { pane: Pane; last: boolean }) {
         ) : null}
       </div>
       {tab.type === "diagram" ? (
-        <Canvas diagram={diagram} showTray={wb.editing && isActivePane && wb.sidebarCollapsed} />
+        <Canvas diagram={diagram} showTray={wb.editing && isActivePane && wb.sidebarCollapsed} active={isActivePane} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
           <InspectorPanel
@@ -441,6 +610,7 @@ function PaneView({ pane, last }: { pane: Pane; last: boolean }) {
             onOpenPath={wb.openPath}
             onClearContext={wb.clearSelection}
             codePath={wb.codePath}
+            codeRange={wb.codeRange}
             keyboard={!(wb.showPanel && wb.panelView === "agent")}
           />
         </div>
@@ -454,6 +624,8 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
   const ws = useWorkspace();
   const wb = useWorkbench();
   const node = wb.selectedNode;
+  // The agent talks about the selection, or the element whose level is open (drill-in context).
+  const agentNode = wb.contextNode;
   const options: { value: PanelView; label: string }[] = [
     { value: "agent", label: "Agent" },
     { value: "details", label: "Details" },
@@ -508,14 +680,15 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
           </div>
         ) : (
           <InspectorPanel
-            node={node}
-            contextPath={node ? wb.contextPathFor(node) : ""}
+            node={view === "agent" ? agentNode : node}
+            contextPath={view === "agent" ? (agentNode ? wb.contextPathFor(agentNode) : "") : node ? wb.contextPathFor(node) : ""}
             view={view}
             onDrill={() => node && wb.drill(node)}
             onSelectNode={wb.openNode}
             onOpenPath={wb.openPath}
             onClearContext={wb.clearSelection}
             codePath={wb.codePath}
+            codeRange={wb.codeRange}
             focusSignal={wb.askSignal}
           />
         )}
