@@ -143,7 +143,10 @@ export class ProjectService {
   constructor(private readonly deps: ProjectServiceDeps) {}
 
   list(): ProjectsList {
-    return { current: this.deps.host.project(), recent: this.deps.projects.list() };
+    // Folders that were deleted or moved (temp dirs, old clones) are hidden, not
+    // forgotten: an unmounted drive comes back when it is mounted again.
+    const recent = this.deps.projects.list().filter((p) => fs.existsSync(p.root));
+    return { current: this.deps.host.project(), recent };
   }
 
   /**

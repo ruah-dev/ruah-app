@@ -1,6 +1,7 @@
 // Start screen: shown when the daemon has no project open (§5 launcher state), on first run,
 // and on demand (⌘K → Start screen, Help). Open a folder, create a project, or pick a recent
-// one — keyboard-first: ↑↓ + Enter, ⌘O, ⌘N.
+// one — keyboard-first: ↑↓ + Enter, ⌘O, ⌘N. The screen shows the top three recents (pinned
+// first); the rest live in the "All projects" dialog, so the start screen never scrolls a list.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -20,6 +21,7 @@ import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { VirtualList } from "@/components/common/VirtualList";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { RuahLogo } from "@/components/brand/RuahLogo";
 import { PhantomCompanion } from "@/components/brand/Phantom";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
@@ -30,6 +32,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 
 const ROW_H = 56;
+/** Recent projects shown on the start screen itself; the rest open in a dialog. */
+const LAUNCHER_RECENTS = 3;
 
 function ActionRow({
   icon: Icon,
@@ -165,34 +169,31 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const wb = useWorkbench();
   const router = useRouter();
   const actions = useProjectActions();
-  const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [allOpen, setAllOpen] = useState(false);
   const sample = daemon.source === "sample";
 
-  const recents = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return daemon.recentProjects.filter(
-      (p) => !q || p.name.toLowerCase().includes(q) || p.root.toLowerCase().includes(q),
-    );
-  }, [daemon.recentProjects, query]);
+  const recents = useMemo(() => daemon.recentProjects.slice(0, LAUNCHER_RECENTS), [daemon.recentProjects]);
+  const hidden = daemon.recentProjects.length - recents.length;
   const pinned = daemon.recentProjects.filter((p) => p.pinned);
+  const openProject = (p: ProjectInfo) => {
+    setAllOpen(false);
+    if (daemon.project?.id === p.id) wb.setLauncherOpen(false);
+    else void actions.openRecent(p);
+  };
 
   useEffect(() => {
     setActive((a) => Math.min(a, Math.max(0, recents.length - 1)));
   }, [recents.length]);
 
   // ↑↓ Enter on the whole screen (not while a dialog or menu is open).
-  const dialogsOpen = wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen || wb.searchOpen;
+  const dialogsOpen = allOpen || wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen || wb.searchOpen;
   useEffect(() => {
     if (dialogsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
-      const inOtherField =
-        !!target &&
-        (/textarea|select/i.test(target.tagName) ||
-          (target.tagName === "INPUT" && target.id !== "launcher-filter"));
-      if (inOtherField) return;
+      if (target && /textarea|select|input/i.test(target.tagName)) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setActive((a) => Math.min(a + 1, recents.length - 1));
@@ -201,7 +202,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         setActive((a) => Math.max(a - 1, 0));
       } else if (e.key === "Enter" && recents[active] && (!target || target.tagName !== "BUTTON")) {
         e.preventDefault();
-        void actions.openRecent(recents[active]!);
+        openProject(recents[active]!);
       } else if (e.key === "Escape" && overlay) {
         e.preventDefault();
         wb.setLauncherOpen(false);
@@ -317,64 +318,68 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
             <section aria-label="Recent projects" className="min-w-0">
               <div className="flex h-8 items-center gap-2 px-3 pb-1.5">
                 <h2 className="section-label">Recent projects</h2>
-                {daemon.recentProjects.length > 5 ? (
-                  <label className="ms-auto flex h-7 w-52 items-center gap-1.5 rounded-lg bg-surface-2 px-2 shadow-[inset_0_0_0_1px_var(--color-hairline)] max-md:w-40">
-                    <Search className="size-3 text-muted-foreground" />
-                    <input
-                      id="launcher-filter"
-                      value={query}
-                      onChange={(e) => {
-                        setQuery(e.target.value);
-                        setActive(0);
-                      }}
-                      placeholder="Filter…"
-                      aria-label="Filter recent projects"
-                      className="h-full min-w-0 flex-1 bg-transparent text-ui-sm outline-none placeholder:text-faint"
-                    />
-                  </label>
+                {hidden > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setAllOpen(true)}
+                    className="ms-auto flex h-7 items-center gap-1.5 rounded-md px-2 text-ui-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    All projects
+                    <span className="rounded-pill bg-surface-3 px-1.5 text-[10.5px] tabular-nums">
+                      {daemon.recentProjects.length}
+                    </span>
+                  </button>
                 ) : null}
               </div>
-              {daemon.recentProjects.length === 0 ? (
+              {recents.length === 0 ? (
                 <p className="px-3 py-3 text-ui-sm leading-relaxed text-muted-foreground">
                   {sample
                     ? "Recent projects appear here once Ruah is connected."
                     : "Projects you open appear here — pin the ones you switch to often (⌘1…⌘9)."}
                 </p>
-              ) : recents.length === 0 ? (
-                <p className="px-3 py-3 text-ui-sm text-muted-foreground">No project matches.</p>
               ) : (
-                <VirtualList
-                  items={recents}
-                  itemHeight={ROW_H}
-                  getKey={(p) => p.id}
-                  activeIndex={active}
-                  role="listbox"
-                  aria-label="Recent projects"
-                  className="max-h-[min(52vh,560px)]"
-                  renderItem={(p, i) => {
+                <div role="listbox" aria-label="Recent projects">
+                  {recents.map((p, i) => {
                     const pinIndex = pinned.findIndex((x) => x.id === p.id);
                     return (
-                      <RecentRow
-                        project={p}
-                        active={i === active}
-                        current={daemon.project?.id === p.id}
-                        shortcut={pinIndex >= 0 ? pinnedShortcut(pinIndex) : null}
-                        onHover={() => setActive(i)}
-                        onOpen={() =>
-                          daemon.project?.id === p.id
-                            ? wb.setLauncherOpen(false)
-                            : void actions.openRecent(p)
-                        }
-                        onPin={() => void actions.togglePin(p)}
-                        onForget={() => void actions.forget(p)}
-                      />
+                      <div key={p.id} style={{ height: ROW_H }}>
+                        <RecentRow
+                          project={p}
+                          active={i === active}
+                          current={daemon.project?.id === p.id}
+                          shortcut={pinIndex >= 0 ? pinnedShortcut(pinIndex) : null}
+                          onHover={() => setActive(i)}
+                          onOpen={() => openProject(p)}
+                          onPin={() => void actions.togglePin(p)}
+                          onForget={() => void actions.forget(p)}
+                        />
+                      </div>
                     );
-                  }}
-                />
+                  })}
+                  {hidden > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setAllOpen(true)}
+                      className="mt-1 flex h-9 w-full items-center gap-2 rounded-xl px-3 text-ui-sm text-muted-foreground transition-colors hover:bg-surface-2/70 hover:text-foreground"
+                    >
+                      Show {hidden} more…
+                    </button>
+                  ) : null}
+                </div>
               )}
             </section>
           </div>
         </div>
+
+        <AllProjectsDialog
+          open={allOpen}
+          onOpenChange={setAllOpen}
+          projects={daemon.recentProjects}
+          currentId={daemon.project?.id}
+          onOpen={openProject}
+          onPin={(p) => void actions.togglePin(p)}
+          onForget={(p) => void actions.forget(p)}
+        />
 
         <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-10 text-meta text-faint max-md:hidden">
           <span className="flex items-center gap-1">
@@ -393,5 +398,111 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         </footer>
       </main>
     </div>
+  );
+}
+
+/** Every recent project, filterable — opened from "All projects" / "Show N more". */
+function AllProjectsDialog({
+  open,
+  onOpenChange,
+  projects,
+  currentId,
+  onOpen,
+  onPin,
+  onForget,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projects: ProjectInfo[];
+  currentId: string | undefined;
+  onOpen: (p: ProjectInfo) => void;
+  onPin: (p: ProjectInfo) => void;
+  onForget: (p: ProjectInfo) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const pinned = projects.filter((p) => p.pinned);
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return projects.filter((p) => !q || p.name.toLowerCase().includes(q) || p.root.toLowerCase().includes(q));
+  }, [projects, query]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setActive(0);
+    }
+  }, [open]);
+  useEffect(() => {
+    setActive((a) => Math.min(a, Math.max(0, matches.length - 1)));
+  }, [matches.length]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[min(80vh,640px)] max-w-xl flex-col gap-0 p-0">
+        <div className="border-b border-hairline px-5 pt-4 pb-3">
+          <DialogTitle className="text-ui font-medium">All projects</DialogTitle>
+          <DialogDescription className="text-meta text-muted-foreground">
+            {projects.length} recent · pinned first
+          </DialogDescription>
+          <label className="mt-3 flex h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-2 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+            <Search className="size-3.5 text-muted-foreground" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActive((a) => Math.min(a + 1, matches.length - 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActive((a) => Math.max(a - 1, 0));
+                } else if (e.key === "Enter" && matches[active]) {
+                  e.preventDefault();
+                  onOpen(matches[active]!);
+                }
+              }}
+              placeholder="Filter by name or path…"
+              aria-label="Filter projects"
+              className="h-full min-w-0 flex-1 bg-transparent text-ui-sm outline-none placeholder:text-faint"
+            />
+          </label>
+        </div>
+        <div className="min-h-0 flex-1 p-2">
+          {matches.length === 0 ? (
+            <p className="px-3 py-3 text-ui-sm text-muted-foreground">No project matches.</p>
+          ) : (
+            <VirtualList
+              items={matches}
+              itemHeight={ROW_H}
+              getKey={(p) => p.id}
+              activeIndex={active}
+              role="listbox"
+              aria-label="All projects"
+              className="max-h-[min(60vh,480px)]"
+              renderItem={(p, i) => {
+                const pinIndex = pinned.findIndex((x) => x.id === p.id);
+                return (
+                  <RecentRow
+                    project={p}
+                    active={i === active}
+                    current={currentId === p.id}
+                    shortcut={pinIndex >= 0 ? pinnedShortcut(pinIndex) : null}
+                    onHover={() => setActive(i)}
+                    onOpen={() => onOpen(p)}
+                    onPin={() => onPin(p)}
+                    onForget={() => onForget(p)}
+                  />
+                );
+              }}
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
