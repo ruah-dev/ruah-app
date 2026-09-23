@@ -5,6 +5,32 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Type + rhythm scale. New UI uses these names instead of arbitrary sizes:
+ *   text-meta 11.5 · text-label 12 · text-ui-sm 12.5 · text-ui 13 · text-body 13.5 ·
+ *   text-title 15 · text-display 22;  h-row 28px (list rows) · h-row-lg 32px (nav, inputs) ·
+ *   h-bar 48px (page / pane headers).
+ */
+@theme {
+  --text-meta: 11.5px;
+  --text-meta--line-height: 1.35;
+  --text-label: 12px;
+  --text-label--line-height: 1.35;
+  --text-ui-sm: 12.5px;
+  --text-ui-sm--line-height: 1.4;
+  --text-ui: 13px;
+  --text-ui--line-height: 1.45;
+  --text-body: 13.5px;
+  --text-body--line-height: 1.6;
+  --text-title: 15px;
+  --text-title--line-height: 1.35;
+  --text-display: 22px;
+  --text-display--line-height: 1.2;
+  --spacing-row: 1.75rem;
+  --spacing-row-lg: 2rem;
+  --spacing-bar: 3rem;
+}
+
+/*
  * Ruah design tokens. Visual approach adapted from t3code apps/web/src/index.css (MIT):
  * neutral near-black surfaces, separation by tone rather than borders, one accent,
  * system UI font with mono reserved for paths and code. Never hardcode colors in components.
@@ -232,6 +258,52 @@ html.light {
   button, a, textarea {
     letter-spacing: 0;
   }
+}
+
+/* sidebar / list primitives shared by every section */
+@utility section-label {
+  font-size: var(--text-label);
+  font-weight: 500;
+  color: color-mix(in oklab, var(--color-muted-foreground) 80%, transparent);
+}
+
+@utility list-row {
+  display: flex;
+  height: var(--spacing-row);
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: calc(var(--radius) - 2px);
+  padding-inline: 0.5rem;
+  font-size: var(--text-ui);
+  text-align: start;
+  color: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+  transition: background-color 120ms, color 120ms;
+  &:hover {
+    background: color-mix(in oklab, var(--color-accent) 70%, transparent);
+    color: var(--color-foreground);
+  }
+  &[data-active="true"] {
+    background: var(--color-accent);
+    color: var(--color-foreground);
+  }
+}
+
+@utility kbd {
+  display: inline-flex;
+  height: 1.125rem;
+  min-width: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding-inline: 0.25rem;
+  font-family: var(--font-sans-stack);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--color-muted-foreground);
+  background: color-mix(in oklab, var(--color-foreground) 6%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
 }
 
 /* floating control clusters on the canvas (zoom, palette tray) */
