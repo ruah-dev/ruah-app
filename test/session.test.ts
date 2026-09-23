@@ -45,7 +45,10 @@ class FakeBridge implements AcpBridge {
     return this.state;
   }
 
-  prompt(turnId: string, _blocks: ContentBlock[]): TurnHandle {
+  lastBlocks: ContentBlock[] = [];
+
+  prompt(turnId: string, blocks: ContentBlock[]): TurnHandle {
+    this.lastBlocks = blocks;
     const done = new Promise<{ stopReason: StopReason }>((resolve) => {
       this.turn = { turnId, resolve };
     });
@@ -205,6 +208,24 @@ describe("SessionHub", () => {
     socket.receive({ type: "model.set", modelId: "gpt-9" });
     await until(() => socket.errors().length > 0);
     expect(socket.errors()[0]).toMatchObject({ code: "internal", message: "model change failed: unknown model: gpt-9" });
+  });
+
+  it("a prompt without nodeId is a plain chat: the question as typed, no context pack", async () => {
+    const { hub, bridge, socket } = await setup();
+    socket.receive({ type: "prompt", turnId: "t0", text: "how is this project built?" });
+    expect(hub.activeTurnId()).toBe("t0");
+    expect(socket.errors()).toEqual([]);
+    expect(bridge.lastBlocks).toEqual([{ type: "text", text: "how is this project built?" }]);
+    const started = socket.sent.find((m) => m.type === "turn.started");
+    expect(started).toEqual({ type: "turn.started", turnId: "t0", contextPack: "", text: "how is this project built?" });
+  });
+
+  it("a prompt about an element still carries its context pack", async () => {
+    const { bridge, socket } = await setup();
+    socket.receive({ type: "prompt", turnId: "t0", nodeId: "api", text: "what is this?" });
+    const text = bridge.lastBlocks.map((b) => (b.type === "text" ? b.text : "")).join("");
+    expect(text).toContain("[ruah context]");
+    expect(text.trimEnd().endsWith("what is this?")).toBe(true);
   });
 
   it("agent.set stops the current agent (finishing its turn) and starts the new one", async () => {

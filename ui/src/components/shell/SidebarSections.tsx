@@ -221,7 +221,7 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
     >
       {turns.length === 0 ? (
         <p className="px-2 text-label leading-relaxed text-faint">
-          No messages yet. Select an element and ask about it.
+          No messages yet. Ask anything, or about an element.
         </p>
       ) : (
         <div className="space-y-px">
@@ -245,7 +245,7 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
                   <span className="truncate text-[13px] text-foreground/85">{t.text}</span>
                 </span>
                 <span className="truncate ps-3.5 text-[11.5px] text-faint">
-                  {names.get(t.nodeId) ?? t.nodeId}
+                  {t.nodeId !== null ? (names.get(t.nodeId) ?? t.nodeId) : "No context"}
                 </span>
               </button>
             );

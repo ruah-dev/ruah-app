@@ -127,7 +127,7 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
           <div className="flex items-start gap-2 px-2 pt-0.5 pb-1">
             <Phantom expression="idle" size="xs" className="mt-px" />
             <p className="text-label leading-relaxed text-faint">
-              No chats yet. Select an element and ask about it — each conversation is kept here.
+              No chats yet. Ask anything, or about an element — each conversation is kept here.
             </p>
           </div>
         ) : (

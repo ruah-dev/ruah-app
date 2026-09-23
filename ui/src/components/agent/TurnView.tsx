@@ -182,7 +182,8 @@ export function TurnView({
   keyboard = true,
 }: {
   turn: Turn;
-  contextPath: string;
+  /** null = asked without an element as context. */
+  contextPath: string | null;
   running: boolean;
   onOpenPath?: ((path: string) => void) | undefined;
   /** Whether this instance owns the permission-card keyboard shortcuts. */
@@ -214,9 +215,11 @@ export function TurnView({
         <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
           {turn.text}
         </div>
-        <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-faint">
-          @{contextPath}
-        </span>
+        {contextPath !== null ? (
+          <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-faint">
+            @{contextPath}
+          </span>
+        ) : null}
       </div>
 
       {/* assistant */}

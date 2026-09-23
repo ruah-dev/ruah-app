@@ -80,7 +80,7 @@ function RecentChats() {
         <div className="flex items-center gap-4 py-2">
           <Phantom expression="agent" size={44} />
           <Quiet>
-            No chats in this project yet. Select an element on the map and ask the agent about it —
+            No chats in this project yet. Ask the agent anything, or about an element on the map —
             or{" "}
             <button type="button" onClick={actions.startChat} className="text-primary underline-offset-2 hover:underline">
               start a chat
@@ -380,8 +380,8 @@ export function DashboardPage() {
             >
               {recent.length === 0 ? (
                 <Quiet>
-                  Nothing asked yet this session. Select an element on the map and ask the agent
-                  about it.
+                  Nothing asked yet this session. Ask the agent anything, or about an element on
+                  the map.
                 </Quiet>
               ) : (
                 <ul className="-mx-2">
@@ -398,7 +398,7 @@ export function DashboardPage() {
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[13px] text-foreground">{t.text}</span>
                             <span className="block truncate text-[11.5px] text-muted-foreground">
-                              {names.get(t.nodeId) ?? t.nodeId} · {st.label}
+                              {t.nodeId !== null ? (names.get(t.nodeId) ?? t.nodeId) : "No context"} · {st.label}
                             </span>
                           </span>
                           <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">

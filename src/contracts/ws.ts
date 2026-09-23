@@ -160,7 +160,7 @@ export type ChatInfo = z.infer<typeof ChatInfoSchema>;
 
 export const TurnRecordSchema = z.object({
   turnId: z.string(),
-  nodeId: z.string(),
+  nodeId: z.string().optional(), // absent = asked without an element as context
   text: z.string(),
   contextPack: z.string(),
   attachments: z.array(AttachmentMetaSchema).optional(),
@@ -180,7 +180,8 @@ export const ClientMessageSchema = z.union([
   z.object({
     type: z.literal("prompt"),
     turnId: z.string(),
-    nodeId: z.string(),
+    /** Element the question is about; omitted = plain chat on the project, no context pack. */
+    nodeId: z.string().optional(),
     text: z.string(),
     attachments: z.array(AttachmentRefSchema).max(MAX_PROMPT_ATTACHMENTS, `at most ${MAX_PROMPT_ATTACHMENTS} images per prompt`).optional(),
   }),
@@ -241,7 +242,7 @@ export const ServerMessageSchema = z.union([
   z.object({
     type: z.literal("turn.started"),
     turnId: z.string(),
-    nodeId: z.string(),
+    nodeId: z.string().optional(),
     contextPack: z.string(),
     text: z.string(),
     attachments: z.array(AttachmentMetaSchema).optional(),

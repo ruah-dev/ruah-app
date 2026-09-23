@@ -69,7 +69,7 @@ export type ClientMessage =
   | {
       type: "prompt";
       turnId: string;
-      nodeId: string;
+      nodeId?: string; // omitted = plain chat on the project, no element context
       text: string;
       attachments?: AttachmentRef[]; // ≤ 8 images uploaded via POST /api/attachments (§5.6)
     } // turnId: viewer-generated UUID
@@ -123,7 +123,7 @@ export type ServerMessage =
   | {
       type: "turn.started";
       turnId: string;
-      nodeId: string;
+      nodeId?: string;
       contextPack: string;
       text: string;
       attachments?: AttachmentMeta[];
@@ -301,7 +301,7 @@ export interface ChatInfo {
 /** What the viewer needs to redraw a past turn. */
 export interface TurnRecord {
   turnId: string;
-  nodeId: string;
+  nodeId?: string; // absent = asked without an element as context
   text: string;
   contextPack: string;
   attachments?: AttachmentMeta[];

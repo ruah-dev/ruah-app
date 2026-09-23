@@ -294,8 +294,9 @@ export type ClientMessage =
   | { type: "hello"; protocol: 1; client: string }                        // first frame. client = "architects-canvas/<version>"
   | { type: "architecture.get" }                                          // re-request current file
   | { type: "focus.set"; nodeId: string | null }                          // selection changed (daemon logs it; MCP exposes it)
-  | { type: "prompt"; turnId: string; nodeId: string; text: string;
+  | { type: "prompt"; turnId: string; nodeId?: string; text: string;
       attachments?: { id: string; name: string }[] }                      // turnId: viewer-generated UUID; attachments: ≤ 8 uploaded images (§5.6)
+                                                                           // nodeId omitted = plain chat on the project: the text goes to the agent as typed, contextPack ""
   | { type: "permission.response"; requestId: string; optionId: string }  // optionId must be one of the offered options
   | { type: "permission.response"; requestId: string; cancelled: true }   // user dismissed
   | { type: "cancel"; turnId: string }
@@ -316,7 +317,7 @@ export type ServerMessage =
   | { type: "agent.status"; state: AgentState; agent?: { name: string; version: string };
       sessionId?: string; modes?: ModeState; models?: ModelState; agents?: AgentChoiceState; error?: string;
       defaults?: { agentId: string; models: Record<string, string>; modes: Record<string, string> } } // §5.7
-  | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string;
+  | { type: "turn.started"; turnId: string; nodeId?: string; contextPack: string; text: string;
       attachments?: { id: string; name: string; mimeType: string }[]    // the prompt's images (§5.6), absent when none
       queued?: true }                                                    // the agent is still starting; a second turn.started (without it) follows when the prompt is sent
   | { type: "stream"; turnId: string; event: StreamEvent }
@@ -606,7 +607,7 @@ export interface ChatInfo {
   lastNodeId?: string;
 }
 export interface TurnRecord {    // what the viewer needs to redraw a past turn
-  turnId: string; nodeId: string; text: string; contextPack: string;
+  turnId: string; nodeId?: string; text: string; contextPack: string;   // nodeId absent = asked without context
   attachments?: { id: string; name: string; mimeType: string }[];   // the prompt's images (§5.6)
   events: StreamEvent[]; stopReason?: StopReason; startedAt: string; finishedAt?: string;
 }

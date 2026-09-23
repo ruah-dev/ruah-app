@@ -18,6 +18,12 @@ const suggestions = [
   "Where are the API requests handled?",
   "What breaks if this fails?",
 ];
+/** Starters for a chat without an element as context. */
+const projectSuggestions = [
+  "Give me a tour of this codebase",
+  "Where should I start to add a new feature?",
+  "What are the riskiest parts of this project?",
+];
 
 export function agentDotClass(daemon: Pick<DaemonState, "connection" | "agent" | "source">) {
   if (daemon.source === "sample") return "bg-muted-foreground/50";
@@ -101,7 +107,8 @@ export function AgentPanel({
 
   const pathFor = useMemo(() => {
     const byId = new Map(architecture.nodes.map((n) => [n.id, n]));
-    return (nodeId: string) => {
+    return (nodeId: string | null) => {
+      if (nodeId === null) return null;
       const n = byId.get(nodeId);
       return n ? contextPathOf(n) : nodeId;
     };
@@ -126,9 +133,9 @@ export function AgentPanel({
   }, [focusTurnId]);
 
   const send = (text: string, attachments: AttachmentMeta[] = []) => {
-    if (!node || running) return;
+    if (running) return;
     stickRef.current = true;
-    sendPrompt(node.id, text, attachments);
+    sendPrompt(node?.id ?? null, text, attachments);
   };
 
   // Drag & drop images anywhere on the chat (thread or composer). dragenter/leave fire for every
@@ -238,14 +245,12 @@ export function AgentPanel({
                   ? "The agent runs inside the Ruah daemon. Start `ruah app serve <repo>` and open the page it serves."
                   : node
                     ? "Its path, files, links and workflows are attached to your message."
-                    : onPickContext
-                      ? "Add an element as context, or select one on the map. Its path, files and links travel with your message."
-                      : "Select an element on the diagram. Its context is attached to what you ask."}
+                    : "Ask anything — the agent works in the project folder. Add an element as context to focus it on one part."}
               </p>
             </div>
-            {connected && node ? (
+            {connected ? (
               <div className="mt-1 flex w-full flex-col gap-1">
-                {suggestions.map((s) => (
+                {(node ? suggestions : projectSuggestions).map((s) => (
                   <button
                     key={s}
                     type="button"

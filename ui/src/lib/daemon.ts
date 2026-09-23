@@ -80,7 +80,8 @@ export interface PermissionRecord {
 
 export interface Turn {
   id: string;
-  nodeId: string;
+  /** Element the question was about; null = asked without context. */
+  nodeId: string | null;
   text: string;
   contextPack: string;
   /** Images sent with the prompt (§5.6). */
@@ -490,7 +491,7 @@ function recordToTurn(r: TurnRecord, idle: boolean): Turn {
   const stopReason: StopReason | undefined = r.stopReason ?? (idle ? "cancelled" : undefined);
   return {
     id: r.turnId,
-    nodeId: r.nodeId,
+    nodeId: r.nodeId ?? null,
     text: r.text,
     contextPack: r.contextPack,
     ...(r.attachments?.length ? { attachments: r.attachments } : {}),
@@ -733,7 +734,7 @@ function handle(msg: ServerMessage) {
           return {
             ...rest,
             contextPack: msg.contextPack,
-            nodeId: msg.nodeId,
+            nodeId: msg.nodeId ?? null,
             ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
             ...(waitingFor ? { waitingFor } : {}),
           };
@@ -745,7 +746,7 @@ function handle(msg: ServerMessage) {
             ...state.turns,
             {
               id: msg.turnId,
-              nodeId: msg.nodeId,
+              nodeId: msg.nodeId ?? null,
               text: msg.text,
               contextPack: msg.contextPack,
               ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
@@ -863,7 +864,8 @@ function currentAgentName(): string {
   );
 }
 
-export function sendPrompt(nodeId: string, text: string, attachments: AttachmentMeta[] = []): string {
+/** nodeId null = a plain question on the project, sent without an element's context. */
+export function sendPrompt(nodeId: string | null, text: string, attachments: AttachmentMeta[] = []): string {
   // Sent while the agent starts: the daemon queues it (§2.2 rule 3); say so right away.
   const starting = !!state.agentSwitch || state.agent?.state === "starting";
   const turn: Turn = {
@@ -884,7 +886,7 @@ export function sendPrompt(nodeId: string, text: string, attachments: Attachment
     send({
       type: "prompt",
       turnId: turn.id,
-      nodeId,
+      ...(nodeId !== null ? { nodeId } : {}),
       text,
       ...(attachments.length
         ? { attachments: attachments.map(({ id, name }) => ({ id, name })) }
@@ -1510,7 +1512,7 @@ export function useDaemonSelector<T>(select: (s: DaemonState) => T): T {
 /** The element the running turn works on, and whether it waits on a permission ("nodeId|state"). */
 export function workingNodeOf(s: DaemonState): { nodeId: string; waiting: boolean } | null {
   const t = s.turns[s.turns.length - 1];
-  if (!t || t.stopReason) return null;
+  if (!t || t.stopReason || t.nodeId === null) return null;
   return { nodeId: t.nodeId, waiting: !!t.permission };
 }
 

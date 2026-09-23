@@ -77,7 +77,7 @@ const steps: { title: string; body: ReactNode; art: ReactNode; ghost: PhantomExp
   },
   {
     title: "Ask the agent about an element",
-    body: "Select an element and ask. Its path, files and links travel with your message, and each conversation is kept as a chat of the project. ⌘K jumps between projects and chats; ⌘. switches agent or model.",
+    body: "Ask anything about the project, or select an element first — its path, files and links then travel with your message, and each conversation is kept as a chat of the project. ⌘K jumps between projects and chats; ⌘. switches agent or model.",
     art: <MiniAsk />,
     ghost: "agent",
   },

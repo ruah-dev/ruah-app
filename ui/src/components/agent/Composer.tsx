@@ -127,7 +127,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // Images attached before switching to an agent that cannot read them block sending.
   const imagesBlocked = items.length > 0 && !!imageReason;
   const canSend =
-    !inputDisabled && !!node && draft.trim().length > 0 && !failed && !imagesBlocked;
+    !inputDisabled && draft.trim().length > 0 && !failed && !imagesBlocked;
 
   const flash = (text: string | null) => {
     if (text) setNotice(text);
@@ -223,9 +223,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           : "Chat needs a connected daemon"
         : node
           ? `Ask about ${node.label}…`
-          : onPickContext
-            ? "Add an element as context to ask about it"
-            : "Select an element on the diagram to ask about it";
+          : "Ask anything about this project…";
 
   const kind = node ? kindStyles[node.kind] : null;
   const KindIcon = kind?.icon;
@@ -376,9 +374,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               title={
                 queued
                   ? "Sends when the images are uploaded"
-                  : node
-                    ? "Send (Enter)"
-                    : "Select an element first"
+                  : "Send (Enter)"
               }
               disabled={!canSend || queued}
               onClick={submit}

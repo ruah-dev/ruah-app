@@ -185,7 +185,7 @@ export class ChatStore {
       ...rest,
       turnCount: turns.length,
       updatedAt: this.now(),
-      lastNodeId: turn.nodeId,
+      ...(turn.nodeId !== undefined ? { lastNodeId: turn.nodeId } : {}),
       ...(meta.model !== undefined ? { model: meta.model } : {}),
       ...(autoTitle === true ? { title: chatTitleFrom(turn.text) } : {}),
       ...(meta.sessionId !== undefined ? { sessions: { ...chat.header.sessions, [meta.agentId]: meta.sessionId } } : {}),

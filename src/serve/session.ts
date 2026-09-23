@@ -898,21 +898,27 @@ export class SessionHub {
     }
     const arch = open.store.current();
     if (arch === null) return;
-    // Stored nodes, and expanded folders / files / symbols (CONTRACTS §1.6).
-    const scope = resolveNodeScope(open.store, arch, message.nodeId);
+    const nodeId = message.nodeId;
+    // Stored nodes, and expanded folders / files / symbols (CONTRACTS §1.6). No nodeId = a plain
+    // chat on the project: the agent gets the question as typed, no context pack.
+    const scope = nodeId === undefined ? undefined : resolveNodeScope(open.store, arch, nodeId);
     if (scope === null) {
-      this.error(socket, "unknown_node", `unknown node: ${message.nodeId}`, { turnId: message.turnId });
+      this.error(socket, "unknown_node", `unknown node: ${nodeId}`, { turnId: message.turnId });
       return;
     }
-    const { index, node } = scope;
     const images = this.loadAttachments(socket, message, open.info.id);
     if (images === undefined) return;
-    const pack = buildContextPack(index, message.nodeId, open.store.root, message.text, {
-      mapTools: this.options.mapOps !== undefined && this.currentAgentId !== MOCK_AGENT_ID,
-    });
-    const resolvePath = open.store.resolvePath?.bind(open.store);
+    let pack = "";
+    let textBlocks: ContentBlock[] = [{ type: "text", text: message.text }];
+    if (scope !== undefined && nodeId !== undefined) {
+      pack = buildContextPack(scope.index, nodeId, open.store.root, message.text, {
+        mapTools: this.options.mapOps !== undefined && this.currentAgentId !== MOCK_AGENT_ID,
+      });
+      const resolvePath = open.store.resolvePath?.bind(open.store);
+      textBlocks = buildPromptBlocks(pack, scope.node.files ?? [], open.store.root, this.options.links, resolvePath) as ContentBlock[];
+    }
     // Images first: the text block (ending with the user's question) stays last (CONTRACTS §3.3).
-    const blocks = [...images.blocks, ...buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath)] as ContentBlock[];
+    const blocks = [...images.blocks, ...textBlocks] as ContentBlock[];
     if (!waiting) {
       let handle;
       try {
@@ -936,7 +942,7 @@ export class SessionHub {
       chatId,
       record: {
         turnId: message.turnId,
-        nodeId: message.nodeId,
+        ...(nodeId !== undefined ? { nodeId } : {}),
         text: message.text,
         contextPack: pack,
         ...(images.meta.length > 0 ? { attachments: images.meta } : {}),
@@ -949,7 +955,7 @@ export class SessionHub {
     const started: Extract<ServerMessage, { type: "turn.started" }> = {
       type: "turn.started",
       turnId: message.turnId,
-      nodeId: message.nodeId,
+      ...(nodeId !== undefined ? { nodeId } : {}),
       contextPack: pack,
       text: message.text,
       ...(images.meta.length > 0 ? { attachments: images.meta } : {}),

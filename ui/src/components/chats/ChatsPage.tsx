@@ -163,7 +163,7 @@ export function ChatsPage() {
             body={
               query
                 ? "Try another word from the title or the project name."
-                : "Select an element on the map and ask the agent about it — every conversation is kept here, per project."
+                : "Ask the agent anything, or about an element on the map — every conversation is kept here, per project."
             }
           />
         ) : (
