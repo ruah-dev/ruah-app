@@ -7,6 +7,7 @@ import type { ArchitectureStore } from "./architecture-store.js";
 import { serveStatic } from "./static.js";
 import { serveFile } from "./files.js";
 import { serveContext } from "./context-endpoint.js";
+import { handleExpandRequest, isExpandPath } from "../expand/http.js";
 import { attachSession, NO_PROJECT_MESSAGE, type SessionHub } from "./session.js";
 import { handleUsageRequest } from "../usage/http.js";
 import type { UsageApi } from "../usage/index.js";
@@ -80,7 +81,8 @@ export function startServer(
 
     // Everything below needs an open project.
     const needsProject =
-      pathname === "/api/architecture" || pathname === "/api/rescan" || pathname === "/api/file" || pathname.startsWith("/api/context/");
+      pathname === "/api/architecture" || pathname === "/api/rescan" || pathname === "/api/file" || pathname.startsWith("/api/context/") ||
+      isExpandPath(pathname);
     const store = hub.store;
     if (needsProject && store === null) {
       if (req.method === "POST" && !originAllowed(req.headers.origin, options.allowOrigins)) {
@@ -133,6 +135,8 @@ export function startServer(
       );
       return;
     }
+    // On-demand drill-in below the stored architecture (CONTRACTS §1.6).
+    if (store !== null && handleExpandRequest(req, res, url, store, (origin) => originAllowed(origin, options.allowOrigins))) return;
     if (pathname === "/api/file" && req.method === "GET" && store !== null) {
       serveFile(store, url.searchParams.get("path") ?? "", res);
       return;
