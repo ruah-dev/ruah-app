@@ -7,7 +7,7 @@ Written 2026-09-16 against ACP `protocolVersion: 1`, `@agentclientprotocol/sdk` 
 Conventions that apply to all three contracts:
 
 - Paths are repo-relative, POSIX separators, no leading `./`, no trailing `/`. The only absolute path on the wire is `root` in the `architecture` message. ACP itself requires absolute paths; the daemon converts in both directions.
-- IDs match `^[a-z0-9][a-z0-9._-]{0,63}$`.
+- IDs match `^[a-z0-9][a-z0-9._-]{0,63}$`. Node ids in a system architecture (§1.5) may carry one repo namespace: `^([a-z0-9][a-z0-9-]{0,62}:)?[a-z0-9][a-z0-9._-]{0,63}$` (e.g. `invoices-api:routes`).
 - Timestamps are ISO 8601 UTC.
 - Receivers ignore unknown fields and unknown `type`/`kind` values instead of rejecting the message.
 - Strings are UTF-8, newlines are `\n`.
@@ -37,6 +37,7 @@ export interface ArchNode {
   files?: string[];     // <= 20 entries, most relevant first. Context pack lists the first 12.
   layer?: string;       // must appear in Architecture.layers
   parent?: string;      // id of the containing node. Absent = top level. Enables drill-down.
+  repo?: string;        // system architectures only (§1.5): id of the owning repo in ruah.system.json
   x?: number;           // canvas units (px at zoom 1). Daemon fills both when missing; viewer never lays out.
   y?: number;
 }
@@ -45,7 +46,9 @@ export interface ArchEdge {
   from: string;         // node id
   to: string;           // node id
   label?: string;       // <= 40 chars, rendered on the edge
-  kind?: "sync" | "async" | "event" | "data" | (string & {});
+  kind?: "sync" | "async" | "event" | "data" | (string & {}); // system scans also emit "deploy"
+  source?: "scan" | "suggested" | "manual" | (string & {}); // provenance; absent = manual (§1.5)
+  evidence?: string[];  // "path:line" locations backing the edge, e.g. "web/src/api.ts:12"
 }
 
 export interface Workflow {
@@ -67,7 +70,7 @@ export interface Architecture {
 }
 ```
 
-Extensions over the brief, each needed by the existing viewer or the scanner: `version`, `name`, `generatedBy`, `generatedAt`, the four extra `NodeType` values, `parent`, `x`, `y`, `Workflow.description`.
+Extensions over the brief, each needed by the existing viewer or the scanner: `version`, `name`, `generatedBy`, `generatedAt`, the four extra `NodeType` values, `parent`, `x`, `y`, `Workflow.description`. Added 2026-09-23 for multi-repo systems (§1.5), all optional so existing files stay valid: `ArchNode.repo`, `ArchEdge.source`, `ArchEdge.evidence`.
 
 ### 1.2 Validation rules (daemon rejects the file, keeps the last good version, and sends `architecture.error`)
 
@@ -155,6 +158,17 @@ The viewer keeps its internal `DiagramNode`/`Graph` types in `src/data/graphs.ts
   ]
 }
 ```
+
+### 1.5 System architectures (multi-repo, 2026-09-23)
+
+A system is defined by `ruah.system.json` (docs/MULTI-REPO.md): `{ "version": 1, "name": string, "repos": [{ "id": string, "path": string }] }`; repo ids match `^[a-z0-9][a-z0-9-]*$` (<= 63 chars) and are unique; paths are relative to the file. `archmap system scan <dir>` writes the system's `architecture.json` next to it, in the same format as §1.1 with these conventions:
+
+- **Top level**: one node per repo (`id` = repo id, `repo` = repo id, `path` = repo id, `type` inferred: `frontend | service | worker | library | infra | gateway`), plus shared infrastructure (`datastore | queue | gateway | external`, no `repo`), deduplicated across repos by kind (`postgres`, `kafka`, `stripe`, …).
+- **Below a repo node**: that repo's own architecture, namespaced. Node ids `<repoId>:<nodeId>`, the repo's top-level nodes get `parent: <repoId>`, every node has `repo`. Workflow ids and steps are namespaced the same way.
+- **Paths** (`path`, `files[]`, `evidence`) are system paths `<repoId>/<repo-relative path>`; the daemon resolves them through `ruah.system.json` (`resolveSystemPath` in `src/system/config.ts`), not against the system folder.
+- **Edge provenance** (`source`): `scan` = produced by the system scanner (regenerated on every scan, replaced wholesale); `suggested` = an agent suggestion the user accepted; `manual` = drawn or written by a human. A missing `source` is treated as `manual` and written back as `manual`. Re-scans keep every non-`scan` edge whose ends still exist.
+- **Evidence**: top-level `scan` edges carry `evidence` (<= 10 entries, sorted) naming the file:line that produced them (compose/k8s/terraform lines, env/config/source URLs, topic publish/consume calls, manifest dependency lines). `suggested` edges keep the evidence the agent gave.
+- Receivers that edit and save an architecture MUST round-trip `repo`, `source` and `evidence` (unknown-field stripping turns scan edges into `manual` ones that re-scans can no longer replace).
 
 ---
 

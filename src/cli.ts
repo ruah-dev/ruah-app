@@ -12,6 +12,10 @@ Usage:
   archmap serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   archmap scan <repo> [options]    scan a repo into architecture.json
+  archmap system <cmd> <dir> ...   multi-repo system (ruah.system.json in <dir>):
+    init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
+    add <dir> <id>=<path>                                      add a repo
+    scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
   archmap mcp <repo>               stdio MCP server
   archmap --version                print version
   archmap help                     this text
@@ -146,6 +150,10 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "scan": {
       return await scan(rest);
+    }
+    case "system": {
+      const { runSystem } = await import("./system/run-system.js");
+      return await runSystem(rest, pkg.version);
     }
     case "mcp": {
       parseArgs({ args: rest, strict: false });

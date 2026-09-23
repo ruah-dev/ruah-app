@@ -15,6 +15,7 @@ export const ArchNodeSchema = z.object({
   files: z.array(z.string()).optional(), // <= 20 entries, most relevant first
   layer: z.string().optional(),
   parent: z.string().optional(),
+  repo: z.string().optional(), // system architectures only: id of the owning repo in ruah.system.json
   x: z.number().optional(),
   y: z.number().optional(),
 });
@@ -23,6 +24,8 @@ export const ArchEdgeSchema = z.object({
   to: z.string(),
   label: z.string().optional(), // <= 40 chars
   kind: z.string().optional(), // known: sync | async | event | data
+  source: z.string().optional(), // provenance, known: scan | suggested | manual; absent = manual
+  evidence: z.array(z.string()).optional(), // "path:line" strings backing the edge
 });
 export const WorkflowSchema = z.object({
   id: z.string(),
@@ -43,5 +46,6 @@ export const ArchitectureSchema = z.object({
 export type NodeType = string;
 export type ArchNode = z.infer<typeof ArchNodeSchema>;
 export type ArchEdge = z.infer<typeof ArchEdgeSchema>;
+export type EdgeSource = "scan" | "suggested" | "manual";
 export type Workflow = z.infer<typeof WorkflowSchema>;
 export type Architecture = z.infer<typeof ArchitectureSchema>;

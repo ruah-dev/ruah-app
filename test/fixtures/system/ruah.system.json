@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "acme-platform",
+  "repos": [
+    { "id": "web", "path": "web" },
+    { "id": "invoices-api", "path": "invoices-api" },
+    { "id": "notify-worker", "path": "notify-worker" },
+    { "id": "infra", "path": "infra" }
+  ]
+}
