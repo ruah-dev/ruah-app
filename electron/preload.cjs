@@ -13,4 +13,8 @@ contextBridge.exposeInMainWorld("ruah", {
   revealInFinder: (target) => {
     if (typeof target === "string") void ipcRenderer.invoke("ruah:reveal", target);
   },
+  /** Opens an http(s) URL in the default browser (terminal links; CONTRACTS §7.5). */
+  openExternal: (url) => {
+    if (typeof url === "string") void ipcRenderer.invoke("ruah:open-external", url);
+  },
 });

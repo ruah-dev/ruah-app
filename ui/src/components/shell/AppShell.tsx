@@ -58,6 +58,8 @@ import { useRecordChatVisits } from "@/lib/mru";
 import { neighborChat } from "@/lib/switching";
 import { reportSwitchPainted, switchPending } from "@/lib/switch-timing";
 import { sameRoot, type DaemonState } from "@/lib/daemon";
+import { TerminalPanel, TerminalToggleButton } from "@/components/terminal/TerminalPanel";
+import { useTerminal } from "@/lib/terminal";
 
 /** Reports when a pending project / chat switch shows on screen (see lib/switch-timing.ts). */
 function useSwitchPaintProbe(daemon: DaemonState) {
@@ -509,6 +511,7 @@ export function AppSidebar({
       >
         <StatusLine collapsed={collapsed} />
         {collapsed ? null : <span className="flex-1" />}
+        {mobile ? null : <TerminalToggleButton side={collapsed ? "right" : "top"} />}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -640,6 +643,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const pathname = usePathname();
   const nav = useNavItems();
+  const terminal = useTerminal();
   // The SPA ships one prerendered index.html for every path (the daemon's fallback), so the
   // prerender must not contain page content: render the shell only after mount.
   const [mounted, setMounted] = useState(false);
@@ -731,7 +735,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="grain flex h-dvh overflow-hidden bg-background text-foreground">
       {dialogs}
       <AppSidebar collapsed={wb.sidebarCollapsed} />
-      <main className="flex min-w-0 flex-1 flex-col">{content}</main>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className={cn("flex min-h-0 flex-1 flex-col", terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon" && "hidden")}>{content}</div>
+        <TerminalPanel />
+      </main>
     </div>
   );
 }

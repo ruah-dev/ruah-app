@@ -20,6 +20,11 @@ comment naming its source:
 | `src/acp/presets.ts` | `apps/server/src/provider/acp/CursorAcpSupport.ts`, `apps/server/src/provider/acp/GrokAcpSupport.ts` |
 | `src/usage/claude-limits.ts` | `apps/server/src/provider/Layers/claudeUsageLimits.ts`, `apps/server/src/provider/providerUsageLimits.ts` |
 | `src/usage/claude-probe.ts` | `apps/server/src/provider/Layers/ClaudeProvider.ts` (capabilities probe) |
+| `src/terminal/pty.ts` | `apps/server/src/terminal/NodePtyAdapter.ts`, `apps/server/src/terminal/PtyAdapter.ts` |
+| `src/terminal/manager.ts` | `apps/server/src/terminal/Manager.ts` |
+| `src/terminal/history.ts` | `apps/server/src/terminal/Manager.ts` (`BoundedTerminalHistory`, `sanitizeTerminalHistoryChunk`) |
+| `src/terminal/env.ts` | `apps/server/src/terminal/Manager.ts` (`createTerminalSpawnEnv`, shell candidates) |
+| `src/terminal/gateway.ts` | `apps/server/src/terminal/OutputProtocol.ts` (acknowledged output window) |
 
 ## MIT License (T3 Code)
 

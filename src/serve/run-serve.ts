@@ -21,6 +21,9 @@ import { ProjectError, ProjectService, type OpenSystemProject } from "../project
 import { IntegrationsService } from "../integrations/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
 import { MapOpsService } from "./map-ops.js";
+import { DEFAULT_IDLE_MS, DEFAULT_SCROLLBACK_BYTES, TerminalManager } from "../terminal/manager.js";
+import { TerminalGateway } from "../terminal/gateway.js";
+import { originAllowed } from "./server.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -35,6 +38,8 @@ export interface ServeFlags {
   allowOrigins: string[];
   links: boolean;
   open: boolean;
+  /** Terminals on a non-loopback --host (off by default: a terminal is a shell for whoever reaches the port). */
+  allowRemoteTerminal?: boolean;
 }
 
 export interface ServeHooks {
@@ -153,6 +158,24 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
       return 2;
     }
   }
+  // Integrated terminal (CONTRACTS §7): PTYs per project, killed with the daemon.
+  const terminals = new TerminalManager({
+    version,
+    project: () => {
+      const info = hub.project();
+      return info === null ? null : { id: info.id, name: info.name, root: info.root, store: hub.store };
+    },
+    idleMs: envInt("RUAH_TERMINAL_IDLE_MS", DEFAULT_IDLE_MS, 0),
+    scrollbackBytes: envInt("RUAH_TERMINAL_SCROLLBACK_BYTES", DEFAULT_SCROLLBACK_BYTES, 4096),
+  });
+  process.once("exit", () => terminals.hangUpAll());
+  const terminal = new TerminalGateway({
+    manager: terminals,
+    host: flags.host,
+    allowRemote: flags.allowRemoteTerminal === true,
+    originAllowed: (origin) => originAllowed(origin, flags.allowOrigins),
+    logger: debug,
+  });
   const running = await startServer(null, hub, {
     host: flags.host,
     port: flags.port,
@@ -161,6 +184,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     logger: (line: string) => debug(line),
     usage,
     projects,
+    terminal,
     ...(mapOps !== undefined ? { mapOps } : {}),
     // Follows the hub's current project; null in the launcher state (endpoints answer 409).
     integrations: new IntegrationsService({
@@ -183,7 +207,9 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   }
 
   const shutdown = (): void => {
-    void hub.shutdown().then(() => running.close()).then(() => resolveServe(0));
+    void Promise.all([hub.shutdown(), terminals.shutdown()])
+      .then(() => running.close())
+      .then(() => resolveServe(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

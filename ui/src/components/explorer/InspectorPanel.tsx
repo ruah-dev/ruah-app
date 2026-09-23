@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, CornerDownRight, MousePointerClick, Workflow } from "lucide-react";
+import { ArrowLeft, ArrowRight, CornerDownRight, MousePointerClick, Workflow, SquareTerminal } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import { codeFilesOf, linksFor, workflowsFor, type NodeLink } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
@@ -9,6 +9,7 @@ import { AgentPanel } from "@/components/agent/AgentPanel";
 import { CloudResourceDetails, ElementIntegrations } from "@/components/integrations/ElementIntegrations";
 import { isCloudNodeId } from "@/lib/integrations";
 import { cn } from "@/lib/utils";
+import { openElementInTerminal } from "@/components/terminal/actions";
 
 export type InspectorView = "agent" | "details" | "code";
 
@@ -147,6 +148,17 @@ function Details({
               <p className="truncate text-[12.5px] text-muted-foreground">{node.subtitle}</p>
             ) : null}
           </div>
+          {node.path || node.filePaths?.length ? (
+            <button
+              type="button"
+              onClick={() => openElementInTerminal(node)}
+              title="Open a terminal in this element's folder"
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <SquareTerminal className="size-3.5" />
+              Terminal
+            </button>
+          ) : null}
           {node.drill ? (
             <button
               type="button"

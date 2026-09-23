@@ -359,6 +359,8 @@ export interface RuahDesktopBridge {
   version: string;
   pickFolder(opts?: { title?: string }): Promise<string | null>;
   revealInFinder(path: string): void;
+  /** §7.5: opens an http(s) URL in the default browser (older desktop builds lack it). */
+  openExternal?(url: string): void;
 }
 
 declare global {

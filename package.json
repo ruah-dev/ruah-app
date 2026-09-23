@@ -22,6 +22,7 @@
     "@agentclientprotocol/claude-agent-acp": "0.81.0",
     "@agentclientprotocol/sdk": "1.4.0",
     "@anthropic-ai/claude-agent-sdk": "0.3.280",
+    "node-pty": "1.1.0",
     "ws": "^8.21.3",
     "zod": "^3.25.76"
   },
@@ -39,5 +40,12 @@
     "namespace": "app",
     "description": "Ruah desktop app: architecture map + coding agents (`ruah app` opens it)"
   },
-  "private": true
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "node-pty"
+    ]
+  }
 }

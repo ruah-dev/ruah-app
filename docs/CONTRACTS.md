@@ -776,3 +776,81 @@ export interface WorkItem {
 
 Links between work items and elements are stored in the project
 (`.ruah/links.json` inside the repo, committable) so a team shares them.
+
+---
+
+## 7. Integrated terminal (2026-09-23)
+
+A bottom panel in the viewer runs the user's login shell in PTYs owned by the
+daemon (`src/terminal/*`, types in `src/contracts/terminal.ts`, viewer
+`ui/src/lib/terminal.ts`). A terminal is arbitrary code execution as the user,
+so its transport is separate from `/ws` and needs a capability token.
+
+### 7.1 Access
+| Step | Rule |
+| --- | --- |
+| `GET /api/terminal/token` → `{ token }` | Loopback peer; `Host` is `localhost` / `127.0.0.1` / `[::1]` (DNS-rebinding defence); `Sec-Fetch-Site`, when sent, is `same-origin` or `none`; `Origin`, when sent, equals the `Host`'s origin and passes the `/ws` rule (§2.2 rule 10). No CORS headers, `cache-control: no-store`. 403 otherwise. The token is 32 random bytes per daemon run. |
+| `GET /ws/terminal?token=…` (upgrade) | Same peer + `Host` rules, the `/ws` Origin rule, and the token (constant-time compare): 401 without / with a wrong token, 403 for a refused peer, host or origin. |
+| `--host <non-loopback>` | Terminals are off (token 403, socket 403) unless `--allow-remote-terminal`; then remote peers are allowed but `Host` must still be an IP literal, `localhost` or the `--host` value. |
+| node-pty cannot load | The daemon keeps running; `ready.available = false` with the fix in `reason` ("Terminal unavailable: … run `pnpm rebuild node-pty` …"), `create` answers `error`. |
+
+A viewer served from another origin (`?daemon=`, the Lovable preview) cannot read the
+token, so it has no terminal — by design.
+
+### 7.2 Types
+```ts
+interface TerminalInfo {
+  id: string;             // "t_" + 12 hex
+  projectId: string;      // the project open when it was created
+  title: string;          // shell name, the folder's name, or the user's rename
+  cwd: string;            // absolute, where the shell started
+  shell: string;          // absolute path ($SHELL -l, fallback /bin/zsh)
+  pid: number | null;
+  cols: number; rows: number;
+  createdAt: string;      // ISO
+  status: "running" | "exited";
+  exitCode: number | null; signal: number | null;
+}
+```
+
+### 7.3 Messages (JSON text frames; one socket multiplexes every terminal)
+Viewer → daemon:
+
+| `type` | Fields | Effect |
+| --- | --- | --- |
+| `create` | `requestId, cols, rows, cwd?, nodeId?, title?, input?` | New shell in the open project (`error` without one). `cwd`: repo-relative (system: `<repoId>/<rel>`) or absolute; `nodeId`: the element's `path`, else its first file's folder (an element the stored map does not know falls back to `cwd`). A file → its folder, a missing path → its nearest existing parent; the result must stay inside the project root or a system repo root (symlinks resolved). `input` is typed at the first prompt **without Enter** (bracketed paste when the shell enabled it, else newlines → spaces). Answer: `created`. |
+| `list` | `requestId?, projectId?` | Answer: `terminals` (default: the open project). |
+| `attach` | `id` | Subscribe to output and exit. Answer: `attached` with `replay` (the scrollback), then `exit` if it already exited. A full-screen app gets a SIGWINCH nudge so it redraws. |
+| `detach` | `id` | Unsubscribe. |
+| `input` | `id, data` (≤ 64 KiB) | Written to the PTY as is (keys, pastes, terminal replies). |
+| `resize` | `id, cols, rows` (2…1000) | Last writer wins when several viewers are attached. |
+| `rename` | `id, title` (≤ 80) | Broadcasts `terminals`. |
+| `clear` | `id` | Empties the replay buffer (⌘K clears the screen in the viewer). |
+| `kill` | `id` | SIGHUP (SIGKILL after 2 s); the terminal leaves the list. |
+| `ack` | `id, chars` | Flow control: characters of `output` rendered. The daemon pauses the PTY while any attached viewer is > 100 000 characters behind and resumes when all are < 5 000. Viewers must ack. |
+
+Daemon → viewer: `ready { available, shell | reason, projectId }` (first
+message), `terminals { projectId, terminals, requestId? }` (also broadcast to
+every socket whenever a project's list changes: create, rename, exit, kill),
+`created { requestId, terminal }`, `attached { id, terminal, replay }`,
+`output { id, data }`, `exit { id, exitCode, signal }`, `error { requestId?, id?, message }`.
+
+Output is UTF-8 text decoded by node-pty (multi-byte sequences split across
+reads are held back until complete), so JSON strings carry it losslessly.
+
+### 7.4 Lifecycle
+- Environment: the daemon's environment minus its plumbing (`ELECTRON_RUN_AS_NODE`,
+  `RUAH_PARENT_PID`, `RUAH_MCP_TOKEN`, lower-case `npm_*` script variables, …) plus
+  `TERM=xterm-256color`, `COLORTERM=truecolor`, `TERM_PROGRAM=Ruah`,
+  `RUAH_PROJECT_ROOT=<project root>`, and `LANG=en_US.UTF-8` when no locale is set.
+- Scrollback: a 1 MiB ring per terminal (`RUAH_TERMINAL_SCROLLBACK_BYTES`), trimmed at
+  line breaks; terminal queries (cursor position, device attributes, colour queries …)
+  are dropped from it so a replay does not make the new viewer answer them again.
+- Terminals survive viewer reloads and project switches. A project's terminals are
+  killed once it has not been the open project for 1 h (`RUAH_TERMINAL_IDLE_MS`), and
+  every terminal is hung up when the daemon exits. At most 32 terminals per daemon.
+
+### 7.5 Desktop bridge addition (§5.4)
+`window.ruah.openExternal(url)` opens an `http:`/`https:` URL in the default browser
+(`shell.openExternal`; anything else is refused in the main process). Terminal links use
+it; a plain browser uses `window.open(url, "_blank", "noopener")`.
