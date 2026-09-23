@@ -1,0 +1,14 @@
+{
+  "name": "@acme/web",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@acme/ui": "workspace:*",
+    "@acme/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@acme/ui",
+  "type": "module",
+  "description": "Shared React components.",
+  "main": "dist/index.js",
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

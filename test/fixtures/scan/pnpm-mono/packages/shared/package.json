@@ -1,0 +1,7 @@
+{
+  "name": "@acme/shared",
+  "type": "module",
+  "dependencies": {
+    "zod": "^3.23.0"
+  }
+}

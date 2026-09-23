@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "inventory"
+version = "0.3.0"
+description = "Inventory service: stock levels, pricing and reservations."
+dependencies = [
+  "fastapi>=0.110",   # web
+  "sqlalchemy>=2.0",
+  'psycopg[binary]>=3.1',
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff"]
+
+[tool.ruff]
+line-length = 100

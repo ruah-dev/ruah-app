@@ -1,0 +1,7 @@
+{
+  // aliases, JSONC on purpose
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"], }, /* trailing comma */
+  },
+}

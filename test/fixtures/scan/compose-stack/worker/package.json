@@ -1,0 +1,9 @@
+{
+  "name": "worker",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.0.0"
+  }
+}
