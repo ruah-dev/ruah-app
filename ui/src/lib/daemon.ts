@@ -1495,6 +1495,25 @@ export function uploadAttachment(
 // ---------------------------------------------------------------------------
 // React
 
+/** A slice of the daemon state: re-renders only when the (primitive) slice changes. */
+export function useDaemonSelector<T>(select: (s: DaemonState) => T): T {
+  useEffect(() => {
+    startDaemon();
+  }, []);
+  return useSyncExternalStore(
+    subscribe,
+    () => select(state),
+    () => select(INITIAL),
+  );
+}
+
+/** The element the running turn works on, and whether it waits on a permission ("nodeId|state"). */
+export function workingNodeOf(s: DaemonState): { nodeId: string; waiting: boolean } | null {
+  const t = s.turns[s.turns.length - 1];
+  if (!t || t.stopReason) return null;
+  return { nodeId: t.nodeId, waiting: !!t.permission };
+}
+
 export function useDaemon(): DaemonState {
   useEffect(() => {
     startDaemon();

@@ -17,6 +17,7 @@ import {
   setModel,
   type DaemonState,
 } from "@/lib/daemon";
+import { useAgentExpression } from "@/components/brand/agentExpression";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AttachmentStrip,
@@ -115,6 +116,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   // agent that failed to start must stay possible.
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const switching = daemon.agentSwitch;
+  const agentFace = useAgentExpression(daemon);
   // Typing never waits for an agent to start: a prompt sent meanwhile is queued by the daemon.
   const inputDisabled = !!reason || running;
   const imageReason = imageBlockedReason(daemon);
@@ -342,6 +344,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             modelsByAgent={daemon.modelsByAgent}
             defaults={daemon.agent?.defaults}
             onPrewarm={prewarmAgents}
+            expression={agentFace}
             switching={switching}
             disabled={!connected || running}
             open={pickerOpen && connected && !running}

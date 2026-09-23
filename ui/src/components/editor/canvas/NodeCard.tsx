@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { daemonActions } from "@/lib/daemon";
 import { keepAgentElement } from "@/lib/architecture-edit";
 import { useMapFlash } from "@/lib/map-activity";
+import { Phantom } from "@/components/brand/Phantom";
 import type { Lod } from "./geometry";
 import { isGroupNodeId } from "./view-model";
 
@@ -44,8 +45,24 @@ type Props = {
   editable: boolean;
   renaming: boolean;
   linking: boolean;
+  /** A running agent turn works on this element: "thinking", or "warning" while it waits on a
+   * permission. */
+  working?: "thinking" | "warning" | null | undefined;
   h: NodeHandlers;
 };
+
+/** The small ghost floating at the corner of the element a running turn works on. */
+function WorkingGhost({ face, compact }: { face: "thinking" | "warning"; compact: boolean }) {
+  return (
+    <span className="map-working-ghost" style={compact ? { transform: "scale(var(--inv-k, 1))", transformOrigin: "100% 0" } : undefined}>
+      <Phantom
+        expression={face}
+        size={compact ? 22 : 24}
+        label={face === "warning" ? "The agent waits for your permission here" : "The agent is working on this"}
+      />
+    </span>
+  );
+}
 
 function CopyContextButton({ node, onCopy }: { node: DiagramNode; onCopy: (node: DiagramNode) => Promise<boolean> }) {
   const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
@@ -181,21 +198,33 @@ function InsideChip({ node, h, compact }: { node: DiagramNode; h: NodeHandlers; 
   );
 }
 
-/** §1.7: lavender dot on elements an agent drew, until the user keeps or edits them. */
+const AI_MARK_COMPACT = "calc(18px * min(var(--inv-k, 1), 2.5))";
+
+/** §1.7: a tiny lavender agent ghost on elements an agent drew, until the user keeps or edits
+ * them. */
 function AiMark({ compact }: { compact?: boolean }) {
   return (
     <span
-      aria-label="Added by an agent"
       title="Added by an agent — select it and Keep to accept"
       className={cn(
-        "pointer-events-auto absolute rounded-full bg-ai ring-2 ring-card",
-        compact ? "-top-1 -left-1 size-2.5" : "top-1.5 right-1.5 size-2",
+        "pointer-events-auto absolute grid place-items-center",
+        compact ? "-top-2 -left-2" : "top-1 right-1",
       )}
-    />
+    >
+      {/* A sprite (one cached image), not inline SVG: the map can show hundreds of these.
+          Zoomed out, it grows with the card's text so it stays legible on screen. */}
+      <Phantom
+        expression="agent"
+        size={compact ? 18 : 16}
+        sprite
+        label="Added by an agent"
+        style={compact ? { width: AI_MARK_COMPACT, height: AI_MARK_COMPACT } : undefined}
+      />
+    </span>
   );
 }
 
-function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, h }: Props) {
+function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, working, h }: Props) {
   const flash = useMapFlash(node.id);
   const style = styleFor(node);
   const Icon = style.icon;
@@ -239,6 +268,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
             {node.label}
           </span>
         ) : null}
+        {working ? <WorkingGhost face={working} compact /> : null}
         {selected ? <Toolbar node={node} editable={editable} linking={linking} h={h} /> : null}
       </div>
     );
@@ -274,6 +304,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         ) : null}
         {node.drill || group ? <InsideChip node={node} h={h} compact /> : null}
         {node.origin === "agent" ? <AiMark compact /> : null}
+        {working ? <WorkingGhost face={working} compact /> : null}
         {selected ? <Toolbar node={node} editable={editable} linking={linking} h={h} /> : null}
       </div>
     );
@@ -324,6 +355,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
       ) : null}
       {node.drill || group ? <InsideChip node={node} h={h} compact={false} /> : null}
       {node.origin === "agent" ? <AiMark /> : null}
+      {working ? <WorkingGhost face={working} compact={false} /> : null}
       {selected ? (
         <>
           <Toolbar node={node} editable={editable} linking={linking} h={h} />

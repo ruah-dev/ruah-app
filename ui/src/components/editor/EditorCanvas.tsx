@@ -36,6 +36,7 @@ import { routeEdges } from "./canvas/routing";
 import { buildViewModel, isGroupNodeId, NO_FILTERS, searchNodes, type CanvasFilters } from "./canvas/view-model";
 import { NodeCard, type NodeHandlers, type NodeTone } from "./canvas/NodeCard";
 import { EdgeLayer } from "./canvas/EdgeLayer";
+import { useDaemonSelector, workingNodeOf } from "@/lib/daemon";
 import { Minimap, type MinimapHandle } from "./canvas/Minimap";
 import { FilterMenu, SearchBar, ToolbarButtons, type SearchHit } from "./canvas/CanvasToolbar";
 
@@ -735,6 +736,9 @@ export function EditorCanvas({
 
   // ---- render ------------------------------------------------------------------
   const cull = view.cull;
+  // The element a running agent turn works on gets a small ghost (only that card re-renders).
+  const workingId = useDaemonSelector((d) => workingNodeOf(d)?.nodeId ?? null);
+  const workingFace = useDaemonSelector((d) => (workingNodeOf(d)?.waiting ? "warning" : "thinking"));
   const visibleNodes = useMemo(
     () => (cull ? vm.nodes.filter((n) => n.id === selectedNodeId || intersects(cull, boxes.get(n.id)!)) : vm.nodes),
     [cull, vm.nodes, boxes, selectedNodeId],
@@ -877,6 +881,7 @@ export function EditorCanvas({
               editable={editable && !node.ephemeral}
               renaming={editingId === node.id}
               linking={linkFrom === node.id}
+              working={workingId === node.id ? workingFace : null}
               h={handlers}
             />
           ))}

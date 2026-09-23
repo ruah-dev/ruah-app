@@ -31,6 +31,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 
 const controlClass =
   "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
@@ -63,21 +64,38 @@ export function AgentMark({ name, className }: { name: string; className?: strin
   );
 }
 
-/** Pre-warm dot next to an agent: sage = ready (switching is instant), amber pulse = starting,
- * nothing when cold. */
-export function WarmDot({ warm, error }: { warm: WarmState | undefined; error?: string | undefined }) {
-  if (warm !== "ready" && warm !== "starting") return null;
-  const label = warm === "ready" ? "Ready — switching is instant" : "Starting in the background…";
+/** Pre-warm state of an agent as a tiny ghost: sage = ready (switching is instant), amber
+ * loading = starting, muted = cold (only with `showCold`; otherwise nothing when cold). */
+export function WarmDot({
+  warm,
+  error,
+  showCold = false,
+  size = 12,
+}: {
+  warm: WarmState | undefined;
+  error?: string | undefined;
+  showCold?: boolean;
+  size?: number;
+}) {
+  if (warm !== "ready" && warm !== "starting" && !showCold) return null;
+  const label =
+    warm === "ready"
+      ? "Ready — switching is instant"
+      : warm === "starting"
+        ? "Starting in the background…"
+        : error
+          ? "Didn't start"
+          : "Not running — starts when you pick it";
   return (
-    <span
-      role="img"
-      aria-label={label}
-      title={error ?? label}
-      className={cn(
-        "inline-block size-1.5 shrink-0 rounded-full",
-        warm === "ready" ? "bg-ok" : "animate-pulse bg-warn",
-      )}
-    />
+    <span title={error ?? label} className="inline-flex shrink-0">
+      <Phantom
+        expression={warm === "starting" ? "loading" : "idle"}
+        tone={warm === "ready" ? "sage" : warm === "starting" ? undefined : "muted"}
+        still={warm !== "starting"}
+        size={size}
+        label={label}
+      />
+    </span>
   );
 }
 
@@ -114,7 +132,10 @@ export function AgentModelPicker({
   onAgent,
   onAgentModel,
   onPrewarm,
+  expression = "agent",
 }: {
+  /** The current agent's face (useAgentExpression). */
+  expression?: PhantomExpression;
   agents: AgentChoiceState | undefined;
   models: ModelState | undefined;
   modelsByAgent?: Record<string, ModelState>;
@@ -157,9 +178,8 @@ export function AgentModelPicker({
         role="status"
         aria-label={`Warming ${switching.name}`}
       >
-        <AgentMark name={switching.name} className="animate-pulse" />
+        <Phantom expression="loading" size="xs" />
         <span className="truncate">Warming {switching.name}…</span>
-        <Loader2 className="size-3 animate-spin opacity-60" />
       </span>
     );
   }
@@ -217,7 +237,7 @@ export function AgentModelPicker({
         aria-label="Choose agent and model"
         title="Agent and model (⌘.)"
       >
-        {currentAgent ? <AgentMark name={currentAgent.name} /> : null}
+        <Phantom expression={expression} size="xs" />
         <span className="truncate">
           {currentAgent && currentModel
             ? `${currentAgent.name} · ${currentModel.name}`
@@ -253,13 +273,15 @@ export function AgentModelPicker({
                     onPointerEnter={isCurrent ? undefined : () => onPrewarm?.([a.id])}
                     heading={
                       <span className="flex items-center gap-2">
-                        <AgentMark name={a.name} />
+                        {isCurrent ? (
+                          <Phantom expression={expression} size="xs" />
+                        ) : (
+                          <WarmDot warm={a.warm} error={a.warmError} showCold size={16} />
+                        )}
                         {a.name}
                         {isCurrent ? (
                           <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
-                        ) : (
-                          <WarmDot warm={a.warm} error={a.warmError} />
-                        )}
+                        ) : null}
                         {!isCurrent && a.warm === "cold" && a.warmError ? (
                           <span className="min-w-0 truncate text-[10.5px] font-normal text-faint" title={a.warmError}>
                             didn't start

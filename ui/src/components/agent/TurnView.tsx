@@ -5,6 +5,8 @@ import { Brain, Check, CheckCircle2, Circle, CircleDot, FileCode2, ListTree, X }
 import type { PlanEntry, StreamEvent, ToolCallView } from "@/lib/contracts";
 import type { PermissionRecord, Turn } from "@/lib/daemon";
 import { cn } from "@/lib/utils";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import { turnFailed } from "@/components/brand/agentExpression";
 import { Markdown } from "./Markdown";
 import { PermissionCard } from "./PermissionCard";
 import { RowDisclosure, ToolCallRow } from "./ToolCallRow";
@@ -192,6 +194,17 @@ export function TurnView({
     <span className="ms-0.5 inline-block h-[1.05em] w-[0.5em] translate-y-[0.2em] animate-pulse rounded-[1px] bg-foreground/60" />
   );
   const showCursor = running && !turn.permission;
+  // The assistant's avatar: lavender agent ghost; thinking while it streams, warning while it
+  // waits on a permission, error when the turn failed.
+  const face: PhantomExpression = running
+    ? turn.permission
+      ? "warning"
+      : turn.waitingFor
+        ? "loading"
+        : "thinking"
+    : turnFailed(turn) || turn.stopReason === "refusal"
+      ? "error"
+      : "agent";
 
   return (
     <div id={`turn-${turn.id}`} className="scroll-mt-4 space-y-3">
@@ -207,7 +220,15 @@ export function TurnView({
       </div>
 
       {/* assistant */}
-      <div className="space-y-2 text-[13.5px] leading-relaxed text-foreground/90">
+      <div className="flex gap-2.5">
+      <Phantom
+        expression={face}
+        size="sm"
+        noFloat
+        label={running ? "Agent working" : face === "error" ? "Agent turn failed" : "Agent"}
+        className="-ms-0.5 mt-0.5"
+      />
+      <div className="min-w-0 flex-1 space-y-2 text-[13.5px] leading-relaxed text-foreground/90">
         {turn.contextPack ? (
           <RowDisclosure icon={FileCode2} label="Context sent to the agent" tone="ai">
             <pre className="max-h-60 overflow-auto rounded-lg bg-ai/[0.06] p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/80 ring-1 ring-ai/25">
@@ -269,7 +290,7 @@ export function TurnView({
         ) : null}
         {showCursor && turn.waitingFor && segs.length === 0 ? (
           <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground" role="status">
-            <span className="size-1.5 animate-pulse rounded-full bg-warn" />
+            <Phantom expression="loading" size={14} />
             Waiting for {turn.waitingFor}…
           </p>
         ) : showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
@@ -293,6 +314,7 @@ export function TurnView({
             {turn.error ? ` · ${turn.error}` : ""}
           </p>
         ) : null}
+      </div>
       </div>
     </div>
   );

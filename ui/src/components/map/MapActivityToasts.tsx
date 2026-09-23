@@ -13,6 +13,7 @@ import {
   type MapActivityEvent,
 } from "@/lib/map-activity";
 import { useWorkbench } from "@/lib/workbench";
+import { Phantom } from "@/components/brand/Phantom";
 
 const BURST_MS = 5000;
 const TOAST_ID = "map-activity";
@@ -60,6 +61,7 @@ export function MapActivityToasts() {
     const target = changeTarget(offscreen[offscreen.length - 1]!);
     toast.message(`${agentName} ${summarizeChanges(changes)}`, {
       id: TOAST_ID,
+      icon: <Phantom expression="agent" size="xs" />,
       description: onMap ? "On another level of the map" : undefined,
       duration: 6000,
       ...(target
