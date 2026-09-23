@@ -2,7 +2,7 @@
 // (architecture.json over the socket, agent.status, this session's turns, /api/usage).
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Copy, Map as MapIcon, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, Map as MapIcon, RefreshCw } from "lucide-react";
 import { kindFor } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
@@ -62,28 +62,39 @@ function Quiet({ children }: { children: ReactNode }) {
 
 function RescanButton() {
   const { daemon } = useWorkspace();
-  const [copied, setCopied] = useState(false);
-  const cmd = `archmap scan ${daemon.root ?? "<repo>"}`;
+  const [state, setState] = useState<{ kind: "idle" | "busy" | "done" | "error"; text?: string }>({ kind: "idle" });
+  const disabled = daemon.httpOrigin === null || state.kind === "busy";
+  const run = () => {
+    if (daemon.httpOrigin === null) return;
+    setState({ kind: "busy" });
+    // POST /api/rescan re-runs the scanner and keeps hand edits; the new map
+    // arrives over the socket as an `architecture` message.
+    fetch(`${daemon.httpOrigin}/api/rescan`, { method: "POST" })
+      .then(async (res) => {
+        const body = (await res.json().catch(() => ({}))) as { nodes?: number; edges?: number; error?: string };
+        if (!res.ok) throw new Error(body.error ?? `rescan failed (${res.status})`);
+        setState({ kind: "done", text: `${body.nodes ?? 0} elements · ${body.edges ?? 0} links` });
+        setTimeout(() => setState({ kind: "idle" }), 2400);
+      })
+      .catch((err: unknown) => setState({ kind: "error", text: err instanceof Error ? err.message : "rescan failed" }));
+  };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={() => {
-            void navigator.clipboard.writeText(cmd).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1600);
-            });
-          }}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          onClick={run}
+          disabled={disabled}
+          className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
-          {copied ? <Check className="size-3.5 text-ok" /> : <RefreshCw className="size-3.5" />}
-          {copied ? "Command copied" : "Rescan"}
+          {state.kind === "done" ? <Check className="size-3.5 text-ok" /> : <RefreshCw className={`size-3.5 ${state.kind === "busy" ? "animate-spin" : ""}`} />}
+          {state.kind === "busy" ? "Rescanning…" : state.kind === "done" ? state.text : state.kind === "error" ? "Rescan failed" : "Rescan"}
         </button>
       </TooltipTrigger>
       <TooltipContent className="max-w-80">
-        Rescanning runs in a terminal: <span className="font-mono">{cmd}</span>. The map updates by
-        itself when architecture.json changes. Click to copy.
+        {state.kind === "error"
+          ? state.text
+          : "Scan the repo again. Descriptions, notes and positions you edited are kept."}
       </TooltipContent>
     </Tooltip>
   );
