@@ -105,6 +105,19 @@ function registerIpc() {
     shell.showItemInFolder(target);
     return true;
   });
+  // Links clicked in the terminal: web pages only (never file:, custom schemes or app handlers).
+  ipcMain.handle("ruah:open-external", async (_event, url) => {
+    if (typeof url !== "string" || url.length > 8192) return false;
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return false;
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    await shell.openExternal(parsed.toString());
+    return true;
+  });
 }
 
 function portFree(port) {
