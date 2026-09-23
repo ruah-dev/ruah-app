@@ -10,6 +10,8 @@ import { serveContext } from "./context-endpoint.js";
 import { attachSession, type SessionHub } from "./session.js";
 import { handleUsageRequest } from "../usage/http.js";
 import type { UsageApi } from "../usage/index.js";
+import { handleIntegrationsRequest } from "../integrations/http.js";
+import type { IntegrationsApi } from "../integrations/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
 
 export interface ServeOptions {
@@ -20,6 +22,8 @@ export interface ServeOptions {
   logger: (line: string) => void;
   /** GET /api/usage/*; answered 503 when absent. */
   usage?: UsageApi;
+  /** /api/integrations, /api/cloud/*, /api/work/*, /api/ruah/* (§6); answered 503 when absent. */
+  integrations?: IntegrationsApi;
 }
 
 export interface RunningServer {
@@ -80,6 +84,7 @@ export function startServer(
       return;
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;
+    if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
     if (pathname === "/api/rescan" && req.method === "POST") {
       // A state-changing POST: same Origin rule as the WebSocket so another
       // site open in the browser cannot trigger it (CSRF).

@@ -9,6 +9,7 @@ import { SessionHub } from "./session.js";
 import { startServer } from "./server.js";
 import { UsageLimitsService, UsageLog, UsageService, ruahHome } from "../usage/index.js";
 import { probeClaudePlanUsage } from "../usage/claude-probe.js";
+import { IntegrationsService } from "../integrations/index.js";
 
 export interface ServeFlags {
   repo: string;
@@ -77,6 +78,7 @@ export async function runServe(flags: ServeFlags, version: string): Promise<numb
     allowOrigins: flags.allowOrigins,
     logger: (line: string) => debug(line),
     usage,
+    integrations: new IntegrationsService({ home: ruahHome(), project: () => ({ root: store.root, architecture: store.current() }) }),
   });
 
   const startupMs = Date.now() - t0;
