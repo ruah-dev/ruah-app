@@ -13,7 +13,7 @@ import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { buildContextPack, buildPromptBlocks } from "../context/pack.js";
-import { ArchIndex } from "../context/graph.js";
+import { resolveNodeScope } from "../expand/context.js";
 import type { ArchitectureStore } from "./architecture-store.js";
 import type { UsageSink } from "../usage/index.js";
 import { BridgePool, DEFAULT_MAX_LIVE_BRIDGES, type BridgeStatus, type PooledBridge } from "./bridge-pool.js";
@@ -436,12 +436,13 @@ export class SessionHub {
     }
     const arch = open.store.current();
     if (arch === null) return;
-    const index = new ArchIndex(arch, open.store.root);
-    const node = index.byId(message.nodeId);
-    if (node === undefined) {
+    // Stored nodes, and expanded folders / files / symbols (CONTRACTS §1.6).
+    const scope = resolveNodeScope(open.store, arch, message.nodeId);
+    if (scope === null) {
       this.error(socket, "unknown_node", `unknown node: ${message.nodeId}`, { turnId: message.turnId });
       return;
     }
+    const { index, node } = scope;
     const images = this.loadAttachments(socket, message, open.info.id);
     if (images === undefined) return;
     const pack = buildContextPack(index, message.nodeId, open.store.root, message.text);

@@ -6,7 +6,7 @@
 // endpoint reconstructs the user text, so it serves the pack only).
 import type { ServerResponse } from "node:http";
 import type { ArchitectureStore } from "./architecture-store.js";
-import { ArchIndex } from "../context/graph.js";
+import { resolveNodeScope } from "../expand/context.js";
 import { buildContextPack } from "../context/pack.js";
 
 export function serveContext(
@@ -21,13 +21,14 @@ export function serveContext(
     res.end("architecture not loaded");
     return;
   }
-  const index = new ArchIndex(arch, store.root);
-  if (index.byId(nodeId) === undefined) {
+  // Stored nodes, and expanded folders / files / symbols (§1.6).
+  const scope = resolveNodeScope(store, arch, nodeId);
+  if (scope === null) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     res.end(`unknown node: ${nodeId}`);
     return;
   }
-  const pack = buildContextPack(index, nodeId, store.root, text);
+  const pack = buildContextPack(scope.index, nodeId, store.root, text);
   res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
   res.end(pack);
 }

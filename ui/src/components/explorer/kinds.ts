@@ -1,4 +1,10 @@
 import {
+  Anchor,
+  Component,
+  Hash,
+  Route,
+  SquareFunction,
+  Type,
   Activity,
   BarChart3,
   Bell,
@@ -40,7 +46,7 @@ import {
 } from "lucide-react";
 import type { NodeKind } from "@/data/graphs";
 
-type KindStyle = {
+export type KindStyle = {
   label: string;
   icon: typeof Server;
   /** token color class used for the icon */
@@ -165,6 +171,7 @@ export const kindStyles: Record<NodeKind, KindStyle> = {
   module: make("module", Folder, "file"),
   file: make("file", FileCode2, "file"),
   api: make("api contract", Braces, "file"),
+  symbol: make("symbol", SquareFunction, "service"),
   // workflow
   step: make("step", Workflow, "step"),
   decision: make("decision", GitFork, "queue"),
@@ -178,3 +185,26 @@ export const groupIcon = Boxes;
 
 export const NODE_W = 200;
 export const NODE_H = 64;
+
+/** File-level elements (on-demand drill-in): icon + colour per symbol kind. */
+const SYMBOL_STYLES: Record<string, KindStyle> = {
+  component: make("component", Component, "frontend"),
+  hook: make("hook", Anchor, "frontend"),
+  class: make("class", Box, "data"),
+  interface: make("interface", Type, "gateway"),
+  type: make("type", Type, "gateway"),
+  enum: make("enum", Type, "gateway"),
+  route: make("route", Route, "queue"),
+  const: make("value", Hash, "file"),
+  function: make("function", SquareFunction, "service"),
+  method: make("method", SquareFunction, "service"),
+};
+
+export function symbolStyle(kind: string | undefined): KindStyle {
+  return SYMBOL_STYLES[kind ?? "function"] ?? SYMBOL_STYLES["function"]!;
+}
+
+/** Style for a diagram node: its kind, or its symbol kind on file levels. */
+export function styleFor(node: { kind: NodeKind; symbol?: { kind: string } | undefined }): KindStyle {
+  return node.symbol ? symbolStyle(node.symbol.kind) : kindStyles[node.kind];
+}

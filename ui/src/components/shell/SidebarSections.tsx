@@ -1,13 +1,13 @@
 // Visual patterns adapted from t3code apps/web/src/components/Sidebar.tsx (MIT): sentence-case
 // section labels, compact rows with a quiet active fill, secondary content under disclosures.
 import { useMemo, type ReactNode } from "react";
-import { FolderTree, Plus, Trash2 } from "lucide-react";
-import { ancestry, parseDiagramId, toRepoTree } from "@/lib/architecture";
-import { indexArchitecture } from "@/lib/architecture";
+import { FolderTree, ListTree, Plus, Trash2 } from "lucide-react";
+import { toRepoTree } from "@/lib/architecture";
 import type { Turn } from "@/lib/daemon";
 import { useWorkspace, type Diagram } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { RepoTree } from "@/components/explorer/RepoTree";
+import { OutlineTree } from "@/components/explorer/OutlineTree";
 import { Palette } from "@/components/editor/Palette";
 import { cn } from "@/lib/utils";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -35,25 +35,14 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
-/** Map page context: diagram levels, workflows and the repo tree under a disclosure. */
+/** Map page context: the outline of the whole hierarchy, workflows and the repo tree. */
 export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const ws = useWorkspace();
   const wb = useWorkbench();
   const { app, architecture } = ws;
-  const archIndex = useMemo(() => indexArchitecture(architecture), [architecture]);
   const repoTree = useMemo(() => toRepoTree(architecture), [architecture]);
-
-  const levels = app.diagrams
-    .filter((d) => d.mode === "architecture")
-    .map((d) => {
-      const ref = parseDiagramId(d.id);
-      const depth =
-        ref && ref.mode === "architecture" && ref.parentId !== null
-          ? ancestry(archIndex, ref.parentId).length
-          : 0;
-      return { diagram: d, depth };
-    });
   const workflows = app.diagrams.filter((d) => d.mode === "workflow");
+  const topLevel = architecture.nodes.filter((n) => !n.parent).length;
 
   const open = (id: string) => {
     wb.openDiagram(id);
@@ -113,9 +102,10 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
   return (
     <div className="space-y-2">
       <CollapsibleSection
-        id="map.architecture"
-        label="Architecture"
-        count={levels.length}
+        id="map.outline"
+        label="Outline"
+        count={topLevel}
+        icon={<ListTree className="size-3 shrink-0 text-faint" />}
         action={
             ws.editable ? (
               <AddButton
@@ -128,7 +118,26 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
             ) : null
           }
       >
-        <div className="space-y-px">{levels.map(({ diagram, depth }) => row(diagram, depth))}</div>
+        <OutlineTree
+          architecture={ws.mapArchitecture}
+          expansions={ws.expansions}
+          activeDiagramId={wb.activeDiagram.id}
+          selectedId={wb.selectedNodeId}
+          onSelect={(id) => {
+            wb.openNode(id);
+            onNavigate?.();
+          }}
+          onOpenLevel={(id) => {
+            const node = app.diagrams.flatMap((d) => d.nodes).find((n) => n.id === id);
+            if (node) wb.drill(node);
+            onNavigate?.();
+          }}
+          rootLabel={app.name}
+          onOpenRoot={() => {
+            wb.openDiagram("arch:root");
+            onNavigate?.();
+          }}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -197,7 +206,7 @@ export const toneDot = {
 
 /** Agent page context: the turns of the open chat. */
 export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
-  const { daemon, architecture } = useWorkspace();
+  const { daemon, mapArchitecture: architecture } = useWorkspace();
   const wb = useWorkbench();
   const names = useMemo(
     () => new Map(architecture.nodes.map((n) => [n.id, n.name])),

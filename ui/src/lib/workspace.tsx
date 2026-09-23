@@ -17,6 +17,7 @@ import type { DiagramNode, Graph, NodeKind } from "@/data/graphs";
 import type { Architecture } from "./contracts";
 import {
   EMPTY_ARCHITECTURE,
+  ORIGIN,
   ROOT_DIAGRAM_ID,
   diagramsFromArchitecture,
   levelDiagramId,
@@ -27,6 +28,16 @@ import {
 import * as edit from "./architecture-edit";
 import { canEdit, editArchitecture, reportLocalError, useDaemon, type DaemonState } from "./daemon";
 import { useCloudDiagram, useIntegrationsBinding } from "./integrations";
+import {
+  bindExpansions,
+  isExpandedId,
+  mergeExpansions,
+  moveExpandedNode,
+  requestExpansion,
+  useExpansions,
+  type ExpansionState,
+} from "./expand";
+import { pinExpansion } from "./pin";
 
 export type DiagramMode = "architecture" | "workflow";
 
@@ -121,7 +132,13 @@ export function storageKeyFor(daemon: Pick<DaemonState, "source" | "root">): str
 type Ctx = {
   workspace: Workspace;
   app: AppProject;
+  /** architecture.json as stored (what editing changes and saves). */
   architecture: Architecture;
+  /** The map's architecture: stored + on-demand expanded levels (src/lib/expand.ts). */
+  mapArchitecture: Architecture;
+  expansions: ExpansionState;
+  /** Copies an expanded folder level into architecture.json (§1.6 "Pin to map"). */
+  pinLevel: (diagramId: string) => void;
   daemon: DaemonState;
   /** Editing needs a connected daemon (edits are saved to architecture.json). */
   editable: boolean;
@@ -146,6 +163,8 @@ type Ctx = {
   deleteEdge: (diagramId: string, from: string, to: string) => void;
   // panes / windows
   openTab: (paneId: string, type: TabType, diagramId: string) => void;
+  /** Show a diagram in the pane's current diagram tab (drill-in, breadcrumbs): no new tab. */
+  navigate: (paneId: string, diagramId: string) => void;
   closeTab: (paneId: string, tabId: string) => void;
   setActiveTab: (paneId: string, tabId: string) => void;
   setActivePane: (paneId: string) => void;
@@ -154,6 +173,8 @@ type Ctx = {
 };
 
 const WorkspaceContext = createContext<Ctx | null>(null);
+
+const PIN_HINT = "This level is read from disk. Pin it to the map (⋯ menu) to edit it.";
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const daemon = useDaemon();
@@ -182,10 +203,46 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useIntegrationsBinding(daemon);
   const cloudDiagram = useCloudDiagram(architecture);
 
+  // On-demand drill-in: expanded levels live in memory per project and merge into the map.
+  const expansions = useExpansions();
+  const expansionScope = daemon.source === "daemon" ? (daemon.project?.id ?? daemon.root ?? "daemon") : null;
+  const expansionOrigin = daemon.source === "daemon" ? daemon.httpOrigin : null;
+  useEffect(() => {
+    bindExpansions(expansionScope, expansionOrigin);
+  }, [expansionScope, expansionOrigin]);
+  const mapArchitecture = useMemo(() => mergeExpansions(architecture, expansions), [architecture, expansions]);
+
   const diagrams = useMemo<Diagram[]>(() => {
-    const derived: Diagram[] = diagramsFromArchitecture(architecture, prefs.flowPositions);
+    const derived: Diagram[] = diagramsFromArchitecture(mapArchitecture, prefs.flowPositions);
+    // Tabs on an expanded level that is still loading (e.g. after a reload) keep a placeholder.
+    const have = new Set(derived.map((d) => d.id));
+    for (const p of prefs.panes) {
+      for (const t of p.tabs) {
+        const ref = parseDiagramId(t.diagramId);
+        if (!ref || ref.mode !== "architecture" || ref.parentId === null || have.has(t.diagramId)) continue;
+        const entry = expansions.entries.get(ref.parentId);
+        if (!isExpandedId(ref.parentId) && entry === undefined) continue;
+        if (entry?.status === "error") continue;
+        have.add(t.diagramId);
+        const name = ref.parentId.split(/[/#]/).pop() ?? ref.parentId;
+        derived.push({ id: t.diagramId, title: name, subtitle: "Loading…", nodes: [], edges: [], groups: [], mode: "architecture", group: "Components" });
+      }
+    }
     return cloudDiagram ? [...derived, { ...cloudDiagram, mode: "architecture", group: "Cloud" }] : derived;
-  }, [architecture, prefs.flowPositions, cloudDiagram]);
+  }, [mapArchitecture, prefs.flowPositions, prefs.panes, expansions.entries, cloudDiagram]);
+
+  // Restore expanded levels that open tabs point at (after a reload).
+  useEffect(() => {
+    if (!expansionOrigin) return;
+    for (const p of prefs.panes) {
+      for (const t of p.tabs) {
+        const ref = parseDiagramId(t.diagramId);
+        if (ref?.mode === "architecture" && ref.parentId !== null && isExpandedId(ref.parentId) && !expansions.entries.has(ref.parentId)) {
+          void requestExpansion(ref.parentId);
+        }
+      }
+    }
+  }, [prefs.panes, expansions.entries, expansionOrigin]);
 
   // Tabs pointing at diagrams that no longer exist (node deleted on disk) fall back to the top level.
   const panes = useMemo(() => {
@@ -253,11 +310,43 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     p.activePaneId = pane.id;
   }, []);
 
+  // Expanded (ephemeral) elements are read-only apart from local positions.
+  const storedIds = useMemo(() => new Set(architecture.nodes.map((n) => n.id)), [architecture]);
+  const isEphemeral = useCallback((nodeId: string) => !storedIds.has(nodeId) && isExpandedId(nodeId), [storedIds]);
+  const ephemeralLevel = useCallback(
+    (diagramId: string) => {
+      const ref = parseDiagramId(diagramId);
+      if (ref?.mode !== "architecture" || ref.parentId === null) return false;
+      if (isEphemeral(ref.parentId)) return true;
+      // A stored leaf shown through its expansion (no stored children).
+      return expansions.entries.has(ref.parentId) && !architecture.nodes.some((n) => n.parent === ref.parentId);
+    },
+    [isEphemeral, expansions.entries, architecture],
+  );
+
   const value: Ctx = useMemo(
     () => ({
       workspace,
       app,
       architecture,
+      mapArchitecture,
+      expansions,
+      pinLevel: (diagramId) => {
+        const ref = parseDiagramId(diagramId);
+        if (ref?.mode !== "architecture" || ref.parentId === null) return;
+        const entry = expansions.entries.get(ref.parentId);
+        if (entry?.status !== "ok") return;
+        let refusal: string | null = null;
+        editArchitecture((a) => {
+          const r = pinExpansion(a, entry.expansion, expansions.positions);
+          if ("error" in r) {
+            refusal = r.error;
+            return null;
+          }
+          return r.arch;
+        });
+        if (refusal) reportLocalError(refusal);
+      },
       daemon,
       editable,
       setActiveApp: () => {},
@@ -294,6 +383,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         apply((a) => edit.deleteWorkflow(a, id), "Only workflows can be deleted from the list."),
 
       addNode: (diagramId, node, placed = true) => {
+        if (ephemeralLevel(diagramId)) {
+          reportLocalError(PIN_HINT);
+          return;
+        }
         apply((a) => edit.addNode(a, diagramId, node));
         if (placed && parseDiagramId(diagramId)?.mode === "workflow") {
           mutatePrefs((p) => {
@@ -307,6 +400,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updateNode: (diagramId, nodeId, patch) => {
         const ref = parseDiagramId(diagramId);
         const { x, y, ...rest } = patch;
+        if (isEphemeral(nodeId)) {
+          // Moving is a local, unsaved layout tweak; everything else needs the level pinned.
+          if (x !== undefined && y !== undefined) moveExpandedNode(nodeId, Math.round(x - ORIGIN), Math.round(y - ORIGIN));
+          else reportLocalError(PIN_HINT);
+          return;
+        }
         if (ref?.mode === "workflow" && x !== undefined && y !== undefined) {
           if (!editable) return;
           // Workflow layout is per-viewer: architecture.json has no workflow coordinates.
@@ -328,9 +427,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if (Object.keys(archPatch).length)
           apply((a) => edit.patchNode(a, diagramId, nodeId, archPatch));
       },
-      deleteNode: (diagramId, nodeId) =>
-        apply((a) => edit.deleteNode(a, diagramId, nodeId), "A workflow needs at least two steps."),
-      addEdge: (diagramId, from, to) => apply((a) => edit.addEdge(a, diagramId, from, to)),
+      deleteNode: (diagramId, nodeId) => {
+        if (isEphemeral(nodeId)) {
+          reportLocalError(PIN_HINT);
+          return;
+        }
+        apply((a) => edit.deleteNode(a, diagramId, nodeId), "A workflow needs at least two steps.");
+      },
+      addEdge: (diagramId, from, to) => {
+        if (isEphemeral(from) || isEphemeral(to)) {
+          reportLocalError(PIN_HINT);
+          return;
+        }
+        apply((a) => edit.addEdge(a, diagramId, from, to));
+      },
       updateEdge: (diagramId, from, to, patch) =>
         apply(
           (a) => edit.patchEdge(a, diagramId, from, to, patch),
@@ -344,6 +454,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       openTab: (paneId, type, diagramId) =>
         mutatePrefs((p) => openTabIn(p, paneId, type, diagramId)),
+      navigate: (paneId, diagramId) =>
+        mutatePrefs((p) => {
+          const pane = p.panes.find((x) => x.id === paneId) ?? p.panes[0];
+          if (!pane) return;
+          const already = pane.tabs.find((t) => t.type === "diagram" && t.diagramId === diagramId);
+          const current = pane.tabs.find((t) => t.id === pane.activeTabId);
+          if (already) pane.activeTabId = already.id;
+          else if (current?.type === "diagram") current.diagramId = diagramId;
+          else openTabIn(p, pane.id, "diagram", diagramId);
+          p.activePaneId = pane.id;
+        }),
       closeTab: (paneId, tabId) =>
         mutatePrefs((p) => {
           const pane = p.panes.find((x) => x.id === paneId);
@@ -376,7 +497,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           if (p.activePaneId === paneId) p.activePaneId = p.panes[0]!.id;
         }),
     }),
-    [workspace, app, architecture, daemon, editable, apply, mutatePrefs, openTabIn],
+    [workspace, app, architecture, mapArchitecture, expansions, daemon, editable, apply, mutatePrefs, openTabIn, isEphemeral, ephemeralLevel],
   );
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;

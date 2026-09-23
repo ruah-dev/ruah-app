@@ -170,6 +170,38 @@ A system is defined by `ruah.system.json` (docs/MULTI-REPO.md): `{ "version": 1,
 - **Evidence**: top-level `scan` edges carry `evidence` (<= 10 entries, sorted) naming the file:line that produced them (compose/k8s/terraform lines, env/config/source URLs, topic publish/consume calls, manifest dependency lines). `suggested` edges keep the evidence the agent gave.
 - Receivers that edit and save an architecture MUST round-trip `repo`, `source` and `evidence` (unknown-field stripping turns scan edges into `manual` ones that re-scans can no longer replace).
 
+### 1.6 On-demand drill-in (ephemeral levels, 2026-09-23)
+
+`architecture.json` usually stops at packages / modules. Every element with a `path` and no stored children can be expanded one level at a time by `GET /api/expand/:nodeId` (§2.3). The result is **derived data**: computed from the working tree, cached in memory (file list ~4 s, per-file parses by mtime), never written to `architecture.json`.
+
+Levels: stored node (directory path) → **folder** level: sub-folders (`type: "module"`, single-child chains compacted into one node named `a/b/c`) and files (`type: "file"`: source, tests, and a few text formats — json/yaml/md/css/sql/…; lockfiles and binaries skipped), with `imports` edges between them (a folder counts every file below it); **file** level: `type: "symbol"` children (functions, React components and hooks, classes, interfaces/types/enums, exported values, route handlers such as `GET /users`) with `calls` / `uses` / `renders` edges between symbols of the same file. Symbols have no children. Parsing is regex-based (TS/JS full, Python/Go/Rust basic), no new dependencies.
+
+```ts
+export interface ExpandedNode extends ArchNode {  // parent = the expanded element's id
+  expandable?: boolean;   // can be expanded again (folder, or a file with symbols)
+  childCount?: number;    // direct children one level further down
+  symbol?: { kind: "function" | "component" | "hook" | "class" | "type" | "interface" | "enum" | "const" | "route" | "method";
+             line: number; endLine: number; exported: boolean; detail?: string };  // 1-based, inclusive
+  test?: boolean;
+}
+export interface Expansion {
+  nodeId: string;                    // the element that was expanded
+  level: "folder" | "file";
+  path: string;                      // its path (system path in a multi-repo system)
+  architecture: Architecture;        // §1.1 schema: nodes are ExpandedNode[], edges carry source "scan" (+ weight = import count)
+  truncated: { children: boolean; edges: boolean; files: boolean }; // caps: 80 children, 200 edges, 1,500 files read per level
+  total: { children: number; edges: number };
+  ms: number;
+  lineage?: string[];                // expanded elements above nodeId, outermost first (rebuilds the breadcrumb after a reload)
+}
+```
+
+- **Ids** are namespaced under the expanded element: `<id>/<entry name>` for folders and files (`web/src/components/Button.tsx`, compacted `web/src/main/java`), `<fileId>#<symbol key>` for symbols (`…/Button.tsx#Button`; the key is the name, `name~2` for duplicates). They never match the §1 id pattern, so they cannot collide with stored ids, and any of them resolves again from a cold cache by expanding its ancestors.
+- **Paths** are architecture paths (repo-relative, or `<repoId>/<path>` in systems, resolved through the store's `resolvePath`).
+- **Layers** of an expansion: `folders`, `files`, `tests`, `other` (folder level); `routes`, `components`, `hooks`, `functions`, `classes`, `types`, `values` (file level). Positions come from the scanner's grid (260 × 110), importers first inside a band.
+- **Prompts and context** accept expanded ids: `prompt.nodeId` and `GET /api/context/:nodeId` resolve them through the expander. The pack then shows the element with its parent, its siblings' edges and its file; a symbol's description carries its line range (`Exported component Header, lines 19–23 of src/App.tsx.`). Unknown ids still answer `unknown_node` / 404.
+- **Pin to map** (viewer): copies an expanded folder level into `architecture.json` through the ordinary `architecture.save` (stored ids, `source: "scan"` edges); after that the level is stored and no longer expanded.
+
 ---
 
 ## 2. Viewer ↔ daemon WebSocket protocol
@@ -294,6 +326,8 @@ export type ErrorCode =
 | `GET /api/context/:nodeId` | `text/plain` context pack for the node | used by "Copy context" in the node popover |
 | `GET /api/file?path=<rel>` | `{ path, lang, content }` | inside root only; max 512 KiB; binary → 415; missing → 404 |
 | `PUT /api/architecture` | Phase 3, same as `architecture.save` | body validated, written atomically |
+| `GET /api/expand/:nodeId` | `Expansion` (§1.6): the level below a stored or expanded element | `nodeId` URL-encoded; 404 unknown element or path, 422 not expandable (no path, a symbol, a file without an outline); Origin checked like `/ws` (403) |
+| `GET /api/expand-peek?id=<id>&id=<id>…` | `{ counts: { [id]: number \| null } }` direct child counts for "N inside" chips, without expanding (null = not expandable) | max 200 ids; Origin checked (403) |
 | `POST /api/rescan` | re-run the scanner on the served repo, merging hand edits; `{ ok, nodes, edges, layers, ms }` | Origin checked like `/ws` (403 otherwise); result is broadcast as `architecture` reason `saved`; 422 if the result fails validation |
 | `POST /api/attachments?name=<file name>` | raw image body → `{ id, name, mimeType, size, width?, height? }` | §5.6; Origin checked (403); 409 without a project; 413 over 10 MB; 415 not an image |
 | `GET /api/attachments/:id` | the stored image | §5.6; `id` must match `^[a-f0-9]{64}\.(png\|jpg\|gif\|webp)$` (400 otherwise), 404 unknown |
