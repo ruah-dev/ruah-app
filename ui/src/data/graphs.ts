@@ -41,6 +41,7 @@ export type NodeKind =
   | "module"
   | "file"
   | "api"
+  | "symbol"
   // workflow
   | "step"
   | "decision"
@@ -82,6 +83,13 @@ export type DiagramNode = {
   layer?: string;
   parent?: string;
   filePaths?: string[];
+  /** Drill-in (src/lib/expand.ts): direct children one level down, when known. */
+  childCount?: number;
+  /** Came from an on-demand expansion (not stored in architecture.json). */
+  ephemeral?: boolean;
+  /** Symbol elements (file level): kind and line range in `path`. */
+  symbol?: { kind: string; line: number; endLine: number; exported: boolean; detail?: string };
+  test?: boolean;
 };
 
 export type DiagramEdge = {
@@ -90,6 +98,8 @@ export type DiagramEdge = {
   label?: string;
   animated?: boolean;
   kind?: string;
+  /** Number of imports / references behind the edge (expanded levels). */
+  weight?: number;
 };
 
 export type DiagramGroup = {
