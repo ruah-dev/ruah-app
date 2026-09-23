@@ -7,7 +7,8 @@ export type ValidationResult =
   | { ok: true; value: Architecture; warnings: string[] }
   | { ok: false; errors: string[] };
 
-const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+// Plain ids, or `<repoId>:<nodeId>` in system (multi-repo) architectures.
+export const ID_PATTERN = /^(?:[a-z0-9][a-z0-9-]{0,62}:)?[a-z0-9][a-z0-9._-]{0,63}$/;
 
 function normalizeRel(p: string): string {
   return path.posix.normalize(p.replaceAll("\\", "/"));
@@ -37,7 +38,7 @@ export function validateArchitecture(
   const ids = new Set<string>();
   for (const node of arch.nodes) {
     if (!ID_PATTERN.test(node.id)) {
-      errors.push(`node ${node.id}: id must match ^[a-z0-9][a-z0-9._-]{0,63}$`);
+      errors.push(`node ${node.id}: id must match ^(<repoId>:)?[a-z0-9][a-z0-9._-]{0,63}$`);
     }
     if (ids.has(node.id)) errors.push(`duplicate node id: ${node.id}`);
     ids.add(node.id);
