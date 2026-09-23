@@ -95,6 +95,16 @@ describe("AcpProcessBridge", () => {
     expect(h.stderr).toContain(`cwd=${root}`);
   });
 
+  it("supportsImages follows initialize → promptCapabilities.image (unknown before start)", async () => {
+    const before = new Harness();
+    expect(before.bridge.supportsImages()).toBeUndefined();
+    const plain = await started();
+    expect(plain.bridge.supportsImages()).toBe(false);
+    await plain.bridge.stop();
+    const images = await started({}, { FAKE_AGENT_IMAGES: "1" });
+    expect(images.bridge.supportsImages()).toBe(true);
+  });
+
   it("streams text chunks and finishes with end_turn", async () => {
     const h = await started();
     const from = h.events.length;

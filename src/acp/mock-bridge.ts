@@ -68,6 +68,11 @@ export class MockBridge implements AcpBridge {
     return this.state;
   }
 
+  /** Accepts image blocks (and ignores them) so the viewer's attachment flow can be tried without a model. */
+  supportsImages(): boolean {
+    return true;
+  }
+
   prompt(turnId: string, blocks: ContentBlock[]): TurnHandle {
     if (this.active !== undefined) throw new BusyError();
     const turn: ScriptedTurn = { turnId, cancelled: false, timers: [] };

@@ -34,6 +34,8 @@ export const AgentChoiceStateSchema = z.object({
       installed: z.boolean(),
       description: z.string().optional(),
       installHint: z.string().optional(),
+      /** Whether the agent accepts images in prompts (Claude SDK: true; ACP: promptCapabilities.image). Absent = not known yet. */
+      images: z.boolean().optional(),
     }),
   ),
 });
@@ -94,6 +96,19 @@ export const ErrorCodeSchema = z.enum([
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
+// ---------- CONTRACTS.md §5.6: image attachments ----------
+/** `<sha256 hex>.<ext>` as returned by POST /api/attachments. */
+export const AttachmentIdSchema = z.string().regex(/^[a-f0-9]{64}\.(png|jpg|gif|webp)$/, "invalid attachment id");
+export const MAX_PROMPT_ATTACHMENTS = 8;
+
+/** What a prompt references (the image itself was uploaded over HTTP). */
+export const AttachmentRefSchema = z.object({ id: AttachmentIdSchema, name: z.string().max(200) });
+export type AttachmentRef = z.infer<typeof AttachmentRefSchema>;
+
+/** What turn.started and TurnRecord carry so the viewer can show the images. */
+export const AttachmentMetaSchema = z.object({ id: AttachmentIdSchema, name: z.string(), mimeType: z.string() });
+export type AttachmentMeta = z.infer<typeof AttachmentMetaSchema>;
+
 // ---------- CONTRACTS.md §5.1: projects, chats, stored turns ----------
 export const ProjectKindSchema = z.enum(["repo", "system"]);
 export type ProjectKind = z.infer<typeof ProjectKindSchema>;
@@ -126,6 +141,7 @@ export const TurnRecordSchema = z.object({
   nodeId: z.string(),
   text: z.string(),
   contextPack: z.string(),
+  attachments: z.array(AttachmentMetaSchema).optional(),
   events: z.array(StreamEventSchema),
   stopReason: StopReasonSchema.optional(),
   startedAt: z.string(),
@@ -138,7 +154,13 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("hello"), protocol: z.literal(1), client: z.string() }),
   z.object({ type: z.literal("architecture.get") }),
   z.object({ type: z.literal("focus.set"), nodeId: z.string().nullable() }),
-  z.object({ type: z.literal("prompt"), turnId: z.string(), nodeId: z.string(), text: z.string() }),
+  z.object({
+    type: z.literal("prompt"),
+    turnId: z.string(),
+    nodeId: z.string(),
+    text: z.string(),
+    attachments: z.array(AttachmentRefSchema).max(MAX_PROMPT_ATTACHMENTS, `at most ${MAX_PROMPT_ATTACHMENTS} images per prompt`).optional(),
+  }),
   z.union([
     z.object({ type: z.literal("permission.response"), requestId: z.string(), optionId: z.string() }),
     z.object({ type: z.literal("permission.response"), requestId: z.string(), cancelled: z.literal(true) }),
@@ -184,6 +206,7 @@ export const ServerMessageSchema = z.union([
     nodeId: z.string(),
     contextPack: z.string(),
     text: z.string(),
+    attachments: z.array(AttachmentMetaSchema).optional(),
   }),
   z.object({ type: z.literal("stream"), turnId: z.string(), event: StreamEventSchema }),
   z.object({

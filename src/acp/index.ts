@@ -56,7 +56,7 @@ export class AgentCatalog {
     const add = (id: string): void => {
       if (available.some((entry) => entry.id === id)) return;
       if (id === MOCK_AGENT_ID) {
-        available.push({ id, name: "Mock agent", installed: true, description: "Scripted demo agent (no model calls)" });
+        available.push({ id, name: "Mock agent", installed: true, description: "Scripted demo agent (no model calls)", images: true });
         return;
       }
       const agent = agentDefinition(id);
@@ -68,6 +68,8 @@ export class AgentCatalog {
         installed,
         description: agent.description,
         ...(!installed && agent.installHint !== undefined ? { installHint: agent.installHint } : {}),
+        // Claude SDK always takes images; ACP agents are known after initialize (the hub fills that in).
+        ...(agent.id === "claude" ? { images: true } : {}),
       });
     };
     if (this.options.mock === true) add(MOCK_AGENT_ID);

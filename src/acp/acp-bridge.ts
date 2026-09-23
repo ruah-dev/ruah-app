@@ -162,6 +162,8 @@ export class AcpProcessBridge implements AcpBridge {
   private starting: Promise<void> | undefined;
   private turn: ActiveTurn | undefined;
   private agentInfo: { name: string; version: string } | undefined;
+  /** promptCapabilities.image from the last initialize (kept across restarts). */
+  private imageCapability: boolean | undefined;
   private sessionId: string | undefined;
   private modes: ModeState | undefined;
   private models: ModelState | undefined;
@@ -198,6 +200,10 @@ export class AcpProcessBridge implements AcpBridge {
 
   status(): AgentState {
     return this.state;
+  }
+
+  supportsImages(): boolean | undefined {
+    return this.imageCapability;
   }
 
   prompt(turnId: string, blocks: ContentBlock[]): TurnHandle {
@@ -439,6 +445,7 @@ export class AcpProcessBridge implements AcpBridge {
         clientInfo: { name: "archmap", version: this.options.clientVersion },
       }));
       rt.init = init;
+      this.imageCapability = init.agentCapabilities?.promptCapabilities?.image === true;
       this.agentInfo = {
         name: init.agentInfo?.name ?? this.fallbackAgentName(),
         version: init.agentInfo?.version ?? "unknown",

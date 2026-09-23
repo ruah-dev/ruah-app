@@ -39,6 +39,8 @@ const CONFIG_MODES = process.env.FAKE_AGENT_CONFIG_MODES === "1";
 // FAKE_AGENT_LOAD_SESSION=1: advertises loadSession; session/load accepts any
 // id (as if persisted) and replays one history message before answering.
 const LOAD_SESSION = process.env.FAKE_AGENT_LOAD_SESSION === "1";
+// FAKE_AGENT_IMAGES=1: advertises promptCapabilities.image.
+const IMAGES = process.env.FAKE_AGENT_IMAGES === "1";
 
 const MODELS = [
   { value: "default", name: "Default (recommended)", description: "Opus" },
@@ -153,7 +155,10 @@ const app = agent({ name: "fake-agent" })
   .onRequest("initialize", () => ({
     protocolVersion: 1,
     agentInfo: { name: "fake-agent", version: "0.0.1" },
-    agentCapabilities: LOAD_SESSION ? { loadSession: true } : {},
+    agentCapabilities: {
+      ...(LOAD_SESSION ? { loadSession: true } : {}),
+      ...(IMAGES ? { promptCapabilities: { image: true } } : {}),
+    },
     authMethods: [],
   }))
   .onRequest("session/load", async ({ params, client }) => {

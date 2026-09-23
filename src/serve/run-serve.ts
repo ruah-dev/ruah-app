@@ -15,6 +15,7 @@ import { UsageLimitsService, UsageLog, UsageService, ruahHome } from "../usage/i
 import { probeClaudePlanUsage } from "../usage/claude-probe.js";
 import { ProjectsStore } from "../projects/projects-store.js";
 import { ChatStore } from "../projects/chat-store.js";
+import { AttachmentStore } from "../projects/attachment-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
@@ -89,6 +90,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   };
   const usage = new UsageService(new UsageLog(home), limits, { onError });
   const chats = new ChatStore(home, { onError });
+  const attachments = new AttachmentStore(home);
   const hub = new SessionHub(null, null, {
     version,
     links: flags.links,
@@ -98,6 +100,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     agents: catalog,
     usage,
     chats,
+    attachments,
     warmTtlMs: warmTtlMs(),
     maxLiveBridges: DEFAULT_MAX_LIVE_BRIDGES,
   });

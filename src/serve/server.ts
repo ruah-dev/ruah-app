@@ -15,6 +15,8 @@ import type { IntegrationsApi } from "../integrations/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
 import { handleProjectsRequest, sendJson } from "./projects-http.js";
 import type { ProjectService } from "../projects/service.js";
+import type { AttachmentStore } from "../projects/attachment-store.js";
+import { handleAttachmentsRequest } from "./attachments-http.js";
 
 export interface ServeOptions {
   host: string;
@@ -28,6 +30,8 @@ export interface ServeOptions {
   projects?: ProjectService;
   /** /api/integrations, /api/cloud/*, /api/work/*, /api/ruah/* (§6); answered 503 when absent. */
   integrations?: IntegrationsApi;
+  /** CONTRACTS §5.6 /api/attachments; defaults to the hub's store, 503 when neither has one. */
+  attachments?: AttachmentStore;
 }
 
 export interface RunningServer {
@@ -74,6 +78,12 @@ export function startServer(
       return;
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;
+    if (
+      handleAttachmentsRequest(req, res, url, options.attachments ?? hub.options.attachments, () => hub.project()?.id ?? null, (origin) =>
+        originAllowed(origin, options.allowOrigins),
+      )
+    )
+      return;
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;

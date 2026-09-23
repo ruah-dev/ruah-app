@@ -9,7 +9,7 @@ import { homedir } from "node:os";
 
 let tmpCounter = 0;
 
-export function atomicWriteFileSync(filePath: string, data: string): void {
+export function atomicWriteFileSync(filePath: string, data: string | Uint8Array): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   tmpCounter += 1;
   const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}-${tmpCounter}`;

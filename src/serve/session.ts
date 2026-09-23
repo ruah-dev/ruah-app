@@ -7,7 +7,7 @@
 // (AgentSwitcher, e.g. AgentCatalog).
 import { createHash } from "node:crypto";
 import type { WebSocket } from "ws";
-import type { AgentChoiceState, ClientMessage, ErrorCode, ProjectInfo, ServerMessage, StopReason, TurnRecord } from "../contracts/ws.js";
+import type { AgentChoiceState, AttachmentMeta, ClientMessage, ErrorCode, ProjectInfo, ServerMessage, StopReason, TurnRecord } from "../contracts/ws.js";
 import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
@@ -18,6 +18,7 @@ import type { ArchitectureStore } from "./architecture-store.js";
 import type { UsageSink } from "../usage/index.js";
 import { BridgePool, DEFAULT_MAX_LIVE_BRIDGES, type BridgeStatus, type PooledBridge } from "./bridge-pool.js";
 import { appendStreamEvent, type ChatStore } from "../projects/chat-store.js";
+import type { AttachmentStore } from "../projects/attachment-store.js";
 
 const MAX_FRAME_BYTES = 1_048_576;
 /** How long a running turn survives with no viewer connected (page reloads reconnect well within it). */
@@ -61,6 +62,8 @@ export interface SessionHubOptions {
   warmTtlMs?: number;
   /** Cap on live bridges, warm ones included (default 2). */
   maxLiveBridges?: number;
+  /** Enables image attachments on prompts (CONTRACTS §5.6). */
+  attachments?: AttachmentStore;
 }
 
 interface OpenProject extends ProjectRuntime {
@@ -105,6 +108,8 @@ export class SessionHub {
   private activeChatId: string | null = null;
   /** Active chat per project id, so switching back restores it. */
   private readonly lastChat = new Map<string, string | null>();
+  /** Image support last reported by each agent's bridge (ACP: known after initialize). */
+  private readonly imageSupport = new Map<string, boolean>();
 
   constructor(
     store: ArchitectureStore | null,
@@ -347,9 +352,38 @@ export class SessionHub {
     return (this.entry?.status ?? this.detachedStatus).state;
   }
 
+  /**
+   * Whether `agentId` takes images: its live bridge's answer when known (and
+   * remembered), else the last answer seen, else the catalog's static entry.
+   */
+  imagesSupported(agentId: string = this.currentAgentId): boolean | undefined {
+    const entry = this.entry;
+    const live = entry !== undefined && entry.agentId === agentId ? entry.bridge.supportsImages?.() : undefined;
+    if (live !== undefined) this.imageSupport.set(agentId, live);
+    return (
+      this.imageSupport.get(agentId) ??
+      this.options.agents?.choices(this.currentAgentId).available.find((a) => a.id === agentId)?.images
+    );
+  }
+
+  private agentName(agentId: string): string {
+    return (
+      this.options.agents?.choices(this.currentAgentId).available.find((a) => a.id === agentId)?.name ??
+      this.entry?.status.agent?.name ??
+      agentId
+    );
+  }
+
   agentStatusMessage(): ServerMessage {
     const { state, agent, sessionId, modes, models, error } = this.entry?.status ?? this.detachedStatus;
-    const agents = this.options.agents?.choices(this.currentAgentId);
+    const choices = this.options.agents?.choices(this.currentAgentId);
+    const agents = choices === undefined ? undefined : {
+      ...choices,
+      available: choices.available.map((choice) => {
+        const images = this.imagesSupported(choice.id);
+        return images !== undefined ? { ...choice, images } : choice;
+      }),
+    };
     return {
       type: "agent.status",
       state,
@@ -408,9 +442,12 @@ export class SessionHub {
       this.error(socket, "unknown_node", `unknown node: ${message.nodeId}`, { turnId: message.turnId });
       return;
     }
+    const images = this.loadAttachments(socket, message, open.info.id);
+    if (images === undefined) return;
     const pack = buildContextPack(index, message.nodeId, open.store.root, message.text);
     const resolvePath = open.store.resolvePath?.bind(open.store);
-    const blocks = buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath);
+    // Images first: the text block (ending with the user's question) stays last (CONTRACTS §3.3).
+    const blocks = [...images.blocks, ...buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath)];
     let handle;
     try {
       handle = entry.bridge.prompt(message.turnId, blocks as ContentBlock[]);
@@ -435,13 +472,57 @@ export class SessionHub {
         nodeId: message.nodeId,
         text: message.text,
         contextPack: pack,
+        ...(images.meta.length > 0 ? { attachments: images.meta } : {}),
         events: [],
         startedAt: new Date().toISOString(),
       },
       startedAtMs: Date.now(),
       finalized: false,
     });
-    this.send(socket, { type: "turn.started", turnId: message.turnId, nodeId: message.nodeId, contextPack: pack, text: message.text });
+    this.send(socket, {
+      type: "turn.started",
+      turnId: message.turnId,
+      nodeId: message.nodeId,
+      contextPack: pack,
+      text: message.text,
+      ...(images.meta.length > 0 ? { attachments: images.meta } : {}),
+    });
+  }
+
+  /**
+   * The prompt's images as ACP image blocks (base64), plus what the turn
+   * records about them. Undefined after an error was sent: the agent cannot
+   * read images (rejected rather than silently dropped), attachments are not
+   * available, or a referenced file is missing.
+   */
+  private loadAttachments(
+    socket: WebSocket,
+    message: Extract<ClientMessage, { type: "prompt" }>,
+    projectId: string,
+  ): { blocks: ContentBlock[]; meta: AttachmentMeta[] } | undefined {
+    const refs = message.attachments ?? [];
+    if (refs.length === 0) return { blocks: [], meta: [] };
+    const fail = (text: string): undefined => {
+      this.error(socket, "bad_message", text, { turnId: message.turnId });
+      return undefined;
+    };
+    const store = this.options.attachments;
+    if (store === undefined) return fail("image attachments are not available");
+    if (this.imagesSupported() !== true) {
+      return fail(`${this.agentName(this.currentAgentId)} can't read images — switch to Claude Code or remove the image`);
+    }
+    const blocks: ContentBlock[] = [];
+    const meta: AttachmentMeta[] = [];
+    const seen = new Set<string>();
+    for (const ref of refs) {
+      if (seen.has(ref.id)) continue;
+      seen.add(ref.id);
+      const image = store.read(projectId, ref.id);
+      if (image === undefined) return fail(`attachment not found: ${ref.name} — attach it again`);
+      blocks.push({ type: "image", data: image.data.toString("base64"), mimeType: image.mimeType });
+      meta.push({ id: ref.id, name: ref.name, mimeType: image.mimeType });
+    }
+    return { blocks, meta };
   }
 
   /** The active chat, created (titled after the prompt) when there is none. */

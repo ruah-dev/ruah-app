@@ -597,6 +597,11 @@ export class ClaudeSdkBridge implements AcpBridge {
     return this.state;
   }
 
+  /** The SDK takes base64 image blocks (PNG, JPEG, GIF, WebP) in the user message. */
+  supportsImages(): boolean {
+    return true;
+  }
+
   prompt(turnId: string, blocks: ContentBlock[]): TurnHandle {
     if (this.active !== undefined) throw new BusyError();
     if (this.state === "stopped" || this.state === "starting") throw new Error(`Claude bridge is ${this.state}`);

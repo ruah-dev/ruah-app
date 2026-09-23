@@ -184,7 +184,8 @@ export type ClientMessage =
   | { type: "hello"; protocol: 1; client: string }                        // first frame. client = "architects-canvas/<version>"
   | { type: "architecture.get" }                                          // re-request current file
   | { type: "focus.set"; nodeId: string | null }                          // selection changed (daemon logs it; MCP exposes it)
-  | { type: "prompt"; turnId: string; nodeId: string; text: string }      // turnId: viewer-generated UUID
+  | { type: "prompt"; turnId: string; nodeId: string; text: string;
+      attachments?: { id: string; name: string }[] }                      // turnId: viewer-generated UUID; attachments: ≤ 8 uploaded images (§5.6)
   | { type: "permission.response"; requestId: string; optionId: string }  // optionId must be one of the offered options
   | { type: "permission.response"; requestId: string; cancelled: true }   // user dismissed
   | { type: "cancel"; turnId: string }
@@ -201,7 +202,8 @@ export type ServerMessage =
   | { type: "architecture.error"; path: string; message: string }         // file invalid; previous revision stays live
   | { type: "agent.status"; state: AgentState; agent?: { name: string; version: string };
       sessionId?: string; modes?: ModeState; models?: ModelState; agents?: AgentChoiceState; error?: string }
-  | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string }
+  | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string;
+      attachments?: { id: string; name: string; mimeType: string }[] }  // the prompt's images (§5.6), absent when none
   | { type: "stream"; turnId: string; event: StreamEvent }
   | { type: "permission.request"; turnId: string; requestId: string;
       toolCall: ToolCallView; options: PermissionOption[] }
@@ -219,7 +221,8 @@ export interface ModeState {
 
 export interface AgentChoiceState {
   currentAgentId: string;                                        // "claude" (Claude Agent SDK) | "cursor" | "grok" | "kiro" (ACP)
-  available: { id: string; name: string; installed: boolean; description?: string; installHint?: string }[];
+  available: { id: string; name: string; installed: boolean; description?: string; installHint?: string;
+               images?: boolean }[];                              // takes images in prompts (§5.6); absent = not known yet
 }
 
 export interface ModelState {
@@ -292,6 +295,8 @@ export type ErrorCode =
 | `GET /api/file?path=<rel>` | `{ path, lang, content }` | inside root only; max 512 KiB; binary → 415; missing → 404 |
 | `PUT /api/architecture` | Phase 3, same as `architecture.save` | body validated, written atomically |
 | `POST /api/rescan` | re-run the scanner on the served repo, merging hand edits; `{ ok, nodes, edges, layers, ms }` | Origin checked like `/ws` (403 otherwise); result is broadcast as `architecture` reason `saved`; 422 if the result fails validation |
+| `POST /api/attachments?name=<file name>` | raw image body → `{ id, name, mimeType, size, width?, height? }` | §5.6; Origin checked (403); 409 without a project; 413 over 10 MB; 415 not an image |
+| `GET /api/attachments/:id` | the stored image | §5.6; `id` must match `^[a-f0-9]{64}\.(png\|jpg\|gif\|webp)$` (400 otherwise), 404 unknown |
 | `GET /api/usage/summary?range=24h\|7d\|30d` | `{ range, totals: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: number\|null, turns }, series: { t, agentId, model, inputTokens, outputTokens, costUsd\|null }[], byModel: { agentId, model, turns, inputTokens, outputTokens, costUsd\|null }[] }` | per-turn usage recorded by the daemon in `~/.ruah/usage.jsonl` (all repos); `t` = ISO bucket start (hourly for 24h, daily otherwise); `costUsd` only when the agent reports it |
 | `GET /api/usage/limits` | `{ providers: { agentId, name, status: "available"\|"unavailable"\|"unknown", windows: { id, label, kind: "session"\|"weekly"\|"other", usedPercent: number\|null, resetsAt: string\|null }[], note? }[] }` | Claude: SDK `get_usage` + streamed `rate_limit_event` (port of t3code `claudeUsageLimits.ts`); other agents `unknown` unless their ACP usage updates say otherwise |
 
@@ -415,6 +420,8 @@ The daemon sends `session/prompt` with:
 
 Links come first and the text block last, because the text ends with the user's question and agents concatenate adjacent blocks: a link placed right after the question was read as part of it (2026-09-23).
 
+With image attachments (§5.6) the prompt starts with one ACP `image` block per image (`{ type: "image", mimeType, data: <base64> }`, in the order attached), before the links and the text, for the same reason: the question stays last.
+
 One `resource_link` per listed file (same 12-file cap), only when the agent's `promptCapabilities` allow it (the Claude adapter treats them as `@`-mentions and opens the files without a tool round-trip). `--no-links` disables them. The text block is the contract; the links are an optimisation.
 
 ### 3.4 Example (node `api` from §1.4)
@@ -478,6 +485,7 @@ export interface ChatInfo {
 }
 export interface TurnRecord {    // what the viewer needs to redraw a past turn
   turnId: string; nodeId: string; text: string; contextPack: string;
+  attachments?: { id: string; name: string; mimeType: string }[];   // the prompt's images (§5.6)
   events: StreamEvent[]; stopReason?: StopReason; startedAt: string; finishedAt?: string;
 }
 ```
@@ -517,6 +525,22 @@ session (the viewer still shows the stored history).
 - The active chat on open is the one last active in that project during this daemon's life, else the most recently updated chat, else none (`activeChatId: null`). A `prompt` without an active chat creates one titled after the prompt. `chat.new` reuses the active chat when it has no turns (its title is "New chat" until the first prompt).
 - `open` of the project that is already open only refreshes `lastOpenedAt`. Paths may start with `~/`. Errors: 400 bad body/not a folder/bad name, 404 path or parent missing, 409 create target exists, 422 invalid `ruah.system.json`, 403 Origin.
 - The chat header line may carry daemon-internal fields (`sessions`: agent session id per agent id, `autoTitle`); they are never sent on the wire.
+
+### 5.6 Image attachments (2026-09-23)
+
+Screenshots and mockups travel **over HTTP, not the WebSocket** (frames stay ≤ 1 MiB, §2.2 rule 11): the viewer uploads each image, then references it from `prompt`.
+
+1. **Upload** `POST /api/attachments?name=<file name>` with the raw bytes as the body and `Content-Type: image/png | image/jpeg | image/gif | image/webp` (anything else → 415). Same Origin check as every state-changing POST (403). Needs an open project (409 `no project open`). At most 10 MB (413). The daemon **sniffs the magic bytes** and stores the image under the type it actually is (a "PNG" that is really a JPEG is stored as `.jpg`; bytes that are no PNG/JPEG/GIF/WebP → 415). Answer:
+   ```ts
+   { id: string;            // "<sha256 of the bytes>.<png|jpg|gif|webp>" — same bytes, same id (dedupe)
+     name: string;          // ?name, last path segment, control chars removed, ≤ 120 chars; default "image.<ext>"
+     mimeType: string; size: number; width?: number; height?: number }  // pixel size from the header when readable
+   ```
+   Storage: `~/.ruah/projects/<projectId>/attachments/<id>` (`RUAH_HOME` honoured), written atomically.
+2. **Serve** `GET /api/attachments/:id` returns the image of the open project with its `Content-Type`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`, `Cross-Origin-Resource-Policy: same-site` and an immutable cache header (ids are content hashes). Ids are validated against `^[a-f0-9]{64}\.(png|jpg|gif|webp)$` before any path is built (400 otherwise; no traversal); unknown → 404.
+3. **Prompt** `{ type: "prompt", …, attachments: [{ id, name }] }` (≤ 8, validated by the frame schema). The daemon reads each file and puts one ACP `image` block per image **before** the text (§3.3). Rejections (`error{bad_message, turnId}`, no turn starts): the current agent cannot read images — `"<agent> can't read images — switch to Claude Code or remove the image"` — or a referenced file is missing (`attachment not found: <name> — attach it again`).
+4. **Which agents take images:** the Claude Agent SDK always (PNG, JPEG, GIF, WebP); ACP agents when `initialize` answered `agentCapabilities.promptCapabilities.image: true`. `agent.status.agents.available[].images` carries it (absent until an ACP agent has been initialized once); unknown counts as "no" for a prompt. The viewer disables attaching while the current agent's `images` is not `true`.
+5. **History:** `turn.started` and the stored `TurnRecord` carry `attachments: { id, name, mimeType }[]`, so `chat.history` redraws the thumbnails (`GET /api/attachments/:id`). Images are **not deleted with a chat** (they are content-addressed and may be shared between chats); remove `~/.ruah/projects/<id>/attachments/` by hand to reclaim space.
 
 ## 6. Integrations (2026-09-23)
 

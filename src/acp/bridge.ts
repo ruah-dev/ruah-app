@@ -81,6 +81,12 @@ export interface AcpBridge {
    * their conversation.
    */
   useSession?(sessionId: string | undefined): Promise<void>;
+  /**
+   * Whether prompts may carry ACP `image` blocks: Claude SDK true; ACP agents
+   * per `initialize` → `agentCapabilities.promptCapabilities.image`; undefined
+   * while not known (an ACP agent that has not been initialized yet).
+   */
+  supportsImages?(): boolean | undefined;
   /** Claude SDK only: plan usage via the live query's get_usage control request (no model turn); undefined when there is no live query. */
   claudePlanUsage?(): Promise<ClaudePlanUsage | undefined>;
 }

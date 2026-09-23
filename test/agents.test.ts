@@ -68,6 +68,9 @@ describe("agent catalog", () => {
     ]);
     expect(choices.available.find((a) => a.id === "kiro")?.installHint).toMatch(/kiro\.dev/);
     expect(choices.available.find((a) => a.id === "cursor")?.installHint).toBeUndefined();
+    // Image support: static for the Claude SDK; ACP agents are only known after initialize.
+    expect(choices.available.find((a) => a.id === "claude")?.images).toBe(true);
+    expect(choices.available.find((a) => a.id === "cursor")?.images).toBeUndefined();
     expect(catalog.choices("claude-acp").available.map((a) => a.id)).toContain("claude-acp");
   });
 
