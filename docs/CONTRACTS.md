@@ -434,3 +434,125 @@ The user selected the node above on an architecture diagram of the repository at
 
 there might be a bug in how invoices are validated
 ```
+
+## 5. Projects, launcher and chats (2026-09-23)
+
+The daemon can start **without a repo** (launcher state) and switch projects at
+runtime, so the app opens on a start screen and project switching needs no
+restart. All state-changing HTTP calls below are **POST with the same Origin
+check as `/ws`** (403 otherwise).
+
+### 5.1 Types
+```ts
+export interface ProjectInfo {
+  id: string;                    // stable: sha1(realpath(root)).slice(0, 12)
+  name: string;                  // architecture name, else folder name
+  root: string;                  // absolute path (repo dir, or the folder holding ruah.system.json)
+  kind: "repo" | "system";       // "system" = multi-repo (docs/MULTI-REPO.md)
+  lastOpenedAt: string;          // ISO
+  pinned?: boolean;
+}
+export interface ChatInfo {
+  id: string;                    // uuid
+  projectId: string;
+  title: string;                 // first prompt, trimmed to 80 chars, renameable
+  agentId: string;               // agent used when the chat was created
+  model?: string;
+  createdAt: string; updatedAt: string;
+  turnCount: number;
+  lastNodeId?: string;
+}
+export interface TurnRecord {    // what the viewer needs to redraw a past turn
+  turnId: string; nodeId: string; text: string; contextPack: string;
+  events: StreamEvent[]; stopReason?: StopReason; startedAt: string; finishedAt?: string;
+}
+```
+
+### 5.2 WebSocket additions
+- daemon → viewer `{ type: "project", project: ProjectInfo | null }` — sent after `hello` and on every switch. `null` = launcher state (no `architecture` message follows).
+- daemon → viewer `{ type: "chats", projectId, chats: ChatInfo[], activeChatId: string | null }` — after `hello`, on switch, and whenever the list changes.
+- daemon → viewer `{ type: "chat.history", chatId, turns: TurnRecord[] }` — reply to `chat.open` (and after `hello` for the active chat).
+- viewer → daemon `{ type: "chat.new" }`, `{ type: "chat.open", chatId }`, `{ type: "chat.rename", chatId, title }`, `{ type: "chat.delete", chatId }`.
+- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first.
+
+### 5.3 HTTP additions
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/projects` | `{ current: ProjectInfo \| null, recent: ProjectInfo[] }` (most recent first, pinned on top) |
+| `POST /api/projects/open` | `{ path }` → `ProjectInfo`. Scans first when there is no `architecture.json`; opens as `system` when `ruah.system.json` exists. Broadcasts `project`, `architecture`, `chats`. |
+| `POST /api/projects/create` | `{ parentDir, name, git?: boolean }` → `ProjectInfo`. Creates the folder (must not exist), optional `git init`, an empty `architecture.json` (valid, zero nodes), then opens it. |
+| `POST /api/projects/pin` / `forget` | `{ id, pinned? }` → `{ ok: true }` (forget only removes it from the recent list) |
+| `GET /api/chats/recent?limit=50` | `{ chats: (ChatInfo & { projectName: string; projectRoot: string })[] }` across all projects, newest first |
+
+Storage: `~/.ruah/projects.json` (recent list) and
+`~/.ruah/projects/<projectId>/chats/<chatId>.jsonl` (one `TurnRecord` per
+line, plus a header line with `ChatInfo`). `RUAH_HOME` overrides `~/.ruah`.
+Agent sessions resume with the chat: Claude SDK `resume: sessionId`; ACP
+`session/load` when the agent advertises `loadSession`, otherwise a new
+session (the viewer still shows the stored history).
+
+### 5.4 Desktop bridge (Electron preload)
+`window.ruah = { version, pickFolder(opts?: { title?: string }): Promise<string | null>, revealInFinder(path): void }`
+(IPC to the main process; `dialog.showOpenDialog`). In a plain browser
+`window.ruah` is absent and the viewer offers a path text field instead.
+
+## 6. Integrations (2026-09-23)
+
+One framework, three families: **cloud** (see deployed services), **work
+items** (issues linked to elements), **ruah orchestration** (tasks and
+workflows from the `ruah` CLI). Credentials are **never** stored by Ruah in
+plain files: cloud uses the provider CLI's own login (`doctl auth`, AWS
+profiles / SSO); tokens that must be stored (Jira) go to the macOS Keychain
+(service `ruah`, account `<integrationId>:<site>`). Everything is read-only
+unless an action below says otherwise.
+
+### 6.1 Types
+```ts
+export interface IntegrationInfo {
+  id: "digitalocean" | "aws" | "jira" | "github" | "ruah" | (string & {});
+  family: "cloud" | "work" | "orchestration";
+  name: string;
+  status: "connected" | "not_connected" | "cli_missing" | "error";
+  detail?: string;               // e.g. "doctl context: default", "AWS CLI not installed"
+  setupHint?: string;            // what the user runs / enters to connect
+  accounts?: { id: string; label: string }[];   // aws profiles, doctl contexts, jira sites
+}
+export interface CloudResource {
+  id: string;                    // provider-native id (ARN, DO URN)
+  provider: "digitalocean" | "aws" | (string & {});
+  type: "compute" | "container" | "function" | "app" | "database" | "cache" | "queue"
+      | "storage" | "loadbalancer" | "gateway" | "cdn" | "dns" | "kubernetes" | "other";
+  service: string;               // "droplet", "apps", "ec2", "lambda", "rds", …
+  name: string; region?: string; status?: string;
+  tags?: Record<string, string>;
+  consoleUrl?: string;
+  linkedNodeId?: string;         // architecture element it runs (tag ruah:node, name match, or manual)
+}
+export interface WorkItem {
+  id: string;                    // "PLAT-123", "owner/repo#42"
+  provider: "jira" | "github" | (string & {});
+  title: string; status: string; url: string;
+  assignee?: string; updatedAt: string;
+  linkedNodeIds: string[];       // stored links (elements ↔ issues)
+}
+```
+
+### 6.2 HTTP
+| Method + path | Result |
+| --- | --- |
+| `GET /api/integrations` | `{ integrations: IntegrationInfo[] }` |
+| `POST /api/integrations/:id/connect` | body per provider (Jira: `{ site, email, token }` → Keychain; others: `{ account? }` to pick profile/context) → `IntegrationInfo` |
+| `POST /api/integrations/:id/disconnect` | removes stored token/selection → `IntegrationInfo` |
+| `POST /api/cloud/sync` | `{ providers?: string[], accounts?: Record<string,string> }` → `{ resources: CloudResource[], syncedAt, errors: { provider, message }[] }`; cached per project in `~/.ruah/projects/<id>/cloud.json` |
+| `GET /api/cloud/resources` | last sync result (same shape) |
+| `POST /api/cloud/link` | `{ resourceId, nodeId \| null }` → `{ ok }` (manual link, persisted) |
+| `GET /api/work/items?nodeId=&q=` | `{ items: WorkItem[] }` (linked to the node, or search) |
+| `POST /api/work/link` | `{ provider, itemId, nodeId, linked: boolean }` → `{ ok }` |
+| `POST /api/work/create` | `{ provider, projectKey \| repo, title, body, nodeId }` → `WorkItem` (creates the issue — the viewer must confirm first) |
+| `GET /api/ruah/status` | `ruah status --json` passthrough, or `{ initialized: false, hint }` |
+| `POST /api/ruah/task` | `{ name, prompt, files?: string[], executor?: string, nodeId? , start?: boolean }` → task JSON (runs `ruah task create` [+ `start`]) |
+| `POST /api/ruah/task/:name/:action` | action ∈ `start \| done \| merge \| cancel` |
+| `GET /api/ruah/workflows` / `POST /api/ruah/workflows/:name/run` | list / run |
+
+Links between work items and elements are stored in the project
+(`.ruah/links.json` inside the repo, committable) so a team shares them.
