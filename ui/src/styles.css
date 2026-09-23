@@ -744,3 +744,86 @@ html[data-theme="contrast"] .grain::after {
     outline-offset: 2px;
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Integrated terminal (components/terminal/*): the 16 ANSI colours mapped onto the brand
+ * scales (red = coral, green = sage, yellow = amber, blue = slate, magenta = lavender,
+ * cyan = teal), per theme. xterm reads these at runtime (terminal/theme.ts).
+ * ------------------------------------------------------------------------------------------- */
+:root {
+  --term-bg: #1a1a19;
+  --term-fg: #f0eee9;
+  --term-cursor: #00d2b9;
+  --term-selection: rgba(0, 190, 168, 0.32);
+  --term-black: #3f3c35;
+  --term-red: #f07068;
+  --term-green: #7fb069;
+  --term-yellow: #e5a84b;
+  --term-blue: #8a97ae;
+  --term-magenta: #b594f5;
+  --term-cyan: #00d2b9;
+  --term-white: #dedad3;
+  --term-bright-black: #8f8a7e;
+  --term-bright-red: #f49a92;
+  --term-bright-green: #9ec281;
+  --term-bright-yellow: #edbf5e;
+  --term-bright-blue: #b7c0cf;
+  --term-bright-magenta: #cfbdf8;
+  --term-bright-cyan: #4dd9c5;
+  --term-bright-white: #faf9f7;
+}
+html[data-theme="light"] {
+  --term-bg: #faf9f7;
+  --term-fg: #1a1a19;
+  --term-cursor: #007e70;
+  --term-selection: rgba(0, 126, 112, 0.2);
+  --term-black: #2c2a25;
+  --term-red: #b8453e;
+  --term-green: #507e3c;
+  --term-yellow: #8a6118;
+  --term-blue: #45536c;
+  --term-magenta: #7d58cc;
+  --term-cyan: #007e70;
+  --term-white: #b8b3a8;
+  --term-bright-black: #706b60;
+  --term-bright-red: #dc5850;
+  --term-bright-green: #67994f;
+  --term-bright-yellow: #ad7a22;
+  --term-bright-blue: #5b6b88;
+  --term-bright-magenta: #9773e4;
+  --term-bright-cyan: #009e8c;
+  --term-bright-white: #dedad3;
+}
+html[data-theme="contrast"] {
+  --term-bg: #000000;
+  --term-fg: #ffffff;
+  --term-cursor: #00f0d3;
+  --term-selection: rgba(0, 240, 211, 0.38);
+  --term-black: #5a5a5a;
+  --term-red: #f49a92;
+  --term-green: #bcd49e;
+  --term-yellow: #edbf5e;
+  --term-blue: #b7c0cf;
+  --term-magenta: #cfbdf8;
+  --term-cyan: #4dd9c5;
+  --term-white: #e6e6e6;
+  --term-bright-black: #b0b0b0;
+  --term-bright-red: #f9c0bb;
+  --term-bright-green: #d5e5c3;
+  --term-bright-yellow: #f4d48e;
+  --term-bright-blue: #d6dce5;
+  --term-bright-magenta: #e1d6fb;
+  --term-bright-cyan: #88e6d7;
+  --term-bright-white: #ffffff;
+}
+[data-ruah-terminal] .xterm {
+  height: 100%;
+  padding: 6px 0 0 10px;
+  background-color: var(--term-bg);
+}
+/* xterm.css paints the viewport black; the theme's background must show edge to edge. */
+[data-ruah-terminal] .xterm .xterm-viewport {
+  background-color: var(--term-bg) !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-4) transparent;
+}

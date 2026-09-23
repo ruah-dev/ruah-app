@@ -16,6 +16,7 @@ import { ProjectTile } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import { useRecentChats } from "@/components/projects/useRecentChats";
 import { cn } from "@/lib/utils";
+import { isTerminalTarget } from "@/lib/terminal";
 
 type Row = Pick<RecentChat, "id" | "projectId" | "projectName" | "projectRoot" | "title" | "agentId"> & {
   when?: string | number;
@@ -109,6 +110,8 @@ export function RecentChatsSwitcher() {
     if (!enabled) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
+      // Ctrl-J in the terminal is the shell's (newline), ⌘J stays the switcher.
+      if (e.ctrlKey && !e.metaKey && isTerminalTarget(e.target)) return;
       const cmdJ = (e.metaKey || e.ctrlKey) && !e.altKey && k === "j";
       const ctrlTab = e.ctrlKey && e.key === "Tab";
       const { open, rows, index } = latest.current;
