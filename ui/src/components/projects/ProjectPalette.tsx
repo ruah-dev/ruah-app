@@ -13,6 +13,7 @@ import {
   MessageSquarePlus,
   MessagesSquare,
   Pin,
+  SquareTerminal,
 } from "lucide-react";
 import { prettyPath, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
@@ -33,6 +34,8 @@ import { AgentMark } from "@/components/agent/ComposerControls";
 import { KindBadge, ProjectTile } from "./ProjectBits";
 import { useProjectActions } from "./useProjectActions";
 import { useRecentChats } from "./useRecentChats";
+import { newTerminal } from "@/components/terminal/TerminalPanel";
+import { openElementInTerminal } from "@/components/terminal/actions";
 
 const itemClass = "gap-2.5 rounded-lg px-2 py-1.5 text-ui data-[selected=true]:bg-accent";
 const groupClass = "[&_[cmdk-group-heading]]:section-label";
@@ -186,6 +189,34 @@ export function ProjectPalette() {
                   <MessageSquarePlus className="size-4 text-muted-foreground" />
                   New chat
                   <kbd className="kbd ms-auto">⌘N</kbd>
+                </CommandItem>
+              ) : null}
+              {daemon.source === "daemon" && current ? (
+                <CommandItem
+                  value="a:new-terminal New terminal shell console"
+                  onSelect={() => {
+                    wb.setPaletteOpen(false);
+                    newTerminal();
+                  }}
+                  className={itemClass}
+                >
+                  <SquareTerminal className="size-4 text-muted-foreground" />
+                  New terminal
+                  <kbd className="kbd ms-auto">⌃`</kbd>
+                </CommandItem>
+              ) : null}
+              {daemon.source === "daemon" && current && wb.selectedNode && (wb.selectedNode.path || wb.selectedNode.filePaths?.length) ? (
+                <CommandItem
+                  value={`a:element-terminal Open in terminal ${wb.selectedNode.label}`}
+                  onSelect={() => {
+                    const node = wb.selectedNode;
+                    wb.setPaletteOpen(false);
+                    if (node) openElementInTerminal(node);
+                  }}
+                  className={itemClass}
+                >
+                  <SquareTerminal className="size-4 text-muted-foreground" />
+                  Open {wb.selectedNode.label} in terminal
                 </CommandItem>
               ) : null}
               <CommandItem

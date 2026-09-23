@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import type { ToolCallView } from "@/lib/contracts";
+import { runCommandInTerminal } from "@/components/terminal/actions";
 import { cn } from "@/lib/utils";
 
 export const iconByKind: Record<string, typeof Wrench> = {
@@ -144,9 +145,22 @@ export function ToolCallRow({
             </button>
           ))}
           {call.command ? (
-            <p className="truncate font-mono text-[11.5px] text-muted-foreground">
-              $ {call.command}
-            </p>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="min-w-0 truncate font-mono text-[11.5px] text-muted-foreground">
+                $ {call.command}
+              </p>
+              {call.kind === "execute" ? (
+                <button
+                  type="button"
+                  onClick={() => runCommandInTerminal(call.command!)}
+                  title="Open a terminal with this command typed in (press Enter to run it)"
+                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-primary hover:bg-accent"
+                >
+                  <Terminal className="size-3" />
+                  Run in terminal
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {call.output ? (
             <pre className="max-h-48 overflow-auto rounded-lg bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">

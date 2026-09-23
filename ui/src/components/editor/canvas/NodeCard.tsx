@@ -3,7 +3,7 @@
 // `--inv-k` (1 / zoom, set on the world layer in coarse steps) keeps text and the toolbar at a
 // readable screen size without re-rendering.
 import { memo, useEffect, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { Check, ChevronRight, ChevronsDown, ClipboardCopy, Code2, Link2, Sparkles, Trash2 } from "lucide-react";
+import { Check, ChevronRight, ChevronsDown, ClipboardCopy, Code2, Link2, Sparkles, SquareTerminal, Trash2 } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import { NODE_H, NODE_W, styleFor } from "@/components/explorer/kinds";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { keepAgentElement } from "@/lib/architecture-edit";
 import { useMapFlash } from "@/lib/map-activity";
 import type { Lod } from "./geometry";
 import { isGroupNodeId } from "./view-model";
+import { openElementInTerminal } from "@/components/terminal/actions";
 
 export type NodeHandlers = {
   pointerDown: (e: ReactPointerEvent, node: DiagramNode) => void;
@@ -96,6 +97,18 @@ function Toolbar({ node, editable, linking, h }: { node: DiagramNode; editable: 
         <Sparkles className="size-3.5" />
       </Button>
       {h.copyContext ? <CopyContextButton node={node} onCopy={h.copyContext} /> : null}
+      {node.path || node.filePaths?.length ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label="Open in terminal"
+          title="Open in terminal (its folder)"
+          onClick={() => openElementInTerminal(node)}
+        >
+          <SquareTerminal className="size-3.5" />
+        </Button>
+      ) : null}
       {node.origin === "agent" && !node.ephemeral ? (
         <Button
           variant="ghost"
