@@ -19,6 +19,8 @@ import { handleExportRequest } from "../export/http.js";
 import type { ProjectService } from "../projects/service.js";
 import type { AttachmentStore } from "../projects/attachment-store.js";
 import { handleAttachmentsRequest } from "./attachments-http.js";
+import { handleMapOpsRequest } from "./map-ops-http.js";
+import type { MapOpsService } from "./map-ops.js";
 
 export interface ServeOptions {
   host: string;
@@ -34,6 +36,8 @@ export interface ServeOptions {
   integrations?: IntegrationsApi;
   /** CONTRACTS §5.6 /api/attachments; defaults to the hub's store, 503 when neither has one. */
   attachments?: AttachmentStore;
+  /** CONTRACTS §1.7 /api/arch + /api/arch/ops (token-authenticated map ops for `archmap mcp`); 503 when absent. */
+  mapOps?: MapOpsService;
 }
 
 export interface RunningServer {
@@ -80,6 +84,8 @@ export function startServer(
       return;
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;
+    // Agents' map tools (stdio MCP server): loopback + capability token, no browsers.
+    if (handleMapOpsRequest(req, res, url, options.mapOps)) return;
     if (
       handleAttachmentsRequest(req, res, url, options.attachments ?? hub.options.attachments, () => hub.project()?.id ?? null, (origin) =>
         originAllowed(origin, options.allowOrigins),
@@ -137,7 +143,7 @@ export function startServer(
         return;
       }
       // store.save validates, writes atomically and broadcasts reason "saved".
-      store.save(arch).then(
+      store.save(arch, { by: { kind: "scan" } }).then(
         () => {
           const s = summarize(arch);
           sendJson(res, 200, { ok: true, nodes: s.nodes, edges: s.edges, layers: s.layers, ms: Date.now() - started });

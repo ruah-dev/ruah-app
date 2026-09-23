@@ -50,7 +50,7 @@ import {
   type SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import type { AcpBridge, BridgeEvent, BridgeOptions, ClaudePlanUsage, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
+import type { AcpBridge, AgentMapTools, BridgeEvent, BridgeOptions, ClaudePlanUsage, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import { resolveClaudeSdkExecutablePath } from "./claude-executable.js";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "./claude-home.js";
@@ -527,6 +527,8 @@ export class ClaudeSdkBridge implements AcpBridge {
   private readonly additionalDirectories: readonly string[];
   private readonly env: Record<string, string | undefined>;
   private readonly onStderr: ((chunk: string) => void) | undefined;
+  /** The ruah_* map tools (CONTRACTS §1.7): an in-process MCP server on every query(). */
+  private readonly mapTools: AgentMapTools | undefined;
   private readonly queryImpl: typeof sdkQuery;
   private readonly cancelTimeoutMs: number;
   private readonly startTimeoutMs: number;
@@ -559,6 +561,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     const envModel = this.env.ANTHROPIC_MODEL?.trim();
     this.modelId = envModel !== undefined && envModel.length > 0 ? envModel : undefined;
     this.onStderr = options.onStderr;
+    this.mapTools = options.mapTools;
     this.queryImpl = deps.queryImpl ?? sdkQuery;
     this.cancelTimeoutMs = deps.cancelTimeoutMs ?? 15_000;
     this.startTimeoutMs = deps.startTimeoutMs ?? 60_000;
@@ -804,8 +807,20 @@ export class ClaudeSdkBridge implements AcpBridge {
       ...(executable !== undefined && executable.length > 0
         ? { pathToClaudeCodeExecutable: resolveClaudeSdkExecutablePath(executable, this.env) }
         : {}),
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        ...(this.mapTools !== undefined ? { append: this.mapTools.instructions } : {}),
+      },
       settingSources: [...CLAUDE_SETTING_SOURCES],
+      // Map tools run without a permission prompt: they only touch architecture.json
+      // (validated by the daemon) and the user can undo a turn's map changes.
+      ...(this.mapTools !== undefined
+        ? {
+            mcpServers: { ruah: this.mapTools.sdkServer() as NonNullable<ClaudeQueryOptions["mcpServers"]>[string] },
+            allowedTools: [...this.mapTools.allowedTools],
+          }
+        : {}),
       permissionMode: this.mode,
       // Lets setMode() switch into bypassPermissions later; the mode itself
       // stays whatever the user picked.
@@ -1084,6 +1099,10 @@ export class ClaudeSdkBridge implements AcpBridge {
     const turn = this.active;
     if (turn === undefined || turn.cancelled) {
       return { behavior: "deny", message: "No active archmap turn.", interrupt: true };
+    }
+    // The ruah_* map tools never prompt (allowedTools normally short-circuits this already).
+    if (this.mapTools !== undefined && this.mapTools.allowedTools.includes(toolName)) {
+      return { behavior: "allow", updatedInput: toolInput };
     }
     // archmap has no surface for clarifying questions; steer the model to plain text.
     if (toolName === "AskUserQuestion") {

@@ -5,7 +5,7 @@
 // what the SessionHub uses to switch agents at runtime (agent.set).
 import { systemRootsFor } from "../system/roots.js";
 import type { AgentChoiceState, ErrorCode } from "../contracts/ws.js";
-import type { AcpBridge, BridgeOptions } from "./bridge.js";
+import type { AcpBridge, AgentMapTools, BridgeOptions } from "./bridge.js";
 import { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
 import { ClaudeSdkBridge } from "./claude-sdk-bridge.js";
 import { AcpProcessBridge } from "./acp-bridge.js";
@@ -40,7 +40,12 @@ export class AgentCatalog {
 
   constructor(
     private readonly base: BaseOptions,
-    private readonly options: { mock?: boolean; env?: NodeJS.ProcessEnv } = {},
+    private readonly options: {
+      mock?: boolean;
+      env?: NodeJS.ProcessEnv;
+      /** The ruah_* map tools for a new bridge (CONTRACTS §1.7); absent = agents get no map tools. */
+      mapTools?: (agentId: string, root: string) => AgentMapTools;
+    } = {},
   ) {
     this.refresh();
   }
@@ -98,12 +103,14 @@ export class AgentCatalog {
   create(agentId: string, root?: string): AcpBridge {
     const extra = root !== undefined ? systemRootsFor(root) : [];
     const rooted: BaseOptions = root !== undefined ? { ...this.base, root } : this.base;
-    const base: BaseOptions = extra.length > 0 ? { ...rooted, additionalDirectories: extra } : rooted;
+    const withDirs: BaseOptions = extra.length > 0 ? { ...rooted, additionalDirectories: extra } : rooted;
     if (agentId === MOCK_AGENT_ID && this.options.mock === true) {
-      return new MockBridge({ ...base, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
+      return new MockBridge({ ...withDirs, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
     }
     const agent = agentDefinition(agentId);
     if (agent === undefined) throw new Error(`unknown agent: ${agentId}`);
+    const mapTools = this.options.mapTools?.(agent.id, withDirs.root);
+    const base: BaseOptions = mapTools !== undefined ? { ...withDirs, mapTools } : withDirs;
     if (agent.id === "claude") {
       const env = claudeCode().env;
       return new ClaudeSdkBridge({ ...base, preset: { command: "none", args: [], ...(env !== undefined ? { env } : {}) } });

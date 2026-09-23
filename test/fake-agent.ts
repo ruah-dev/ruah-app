@@ -177,7 +177,7 @@ const app = agent({ name: "fake-agent" })
     const sessionId = `fake-session-${sessionCounter}`;
     const state: SessionState = { cwd: params.cwd, modeId: "default", modelId: "default", cancelled: false, onCancel: undefined };
     sessions.set(sessionId, state);
-    log(`session/new ${sessionId} cwd=${params.cwd}`);
+    log(`session/new ${sessionId} cwd=${params.cwd} mcp=${(params.mcpServers ?? []).map((s) => ("command" in s ? `${s.name}:${s.command}` : s.name)).join(",")}`);
     if (CONFIG_MODES) return { sessionId, configOptions: configOptions(state) };
     return {
       sessionId,

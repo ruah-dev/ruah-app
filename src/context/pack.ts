@@ -39,11 +39,16 @@ function edgeTags(edge: ArchEdgeRef): string {
   return out;
 }
 
+/** Appended to the instruction paragraph when the agent has the ruah_* map tools (CONTRACTS §1.7). */
+export const MAP_TOOLS_SENTENCE =
+  " You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.";
+
 export function buildContextPack(
   index: ArchIndex,
   nodeId: string,
   root: string,
   userText?: string,
+  options: { mapTools?: boolean } = {},
 ): string {
   const node = index.byId(nodeId);
   if (node === undefined) throw new Error(`unknown node: ${nodeId}`);
@@ -123,7 +128,7 @@ export function buildContextPack(
 
   lines.push("[/archmap context]");
   lines.push("");
-  lines.push(`${INSTRUCTION_PREFIX}${root}${INSTRUCTION_SUFFIX}`);
+  lines.push(`${INSTRUCTION_PREFIX}${root}${INSTRUCTION_SUFFIX}${options.mapTools === true ? MAP_TOOLS_SENTENCE : ""}`);
   if (userText !== undefined) {
     lines.push("");
     lines.push(userText);

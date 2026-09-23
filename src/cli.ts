@@ -19,7 +19,9 @@ Usage:
   archmap export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)
-  archmap mcp <repo>               stdio MCP server
+  archmap mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
+                                   daemon (token in RUAH_MCP_TOKEN or --token; started by
+                                   the daemon for ACP agents)
   archmap --version                print version
   archmap help                     this text
 
@@ -137,6 +139,35 @@ async function scan(argv: readonly string[]): Promise<number> {
   );
 }
 
+async function mcp(argv: readonly string[]): Promise<number> {
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args: [...argv],
+      options: { daemon: { type: "string" }, token: { type: "string" } },
+      allowPositionals: false,
+      strict: true,
+    }));
+  } catch (err) {
+    process.stderr.write(`archmap mcp: ${(err as Error).message}\n`);
+    return 2;
+  }
+  const daemon = values.daemon ?? process.env.RUAH_DAEMON_URL;
+  const token = values.token ?? process.env.RUAH_MCP_TOKEN;
+  if (daemon === undefined || token === undefined || token.length === 0) {
+    process.stderr.write("archmap mcp: needs --daemon <url> and a token (--token or RUAH_MCP_TOKEN)\n");
+    return 2;
+  }
+  const { httpMapBackend, serveMcpStdio } = await import("./mcp/stdio-server.js");
+  // stdout carries the protocol; logs go to stderr.
+  return serveMcpStdio(httpMapBackend(daemon, token), {
+    input: process.stdin,
+    output: process.stdout,
+    version: pkg.version,
+    log: (line) => process.stderr.write(`${line}\n`),
+  });
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === "--version" || cmd === "-v") {
@@ -163,9 +194,7 @@ async function main(argv: readonly string[]): Promise<number> {
       return await runExport(rest, pkg.version);
     }
     case "mcp": {
-      parseArgs({ args: rest, strict: false });
-      console.log("not implemented");
-      return 2;
+      return await mcp(rest);
     }
     default:
       process.stdout.write(USAGE);

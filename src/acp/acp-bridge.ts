@@ -38,7 +38,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
 import type { AgentState, ModeState, ModelState, PermissionOption, StopReason } from "../contracts/ws.js";
-import type { AcpBridge, BridgeEvent, BridgeOptions, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
+import type { AcpBridge, BridgeEvent, BridgeOptions, RateLimitSample, StdioMcpServerSpec, TurnHandle, TurnUsage } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import {
   applyModeChange,
@@ -495,7 +495,12 @@ export class AcpProcessBridge implements AcpBridge {
         this.options.onStderr?.(`archmap: session/load ${load} failed (${errorMessage(err)}); starting a new session\n`);
       }
     }
-    session ??= await this.raceExit(rt, rt.conn.agent.buildSession(this.root).start());
+    if (session === undefined) {
+      const builder = rt.conn.agent.buildSession(this.root);
+      const mcp = await this.mapToolsServer();
+      if (mcp !== undefined) builder.withMcpServer(mcp);
+      session = await this.raceExit(rt, builder.start());
+    }
     rt.session = session;
     this.sessionId = session.sessionId;
     this.sessionCostUsd = undefined;
@@ -512,10 +517,23 @@ export class AcpProcessBridge implements AcpBridge {
    * and is dropped.
    */
   private async loadSession(rt: Runtime, sessionId: string): Promise<ActiveSession> {
-    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: [] }));
+    const mcp = await this.mapToolsServer();
+    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: mcp !== undefined ? [mcp] : [] }));
     const agent = rt.conn.agent as unknown as { attachSession?: (response: NewSessionResponse) => ActiveSession };
     if (typeof agent.attachSession !== "function") throw new Error("the ACP SDK cannot attach a loaded session");
     return agent.attachSession.call(rt.conn.agent, { ...(response ?? {}), sessionId } as NewSessionResponse);
+  }
+
+  /** The ruah_* map tools as a stdio MCP server for session/new and session/load (CONTRACTS §1.7). */
+  private async mapToolsServer(): Promise<StdioMcpServerSpec | undefined> {
+    const tools = this.options.mapTools;
+    if (tools === undefined) return undefined;
+    try {
+      return await tools.stdio();
+    } catch (err) {
+      this.options.onStderr?.(`archmap: map tools unavailable (${errorMessage(err)})\n`);
+      return undefined;
+    }
   }
 
   private readModes(response: NewSessionResponse): void {
