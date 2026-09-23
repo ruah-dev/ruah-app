@@ -4,8 +4,14 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const PORT = 4177;
-const BASE = `http://127.0.0.1:${PORT}`;
+const net = require("node:net");
+
+// 4177 when it is free (keeps the viewer's saved preferences, which are per
+// origin); otherwise any free port, so a second window or a leftover process
+// never blocks the app. RUAH_PORT forces a port.
+const PREFERRED_PORT = Number.parseInt(process.env.RUAH_PORT ?? "4177", 10);
+let PORT = PREFERRED_PORT;
+let BASE = `http://127.0.0.1:${PORT}`;
 const ROOT = path.join(__dirname, "..");
 // ARCHMAP_AGENT picks the initial agent: "claude" (Claude Agent SDK, default),
 // "cursor", "grok", "kiro", "opencode", "acp" (Claude through the ACP adapter) or "mock"
@@ -37,7 +43,7 @@ function startDaemon(repoDir) {
   daemon = spawn(
     NODE,
     [CLI, "serve", ...repoArgs, ...agentArgs, "--viewer", VIEWER_DIR, "--port", String(PORT)],
-    { stdio: ["ignore", "pipe", "pipe"], env: NODE_ENV },
+    { stdio: ["ignore", "pipe", "pipe"], env: { ...NODE_ENV, RUAH_PARENT_PID: String(process.pid) } },
   );
   daemon.stdout.on("data", (c) => process.stdout.write(`[daemon] ${c}`));
   daemon.stderr.on("data", (c) => process.stderr.write(`[daemon] ${c}`));
@@ -102,12 +108,39 @@ function registerIpc() {
   });
 }
 
+function portFree(port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
+  });
+}
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+function stopDaemon() {
+  if (daemon !== null && daemon.exitCode === null) daemon.kill("SIGTERM");
+}
+
 async function main() {
   const repoDir = process.env.ARCHMAP_REPO ?? repoFromArgv(process.argv);
   registerIpc();
-  // A leftover daemon on the port would pass the health check and the window
-  // would show its (possibly different) state; refuse instead.
-  if (await healthOnce()) throw new Error(`port ${PORT} is already serving an archmap daemon; stop it first`);
+  // Never attach to whatever already listens on the port (a leftover daemon
+  // would show another state): start our own on a free port instead.
+  if (!(await portFree(PORT))) {
+    PORT = await freePort();
+    BASE = `http://127.0.0.1:${PORT}`;
+    process.stderr.write(`[ruah] port ${PREFERRED_PORT} is busy; using ${PORT}\n`);
+  }
   startDaemon(repoDir);
   await waitForDaemon(60000); // the agent starts in the background once a project is open
   win = new BrowserWindow({
@@ -135,6 +168,18 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (daemon) daemon.kill();
+  stopDaemon();
   app.quit();
 });
+
+// Cmd+Q, app menu Quit, logout: stop the daemon too (it would otherwise keep
+// the port). The daemon also exits by itself if this process disappears
+// without running these handlers (RUAH_PARENT_PID, see run-serve.ts).
+app.on("before-quit", stopDaemon);
+process.on("exit", stopDaemon);
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    stopDaemon();
+    app.exit(0);
+  });
+}

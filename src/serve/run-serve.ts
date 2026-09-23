@@ -153,6 +153,23 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
+  // Started by the desktop app: exit when that process is gone, even if it
+  // crashed or was force-quit without stopping us (otherwise we would keep
+  // the port and the next launch would find a stale daemon).
+  const parentPid = Number.parseInt(process.env.RUAH_PARENT_PID ?? "", 10);
+  if (Number.isInteger(parentPid) && parentPid > 1) {
+    const watch = setInterval(() => {
+      try {
+        process.kill(parentPid, 0);
+      } catch {
+        clearInterval(watch);
+        info("desktop app is gone; stopping");
+        shutdown();
+      }
+    }, 2000);
+    watch.unref();
+  }
+
   // serve runs until signalled; the promise resolves only on shutdown.
   return new Promise<number>((resolve) => {
     resolveServe = resolve;
