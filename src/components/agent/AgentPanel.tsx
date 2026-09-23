@@ -1,27 +1,61 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, RotateCcw, Square } from "lucide-react";
+// Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
+// (MIT): a centered, readable message column with the composer docked at the bottom.
+import { useEffect, useMemo, useRef } from "react";
+import { RotateCcw, Wind } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
 import { contextPathOf } from "@/lib/architecture";
-import { cancel, resetSession, sendPrompt, setAgentMode, type DaemonState } from "@/lib/daemon";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { cancel, resetSession, sendPrompt, type DaemonState } from "@/lib/daemon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { PermissionCard } from "./PermissionCard";
+import { Composer, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
 
 const suggestions = [
-  "Explain this flow",
+  "Explain what this does",
   "Where are the API requests handled?",
   "What breaks if this fails?",
 ];
 
-export function agentDotClass(daemon: Pick<DaemonState, "connection" | "agent">) {
+export function agentDotClass(daemon: Pick<DaemonState, "connection" | "agent" | "source">) {
+  if (daemon.source === "sample") return "bg-muted-foreground/50";
   if (daemon.connection !== "open") return "bg-bad";
   const s = daemon.agent?.state;
   if (s === "idle") return "bg-ok";
   if (s === "busy" || s === "starting") return "bg-warn";
   return "bg-bad";
+}
+
+export function agentStatusLabel(daemon: DaemonState) {
+  if (daemon.source === "sample") return "No daemon connected — showing sample data";
+  if (daemon.source === null || daemon.connection === "connecting") return "Connecting to the daemon…";
+  if (daemon.connection === "closed") return "Daemon disconnected — reconnecting";
+  const a = daemon.agent?.agent;
+  const who = a ? `${a.name} ${a.version}` : "Agent";
+  return `${who} · ${daemon.agent?.state ?? "unknown"}${daemon.daemonVersion ? ` · daemon ${daemon.daemonVersion}` : ""}`;
+}
+
+/** Starts a fresh agent session (the agent forgets the conversation). */
+export function NewSessionButton({ daemon }: { daemon: DaemonState }) {
+  const connected = daemon.source === "daemon" && daemon.connection === "open";
+  const running = daemon.turns.some((t) => !t.stopReason);
+  if (!connected || daemon.turns.length === 0) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          disabled={running}
+          onClick={resetSession}
+          aria-label="New session"
+          className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+        >
+          <RotateCcw className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">New session — the agent forgets this chat</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function AgentPanel({
@@ -30,23 +64,33 @@ export function AgentPanel({
   daemon,
   architecture,
   onOpenPath,
+  onClearContext,
+  focusSignal = 0,
+  focusTurnId = null,
+  onPickContext,
   keyboard = true,
 }: {
-  node: DiagramNode;
+  node: DiagramNode | null;
   contextPath: string;
   daemon: DaemonState;
   architecture: Architecture;
   onOpenPath: (path: string) => void;
+  onClearContext?: (() => void) | undefined;
+  /** Bumped by "Ask agent": focus the composer. */
+  focusSignal?: number;
+  /** Scroll this turn into view (dashboard / session list). */
+  focusTurnId?: string | null;
+  /** Offer an "add context" button when nothing is selected. */
+  onPickContext?: (() => void) | undefined;
   /** Only one mounted panel should own the permission keyboard shortcuts. */
   keyboard?: boolean;
 }) {
-  const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const stickRef = useRef(true);
+  const composerRef = useRef<ComposerHandle | null>(null);
   const turns = daemon.turns;
   const latest = turns[turns.length - 1];
   const running = !!latest && !latest.stopReason;
-  const pending = turns.find((t) => t.permission)?.permission ?? null;
   const connected = daemon.source === "daemon" && daemon.connection === "open";
 
   const pathFor = useMemo(() => {
@@ -57,137 +101,100 @@ export function AgentPanel({
     };
   }, [architecture]);
 
+  // Follow the stream while the reader is at the bottom; leave them alone when they scrolled up.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
   useEffect(() => {
-    if (!running) inputRef.current?.focus();
-  }, [running, node.id]);
+    if (focusSignal > 0) composerRef.current?.focus();
+  }, [focusSignal]);
+
+  useEffect(() => {
+    if (!focusTurnId) return;
+    const el = document.getElementById(`turn-${focusTurnId}`);
+    if (!el) return;
+    stickRef.current = false;
+    el.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [focusTurnId]);
 
   const send = (text: string) => {
-    const prompt = text.trim();
-    if (!prompt || running) return;
-    sendPrompt(node.id, prompt);
-    setDraft("");
+    if (!node || running) return;
+    stickRef.current = true;
+    sendPrompt(node.id, text);
   };
-
-  const modes = daemon.agent?.modes;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-hairline px-3">
-        <span className={cn("size-1.5 shrink-0 rounded-full", agentDotClass(daemon))} />
-        <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground">
-          {connected
-            ? `${daemon.agent?.agent ? `${daemon.agent.agent.name} ${daemon.agent.agent.version}` : "agent"} · ${daemon.agent?.state ?? "unknown"}`
-            : "no daemon connected"}
-        </span>
-        {connected && modes?.available.length ? (
-          <select
-            aria-label="Agent permission mode"
-            value={modes.currentModeId}
-            disabled={running}
-            onChange={(e) => setAgentMode(e.target.value)}
-            className="ml-auto h-6 max-w-32 rounded-[4px] border border-hairline bg-surface-2 px-1 text-[10.5px] text-foreground outline-none"
-          >
-            {modes.available.map((m) => (
-              <option key={m.id} value={m.id} title={m.description}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        {connected ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={running}
-            onClick={resetSession}
-            title="Start a new agent session (the agent forgets this conversation)"
-            className={cn(
-              "h-6 gap-1 px-1.5 text-[10.5px] text-muted-foreground",
-              modes?.available.length ? "" : "ml-auto",
-            )}
-          >
-            <RotateCcw className="size-3" />
-            New session
-          </Button>
-        ) : null}
-      </div>
-
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-auto px-3 py-3">
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        }}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         {turns.length === 0 ? (
-          <p className="text-[11.5px] text-muted-foreground">
-            {connected
-              ? "Ask anything about this element. The daemon attaches its context pack (path, files, links, workflows) automatically."
-              : "The agent runs inside the archmap daemon. Start `archmap serve <repo>` and open the page it serves to chat about this element."}
-          </p>
-        ) : null}
-        {turns.map((t, i) => (
-          <TurnView
-            key={t.id}
-            turn={t}
-            contextPath={pathFor(t.nodeId)}
-            running={i === turns.length - 1 && !t.stopReason}
-            onOpenPath={onOpenPath}
-          />
-        ))}
-      </div>
-
-      <div className="space-y-2 border-t border-hairline bg-surface-1 p-3">
-        {pending ? (
-          <PermissionCard request={pending} onOpenPath={onOpenPath} keyboard={keyboard} />
-        ) : null}
-        {!running && connected ? (
-          <div className="flex flex-wrap gap-1.5">
-            {suggestions.map((s) => (
-              <Button
-                key={s}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => send(s)}
-                className="h-6 rounded-[4px] border-hairline bg-surface-2 px-2 text-[10px] text-muted-foreground shadow-none hover:bg-surface-3 hover:text-foreground"
-              >
-                {s}
-              </Button>
+          <div className="mx-auto flex h-full max-w-[26rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+            <span className="grid size-9 place-items-center rounded-xl bg-surface-2 text-primary">
+              <Wind className="size-4.5" />
+            </span>
+            <div className="space-y-1">
+              <p className="text-[15px] font-medium text-foreground">
+                {node ? `Ask about ${node.label}` : "Ask Ruah about this codebase"}
+              </p>
+              <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+                {!connected
+                  ? "The agent runs inside the Ruah daemon. Start `archmap serve <repo>` and open the page it serves."
+                  : node
+                    ? "Its path, files, links and workflows are attached to your message."
+                    : "Select an element on the diagram. Its context is attached to what you ask."}
+              </p>
+            </div>
+            {connected && node ? (
+              <div className="mt-1 flex w-full flex-col gap-1">
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => send(s)}
+                    className="rounded-lg px-3 py-1.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-[46rem] space-y-7 px-4 pt-5 pb-6">
+            {turns.map((t, i) => (
+              <TurnView
+                key={t.id}
+                turn={t}
+                contextPath={pathFor(t.nodeId)}
+                running={i === turns.length - 1 && !t.stopReason}
+                onOpenPath={onOpenPath}
+                keyboard={keyboard}
+              />
             ))}
           </div>
-        ) : null}
-        <Textarea
-          ref={inputRef}
-          value={draft}
-          disabled={running}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send(draft);
-            }
-          }}
-          rows={2}
-          placeholder={running ? "Agent is working…" : `Ask about ${node.label}…`}
-          className="resize-none rounded-md border-hairline bg-surface-2 font-mono text-[11.5px] shadow-none"
+        )}
+      </div>
+
+      <div className={cn("mx-auto w-full max-w-[46rem] shrink-0 px-3 pb-3", turns.length ? "pt-1" : "")}>
+        <Composer
+          ref={composerRef}
+          node={node}
+          contextPath={contextPath}
+          daemon={daemon}
+          running={running}
+          onSend={send}
+          onStop={() => latest && cancel(latest.id)}
+          onClearContext={onClearContext}
+          onPickContext={onPickContext}
         />
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-mono text-[10px] text-primary">@{contextPath}</span>
-          {running && latest ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 gap-1 px-2 text-[11px]"
-              onClick={() => cancel(latest.id)}
-            >
-              <Square className="size-3" /> Stop
-            </Button>
-          ) : (
-            <Button size="sm" className="h-6 gap-1 px-2 text-[11px]" onClick={() => send(draft)}>
-              Send <ArrowUp className="size-3" />
-            </Button>
-          )}
-        </div>
       </div>
     </div>
   );

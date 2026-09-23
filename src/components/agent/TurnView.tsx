@@ -1,9 +1,13 @@
-import { Bot, CheckCircle2, Circle, CircleDot, FileCode2, User } from "lucide-react";
+// Visual patterns adapted from t3code apps/web/src/components/chat/MessagesTimeline.tsx (MIT):
+// user messages as subtle right-aligned bubbles, assistant output as plain text, work entries
+// as quiet single lines.
+import { Brain, Check, CheckCircle2, Circle, CircleDot, FileCode2, ListTree, X } from "lucide-react";
 import type { PlanEntry, StreamEvent, ToolCallView } from "@/lib/contracts";
 import type { PermissionRecord, Turn } from "@/lib/daemon";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Disclosure, ToolCallRow } from "./ToolCallRow";
+import { Markdown } from "./Markdown";
+import { PermissionCard } from "./PermissionCard";
+import { RowDisclosure, ToolCallRow } from "./ToolCallRow";
 
 type Segment =
   | { k: "text"; text: string }
@@ -61,7 +65,7 @@ function segmentsOf(turn: Turn): Segment[] {
   return segs;
 }
 
-function DiffBlock({
+export function DiffBlock({
   ev,
   onOpenPath,
 }: {
@@ -71,29 +75,33 @@ function DiffBlock({
   const oldLines = ev.oldText === null ? [] : ev.oldText.split("\n");
   const newLines = ev.newText.split("\n");
   return (
-    <div className="overflow-hidden rounded-[4px] border border-hairline">
+    <div className="overflow-hidden rounded-lg bg-surface-1 ring-1 ring-hairline">
       <button
         type="button"
         onClick={() => onOpenPath?.(ev.path)}
-        className="flex h-7 w-full items-center gap-2 border-b border-hairline bg-surface-2 px-2 text-left"
+        className="flex h-8 w-full items-center gap-2 px-3 text-left transition-colors hover:bg-accent"
       >
-        <FileCode2 className="size-3.5 shrink-0 text-node-file" />
-        <span className="truncate font-mono text-[10.5px] text-foreground">{ev.path}</span>
-        {ev.oldText === null ? (
-          <span className="ml-auto font-mono text-[9.5px] text-ok">new file</span>
-        ) : null}
+        <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate font-mono text-[11.5px] text-foreground/90">
+          {ev.path}
+        </span>
+        <span className="ms-auto flex shrink-0 items-center gap-1.5 font-mono text-[11px]">
+          {ev.oldText === null ? <span className="text-muted-foreground">new</span> : null}
+          <span className="text-ok">+{newLines.length}</span>
+          {oldLines.length ? <span className="text-bad">−{oldLines.length}</span> : null}
+        </span>
       </button>
-      <pre className="max-h-64 overflow-auto bg-canvas py-1 font-mono text-[10.5px] leading-[1.55]">
+      <pre className="max-h-72 overflow-auto border-t border-hairline py-1.5 font-mono text-[11.5px] leading-[1.6]">
         {oldLines.map((l, i) => (
-          <div key={`o${i}`} className="flex bg-bad/10 px-2">
-            <span className="w-4 shrink-0 text-bad select-none">-</span>
-            <code className="whitespace-pre text-foreground/85">{l}</code>
+          <div key={`o${i}`} className="flex bg-bad/[0.07] px-3">
+            <span className="w-4 shrink-0 text-bad/80 select-none">−</span>
+            <code className="whitespace-pre text-foreground/75">{l}</code>
           </div>
         ))}
         {newLines.map((l, i) => (
-          <div key={`n${i}`} className="flex bg-ok/10 px-2">
-            <span className="w-4 shrink-0 text-ok select-none">+</span>
-            <code className="whitespace-pre text-foreground/85">{l}</code>
+          <div key={`n${i}`} className="flex bg-ok/[0.07] px-3">
+            <span className="w-4 shrink-0 text-ok/80 select-none">+</span>
+            <code className="whitespace-pre text-foreground/90">{l}</code>
           </div>
         ))}
       </pre>
@@ -102,57 +110,64 @@ function DiffBlock({
 }
 
 function PlanList({ entries }: { entries: PlanEntry[] }) {
+  const done = entries.filter((e) => e.status === "completed").length;
   return (
-    <ul className="space-y-1 rounded-[4px] border border-hairline bg-surface-2/60 px-2 py-1.5">
-      {entries.map((e, i) => {
-        const Icon =
-          e.status === "completed" ? CheckCircle2 : e.status === "in_progress" ? CircleDot : Circle;
-        return (
-          <li key={i} className="flex items-start gap-1.5 text-[11.5px]">
-            <Icon
-              className={cn(
-                "mt-0.5 size-3 shrink-0",
-                e.status === "completed"
-                  ? "text-ok"
-                  : e.status === "in_progress"
-                    ? "text-warn"
-                    : "text-muted-foreground",
-              )}
-            />
-            <span
-              className={
-                e.status === "completed"
-                  ? "text-muted-foreground line-through"
-                  : "text-foreground/85"
-              }
-            >
-              {e.content}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <RowDisclosure
+      icon={ListTree}
+      label="Plan"
+      detail={`${done}/${entries.length}`}
+      defaultOpen
+    >
+      <ul className="space-y-1 pb-1">
+        {entries.map((e, i) => {
+          const Icon =
+            e.status === "completed"
+              ? CheckCircle2
+              : e.status === "in_progress"
+                ? CircleDot
+                : Circle;
+          return (
+            <li key={i} className="flex items-start gap-2 text-[12.5px]">
+              <Icon
+                className={cn(
+                  "mt-0.5 size-3.5 shrink-0",
+                  e.status === "completed"
+                    ? "text-ok"
+                    : e.status === "in_progress"
+                      ? "text-primary"
+                      : "text-muted-foreground/60",
+                )}
+              />
+              <span
+                className={
+                  e.status === "completed"
+                    ? "text-muted-foreground line-through"
+                    : "text-foreground/85"
+                }
+              >
+                {e.content}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </RowDisclosure>
   );
 }
 
-function permissionLine(rec: PermissionRecord) {
-  const verb = rec.cancelled
-    ? "dismissed"
-    : rec.optionKind?.startsWith("reject")
-      ? "rejected"
-      : rec.optionKind === "allow_always"
-        ? "always allowed"
-        : "allowed";
-  return `${verb}: ${rec.toolCall.title}`;
+function permissionVerb(rec: PermissionRecord) {
+  if (rec.cancelled) return "Dismissed";
+  if (rec.optionKind?.startsWith("reject")) return "Rejected";
+  if (rec.optionKind === "allow_always") return "Always allowed";
+  return "Allowed";
 }
 
-const stopTone: Record<string, string> = {
-  end_turn: "text-muted-foreground",
-  cancelled: "text-warn",
-  max_tokens: "text-warn",
-  max_turn_requests: "text-warn",
-  refusal: "text-bad",
-  error: "text-bad",
+const stopLabel: Record<string, string> = {
+  cancelled: "Stopped",
+  max_tokens: "Stopped · output limit reached",
+  max_turn_requests: "Stopped · request limit reached",
+  refusal: "The agent declined",
+  error: "Failed",
 };
 
 export function TurnView({
@@ -160,102 +175,113 @@ export function TurnView({
   contextPath,
   running,
   onOpenPath,
+  keyboard = true,
 }: {
   turn: Turn;
   contextPath: string;
   running: boolean;
   onOpenPath?: ((path: string) => void) | undefined;
+  /** Whether this instance owns the permission-card keyboard shortcuts. */
+  keyboard?: boolean;
 }) {
   const segs = segmentsOf(turn);
-  const lastText = segs.map((s) => s.k).lastIndexOf("text");
+  const lastIndex = segs.length - 1;
   const cursor = (
-    <span className="ml-px inline-block h-3.5 w-[1ch] translate-y-0.5 animate-pulse bg-primary/70" />
+    <span className="ms-0.5 inline-block h-[1.05em] w-[0.5em] translate-y-[0.2em] animate-pulse rounded-[1px] bg-foreground/60" />
   );
+  const showCursor = running && !turn.permission;
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <User className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <Badge
-            variant="outline"
-            className="mb-1 h-4 max-w-full truncate rounded-sm border-primary/40 bg-primary/10 px-1 font-mono text-[9.5px] text-primary"
-          >
-            @{contextPath}
-          </Badge>
-          <p className="text-[12px] leading-relaxed whitespace-pre-wrap text-foreground">
-            {turn.text}
-          </p>
-          {turn.contextPack ? (
-            <Disclosure label="context">
-              <pre className="mt-1 max-h-60 overflow-auto rounded-[4px] bg-surface-2 p-2 font-mono text-[10.5px] leading-snug whitespace-pre-wrap text-foreground/75">
-                {turn.contextPack}
-              </pre>
-            </Disclosure>
-          ) : null}
+    <div id={`turn-${turn.id}`} className="scroll-mt-4 space-y-3">
+      {/* user */}
+      <div className="flex flex-col items-end gap-1">
+        <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+          {turn.text}
         </div>
+        <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-muted-foreground/70">
+          @{contextPath}
+        </span>
       </div>
 
-      <div className="flex gap-2">
-        <Bot className="mt-0.5 size-3.5 shrink-0 text-primary" />
-        <div className="min-w-0 flex-1 space-y-1.5">
-          {segs.map((s, i) => {
-            switch (s.k) {
-              case "text":
-                return (
-                  <p
-                    key={i}
-                    className="text-[12px] leading-relaxed whitespace-pre-wrap text-foreground/80"
-                  >
+      {/* assistant */}
+      <div className="space-y-2 text-[13.5px] leading-relaxed text-foreground/90">
+        {turn.contextPack ? (
+          <RowDisclosure icon={FileCode2} label="Context sent to the agent">
+            <pre className="max-h-60 overflow-auto rounded-md bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/75 ring-1 ring-hairline">
+              {turn.contextPack}
+            </pre>
+          </RowDisclosure>
+        ) : null}
+        {segs.map((s, i) => {
+          switch (s.k) {
+            case "text":
+              return (
+                <Markdown
+                  key={i}
+                  text={s.text}
+                  onOpenPath={onOpenPath}
+                  trailing={showCursor && i === lastIndex ? cursor : null}
+                />
+              );
+            case "thought":
+              return (
+                <RowDisclosure key={i} icon={Brain} label="Thinking">
+                  <p className="pb-1 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
                     {s.text}
-                    {running && i === lastText && i === segs.length - 1 ? cursor : null}
                   </p>
-                );
-              case "thought":
-                return (
-                  <Disclosure key={i} label="thinking">
-                    <p className="mt-0.5 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground italic">
-                      {s.text}
-                    </p>
-                  </Disclosure>
-                );
-              case "tool":
-                return <ToolCallRow key={i} call={s.call} onOpenPath={onOpenPath} />;
-              case "diff":
-                return <DiffBlock key={i} ev={s.ev} onOpenPath={onOpenPath} />;
-              case "plan":
-                return <PlanList key={i} entries={s.entries} />;
-              case "perm":
-                return (
-                  <p
-                    key={i}
-                    className={cn(
-                      "font-mono text-[10.5px]",
-                      s.rec.cancelled || s.rec.optionKind?.startsWith("reject")
-                        ? "text-warn"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {permissionLine(s.rec)}
-                  </p>
-                );
+                </RowDisclosure>
+              );
+            case "tool":
+              return <ToolCallRow key={i} call={s.call} onOpenPath={onOpenPath} />;
+            case "diff":
+              return <DiffBlock key={i} ev={s.ev} onOpenPath={onOpenPath} />;
+            case "plan":
+              return <PlanList key={i} entries={s.entries} />;
+            case "perm": {
+              const denied = s.rec.cancelled || s.rec.optionKind?.startsWith("reject");
+              return (
+                <p
+                  key={i}
+                  className={cn(
+                    "flex min-w-0 items-center gap-2 text-[12px]",
+                    denied ? "text-warn" : "text-muted-foreground",
+                  )}
+                >
+                  {denied ? (
+                    <X className="size-3.5 shrink-0" />
+                  ) : (
+                    <Check className="size-3.5 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {permissionVerb(s.rec)} · {s.rec.toolCall.title}
+                  </span>
+                </p>
+              );
             }
-          })}
-          {running && (segs.length === 0 || segs[segs.length - 1]!.k !== "text") ? (
-            <p>{cursor}</p>
-          ) : null}
-          {turn.stopReason ? (
-            <p
-              className={cn(
-                "font-mono text-[10px]",
-                stopTone[turn.stopReason] ?? "text-muted-foreground",
-              )}
-            >
-              {turn.stopReason}
-              {turn.error ? ` · ${turn.error}` : ""}
-            </p>
-          ) : null}
-        </div>
+          }
+        })}
+        {turn.permission ? (
+          <PermissionCard request={turn.permission} onOpenPath={onOpenPath} keyboard={keyboard} />
+        ) : null}
+        {showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
+          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+            <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+            Working…
+          </p>
+        ) : null}
+        {turn.stopReason && turn.stopReason !== "end_turn" ? (
+          <p
+            className={cn(
+              "text-[12px]",
+              turn.stopReason === "error" || turn.stopReason === "refusal"
+                ? "text-bad"
+                : "text-muted-foreground",
+            )}
+          >
+            {stopLabel[turn.stopReason] ?? turn.stopReason}
+            {turn.error ? ` · ${turn.error}` : ""}
+          </p>
+        ) : null}
       </div>
     </div>
   );
