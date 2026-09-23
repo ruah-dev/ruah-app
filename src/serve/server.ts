@@ -7,10 +7,12 @@ import type { ArchitectureStore } from "./architecture-store.js";
 import { serveStatic } from "./static.js";
 import { serveFile } from "./files.js";
 import { serveContext } from "./context-endpoint.js";
-import { attachSession, type SessionHub } from "./session.js";
+import { attachSession, NO_PROJECT_MESSAGE, type SessionHub } from "./session.js";
 import { handleUsageRequest } from "../usage/http.js";
 import type { UsageApi } from "../usage/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
+import { handleProjectsRequest, sendJson } from "./projects-http.js";
+import type { ProjectService } from "../projects/service.js";
 
 export interface ServeOptions {
   host: string;
@@ -20,6 +22,8 @@ export interface ServeOptions {
   logger: (line: string) => void;
   /** GET /api/usage/*; answered 503 when absent. */
   usage?: UsageApi;
+  /** CONTRACTS §5.3 /api/projects/* and /api/chats/recent; answered 503 when absent. */
+  projects?: ProjectService;
 }
 
 export interface RunningServer {
@@ -48,8 +52,12 @@ export function originAllowed(origin: string | undefined, allowOrigins: readonly
   return allowOrigins.some((glob) => originMatches(origin, glob));
 }
 
+/**
+ * `_store` is kept for callers of the single-repo era; the hub's current
+ * project store is what every endpoint serves (null = launcher state, 409).
+ */
 export function startServer(
-  store: ArchitectureStore,
+  _store: ArchitectureStore | null,
   hub: SessionHub,
   options: ServeOptions,
 ): Promise<RunningServer> {
@@ -58,34 +66,45 @@ export function startServer(
     const pathname = url.pathname;
 
     if (pathname === "/api/health" && req.method === "GET") {
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ ok: true, version: hub.version(), agent: hub.agentState() }));
+      sendJson(res, 200, { ok: true, version: hub.version(), agent: hub.agentState(), project: hub.project()?.id ?? null });
       return;
     }
-    if (pathname === "/api/architecture" && req.method === "GET") {
-      const arch = store.current();
-      if (arch === null) {
-        res.writeHead(503, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: "architecture not loaded" }));
+    if (handleUsageRequest(req, res, url, options.usage)) return;
+    if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
+
+    // Everything below needs an open project.
+    const needsProject =
+      pathname === "/api/architecture" || pathname === "/api/rescan" || pathname === "/api/file" || pathname.startsWith("/api/context/");
+    const store = hub.store;
+    if (needsProject && store === null) {
+      if (req.method === "POST" && !originAllowed(req.headers.origin, options.allowOrigins)) {
+        sendJson(res, 403, { error: "origin not allowed" });
         return;
       }
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(arch));
+      sendJson(res, 409, { error: NO_PROJECT_MESSAGE });
+      return;
+    }
+
+    if (pathname === "/api/architecture" && req.method === "GET" && store !== null) {
+      const arch = store.current();
+      if (arch === null) {
+        sendJson(res, 503, { error: "architecture not loaded" });
+        return;
+      }
+      sendJson(res, 200, arch);
       return;
     }
     const contextMatch = /^\/api\/context\/([^/]+)$/.exec(pathname);
-    if (contextMatch !== null && req.method === "GET") {
+    if (contextMatch !== null && req.method === "GET" && store !== null) {
       const nodeId = decodeURIComponent(contextMatch[1] ?? "");
       serveContext(store, nodeId, url.searchParams.get("text") ?? undefined, res);
       return;
     }
-    if (handleUsageRequest(req, res, url, options.usage)) return;
-    if (pathname === "/api/rescan" && req.method === "POST") {
+    if (pathname === "/api/rescan" && req.method === "POST" && store !== null) {
       // A state-changing POST: same Origin rule as the WebSocket so another
       // site open in the browser cannot trigger it (CSRF).
       if (!originAllowed(req.headers.origin, options.allowOrigins)) {
-        res.writeHead(403, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: "origin not allowed" }));
+        sendJson(res, 403, { error: "origin not allowed" });
         return;
       }
       const started = Date.now();
@@ -93,25 +112,22 @@ export function startServer(
       try {
         arch = scanRepo(store.root, { version: hub.version(), now: new Date(), previous: store.current() });
       } catch (err) {
-        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: `scan failed: ${(err as Error).message}` }));
+        sendJson(res, 500, { error: `scan failed: ${(err as Error).message}` });
         return;
       }
       // store.save validates, writes atomically and broadcasts reason "saved".
       store.save(arch).then(
         () => {
           const s = summarize(arch);
-          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ ok: true, nodes: s.nodes, edges: s.edges, layers: s.layers, ms: Date.now() - started }));
+          sendJson(res, 200, { ok: true, nodes: s.nodes, edges: s.edges, layers: s.layers, ms: Date.now() - started });
         },
         (err: Error) => {
-          res.writeHead(422, { "content-type": "application/json; charset=utf-8" });
-          res.end(JSON.stringify({ error: `rescan rejected: ${err.message}` }));
+          sendJson(res, 422, { error: `rescan rejected: ${err.message}` });
         },
       );
       return;
     }
-    if (pathname === "/api/file" && req.method === "GET") {
+    if (pathname === "/api/file" && req.method === "GET" && store !== null) {
       serveFile(store, url.searchParams.get("path") ?? "", res);
       return;
     }

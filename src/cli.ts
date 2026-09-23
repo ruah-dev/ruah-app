@@ -9,7 +9,8 @@ const pkg = require("../package.json") as { version: string };
 const USAGE = `archmap — architecture map daemon
 
 Usage:
-  archmap serve <repo> [options]   serve the viewer + agent daemon
+  archmap serve [<repo>] [options] serve the viewer + agent daemon
+                                   (no <repo>: start screen, open a project from the viewer)
   archmap scan <repo> [options]    scan a repo into architecture.json
   archmap mcp <repo>               stdio MCP server
   archmap --version                print version
@@ -38,8 +39,20 @@ scan options:
 
 async function serve(argv: readonly string[]): Promise<number> {
   // Pull the positional <repo> out first: parseArgs with strict:false mangles
-  // a bare positional that follows a boolean flag.
-  const repoIndex = argv.findIndex((a) => !a.startsWith("--"));
+  // a bare positional that follows a boolean flag. Values of string options
+  // ("--port 4194") are not the repo; without a positional the daemon starts
+  // in the launcher state.
+  const stringOptions = new Set(["--file", "--port", "--host", "--viewer", "--agent", "--allow-origin"]);
+  let repoIndex = -1;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i] ?? "";
+    if (arg.startsWith("--")) {
+      if (stringOptions.has(arg)) i += 1;
+      continue;
+    }
+    repoIndex = i;
+    break;
+  }
   const repo = repoIndex === -1 ? undefined : argv[repoIndex];
   const rest = repoIndex === -1 ? [...argv] : argv.filter((_, i) => i !== repoIndex);
   const { values } = parseArgs({
@@ -57,10 +70,6 @@ async function serve(argv: readonly string[]): Promise<number> {
     },
     strict: false,
   });
-  if (repo === undefined) {
-    process.stderr.write("archmap serve: missing <repo> argument\n");
-    return 2;
-  }
   const agent = values.agent as string;
   const { isAgentProvider } = await import("./acp/index.js");
   if (!isAgentProvider(agent)) {
@@ -70,7 +79,7 @@ async function serve(argv: readonly string[]): Promise<number> {
   const { runServe } = await import("./serve/run-serve.js");
   return runServe(
     {
-      repo,
+      ...(repo !== undefined ? { repo } : {}),
       ...(typeof values.file === "string" ? { file: values.file } : {}),
       port: Number.parseInt(values.port as string, 10),
       host: values.host as string,
