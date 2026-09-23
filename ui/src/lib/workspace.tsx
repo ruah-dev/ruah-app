@@ -26,6 +26,7 @@ import {
 } from "./architecture";
 import * as edit from "./architecture-edit";
 import { canEdit, editArchitecture, reportLocalError, useDaemon, type DaemonState } from "./daemon";
+import { useCloudDiagram, useIntegrationsBinding } from "./integrations";
 
 export type DiagramMode = "architecture" | "workflow";
 
@@ -177,10 +178,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [prefs, storageKey]);
 
-  const diagrams = useMemo<Diagram[]>(
-    () => diagramsFromArchitecture(architecture, prefs.flowPositions),
-    [architecture, prefs.flowPositions],
-  );
+  // Integrations (§6): bind the client to this daemon; "Show on map" adds a derived Cloud level.
+  useIntegrationsBinding(daemon);
+  const cloudDiagram = useCloudDiagram(architecture);
+
+  const diagrams = useMemo<Diagram[]>(() => {
+    const derived: Diagram[] = diagramsFromArchitecture(architecture, prefs.flowPositions);
+    return cloudDiagram ? [...derived, { ...cloudDiagram, mode: "architecture", group: "Cloud" }] : derived;
+  }, [architecture, prefs.flowPositions, cloudDiagram]);
 
   // Tabs pointing at diagrams that no longer exist (node deleted on disk) fall back to the top level.
   const panes = useMemo(() => {

@@ -24,6 +24,7 @@ import {
 } from "./workspace";
 import { contextPathOf, homeDiagramId, indexArchitecture, nodeForPath } from "./architecture";
 import { fetchContext, setFocus } from "./daemon";
+import { isCloudNodeId } from "./integrations";
 
 export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
@@ -154,7 +155,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   // Node removed from architecture.json (on disk or by an edit): drop the selection.
   useEffect(() => {
-    if (selectedNodeId && !archIndex.byId.has(selectedNodeId)) setSelectedNodeId(null);
+    // Cloud resources on the derived Cloud level are not architecture nodes.
+    if (selectedNodeId && !archIndex.byId.has(selectedNodeId) && !isCloudNodeId(selectedNodeId))
+      setSelectedNodeId(null);
   }, [archIndex, selectedNodeId]);
 
   useEffect(() => {

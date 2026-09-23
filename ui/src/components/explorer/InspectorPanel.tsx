@@ -6,6 +6,8 @@ import { useWorkspace } from "@/lib/workspace";
 import { kindStyles } from "./kinds";
 import { CodeTab } from "./CodeTab";
 import { AgentPanel } from "@/components/agent/AgentPanel";
+import { CloudResourceDetails, ElementIntegrations } from "@/components/integrations/ElementIntegrations";
+import { isCloudNodeId } from "@/lib/integrations";
 import { cn } from "@/lib/utils";
 
 export type InspectorView = "agent" | "details" | "code";
@@ -244,6 +246,8 @@ function Details({
           </div>
         </Section>
       ) : null}
+
+      <ElementIntegrations node={node} />
     </div>
   );
 }
@@ -308,13 +312,17 @@ export function InspectorPanel({
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <Details
-        node={node}
-        contextPath={contextPath}
-        onDrill={onDrill}
-        onSelectNode={onSelectNode}
-        onOpenPath={onOpenPath}
-      />
+      {isCloudNodeId(node.id) ? (
+        <CloudResourceDetails node={node} />
+      ) : (
+        <Details
+          node={node}
+          contextPath={contextPath}
+          onDrill={onDrill}
+          onSelectNode={onSelectNode}
+          onOpenPath={onOpenPath}
+        />
+      )}
     </div>
   );
 }
