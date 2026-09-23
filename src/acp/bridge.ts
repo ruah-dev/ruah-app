@@ -70,6 +70,15 @@ export interface AcpBridge {
   reset(): Promise<void>;                                                       // new ACP session, same process
   stop(): Promise<void>;                                                        // terminate the agent process
   on(listener: (event: BridgeEvent) => void): () => void;                       // returns unsubscribe
+  /**
+   * Makes `sessionId` the agent session (Claude SDK: `resume`; ACP:
+   * `session/load` when the agent advertises `loadSession`, else a new
+   * session), or a fresh session when undefined. On a stopped bridge it only
+   * records the choice for the next start(); on a running one it replaces the
+   * live session (an active turn is cancelled first). Chats use it to resume
+   * their conversation.
+   */
+  useSession?(sessionId: string | undefined): Promise<void>;
   /** Claude SDK only: plan usage via the live query's get_usage control request (no model turn); undefined when there is no live query. */
   claudePlanUsage?(): Promise<ClaudePlanUsage | undefined>;
 }

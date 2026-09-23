@@ -540,6 +540,8 @@ export class ClaudeSdkBridge implements AcpBridge {
   private sessionId: string = randomUUID();
   /** True once the CLI has persisted a transcript for sessionId, so it can be resumed. */
   private hasHistory = false;
+  /** Set by useSession(id): if resuming that transcript fails at start, fall back to a fresh session. */
+  private resumeFallback = false;
   private active: ActiveTurn | undefined;
   private skillNames: ReadonlySet<string> = new Set();
   /** Explicitly chosen model (setModel or ANTHROPIC_MODEL); undefined = the CLI default. */
@@ -566,7 +568,19 @@ export class ClaudeSdkBridge implements AcpBridge {
     if (this.state === "idle" || this.state === "busy" || this.state === "starting") return;
     this.setState("starting");
     try {
-      await this.ensureSession();
+      try {
+        await this.ensureSession();
+      } catch (cause) {
+        // useSession(id): the transcript may be gone (deleted, other machine);
+        // start a fresh session instead of leaving the agent in error.
+        if (!this.resumeFallback) throw cause;
+        this.onStderr?.(`claude resume of ${this.sessionId} failed (${toMessage(cause, "unknown error")}); starting a new session\n`);
+        this.resumeFallback = false;
+        this.sessionId = randomUUID();
+        this.hasHistory = false;
+        await this.ensureSession();
+      }
+      this.resumeFallback = false;
     } catch (cause) {
       const error = toMessage(cause, "Failed to start Claude.");
       this.setState("error", { error });
@@ -695,6 +709,29 @@ export class ClaudeSdkBridge implements AcpBridge {
     if (this.session !== undefined) this.closeSession(this.session);
     this.sessionId = randomUUID();
     this.hasHistory = false;
+    this.state = "stopped";
+    await this.start();
+  }
+
+  /**
+   * Resumes Claude session `sessionId` (the SDK's `resume`; the CLI reloads
+   * its transcript) or starts a fresh one (undefined). A stopped bridge only
+   * records the choice; start() opens it.
+   */
+  async useSession(sessionId: string | undefined): Promise<void> {
+    if (sessionId !== undefined && sessionId === this.sessionId && (this.session !== undefined || this.state === "stopped")) return;
+    const turn = this.active;
+    if (turn !== undefined) {
+      turn.cancelled = true;
+      this.cancelPendingPermissions(turn.turnId);
+      this.finishTurn(turn, { stopReason: "cancelled" }, this.state === "stopped" ? "stopped" : "starting");
+    }
+    await this.waitForOpening();
+    if (this.session !== undefined) this.closeSession(this.session);
+    this.sessionId = sessionId ?? randomUUID();
+    this.hasHistory = sessionId !== undefined;
+    this.resumeFallback = sessionId !== undefined;
+    if (this.state === "stopped") return;
     this.state = "stopped";
     await this.start();
   }

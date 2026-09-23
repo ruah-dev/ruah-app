@@ -88,20 +88,24 @@ export class AgentCatalog {
     return { ok: true };
   }
 
-  /** A new, not yet started bridge. Throws for an unknown or missing agent. */
-  create(agentId: string): AcpBridge {
+  /**
+   * A new, not yet started bridge whose session cwd is `root` (default: the
+   * catalog's root). Throws for an unknown or missing agent.
+   */
+  create(agentId: string, root?: string): AcpBridge {
+    const base: BaseOptions = root !== undefined ? { ...this.base, root } : this.base;
     if (agentId === MOCK_AGENT_ID && this.options.mock === true) {
-      return new MockBridge({ ...this.base, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
+      return new MockBridge({ ...base, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
     }
     const agent = agentDefinition(agentId);
     if (agent === undefined) throw new Error(`unknown agent: ${agentId}`);
     if (agent.id === "claude") {
       const env = claudeCode().env;
-      return new ClaudeSdkBridge({ ...this.base, preset: { command: "none", args: [], ...(env !== undefined ? { env } : {}) } });
+      return new ClaudeSdkBridge({ ...base, preset: { command: "none", args: [], ...(env !== undefined ? { env } : {}) } });
     }
     const preset = agent.preset(this.options.env ?? process.env);
     if (preset === undefined) throw new Error(`${agent.name} is not installed${agent.installHint !== undefined ? ` — ${agent.installHint}` : ""}`);
-    return new AcpProcessBridge({ ...this.base, preset });
+    return new AcpProcessBridge({ ...base, preset });
   }
 }
 

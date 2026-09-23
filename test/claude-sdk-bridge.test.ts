@@ -539,3 +539,56 @@ it("modelDisplayName puts the concrete model version in the picker name", () => 
   expect(modelDisplayName("default", "Default (recommended)", "Opus 5.5 with 1M context")).toBe("Default (recommended)");
   expect(modelDisplayName("custom", "Custom", "no version here")).toBe("Custom");
 });
+
+describe("ClaudeSdkBridge.useSession (chat resume)", () => {
+  const idleSessionIds = (events: BridgeEvent[]): string[] =>
+    events.flatMap((e) => (e.type === "status" && e.state === "idle" && e.sessionId !== undefined ? [e.sessionId] : []));
+
+  it("resumes a stored session on start and on a running bridge; undefined starts fresh", async () => {
+    const { bridge, events, queries, current } = setup();
+    await bridge.useSession("stored-1"); // stopped: only recorded
+    expect(queries).toHaveLength(0);
+    expect(bridge.status()).toBe("stopped");
+    await bridge.start();
+    expect(current().options.resume).toBe("stored-1");
+    expect(current().options.sessionId).toBeUndefined();
+    expect(idleSessionIds(events).at(-1)).toBe("stored-1");
+
+    await bridge.useSession("stored-2");
+    expect(queries).toHaveLength(2);
+    expect(queries[0]?.closed).toBe(true);
+    expect(current().options.resume).toBe("stored-2");
+    expect(idleSessionIds(events).at(-1)).toBe("stored-2");
+
+    await bridge.useSession("stored-2"); // already live: no new query
+    expect(queries).toHaveLength(2);
+
+    await bridge.useSession(undefined);
+    expect(queries).toHaveLength(3);
+    expect(current().options.resume).toBeUndefined();
+    const fresh = current().options.sessionId;
+    expect(typeof fresh).toBe("string");
+    expect(fresh).not.toBe("stored-2");
+    expect(idleSessionIds(events).at(-1)).toBe(fresh);
+    await bridge.stop();
+  });
+
+  it("falls back to a fresh session when the stored transcript cannot be resumed", async () => {
+    const original = FakeQuery.prototype.initializationResult;
+    FakeQuery.prototype.initializationResult = function (this: FakeQuery) {
+      return this.options.resume !== undefined ? Promise.reject(new Error("No conversation found")) : original.call(this);
+    };
+    try {
+      const { bridge, queries, current } = setup();
+      await bridge.useSession("gone-1");
+      await bridge.start();
+      expect(queries).toHaveLength(2);
+      expect(queries[0]?.options.resume).toBe("gone-1");
+      expect(current().options.resume).toBeUndefined();
+      expect(bridge.status()).toBe("idle");
+      await bridge.stop();
+    } finally {
+      FakeQuery.prototype.initializationResult = original;
+    }
+  });
+});

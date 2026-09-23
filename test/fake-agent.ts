@@ -36,6 +36,9 @@ interface SessionState {
 const sessions = new Map<string, SessionState>();
 
 const CONFIG_MODES = process.env.FAKE_AGENT_CONFIG_MODES === "1";
+// FAKE_AGENT_LOAD_SESSION=1: advertises loadSession; session/load accepts any
+// id (as if persisted) and replays one history message before answering.
+const LOAD_SESSION = process.env.FAKE_AGENT_LOAD_SESSION === "1";
 
 const MODELS = [
   { value: "default", name: "Default (recommended)", description: "Opus" },
@@ -150,9 +153,20 @@ const app = agent({ name: "fake-agent" })
   .onRequest("initialize", () => ({
     protocolVersion: 1,
     agentInfo: { name: "fake-agent", version: "0.0.1" },
-    agentCapabilities: {},
+    agentCapabilities: LOAD_SESSION ? { loadSession: true } : {},
     authMethods: [],
   }))
+  .onRequest("session/load", async ({ params, client }) => {
+    if (!LOAD_SESSION) throw new Error("session/load not supported");
+    const state: SessionState = sessions.get(params.sessionId) ?? { cwd: params.cwd, modeId: "default", modelId: "default", cancelled: false, onCancel: undefined };
+    sessions.set(params.sessionId, state);
+    log(`session/load ${params.sessionId} cwd=${params.cwd}`);
+    await client.notify("session/update", {
+      sessionId: params.sessionId,
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "replayed history" } },
+    });
+    return { configOptions: configOptions(state) };
+  })
   .onRequest("session/new", ({ params }) => {
     sessionCounter += 1;
     const sessionId = `fake-session-${sessionCounter}`;

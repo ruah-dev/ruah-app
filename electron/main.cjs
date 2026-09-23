@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
@@ -28,11 +28,15 @@ const CLI = path.join(ROOT, "dist", "cli.js");
 const NODE = process.env.ARCHMAP_NODE ?? process.execPath;
 const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
 
+// Without a repo the daemon starts in the launcher state: the viewer's start
+// screen opens or creates a project (CONTRACTS §5), so there is no folder
+// picker or scan before startup any more.
 function startDaemon(repoDir) {
   const agentArgs = AGENT === "mock" ? ["--mock"] : ["--agent", AGENT];
+  const repoArgs = repoDir === undefined ? [] : [repoDir];
   daemon = spawn(
     NODE,
-    [CLI, "serve", repoDir, ...agentArgs, "--viewer", VIEWER_DIR, "--port", String(PORT)],
+    [CLI, "serve", ...repoArgs, ...agentArgs, "--viewer", VIEWER_DIR, "--port", String(PORT)],
     { stdio: ["ignore", "pipe", "pipe"], env: NODE_ENV },
   );
   daemon.stdout.on("data", (c) => process.stdout.write(`[daemon] ${c}`));
@@ -80,40 +84,32 @@ function repoFromArgv(argv) {
   return found === undefined ? undefined : path.resolve(found);
 }
 
-async function pickRepo() {
-  const result = await dialog.showOpenDialog({
-    title: "Ruah — open a repository",
-    buttonLabel: "Open",
-    properties: ["openDirectory"],
+// window.ruah (preload.cjs, CONTRACTS §5.4): native folder picker and
+// "Reveal in Finder". Arguments from the renderer are validated here.
+function registerIpc() {
+  ipcMain.handle("ruah:pick-folder", async (event, opts) => {
+    const title =
+      opts !== null && typeof opts === "object" && typeof opts.title === "string" ? opts.title : "Choose a folder";
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const options = { title, buttonLabel: "Choose", properties: ["openDirectory", "createDirectory"] };
+    const result = owner !== null ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
   });
-  return result.canceled ? undefined : result.filePaths[0];
-}
-
-// First open of a repo: generate architecture.json with `archmap scan`.
-function scanRepo(repoDir) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(NODE, [CLI, "scan", repoDir], { stdio: ["ignore", "pipe", "pipe"], env: NODE_ENV });
-    child.stdout.on("data", (c) => process.stdout.write(`[scan] ${c}`));
-    child.stderr.on("data", (c) => process.stderr.write(`[scan] ${c}`));
-    child.on("error", reject);
-    child.on("exit", (code) =>
-      code === 0 ? resolve() : reject(new Error(`archmap scan exited with code ${code}`)),
-    );
+  ipcMain.handle("ruah:reveal", (_event, target) => {
+    if (typeof target !== "string" || !path.isAbsolute(target)) return false;
+    shell.showItemInFolder(target);
+    return true;
   });
 }
 
 async function main() {
-  const repoDir = process.env.ARCHMAP_REPO ?? repoFromArgv(process.argv) ?? (await pickRepo());
-  if (repoDir === undefined) {
-    app.quit();
-    return;
-  }
-  if (!fs.existsSync(path.join(repoDir, "architecture.json"))) await scanRepo(repoDir);
+  const repoDir = process.env.ARCHMAP_REPO ?? repoFromArgv(process.argv);
+  registerIpc();
   // A leftover daemon on the port would pass the health check and the window
-  // would show its (possibly different) repo; refuse instead.
+  // would show its (possibly different) state; refuse instead.
   if (await healthOnce()) throw new Error(`port ${PORT} is already serving an archmap daemon; stop it first`);
   startDaemon(repoDir);
-  await waitForDaemon(60000); // includes agent startup (session/new)
+  await waitForDaemon(60000); // the agent starts in the background once a project is open
   win = new BrowserWindow({
     width: 1440,
     height: 900,

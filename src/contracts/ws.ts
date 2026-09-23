@@ -94,6 +94,45 @@ export const ErrorCodeSchema = z.enum([
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
+// ---------- CONTRACTS.md §5.1: projects, chats, stored turns ----------
+export const ProjectKindSchema = z.enum(["repo", "system"]);
+export type ProjectKind = z.infer<typeof ProjectKindSchema>;
+
+export const ProjectInfoSchema = z.object({
+  id: z.string(), // stable: sha1(realpath(root)).slice(0, 12)
+  name: z.string(), // architecture name, else folder name
+  root: z.string(), // absolute path (repo dir, or the folder holding ruah.system.json)
+  kind: ProjectKindSchema, // "system" = multi-repo (docs/MULTI-REPO.md)
+  lastOpenedAt: z.string(), // ISO
+  pinned: z.boolean().optional(),
+});
+export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
+
+export const ChatInfoSchema = z.object({
+  id: z.string(), // uuid
+  projectId: z.string(),
+  title: z.string(), // first prompt, trimmed to 80 chars, renameable
+  agentId: z.string(), // agent used when the chat was created
+  model: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  turnCount: z.number(),
+  lastNodeId: z.string().optional(),
+});
+export type ChatInfo = z.infer<typeof ChatInfoSchema>;
+
+export const TurnRecordSchema = z.object({
+  turnId: z.string(),
+  nodeId: z.string(),
+  text: z.string(),
+  contextPack: z.string(),
+  events: z.array(StreamEventSchema),
+  stopReason: StopReasonSchema.optional(),
+  startedAt: z.string(),
+  finishedAt: z.string().optional(),
+});
+export type TurnRecord = z.infer<typeof TurnRecordSchema>;
+
 // ---------- viewer -> daemon ----------
 export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("hello"), protocol: z.literal(1), client: z.string() }),
@@ -110,6 +149,11 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("model.set"), modelId: z.string() }),
   z.object({ type: z.literal("agent.set"), agentId: z.string() }),
   z.object({ type: z.literal("architecture.save"), architecture: ArchitectureSchema }),
+  // §5.2 chats
+  z.object({ type: z.literal("chat.new") }),
+  z.object({ type: z.literal("chat.open"), chatId: z.string() }),
+  z.object({ type: z.literal("chat.rename"), chatId: z.string(), title: z.string() }),
+  z.object({ type: z.literal("chat.delete"), chatId: z.string() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -165,6 +209,10 @@ export const ServerMessageSchema = z.union([
     requestId: z.string().optional(),
     fatal: z.boolean().optional(),
   }),
+  // §5.2: null = launcher state (no architecture message follows)
+  z.object({ type: z.literal("project"), project: ProjectInfoSchema.nullable() }),
+  z.object({ type: z.literal("chats"), projectId: z.string(), chats: z.array(ChatInfoSchema), activeChatId: z.string().nullable() }),
+  z.object({ type: z.literal("chat.history"), chatId: z.string(), turns: z.array(TurnRecordSchema) }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 
