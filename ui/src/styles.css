@@ -683,17 +683,197 @@ html[data-theme="contrast"] .grain::after {
   }
 }
 
-/* Phantom idle drift (website mascot); disabled by the reduced-motion rule above. */
+/* ---------------------------------------------------------------------------------------------
+ * Phantom — the mascot (components/brand/Phantom.tsx). Body colours are the semantic brand
+ * hues, one step deeper in light and one lighter in high contrast; eyes stay light on the body
+ * (black in high contrast). Motion is transform / opacity only, per instance phase-shifted
+ * (--ph-delay); none under reduced motion or in the high-contrast theme (static), paused while
+ * the tab is hidden.
+ * ------------------------------------------------------------------------------------------- */
+:root,
+[data-ph-theme="dark"] {
+  --ph-teal: #00d2b9;
+  --ph-lavender: #b594f5;
+  --ph-sage: #7fb069;
+  --ph-amber: #e5a84b;
+  --ph-coral: #f07068;
+  --ph-muted: #8f8a7e;
+  --ph-eye: #f0eee9;
+  --ph-shine: #1a1a19;
+}
+html[data-theme="light"],
+[data-ph-theme="light"] {
+  --ph-teal: #00bea8;
+  --ph-lavender: #9773e4;
+  --ph-sage: #67994f;
+  --ph-amber: #d09430;
+  --ph-coral: #dc5850;
+  --ph-muted: #b8b3a8;
+  --ph-eye: #faf9f7;
+}
+html[data-theme="contrast"],
+[data-ph-theme="contrast"] {
+  --ph-teal: #4dd9c5;
+  --ph-lavender: #c2a7f7;
+  --ph-sage: #9ec281;
+  --ph-amber: #edbf5e;
+  --ph-coral: #f49a92;
+  --ph-muted: #9a9a9a;
+  --ph-eye: #000000;
+  --ph-shine: #ffffff;
+}
+/* In the components layer, so utilities on a <Phantom className> (absolute, hidden, …) win. */
+@layer components {
+.phantom {
+  --ph-body: var(--ph-teal);
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  line-height: 0;
+  vertical-align: middle;
+}
+.phantom[data-tone="lavender"] { --ph-body: var(--ph-lavender); }
+.phantom[data-tone="sage"] { --ph-body: var(--ph-sage); }
+.phantom[data-tone="amber"] { --ph-body: var(--ph-amber); }
+.phantom[data-tone="coral"] { --ph-body: var(--ph-coral); }
+.phantom[data-tone="muted"] { --ph-body: var(--ph-muted); }
+.phantom-drift,
+.phantom-body {
+  display: block;
+  position: relative;
+}
+.phantom-drift {
+  width: 100%;
+  height: 100%;
+}
+.phantom-skin { fill: var(--ph-body); }
+.phantom-sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: center / 100% 100% no-repeat;
+}
+.phantom-fill { fill: var(--ph-eye); }
+.phantom-stroke { stroke: var(--ph-eye); }
+.phantom-shine { fill: var(--ph-shine); }
+/* A radial gradient, not a blur filter: many glows stay cheap. */
+.phantom-glow {
+  position: absolute;
+  inset: -22%;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--ph-body) 26%, transparent), transparent);
+}
+.phantom-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+[data-tracking] .phantom-eye {
+  transition: transform 160ms ease-out;
+}
+
+.phantom-float {
+  animation: phantom-float 6s ease-in-out var(--ph-delay, 0s) infinite;
+}
+.phantom[data-blink] .phantom-eyes {
+  animation: phantom-blink 5.4s ease-in-out var(--ph-delay, 0s) infinite;
+}
+.phantom:not([data-still])[data-expression="thinking"] .phantom-body {
+  animation: phantom-bob 3.2s ease-in-out var(--ph-delay, 0s) infinite;
+}
+.phantom:not([data-still])[data-expression="thinking"] .phantom-eyes {
+  animation: phantom-glance 4.2s ease-in-out var(--ph-delay, 0s) infinite;
+}
+.phantom:not([data-still])[data-expression="loading"] .phantom-body {
+  animation: phantom-pulse 1.6s ease-in-out var(--ph-delay, 0s) infinite;
+}
+.phantom:not([data-still])[data-expression="success"] .phantom-body {
+  animation: phantom-hop 720ms cubic-bezier(0.3, 0.7, 0.4, 1) 1 both;
+}
+.phantom:not([data-still])[data-expression="error"] .phantom-body {
+  animation: phantom-shake 460ms ease-in-out 1 both;
+}
+/* Easter egg: the sidebar logo blinks when hovered. */
+.phantom-hoverblink .phantom-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.phantom-hoverblink:hover .phantom-eyes {
+  animation: phantom-blink-once 380ms ease-in-out 2;
+}
+}
+
 @keyframes phantom-float {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-5%) rotate(1.2deg); }
+  66% { transform: translateY(-2.5%) rotate(-1.2deg); }
+}
+@keyframes phantom-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  95.5% { transform: scaleY(0.1); }
+}
+@keyframes phantom-blink-once {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.1); }
+}
+@keyframes phantom-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6%); }
+}
+@keyframes phantom-glance {
+  0%, 18%, 100% { transform: translateX(0); }
+  28%, 42% { transform: translateX(-14px); }
+  58%, 72% { transform: translateX(14px); }
+}
+@keyframes phantom-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.92); opacity: 0.72; }
+}
+@keyframes phantom-hop {
+  0% { transform: translateY(0) scaleY(1); }
+  20% { transform: translateY(0) scale(1.06, 0.92); }
+  50% { transform: translateY(-18%) scale(0.97, 1.04); }
+  80% { transform: translateY(0) scale(1.03, 0.97); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes phantom-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-7%) rotate(-4deg); }
+  40% { transform: translateX(6%) rotate(3deg); }
+  60% { transform: translateX(-4%) rotate(-2deg); }
+  80% { transform: translateX(2%) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phantom *,
+  .phantom-hoverblink * {
+    animation: none !important;
+    transition: none !important;
   }
-  33% {
-    transform: translateY(-4px) rotate(1.2deg);
-  }
-  66% {
-    transform: translateY(-2px) rotate(-1.2deg);
-  }
+}
+html[data-theme="contrast"] .phantom *,
+html[data-theme="contrast"] .phantom-hoverblink *,
+[data-ph-theme="contrast"] .phantom * {
+  animation: none !important;
+  transition: none !important;
+}
+html[data-page-hidden] .phantom * {
+  animation-play-state: paused !important;
+}
+
+/* Map: the ghost that floats at the corner of the element a running turn works on. */
+.map-working-ghost {
+  position: absolute;
+  top: -12px;
+  right: -10px;
+  z-index: 5;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+}
+
+/* Toast icons (sonner) are 16px boxes; the ghost fills one. */
+[data-sonner-toast] [data-icon] .phantom {
+  margin-top: 1px;
 }
 
 /* §1.7 live map edits by agents (src/lib/map-activity.ts): new elements scale/fade in, changed

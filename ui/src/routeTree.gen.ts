@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GhostsRouteImport } from './routes/[_]ghosts'
 import { Route as AgentRouteImport } from './routes/agent'
 import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as CloudRouteImport } from './routes/cloud'
@@ -22,6 +23,11 @@ import { Route as UsageRouteImport } from './routes/usage'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GhostsRoute = GhostsRouteImport.update({
+  id: '/_ghosts',
+  path: '/_ghosts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentRoute = AgentRouteImport.update({
@@ -67,6 +73,7 @@ const UsageRoute = UsageRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/_ghosts': typeof GhostsRoute
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/_ghosts': typeof GhostsRoute
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
@@ -90,6 +98,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_ghosts': typeof GhostsRoute
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/_ghosts'
     | '/agent'
     | '/chats'
     | '/cloud'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/_ghosts'
     | '/agent'
     | '/chats'
     | '/cloud'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/_ghosts'
     | '/agent'
     | '/chats'
     | '/cloud'
@@ -137,6 +149,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GhostsRoute: typeof GhostsRoute
   AgentRoute: typeof AgentRoute
   ChatsRoute: typeof ChatsRoute
   CloudRoute: typeof CloudRoute
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_ghosts': {
+      id: '/_ghosts'
+      path: '/_ghosts'
+      fullPath: '/_ghosts'
+      preLoaderRoute: typeof GhostsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agent': {
@@ -217,6 +237,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GhostsRoute: GhostsRoute,
   AgentRoute: AgentRoute,
   ChatsRoute: ChatsRoute,
   CloudRoute: CloudRoute,
