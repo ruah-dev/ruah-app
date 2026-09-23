@@ -211,6 +211,7 @@ Definition of done: `archmap scan t3code/` produces ≥ 12 nodes (apps/*, packag
 - `architecture.save` / `PUT /api/architecture` with atomic write; the Details tab edits `notes` and `description` (prompt L7).
 - Mode selector (`mode.set` → `session/set_mode`), `session.reset`, `--mode` and `--yolo` flags.
 - `archmap mcp`: stdio MCP server exposing `get_architecture`, `get_node(id)`, `get_focus`; also passed to the agent via `session/new.mcpServers` when `--mcp` is set, so Claude can query the map itself.
+  Done 2026-09-23, wider than planned: read **and write** tools (`ruah_get_architecture`, `ruah_get_element`, `ruah_find_elements`, `ruah_add/update/remove_element`, `ruah_connect/disconnect`, `ruah_add/update_workflow`, `ruah_apply`), always on (no `--mcp`), in-process for Claude and `archmap mcp --daemon <url>` for ACP agents — CONTRACTS §1.7, `src/mcp/*`.
 - Packaging: `npm i -g archmap` / `npx archmap`; viewer build copied into `viewer/` by a `sync-viewer` script from a Lovable export path.
 - Tool-update coalescing if the viewer stutters (BORROW.md §2.3).
 - Tests: bridge against the fake agent, pack goldens, store validation, one end-to-end test with `--mock`.
