@@ -1,10 +1,12 @@
-// Sidebar "Chats" for the current project (§5.2): new chat, list with agent mark, title and
-// relative time, inline rename (double-click or menu), delete with confirmation.
-import { useEffect, useRef, useState } from "react";
+// Sidebar "Chats" for the current project (§5.2): new chat, filter (title / agent), rows grouped
+// Today · Yesterday · Last 7 days · Older in one windowed list, agent mark, title and relative
+// time, inline rename (double-click or menu), delete with confirmation, hover prefetch.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
-import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import type { ChatInfo } from "@/lib/contracts";
-import { deleteChat, renameChat } from "@/lib/daemon";
+import { deleteChat, prefetchChat, renameChat } from "@/lib/daemon";
+import { groupByDate, matchesChat, type DateGroupLabel } from "@/lib/switching";
 import { absoluteTime, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { VirtualList } from "@/components/common/VirtualList";
@@ -31,6 +33,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 
 const ROW_H = 30;
+const GROUP_H = 22;
+/** Show the filter once the list is long enough to need it. */
+const FILTER_FROM = 6;
+
+type Row =
+  | { type: "group"; key: string; label: DateGroupLabel }
+  | { type: "chat"; key: string; chat: ChatInfo };
 
 function RenameInput({ chat, onDone }: { chat: ChatInfo; onDone: () => void }) {
   const [value, setValue] = useState(chat.title);
@@ -67,12 +76,29 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ChatInfo | null>(null);
+  const [query, setQuery] = useState("");
   const chats = daemon.chats;
   const running = daemon.turns.some((t) => !t.stopReason);
   const showingChat = pathname === "/agent" || pathname === "/map";
 
   const agentName = (id: string) =>
     daemon.agent?.agents?.available.find((a) => a.id === id)?.name ?? id;
+
+  // Filter (title / agent) then Today · Yesterday · Last 7 days · Older headers, one windowed list.
+  const rows = useMemo<Row[]>(() => {
+    const list = chats.filter((c) => matchesChat(c, query, agentName));
+    return groupByDate(list, (c) => c.updatedAt).flatMap((g) => [
+      { type: "group" as const, key: `g:${g.label}`, label: g.label },
+      ...g.items.map((chat) => ({ type: "chat" as const, key: chat.id, chat })),
+    ]);
+    // agentName only depends on the agent list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chats, query, daemon.agent?.agents]);
+  const hover = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const prefetch = (c: ChatInfo) => {
+    clearTimeout(hover.current);
+    hover.current = setTimeout(() => void prefetchChat(c.projectId, c.id), 80);
+  };
 
   const newButton = (
     <Tooltip>
@@ -103,20 +129,53 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
             </p>
           </div>
         ) : (
+          <>
+          {chats.length >= FILTER_FROM ? (
+            <div className="mx-1 mb-1 flex h-7 items-center gap-1.5 rounded-md bg-surface-2 px-2 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+              <Search className="size-3 shrink-0 text-faint" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setQuery("");
+                  e.stopPropagation();
+                }}
+                placeholder="Filter by title or agent…"
+                aria-label="Filter chats"
+                className="h-full min-w-0 flex-1 bg-transparent text-ui-sm outline-none placeholder:text-faint"
+              />
+              {query ? (
+                <button type="button" aria-label="Clear filter" onClick={() => setQuery("")} className="text-faint hover:text-foreground">
+                  <X className="size-3" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {rows.length === 0 ? (
+            <p className="px-2 py-1 text-label text-faint">No chat matches “{query}”.</p>
+          ) : null}
           <VirtualList
-            items={chats}
-            itemHeight={ROW_H}
-            getKey={(c) => c.id}
-            className="max-h-[min(38vh,340px)]"
+            items={rows}
+            itemHeight={(r) => (r.type === "group" ? GROUP_H : ROW_H)}
+            getKey={(r) => r.key}
+            className="max-h-[min(42vh,380px)]"
             role="list"
             aria-label="Chats"
-            renderItem={(c) => {
+            renderItem={(r) => {
+              if (r.type === "group")
+                return (
+                  <div role="presentation" className="flex h-full items-end px-2 pb-0.5 text-[10.5px] font-medium tracking-wide text-faint uppercase">
+                    {r.label}
+                  </div>
+                );
+              const c = r.chat;
               const active = c.id === daemon.activeChatId && showingChat;
               const live = c.id === daemon.activeChatId && running;
               return (
                 <div
                   role="listitem"
                   data-active={active}
+                  onMouseEnter={() => prefetch(c)}
                   className="group/chat list-row relative h-[calc(100%-2px)] pe-1"
                   title={`${c.title}\n${agentName(c.agentId)} · ${c.turnCount} turns · ${absoluteTime(c.updatedAt)}`}
                 >
@@ -173,6 +232,7 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
               );
             }}
           />
+          </>
         )}
       </CollapsibleSection>
 
