@@ -158,6 +158,11 @@ async function main() {
       nodeIntegration: false,
     },
   });
+  // Dropping a file (e.g. a screenshot from Finder) outside the chat's drop zone makes Chromium
+  // navigate the window to that file://…; the viewer handles drops itself, so never leave the app.
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("file:")) event.preventDefault();
+  });
   await win.loadURL(BASE);
 }
 
