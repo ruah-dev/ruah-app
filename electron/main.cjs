@@ -158,6 +158,18 @@ async function main() {
       nodeIntegration: false,
     },
   });
+  // Downloads (e.g. Export → draw.io): always ask where to save, starting in
+  // ~/Downloads with the suggested name. Without a save path Electron shows
+  // this dialog; the options only set its defaults.
+  win.webContents.session.on("will-download", (_event, item) => {
+    const name = item.getFilename() || "download";
+    const ext = path.extname(name).slice(1);
+    item.setSaveDialogOptions({
+      title: "Save export",
+      defaultPath: path.join(app.getPath("downloads"), name),
+      ...(ext === "drawio" ? { filters: [{ name: "draw.io diagram", extensions: ["drawio"] }] } : {}),
+    });
+  });
   await win.loadURL(BASE);
 }
 
