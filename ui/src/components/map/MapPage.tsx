@@ -7,18 +7,21 @@ import {
   ChevronRight,
   Code2,
   Columns2,
+  Layers,
   Loader2,
   MessageSquare,
   MoreHorizontal,
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  ScanSearch,
   X,
 } from "lucide-react";
 import { useWorkspace, type Diagram, type Pane } from "@/lib/workspace";
 import { useWorkbench, type PanelView } from "@/lib/workbench";
 import { ROOT_DIAGRAM_ID, ancestry, indexArchitecture, levelDiagramId, parseDiagramId } from "@/lib/architecture";
-import { dismissError } from "@/lib/daemon";
+import { dismissError, rescan } from "@/lib/daemon";
+import { toast } from "sonner";
 import { EditorCanvas } from "@/components/editor/EditorCanvas";
 import { Palette } from "@/components/editor/Palette";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
@@ -218,12 +221,77 @@ function PaletteTray() {
   );
 }
 
+/** A new project (or a repo the scanner found nothing in): scan it, or start drawing. */
+function EmptyMap() {
+  const ws = useWorkspace();
+  const wb = useWorkbench();
+  const [scanning, setScanning] = useState(false);
+  const scan = async () => {
+    setScanning(true);
+    try {
+      const r = await rescan();
+      toast.success(r.nodes ? `Found ${r.nodes} elements` : "The scan found no elements", {
+        description: r.nodes ? `${r.edges} links · ${Math.round(r.ms)} ms` : "Add them by hand from the palette.",
+      });
+    } catch (err) {
+      toast.error("Scan failed", { description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setScanning(false);
+    }
+  };
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
+      <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl bg-popover/90 px-6 py-6 text-center shadow-[inset_0_0_0_1px_var(--color-hairline)] backdrop-blur">
+        <span className="grid size-10 place-items-center rounded-xl bg-surface-3 text-muted-foreground">
+          <Layers className="size-4.5" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-title font-medium">An empty map</p>
+          <p className="text-ui-sm leading-relaxed text-muted-foreground">
+            {wb.editing
+              ? "Drag an element from the palette onto the canvas, double-click the canvas, or press N."
+              : "Scan the repo to draw its services, modules and files — or start from scratch."}
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => void scan()}
+            disabled={scanning || !ws.editable}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-surface-3 px-3 text-ui-sm text-foreground transition-colors hover:bg-surface-3/70 disabled:opacity-50"
+          >
+            {scanning ? <Loader2 className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}
+            {scanning ? "Scanning…" : "Scan repo"}
+          </button>
+          <button
+            type="button"
+            disabled={!ws.editable}
+            onClick={() => {
+              if (!wb.editing) wb.setEditMode(true);
+              else wb.addNodeAt("service", 160, 120);
+            }}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-ui-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Plus className="size-3.5" />
+            {wb.editing ? "Add a service" : "Add your first element"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) {
   const ws = useWorkspace();
   const wb = useWorkbench();
+  const emptyProject =
+    ws.daemon.source === "daemon" &&
+    ws.architecture.nodes.length === 0 &&
+    diagram.mode === "architecture";
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <EditorCanvas
+        emptyHint={!emptyProject}
         diagram={diagram}
         editable={wb.editing}
         selectedNodeId={wb.selectedNodeId}
@@ -248,6 +316,7 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
         onCopyContext={wb.copyContext}
       />
       {showTray ? <PaletteTray /> : null}
+      {emptyProject ? <EmptyMap /> : null}
       {ws.daemon.source === null ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">

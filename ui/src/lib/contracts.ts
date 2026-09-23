@@ -70,7 +70,12 @@ export type ClientMessage =
   | { type: "mode.set"; modeId: string } // Phase 3: session/set_mode
   | { type: "model.set"; modelId: string } // switch the agent's model (one of agent.status.models.available)
   | { type: "agent.set"; agentId: string } // switch coding agent (one of agent.status.agents.available); new session
-  | { type: "architecture.save"; architecture: Architecture }; // Phase 3: daemon validates + writes the file
+  | { type: "architecture.save"; architecture: Architecture } // Phase 3: daemon validates + writes the file
+  // §5.2 chats (turns always belong to the active chat; new/open cancel a running turn first)
+  | { type: "chat.new" }
+  | { type: "chat.open"; chatId: string }
+  | { type: "chat.rename"; chatId: string; title: string }
+  | { type: "chat.delete"; chatId: string };
 
 // ---------- daemon -> viewer ----------
 export type ServerMessage =
@@ -117,7 +122,11 @@ export type ServerMessage =
       turnId?: string;
       requestId?: string;
       fatal?: boolean;
-    };
+    }
+  // §5.2 projects + chats
+  | { type: "project"; project: ProjectInfo | null } // null = launcher state (no architecture follows)
+  | { type: "chats"; projectId: string; chats: ChatInfo[]; activeChatId: string | null }
+  | { type: "chat.history"; chatId: string; turns: TurnRecord[] };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -199,3 +208,62 @@ export type ErrorCode =
   | "agent_protocol" // malformed ACP traffic
   | "agent_request_failed" // ACP JSON-RPC error on initialize/session/prompt
   | "internal";
+
+// Projects, launcher and chats (CONTRACTS.md §5)
+export interface ProjectInfo {
+  id: string; // stable: sha1(realpath(root)).slice(0, 12)
+  name: string; // architecture name, else folder name
+  root: string; // absolute path (repo dir, or the folder holding ruah.system.json)
+  kind: "repo" | "system"; // "system" = multi-repo (docs/MULTI-REPO.md)
+  lastOpenedAt: string; // ISO
+  pinned?: boolean;
+}
+
+export interface ChatInfo {
+  id: string; // uuid
+  projectId: string;
+  title: string; // first prompt, trimmed to 80 chars, renameable
+  agentId: string; // agent used when the chat was created
+  model?: string;
+  createdAt: string;
+  updatedAt: string;
+  turnCount: number;
+  lastNodeId?: string;
+}
+
+/** What the viewer needs to redraw a past turn. */
+export interface TurnRecord {
+  turnId: string;
+  nodeId: string;
+  text: string;
+  contextPack: string;
+  events: StreamEvent[];
+  stopReason?: StopReason;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+/** GET /api/projects */
+export interface ProjectsResponse {
+  current: ProjectInfo | null;
+  recent: ProjectInfo[]; // most recent first, pinned on top
+}
+
+/** GET /api/chats/recent */
+export type RecentChat = ChatInfo & { projectName: string; projectRoot: string };
+export interface RecentChatsResponse {
+  chats: RecentChat[];
+}
+
+/** §5.4 desktop bridge (Electron preload). Absent in a plain browser. */
+export interface RuahDesktopBridge {
+  version: string;
+  pickFolder(opts?: { title?: string }): Promise<string | null>;
+  revealInFinder(path: string): void;
+}
+
+declare global {
+  interface Window {
+    ruah?: RuahDesktopBridge;
+  }
+}

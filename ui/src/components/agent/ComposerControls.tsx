@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ProviderModelPicker.tsx,
 // ComposerControl.tsx and CompactComposerControlsMenu.tsx (MIT): quiet ghost controls inside
 // the composer's bottom row, one combined agent + model dropdown grouped by agent.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -19,14 +19,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 
 const controlClass =
   "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
+
+const cmdItemClass =
+  "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-ui data-[selected=true]:bg-accent data-[disabled=true]:opacity-45";
 
 const itemClass =
   "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-[13px] focus:bg-accent data-[disabled]:opacity-45";
@@ -69,22 +79,40 @@ function OptionText({ name, description }: { name: ReactNode; description?: Reac
   );
 }
 
-/** Agent + model picker. Renders nothing when the daemon offers neither choice. */
+/** Agent + model picker (⌘. opens it; type to filter, ↑↓, Enter). Every installed agent is
+ * listed with the models last seen for it, so switching agent and model is one step; the
+ * model of an agent that is not running yet is applied once it has started ("warming…").
+ * Renders nothing when the daemon offers neither choice. */
 export function AgentModelPicker({
   agents,
   models,
+  modelsByAgent = {},
   switching,
   disabled,
+  open: openProp,
+  onOpenChange,
   onModel,
   onAgent,
+  onAgentModel,
 }: {
   agents: AgentChoiceState | undefined;
   models: ModelState | undefined;
+  modelsByAgent?: Record<string, ModelState>;
   switching: AgentSwitch | null;
   disabled: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onModel: (modelId: string) => void;
   onAgent: (agentId: string) => void;
+  /** Switch to another agent and pick one of its models in one step. */
+  onAgentModel?: (agentId: string, modelId: string) => void;
 }) {
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    onOpenChange?.(v);
+  };
   const hasModels = !!models?.available.length;
   const hasAgents = !!agents?.available.length;
   if (!hasModels && !hasAgents && !switching) return null;
@@ -94,33 +122,54 @@ export function AgentModelPicker({
 
   if (switching) {
     return (
-      <span className={cn(controlClass, "pointer-events-none")}>
-        <Loader2 className="size-3.5 animate-spin" />
-        <span className="truncate">Starting {switching.name}…</span>
+      <span
+        className={cn(controlClass, "pointer-events-none")}
+        role="status"
+        aria-label={`Warming ${switching.name}`}
+      >
+        <AgentMark name={switching.name} className="animate-pulse" />
+        <span className="truncate">Warming {switching.name}…</span>
+        <Loader2 className="size-3 animate-spin opacity-60" />
       </span>
     );
   }
 
-  const modelItems = (models?.available ?? []).map((m) => {
-    const active = m.id === models?.currentModelId;
-    return (
-      <DropdownMenuItem
-        key={m.id}
-        className={itemClass}
-        onSelect={() => !active && onModel(m.id)}
-      >
-        <OptionText name={m.name} description={m.description} />
-        <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !active && "invisible")} />
-      </DropdownMenuItem>
-    );
-  });
+  const installed = (agents?.available ?? []).filter((a) => a.installed);
+  const ordered = [
+    ...installed.filter((a) => a.id === agents?.currentAgentId),
+    ...installed.filter((a) => a.id !== agents?.currentAgentId),
+  ];
+  const missing = (agents?.available ?? []).filter((a) => !a.installed);
+
+  const choose = (agentId: string | null, modelId: string | null) => {
+    setOpen(false);
+    if (!agentId || agentId === agents?.currentAgentId) {
+      if (modelId && modelId !== models?.currentModelId) onModel(modelId);
+      return;
+    }
+    if (modelId && onAgentModel) onAgentModel(agentId, modelId);
+    else onAgent(agentId);
+  };
+
+  const modelItem = (agentId: string | null, agentName: string, m: { id: string; name: string; description?: string }, active: boolean) => (
+    <CommandItem
+      key={`${agentId ?? "-"}:${m.id}`}
+      value={`${agentName} ${m.name} ${m.id}`.trim()}
+      onSelect={() => choose(agentId, m.id)}
+      className={cmdItemClass}
+    >
+      <OptionText name={m.name} description={plain(m.description)} />
+      <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !active && "invisible")} />
+    </CommandItem>
+  );
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
         disabled={disabled}
         className={cn(controlClass, "max-w-[15rem]")}
         aria-label="Choose agent and model"
+        title="Agent and model (⌘.)"
       >
         {currentAgent ? <AgentMark name={currentAgent.name} /> : null}
         <span className="truncate">
@@ -129,68 +178,94 @@ export function AgentModelPicker({
             : (currentModel?.name ?? currentAgent?.name ?? "Model")}
         </span>
         <ChevronDown className="size-3 shrink-0 opacity-60" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
+      </PopoverTrigger>
+      <PopoverContent
         align="start"
         side="top"
         sideOffset={6}
-        className="w-80 max-w-[calc(100vw-2rem)] p-1"
+        className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border-hairline p-0"
       >
-        {hasAgents ? (
-          <>
-            {currentAgent ? (
-              <>
-                <DropdownMenuLabel className="flex items-center gap-2 px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">
-                  <AgentMark name={currentAgent.name} />
-                  {currentAgent.name}
-                </DropdownMenuLabel>
-                {modelItems.length ? (
-                  modelItems
-                ) : (
-                  <p className="px-2 pb-1.5 text-[12px] text-muted-foreground">
-                    Uses its default model.
-                  </p>
+        <Command
+          className="bg-transparent"
+          loop
+          {...(currentModel
+            ? { defaultValue: `${currentAgent?.name ?? ""} ${currentModel.name} ${currentModel.id}`.trim() }
+            : {})}
+        >
+          <CommandInput autoFocus placeholder="Switch agent or model…" className="h-10 text-ui" />
+          <CommandList className="max-h-[min(55vh,380px)] p-1">
+            <CommandEmpty className="py-5 text-center text-ui-sm text-muted-foreground">
+              No agent or model matches.
+            </CommandEmpty>
+            {hasAgents ? (
+              ordered.map((a) => {
+                const isCurrent = a.id === agents!.currentAgentId;
+                const list = isCurrent ? models : modelsByAgent[a.id];
+                return (
+                  <CommandGroup
+                    key={a.id}
+                    heading={
+                      <span className="flex items-center gap-2">
+                        <AgentMark name={a.name} />
+                        {a.name}
+                        {isCurrent ? (
+                          <span className="text-[10.5px] text-muted-foreground/70">current</span>
+                        ) : null}
+                      </span>
+                    }
+                    className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-label [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+                  >
+                    {list?.available.length ? (
+                      list.available.map((m) =>
+                        modelItem(a.id, a.name, m, isCurrent && m.id === models?.currentModelId),
+                      )
+                    ) : (
+                      <CommandItem
+                        value={`${a.name} default model`}
+                        onSelect={() => choose(a.id, null)}
+                        className={cmdItemClass}
+                        title={plain(a.description)}
+                      >
+                        <OptionText
+                          name={isCurrent ? "Default model" : `Use ${a.name}`}
+                          description={isCurrent ? "This agent picks its model." : plain(a.description) || "Starts a new session"}
+                        />
+                        <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !isCurrent && "invisible")} />
+                      </CommandItem>
+                    )}
+                  </CommandGroup>
+                );
+              })
+            ) : (
+              <CommandGroup heading="Model" className="[&_[cmdk-group-heading]]:section-label">
+                {(models?.available ?? []).map((m) =>
+                  modelItem(null, "", m, m.id === models?.currentModelId),
                 )}
-              </>
+              </CommandGroup>
+            )}
+            {missing.length ? (
+              <CommandGroup heading="Not installed" className="[&_[cmdk-group-heading]]:section-label">
+                {missing.map((a) => (
+                  <CommandItem key={a.id} value={`${a.name} not installed`} disabled className={cn(cmdItemClass, "items-center")}>
+                    <AgentMark name={a.name} />
+                    <span className="min-w-0 flex-1 truncate text-foreground">{a.name}</span>
+                    <span className="max-w-[55%] shrink-0 truncate text-meta text-muted-foreground" title={plain(a.installHint)}>
+                      {plain(a.installHint) || "Not installed"}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
             ) : null}
-            {agents!.available.some((a) => a.id !== agents!.currentAgentId) ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">
-                  Switch agent
-                </DropdownMenuLabel>
-                {agents!.available
-                  .filter((a) => a.id !== agents!.currentAgentId)
-                  .map((a) => (
-                    <DropdownMenuItem
-                      key={a.id}
-                      className={cn(itemClass, "items-center")}
-                      disabled={!a.installed}
-                      onSelect={() => onAgent(a.id)}
-                      title={plain(a.installed ? a.description : a.installHint)}
-                    >
-                      <AgentMark name={a.name} />
-                      <span className="min-w-0 flex-1 truncate text-foreground">{a.name}</span>
-                      {a.installed ? null : (
-                        <span className="max-w-[55%] shrink-0 truncate text-[11.5px] text-muted-foreground">
-                          {plain(a.installHint) || "Not installed"}
-                        </span>
-                      )}
-                    </DropdownMenuItem>
-                  ))}
-              </>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <DropdownMenuLabel className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">
-              Model
-            </DropdownMenuLabel>
-            {modelItems}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </CommandList>
+          <div className="flex items-center gap-2 border-t border-hairline px-3 py-1.5 text-meta text-muted-foreground">
+            <kbd className="kbd">⌘.</kbd> opens this
+            <span className="ms-auto flex items-center gap-1">
+              <kbd className="kbd">↵</kbd> select
+            </span>
+          </div>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

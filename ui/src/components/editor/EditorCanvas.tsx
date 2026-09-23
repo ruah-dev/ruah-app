@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 export type EdgeRef = { from: string; to: string };
 
 type Props = {
+  /** Show the built-in "Empty diagram" hint (the Map shows its own card for empty projects). */
+  emptyHint?: boolean;
   diagram: Diagram;
   editable: boolean;
   selectedNodeId: string | null;
@@ -74,6 +76,7 @@ const snap = (v: number) => Math.round(v / GRID) * GRID;
 export function EditorCanvas({
   diagram,
   editable,
+  emptyHint = true,
   selectedNodeId,
   selectedEdge,
   onSelectNode,
@@ -507,7 +510,7 @@ export function EditorCanvas({
         </div>
       </div>
 
-      {diagram.nodes.length === 0 ? (
+      {diagram.nodes.length === 0 && emptyHint ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="text-center">
             <p className="text-[13.5px] font-medium text-foreground">Empty diagram</p>

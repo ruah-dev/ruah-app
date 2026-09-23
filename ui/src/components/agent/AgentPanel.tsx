@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
 // (MIT): a centered, readable message column with the composer docked at the bottom.
 import { useEffect, useMemo, useRef } from "react";
-import { RotateCcw, Wind } from "lucide-react";
+import { MessageSquarePlus, RotateCcw, Wind } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
 import { contextPathOf } from "@/lib/architecture";
@@ -35,25 +35,28 @@ export function agentStatusLabel(daemon: DaemonState) {
   return `${who} · ${daemon.agent?.state ?? "unknown"}${daemon.daemonVersion ? ` · daemon ${daemon.daemonVersion}` : ""}`;
 }
 
-/** Starts a fresh agent session (the agent forgets the conversation). */
+/** Starts a new chat (§5), or on older daemons a fresh agent session. */
 export function NewSessionButton({ daemon }: { daemon: DaemonState }) {
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const running = daemon.turns.some((t) => !t.stopReason);
   if (!connected || daemon.turns.length === 0) return null;
+  const label = daemon.projectsSupported
+    ? "New chat — this one stays in the Chats list"
+    : "New session — the agent forgets this chat";
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          disabled={running}
+          disabled={running && !daemon.projectsSupported}
           onClick={resetSession}
-          aria-label="New session"
+          aria-label={daemon.projectsSupported ? "New chat" : "New session"}
           className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
         >
-          <RotateCcw className="size-3.5" />
+          {daemon.projectsSupported ? <MessageSquarePlus className="size-3.5" /> : <RotateCcw className="size-3.5" />}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">New session — the agent forgets this chat</TooltipContent>
+      <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -135,7 +138,18 @@ export function AgentPanel({
         }}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        {turns.length === 0 ? (
+        {turns.length === 0 && daemon.chatLoading ? (
+          <div className="mx-auto w-full max-w-[46rem] space-y-6 px-4 pt-6" aria-busy="true" aria-label="Loading chat">
+            {[0, 1].map((i) => (
+              <div key={i} className="space-y-2.5">
+                <div className="ms-auto h-8 w-2/5 animate-pulse rounded-2xl bg-foreground/[0.06]" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-foreground/[0.05]" />
+                <div className="h-3 w-3/5 animate-pulse rounded bg-foreground/[0.05]" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-foreground/[0.05]" />
+              </div>
+            ))}
+          </div>
+        ) : turns.length === 0 ? (
           <div className="mx-auto flex h-full max-w-[26rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
             <span className="grid size-9 place-items-center rounded-xl bg-surface-2 text-primary">
               <Wind className="size-4.5" />
@@ -196,6 +210,7 @@ export function AgentPanel({
           onStop={() => latest && cancel(latest.id)}
           onClearContext={onClearContext}
           onPickContext={onPickContext}
+          keyboard={keyboard}
         />
       </div>
     </div>

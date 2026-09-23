@@ -9,12 +9,18 @@ import type {
   ClientMessage,
   ModeState,
   AgentChoiceState,
+  ChatInfo,
   ModelState,
   PermissionOption,
+  ProjectInfo,
+  ProjectsResponse,
+  RecentChat,
+  RecentChatsResponse,
   ServerMessage,
   StopReason,
   StreamEvent,
   ToolCallView,
+  TurnRecord,
 } from "./contracts";
 import sampleArchitectureJson from "@/data/sample-architecture.json";
 import { sampleFiles } from "@/data/sample-files";
@@ -80,6 +86,15 @@ export interface Turn {
 
 export type SaveState = "idle" | "pending" | "saving" | "error";
 
+/** Optimistic project switch (§5): the shell stays, the content shows a skeleton until the
+ * daemon has sent the new project's architecture. */
+export interface ProjectSwitch {
+  root: string;
+  name: string;
+  /** Open this chat once the new project's chat list arrives (Chats page, cross-project). */
+  chatId?: string;
+}
+
 export interface DaemonState {
   connection: Connection;
   /** Where `architecture` came from: the daemon, or the bundled sample when none is reachable. */
@@ -100,6 +115,21 @@ export interface DaemonState {
   agentSwitch: AgentSwitch | null;
   wsUrl: string | null;
   httpOrigin: string | null;
+
+  // §5 projects + chats
+  /** True once the daemon has sent a `project` frame (older daemons serve one fixed repo). */
+  projectsSupported: boolean;
+  /** Current project; null = launcher state (only meaningful when projectsSupported). */
+  project: ProjectInfo | null;
+  /** Recent projects (GET /api/projects), most recent first, pinned on top. */
+  recentProjects: ProjectInfo[];
+  projectSwitch: ProjectSwitch | null;
+  chats: ChatInfo[];
+  activeChatId: string | null;
+  /** chat.open sent, waiting for chat.history. */
+  chatLoading: boolean;
+  /** Last model list seen per agent (agent.status only carries the current agent's). */
+  modelsByAgent: Record<string, ModelState>;
 }
 
 const INITIAL: DaemonState = {
@@ -119,6 +149,14 @@ const INITIAL: DaemonState = {
   agentSwitch: null,
   wsUrl: null,
   httpOrigin: null,
+  projectsSupported: false,
+  project: null,
+  recentProjects: [],
+  projectSwitch: null,
+  chats: [],
+  activeChatId: null,
+  chatLoading: false,
+  modelsByAgent: {},
 };
 
 let state: DaemonState = INITIAL;
@@ -234,6 +272,7 @@ function connect() {
         if (h?.version) set({ daemonVersion: h.version });
       })
       .catch(() => {});
+    void refreshProjects();
   };
   ws.onmessage = (ev) => {
     if (socket !== ws || typeof ev.data !== "string") return;
@@ -269,6 +308,7 @@ function connect() {
     set({
       connection: everOpened ? "closed" : state.connection,
       agentSwitch: null,
+      projectSwitch: null,
       turns,
       agent: everOpened ? null : state.agent,
     });
@@ -283,7 +323,168 @@ function connect() {
 export function startDaemon() {
   if (started || typeof window === "undefined") return;
   started = true;
+  loadModelCache();
   connect();
+}
+
+// ---------------------------------------------------------------------------
+// projects + chats (§5): incoming frames
+
+const MODEL_CACHE_KEY = "ruah.models.v1";
+const SWITCH_TIMEOUT_MS = 30_000;
+
+/** Model choice for an agent that is not running yet: applied once it reports idle. */
+let pendingModel: { agentId: string; modelId: string } | null = null;
+/** Chat to open once the (new) project's chat list arrives. */
+let pendingChatOpen: string | null = null;
+/** Last known turns per chat, so switching back to a chat is instant (history replaces it). */
+const turnCache = new Map<string, Turn[]>();
+let switchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function loadModelCache() {
+  try {
+    const raw = window.localStorage.getItem(MODEL_CACHE_KEY);
+    if (raw) set({ modelsByAgent: JSON.parse(raw) as Record<string, ModelState> });
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistModelCache() {
+  try {
+    window.localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify(state.modelsByAgent));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function sameRoot(a: string, b: string) {
+  const norm = (p: string) => p.replace(/[\\/]+$/, "");
+  return norm(a) === norm(b);
+}
+
+export function basename(path: string) {
+  const parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+export function sortProjects(list: ProjectInfo[]): ProjectInfo[] {
+  return [...list].sort(
+    (a, b) =>
+      Number(!!b.pinned) - Number(!!a.pinned) ||
+      Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt),
+  );
+}
+
+function recordToTurn(r: TurnRecord, idle: boolean): Turn {
+  const startedAt = Date.parse(r.startedAt) || Date.now();
+  const finishedAt = r.finishedAt ? Date.parse(r.finishedAt) : undefined;
+  // A record without a stop reason is either still running (the stream continues) or was
+  // interrupted before the daemon could record the end.
+  const stopReason: StopReason | undefined = r.stopReason ?? (idle ? "cancelled" : undefined);
+  return {
+    id: r.turnId,
+    nodeId: r.nodeId,
+    text: r.text,
+    contextPack: r.contextPack,
+    events: r.events,
+    permission: null,
+    resolved: [],
+    startedAt,
+    ...(finishedAt !== undefined && !Number.isNaN(finishedAt) ? { finishedAt } : {}),
+    ...(stopReason ? { stopReason } : {}),
+  };
+}
+
+function clearSwitchTimer() {
+  if (switchTimer !== undefined) clearTimeout(switchTimer);
+  switchTimer = undefined;
+}
+
+function handleProject(project: ProjectInfo | null) {
+  const prevId = state.project?.id ?? null;
+  const nextId = project?.id ?? null;
+  const patch: Partial<DaemonState> = { projectsSupported: true, project, source: "daemon" };
+  if (nextId !== prevId) {
+    // Another project: drop everything that belonged to the previous one.
+    serverArchitecture = null;
+    draft = null;
+    needsResend = false;
+    savesInFlight = 0;
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimer = undefined;
+    turnCache.clear();
+    Object.assign(patch, {
+      architecture: null,
+      revision: 0,
+      root: project?.root ?? null,
+      path: null,
+      archError: null,
+      lastError: null,
+      save: "idle",
+      turns: [],
+      chats: [],
+      activeChatId: null,
+      chatLoading: false,
+    } satisfies Partial<DaemonState>);
+    if (project) {
+      patch.recentProjects = sortProjects([
+        project,
+        ...state.recentProjects.filter((p) => p.id !== project.id),
+      ]);
+    }
+  }
+  if (project === null) {
+    patch.projectSwitch = null;
+    clearSwitchTimer();
+  } else if (state.projectSwitch && nextId !== prevId) {
+    // Adopt the daemon's canonical root (realpath) for the pending switch.
+    patch.projectSwitch = { ...state.projectSwitch, root: project.root, name: project.name };
+  }
+  set(patch);
+  void refreshProjects();
+}
+
+function handleChats(projectId: string, chats: ChatInfo[], activeChatId: string | null) {
+  if (state.project && projectId !== state.project.id) return; // stale frame from before a switch
+  const sorted = [...chats].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  const prev = state.activeChatId;
+  const patch: Partial<DaemonState> = { chats: sorted, activeChatId };
+  if (activeChatId !== prev) {
+    if (activeChatId === null) {
+      patch.turns = [];
+      patch.chatLoading = false;
+    } else if (prev !== null) {
+      // Switched elsewhere (another tab): show what we know until chat.history arrives.
+      turnCache.set(prev, state.turns.filter((t) => t.stopReason));
+      patch.turns = turnCache.get(activeChatId) ?? [];
+    }
+    // prev === null: the first prompt of a new chat created it; keep the live turns.
+  }
+  set(patch);
+  if (pendingChatOpen) {
+    const target = pendingChatOpen;
+    if (sorted.some((c) => c.id === target)) {
+      pendingChatOpen = null;
+      if (target !== activeChatId) openChat(target);
+    }
+  }
+}
+
+function handleHistory(chatId: string, records: TurnRecord[]) {
+  const idle = state.agent?.state !== "busy";
+  const hist = records.map((r) => recordToTurn(r, idle));
+  turnCache.set(chatId, hist);
+  if (chatId !== state.activeChatId) return;
+  const byId = new Map(state.turns.map((t) => [t.id, t]));
+  // Prefer the live copy of a turn that is still streaming.
+  const merged = hist.map((h) => {
+    const live = byId.get(h.id);
+    return live && !live.stopReason ? live : h;
+  });
+  const recorded = new Set(hist.map((h) => h.id));
+  const liveOnly = state.turns.filter((t) => !recorded.has(t.id) && !t.stopReason);
+  set({ turns: [...merged, ...liveOnly], chatLoading: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +520,10 @@ function handle(msg: ServerMessage) {
       if (draft && !editsPending()) draft = null;
       set({
         source: "daemon",
+        projectSwitch:
+          state.projectSwitch && sameRoot(state.projectSwitch.root, msg.root)
+            ? null
+            : state.projectSwitch,
         architecture: draft ?? msg.architecture,
         revision: msg.revision,
         root: msg.root,
@@ -358,9 +563,42 @@ function handle(msg: ServerMessage) {
           ...((msg.agents ?? prev?.agents) ? { agents: (msg.agents ?? prev?.agents)! } : {}),
           ...(msg.error !== undefined ? { error: msg.error } : {}),
         },
+        ...(msg.models
+          ? {
+              modelsByAgent: {
+                ...state.modelsByAgent,
+                [msg.agents?.currentAgentId ?? prev?.agents?.currentAgentId ?? "default"]:
+                  msg.models,
+              },
+            }
+          : {}),
       });
+      if (msg.models) persistModelCache();
+      // A model picked for another agent is applied once that agent is up.
+      if (pendingModel && msg.state === "idle" && msg.models) {
+        const { agentId, modelId } = pendingModel;
+        if ((msg.agents?.currentAgentId ?? state.agent?.agents?.currentAgentId) === agentId) {
+          pendingModel = null;
+          if (
+            msg.models.currentModelId !== modelId &&
+            msg.models.available.some((m) => m.id === modelId)
+          )
+            sendModel(modelId);
+        }
+      } else if (pendingModel && (msg.state === "error" || msg.state === "stopped")) {
+        pendingModel = null;
+      }
       return;
     }
+    case "project":
+      handleProject(msg.project);
+      return;
+    case "chats":
+      handleChats(msg.projectId, msg.chats, msg.activeChatId);
+      return;
+    case "chat.history":
+      handleHistory(msg.chatId, msg.turns);
+      return;
     case "turn.started": {
       if (state.turns.some((t) => t.id === msg.turnId)) {
         updateTurn(msg.turnId, (t) => ({ ...t, contextPack: msg.contextPack, nodeId: msg.nodeId }));
@@ -548,8 +786,206 @@ export function setAgent(agentId: string): boolean {
   return true;
 }
 
+/** One-step agent + model choice (the ⌘. picker). A model of another agent is applied after
+ * that agent has started (its models are known from an earlier agent.status). */
+export function setAgentModel(agentId: string, modelId: string | null): boolean {
+  const current = state.agent?.agents?.currentAgentId;
+  if (!current || current === agentId) {
+    pendingModel = null;
+    return modelId ? sendModel(modelId) : true;
+  }
+  if (!setAgent(agentId)) return false;
+  pendingModel = modelId ? { agentId, modelId } : null;
+  return true;
+}
+
+/** Legacy daemons: drop the agent session. With chats (§5) this starts a new chat instead. */
 export function resetSession() {
+  if (state.projectsSupported) {
+    newChat();
+    return;
+  }
   if (send({ type: "session.reset" })) set({ turns: state.turns.filter((t) => !t.stopReason) });
+}
+
+// ---------------------------------------------------------------------------
+// chats (§5.2)
+
+function stashActiveTurns() {
+  if (state.activeChatId)
+    turnCache.set(
+      state.activeChatId,
+      state.turns.filter((t) => t.stopReason),
+    );
+}
+
+export function newChat(): boolean {
+  if (!send({ type: "chat.new" })) return false;
+  stashActiveTurns();
+  set({ activeChatId: null, turns: [], chatLoading: false });
+  return true;
+}
+
+export function openChat(chatId: string): boolean {
+  if (chatId === state.activeChatId) return true;
+  if (!send({ type: "chat.open", chatId })) return false;
+  stashActiveTurns();
+  set({ activeChatId: chatId, turns: turnCache.get(chatId) ?? [], chatLoading: true });
+  return true;
+}
+
+export function renameChat(chatId: string, title: string): boolean {
+  const t = title.trim().slice(0, 80);
+  if (!t || !send({ type: "chat.rename", chatId, title: t })) return false;
+  set({ chats: state.chats.map((c) => (c.id === chatId ? { ...c, title: t } : c)) });
+  return true;
+}
+
+export function deleteChat(chatId: string): boolean {
+  if (!send({ type: "chat.delete", chatId })) return false;
+  turnCache.delete(chatId);
+  const active = state.activeChatId === chatId;
+  set({
+    chats: state.chats.filter((c) => c.id !== chatId),
+    ...(active ? { activeChatId: null, turns: [], chatLoading: false } : {}),
+  });
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// projects (§5.3)
+
+async function api<T>(path: string, body?: unknown): Promise<T> {
+  if (!state.httpOrigin) throw new Error("No daemon connected");
+  const r = await fetch(`${state.httpOrigin}${path}`, {
+    ...(body !== undefined
+      ? {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
+  });
+  const data = (await r.json().catch(() => ({}))) as { error?: string; message?: string };
+  if (!r.ok) throw new Error(data.error ?? data.message ?? `${r.status} ${r.statusText}`);
+  return data as T;
+}
+
+export async function refreshProjects(): Promise<void> {
+  if (!state.httpOrigin || state.source === "sample") return;
+  try {
+    const res = await api<ProjectsResponse>("/api/projects");
+    set({ recentProjects: sortProjects(res.recent ?? []) });
+  } catch {
+    /* older daemon without §5 */
+  }
+}
+
+function beginSwitch(root: string, name: string) {
+  clearSwitchTimer();
+  set({ projectSwitch: { root, name } });
+  switchTimer = setTimeout(() => {
+    switchTimer = undefined;
+    if (state.projectSwitch) set({ projectSwitch: null });
+  }, SWITCH_TIMEOUT_MS);
+}
+
+function failSwitch() {
+  clearSwitchTimer();
+  pendingChatOpen = null;
+  set({ projectSwitch: null });
+}
+
+/** Open a folder as the current project. Optimistic: the shell keeps rendering, the content
+ * shows a skeleton (state.projectSwitch) until the daemon sends the new architecture. */
+export async function openProject(
+  path: string,
+  opts: { name?: string; chatId?: string } = {},
+): Promise<ProjectInfo> {
+  const target = path.trim();
+  if (!target) throw new Error("Choose a folder first");
+  if (state.project && sameRoot(state.project.root, target)) {
+    if (opts.chatId) openChat(opts.chatId);
+    return state.project;
+  }
+  pendingChatOpen = opts.chatId ?? null;
+  beginSwitch(target, opts.name ?? basename(target));
+  try {
+    const info = await api<ProjectInfo>("/api/projects/open", { path: target });
+    if (state.projectSwitch && state.project?.id !== info.id)
+      set({ projectSwitch: { ...state.projectSwitch, root: info.root, name: info.name } });
+    return info;
+  } catch (err) {
+    failSwitch();
+    throw err;
+  }
+}
+
+export async function createProject(input: {
+  parentDir: string;
+  name: string;
+  git?: boolean;
+}): Promise<ProjectInfo> {
+  const parent = input.parentDir.trim().replace(/[\\/]+$/, "");
+  const name = input.name.trim();
+  beginSwitch(`${parent}/${name}`, name);
+  try {
+    const info = await api<ProjectInfo>("/api/projects/create", {
+      parentDir: parent,
+      name,
+      ...(input.git !== undefined ? { git: input.git } : {}),
+    });
+    if (state.projectSwitch && state.project?.id !== info.id)
+      set({ projectSwitch: { ...state.projectSwitch, root: info.root, name: info.name } });
+    return info;
+  } catch (err) {
+    failSwitch();
+    throw err;
+  }
+}
+
+export async function pinProject(id: string, pinned: boolean): Promise<void> {
+  const before = state.recentProjects;
+  set({
+    recentProjects: sortProjects(before.map((p) => (p.id === id ? { ...p, pinned } : p))),
+    ...(state.project?.id === id ? { project: { ...state.project, pinned } } : {}),
+  });
+  try {
+    await api("/api/projects/pin", { id, pinned });
+  } catch (err) {
+    set({ recentProjects: before });
+    throw err;
+  }
+}
+
+export async function forgetProject(id: string): Promise<void> {
+  const before = state.recentProjects;
+  set({ recentProjects: before.filter((p) => p.id !== id) });
+  try {
+    await api("/api/projects/forget", { id });
+  } catch (err) {
+    set({ recentProjects: before });
+    throw err;
+  }
+}
+
+export async function fetchRecentChats(limit = 200): Promise<RecentChat[]> {
+  const res = await api<RecentChatsResponse>(`/api/chats/recent?limit=${limit}`);
+  return res.chats ?? [];
+}
+
+/** Open a chat from any project: switches project first when needed. */
+export async function openChatAnywhere(chat: RecentChat): Promise<void> {
+  if (state.project?.id === chat.projectId) {
+    openChat(chat.id);
+    return;
+  }
+  await openProject(chat.projectRoot, { name: chat.projectName, chatId: chat.id });
+}
+
+/** Rescan the served repo (§2.3). */
+export async function rescan(): Promise<{ nodes: number; edges: number; ms: number }> {
+  return api("/api/rescan", {});
 }
 
 export function dismissError() {
@@ -660,4 +1096,18 @@ export const daemonActions = {
   fetchFile,
   fetchContext,
   dismissError,
+  // §5
+  setAgentModel,
+  newChat,
+  openChat,
+  renameChat,
+  deleteChat,
+  openChatAnywhere,
+  openProject,
+  createProject,
+  pinProject,
+  forgetProject,
+  refreshProjects,
+  fetchRecentChats,
+  rescan,
 };

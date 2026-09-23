@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/Sidebar.tsx (MIT): sentence-case
 // section labels, compact rows with a quiet active fill, secondary content under disclosures.
-import { useMemo, useState, type ReactNode } from "react";
-import { ChevronRight, FolderTree, Plus, Trash2 } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
+import { FolderTree, Plus, Trash2 } from "lucide-react";
 import { ancestry, parseDiagramId, toRepoTree } from "@/lib/architecture";
 import { indexArchitecture } from "@/lib/architecture";
 import type { Turn } from "@/lib/daemon";
@@ -10,11 +10,12 @@ import { useWorkbench } from "@/lib/workbench";
 import { RepoTree } from "@/components/explorer/RepoTree";
 import { Palette } from "@/components/editor/Palette";
 import { cn } from "@/lib/utils";
+import { CollapsibleSection } from "./CollapsibleSection";
 
 export function SectionHeader({ label, action }: { label: string; action?: ReactNode }) {
   return (
     <div className="flex h-7 items-center justify-between ps-2 pe-1">
-      <span className="text-[12px] font-medium text-muted-foreground/80">{label}</span>
+      <span className="section-label">{label}</span>
       {action}
     </div>
   );
@@ -39,7 +40,6 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
   const ws = useWorkspace();
   const wb = useWorkbench();
   const { app, architecture } = ws;
-  const [filesOpen, setFilesOpen] = useState(false);
   const archIndex = useMemo(() => indexArchitecture(architecture), [architecture]);
   const repoTree = useMemo(() => toRepoTree(architecture), [architecture]);
 
@@ -111,11 +111,12 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <SectionHeader
-          label="Architecture"
-          action={
+    <div className="space-y-2">
+      <CollapsibleSection
+        id="map.architecture"
+        label="Architecture"
+        count={levels.length}
+        action={
             ws.editable ? (
               <AddButton
                 label="New diagram"
@@ -126,14 +127,15 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
               />
             ) : null
           }
-        />
+      >
         <div className="space-y-px">{levels.map(({ diagram, depth }) => row(diagram, depth))}</div>
-      </div>
+      </CollapsibleSection>
 
-      <div>
-        <SectionHeader
-          label="Workflows"
-          action={
+      <CollapsibleSection
+        id="map.workflows"
+        label="Workflows"
+        count={workflows.length}
+        action={
             ws.editable ? (
               <AddButton
                 label="New workflow"
@@ -144,29 +146,21 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
               />
             ) : null
           }
-        />
+      >
         {workflows.length ? (
           <div className="space-y-px">{workflows.map((d) => row(d))}</div>
         ) : (
-          <p className="px-2 text-[12px] text-muted-foreground/70">None in architecture.json</p>
+          <p className="px-2 text-label text-muted-foreground/70">None in architecture.json</p>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div>
-        <button
-          type="button"
-          aria-expanded={filesOpen}
-          onClick={() => setFilesOpen((v) => !v)}
-          className="flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-muted-foreground/80 transition-colors hover:text-foreground"
-        >
-          <FolderTree className="size-3.5" />
-          Files
-          <ChevronRight
-            className={cn("ms-auto size-3.5 transition-transform", filesOpen && "rotate-90")}
-          />
-        </button>
-        {filesOpen ? (
-          <div className="pt-0.5">
+      <CollapsibleSection
+        id="map.files"
+        label="Files"
+        defaultOpen={false}
+        icon={<FolderTree className="size-3 shrink-0 text-muted-foreground/70" />}
+      >
+        <div className="pt-0.5">
             <RepoTree
               tree={repoTree}
               activeNodeId={wb.selectedNodeId}
@@ -180,9 +174,8 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
                 else wb.openNode(nodeId);
               }}
             />
-          </div>
-        ) : null}
-      </div>
+        </div>
+      </CollapsibleSection>
     </div>
   );
 }
@@ -202,7 +195,7 @@ export const toneDot = {
   bad: "bg-bad",
 } as const;
 
-/** Agent page context: this session's turns. */
+/** Agent page context: the turns of the open chat. */
 export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const { daemon, architecture } = useWorkspace();
   const wb = useWorkbench();
@@ -212,10 +205,13 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
   );
   const turns = [...daemon.turns].reverse();
   return (
-    <div>
-      <SectionHeader label="This session" />
+    <CollapsibleSection
+      id="agent.turns"
+      label={daemon.projectsSupported ? "In this chat" : "This session"}
+      count={turns.length}
+    >
       {turns.length === 0 ? (
-        <p className="px-2 text-[12px] leading-relaxed text-muted-foreground/70">
+        <p className="px-2 text-label leading-relaxed text-muted-foreground/70">
           No messages yet. Select an element and ask about it.
         </p>
       ) : (
@@ -247,6 +243,6 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
           })}
         </div>
       )}
-    </div>
+    </CollapsibleSection>
   );
 }
