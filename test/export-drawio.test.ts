@@ -1,5 +1,5 @@
 // draw.io export: src/export/drawio.ts (toDrawio), src/export/http.ts
-// (GET /api/export/drawio), src/export/run-export.ts (archmap export drawio).
+// (GET /api/export/drawio), src/export/run-export.ts (ruah app export drawio).
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -139,7 +139,7 @@ function fixture(): Architecture {
   return {
     version: 1,
     name: "acme <platform>",
-    generatedBy: "archmap scan 0.1.0",
+    generatedBy: "ruah app scan 0.1.0",
     generatedAt: "2026-09-23T10:00:00Z",
     layers: ["frontend", "services", "data"],
     nodes: [
@@ -178,7 +178,7 @@ const ISSUES: WorkItem[] = [
 // ---- toDrawio ------------------------------------------------------------------------
 
 describe("toDrawio", () => {
-  const xml = toDrawio(fixture(), { cloud: CLOUD, issues: ISSUES, notes: ["cloud as of yesterday"], rootName: "platform", agent: "archmap test" });
+  const xml = toDrawio(fixture(), { cloud: CLOUD, issues: ISSUES, notes: ["cloud as of yesterday"], rootName: "platform", agent: "ruah test" });
   const doc = parseXml(xml);
   const diagrams = all(doc, "diagram");
   const byName = new Map(diagrams.map((d) => [d.attrs.name, d]));
@@ -187,7 +187,7 @@ describe("toDrawio", () => {
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<mxfile ')).toBe(true);
     expect(doc.name).toBe("mxfile");
     expect(doc.attrs.compressed).toBe("false");
-    expect(doc.attrs.agent).toBe("archmap test");
+    expect(doc.attrs.agent).toBe("ruah test");
     for (const d of diagrams) {
       expect(d.children.map((c) => c.name)).toEqual(["mxGraphModel"]);
       const map = cells(d);
@@ -418,7 +418,7 @@ describe("GET /api/export/drawio", () => {
 
 // ---- CLI ------------------------------------------------------------------------------------
 
-describe("archmap export drawio", () => {
+describe("ruah app export drawio", () => {
   it("writes the file with cached cloud resources and local issue links", async () => {
     const home = tempDir("ruah-home-");
     const repo = tempDir("ruah-repo-");

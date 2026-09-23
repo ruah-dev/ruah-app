@@ -2,7 +2,7 @@
 // handleSessionUpdate / assistant-segment logic of AcpSessionRuntime.ts (MIT,
 // eff44be43) — see THIRD_PARTY_NOTICES.md
 //
-// src/acp/acp-normalize.ts — ACP `session/update` → archmap StreamEvent[]
+// src/acp/acp-normalize.ts — ACP `session/update` → ruah StreamEvent[]
 // (CONTRACTS.md §2.1, §2.5). Effect-TS stripped; state lives in a plain
 // TurnNormalizer per turn. Tool calls are upserted by toolCallId and every
 // emitted tool_call / tool_result carries the full merged view.
@@ -58,7 +58,7 @@ export function applyModeChange(modes: ModeState | undefined, nextModeId: string
   return modes.available.some((mode) => mode.id === normalized) ? { ...modes, currentModeId: normalized } : modes;
 }
 
-// ---------- models / config-option modes (archmap's own; not from t3code) ----------
+// ---------- models / config-option modes (ruah's own; not from t3code) ----------
 
 /**
  * How the agent lets the client switch a model or mode: a session config

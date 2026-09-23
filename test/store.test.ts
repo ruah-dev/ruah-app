@@ -14,7 +14,7 @@ const GOOD: Architecture = {
 };
 
 function tmpRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "archmap-store-"));
+  const dir = mkdtempSync(join(tmpdir(), "ruah-store-"));
   writeFileSync(join(dir, "architecture.json"), JSON.stringify(GOOD));
   return dir;
 }

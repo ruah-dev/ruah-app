@@ -36,7 +36,7 @@ export interface ServeOptions {
   integrations?: IntegrationsApi;
   /** CONTRACTS §5.6 /api/attachments; defaults to the hub's store, 503 when neither has one. */
   attachments?: AttachmentStore;
-  /** CONTRACTS §1.7 /api/arch + /api/arch/ops (token-authenticated map ops for `archmap mcp`); 503 when absent. */
+  /** CONTRACTS §1.7 /api/arch + /api/arch/ops (token-authenticated map ops for `ruah app mcp`); 503 when absent. */
   mapOps?: MapOpsService;
 }
 

@@ -1,9 +1,9 @@
 {
-  "name": "archmap",
+  "name": "@ruah-dev/app",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "archmap": "dist/cli.js"
+    "ruah-app": "dist/cli.js"
   },
   "engines": {
     "node": ">=22"
@@ -33,5 +33,11 @@
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
-  }
+  },
+  "description": "Ruah \u2014 map any codebase into a living architecture and work on it with coding agents (Claude Code, Cursor, Grok, Kiro, OpenCode).",
+  "ruah": {
+    "namespace": "app",
+    "description": "Ruah desktop app: architecture map + coding agents (`ruah app` opens it)"
+  },
+  "private": true
 }

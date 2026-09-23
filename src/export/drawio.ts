@@ -24,7 +24,7 @@ export interface DrawioOptions {
   notes?: readonly string[];
   /** Basename of the project root, shown in the Overview title block. */
   rootName?: string;
-  /** `agent` attribute of <mxfile>, e.g. "archmap 0.1.0". */
+  /** `agent` attribute of <mxfile>, e.g. "ruah 0.1.0". */
   agent?: string;
 }
 
@@ -922,8 +922,8 @@ export function toDrawio(input: Architecture, opts: DrawioOptions = {}): string 
   }
   pages.push(specificationsPage(model, opts));
   const head = `<mxfile${attrs({
-    host: "archmap",
-    agent: opts.agent ?? "archmap",
+    host: "ruah",
+    agent: opts.agent ?? "ruah",
     modified: arch.generatedAt,
     version: "24.7.17",
     type: "device",

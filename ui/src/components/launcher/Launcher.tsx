@@ -287,7 +287,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 <p className="text-ui-sm text-foreground">No Ruah daemon connected</p>
                 <p className="text-meta leading-relaxed text-muted-foreground">
                   Opening and creating projects needs the Ruah app (or{" "}
-                  <code className="font-mono">archmap serve</code>). Meanwhile you can explore a
+                  <code className="font-mono">ruah app serve</code>). Meanwhile you can explore a
                   sample map.
                 </p>
                 <button

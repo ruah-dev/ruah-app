@@ -91,7 +91,7 @@ const turn = (turnId: string, text: string, events: StreamEvent[] = []): TurnRec
   turnId,
   nodeId: "api",
   text,
-  contextPack: `[archmap context]\n${text}`,
+  contextPack: `[ruah context]\n${text}`,
   events,
   stopReason: "end_turn",
   startedAt: "2026-09-23T10:00:00.000Z",

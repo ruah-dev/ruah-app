@@ -5,7 +5,7 @@ import type { Architecture } from "../src/contracts/architecture.js";
 const EXAMPLE: Architecture = {
   version: 1,
   name: "acme-platform",
-  generatedBy: "archmap scan 0.1.0",
+  generatedBy: "ruah app scan 0.1.0",
   generatedAt: "2026-09-16T10:00:00Z",
   layers: ["clients", "edge", "services", "data", "third-party"],
   nodes: [

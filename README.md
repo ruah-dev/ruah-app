@@ -1,46 +1,53 @@
-# archmap
+# Ruah
 
-archmap is a local-first tool: a developer clicks a node on an architecture
-diagram of a repository, types a short prompt, and Claude Code receives that
-node as context over ACP (Agent Client Protocol); the agent's response streams
-back into the diagram viewer. The daemon in this repo serves the architecture
-file, builds deterministic context packs, and drives the agent over
-`@agentclientprotocol/sdk`; the viewer itself is built separately in Lovable
-("Architect's Canvas") and talks to the daemon over the WebSocket contract in
-`docs/CONTRACTS.md`.
+Ruah maps any codebase into a living architecture — services down to folders,
+files and symbols — and lets coding agents work on it. Click an element, ask
+about it, and the agent gets that element as context; agents edit your code
+and the map itself, live. Local-first: the daemon runs next to your code, the
+desktop app is a thin viewer.
 
-## Work packages (docs/PLAN.md §3.5)
+- **Map:** `ruah app scan` turns a repo (or a multi-repo system,
+  `ruah.system.json`) into `architecture.json`; drill in down to symbols;
+  hand edits survive re-scans.
+- **Agents:** Claude Code (Claude Agent SDK) and, over ACP, Cursor Agent,
+  Grok Build, Kiro CLI and OpenCode — switch instantly, pick models, chats per
+  project, images in prompts, map editing through the `ruah_*` tools.
+- **Integrations:** DigitalOcean / AWS (what runs where), Jira / GitHub
+  (issues on elements), ruah orchestration (tasks and workflows).
+- **Export:** draw.io with every technical spec; usage and plan limits.
 
-| WP | Scope (files) | Depends on |
-| --- | --- | --- |
-| A — ACP bridge | `src/acp/*`, `test/fake-agent.ts`, `test/bridge.test.ts`, `scripts/spike-acp.ts` | nothing; publishes the `AcpBridge` interface first |
-| B — Server, store, context pack | `src/contracts/*`, `src/context/*`, `src/serve/*`, `src/cli.ts` (serve only) | the `AcpBridge` interface from A (stub is enough to start) |
-| C — Viewer | Lovable prompts L1–L6 (Phase 1) | B for `--mock`; A+B for the real run |
-| D — Scanner | `src/scan/*`, `src/cli.ts` (scan) | B (contracts + validator); A for `--describe` |
-| E — MCP + packaging | `src/mcp/*`, `scripts/sync-viewer.ts`, publish config | B |
+Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
+installed this package is `ruah app`.
 
-## Commands
-
-```sh
-# desktop app: pick any repo (scanned on first open), real Claude agent
-pnpm build && pnpm desktop                 # folder picker
-pnpm desktop /path/to/repo                 # or pass the repo
-ARCHMAP_AGENT=acp pnpm desktop /path/to/repo   # claude (default) | acp | mock
-
-# CLI
-node dist/cli.js scan /path/to/repo        # writes <repo>/architecture.json
-node dist/cli.js serve /path/to/repo [--agent claude|acp] [--mock]
-```
-
-Development:
+## Run
 
 ```sh
 pnpm install
-pnpm typecheck   # tsc --noEmit
-pnpm test        # vitest run
-pnpm build       # tsup src/cli.ts --format esm --target node22 --clean
-pnpm dev         # tsx src/cli.ts
+pnpm app                      # build engine + viewer, open the desktop app
+
+ruah app                      # open the desktop app (start screen)
+ruah app .                    # open it on the current repo
+ruah app scan <repo>          # write <repo>/architecture.json
+ruah app serve [<repo>]       # daemon + viewer in the browser (http://127.0.0.1:4177)
+ruah app export drawio <repo> --out map.drawio
+ruah app system init <dir> --repo web=../web --repo api=../api
+ruah app help
 ```
 
-Spec: read `docs/PLAN.md`, `docs/CONTRACTS.md`, `docs/BORROW.md`,
-`docs/ASSUMPTIONS.md` before writing code.
+`ruah-app` is the same command without the ruah toolkit. Useful environment
+variables: `RUAH_AGENT` (claude | cursor | grok | kiro | opencode | mock),
+`RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`.
+
+## Develop
+
+```sh
+pnpm typecheck   # tsc --noEmit
+pnpm build       # tsup → dist/cli.js (run before pnpm test: the smoke test uses dist)
+pnpm test        # vitest run
+pnpm ui:build    # ui/ → viewer/
+pnpm desktop     # Electron on the built viewer
+```
+
+Specs: `docs/CONTRACTS.md` (every message, endpoint and file format),
+`docs/DESIGN-PATTERNS.md` (the patterns behind Ruah and why),
+`docs/MULTI-REPO.md`, `docs/PLAN.md`.

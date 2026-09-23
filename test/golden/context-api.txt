@@ -1,4 +1,4 @@
-[archmap context]
+[ruah context]
 node: invoices-api (service) id=api
 path: services/invoices-api
 description: Core business service. Handles invoice CRUD, validation and emits domain events.
@@ -20,7 +20,7 @@ outgoing:
 neighbors: api-gateway, postgres, events-bus, Stripe
 workflows:
 - Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
-[/archmap context]
+[/ruah context]
 
 The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 

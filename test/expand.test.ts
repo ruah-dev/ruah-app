@@ -15,7 +15,7 @@ import { parseSymbols } from "../src/expand/symbols.js";
 import { createArchitectureStore, type ArchitectureStore } from "../src/serve/architecture-store.js";
 
 function repo(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "archmap-expand-"));
+  const root = mkdtempSync(join(tmpdir(), "ruah-expand-"));
   for (const [rel, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     writeFileSync(join(root, rel), text);

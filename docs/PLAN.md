@@ -1,4 +1,4 @@
-# PLAN.md — archmap
+# PLAN.md — ruah
 
 Status: plan only, no product code. Written 2026-09-16 against:
 
@@ -68,7 +68,7 @@ Today: nothing (no fetches). After the §5 prompts: WebSocket at `/ws`, `GET /ap
                  ──────────────────────────────────────────────────
                           │  WebSocket /ws  (CONTRACTS §2)      │ GET /api/file, /api/context
                           ▼                                     ▼
-  ┌───────────────────────────────── archmap serve (Node 22, 127.0.0.1:4177) ───────────────────────────────┐
+  ┌───────────────────────────────── ruah app serve (Node 22, 127.0.0.1:4177) ───────────────────────────────┐
   │ serve/server.ts ── static.ts ── session.ts (per-socket state machine, one active turn)                  │
   │ serve/architecture-store.ts  (load → validate → layout → watch → revision → broadcast)                   │
   │ context/pack.ts  (CONTRACTS §3)      context/graph.ts (indexes: incoming/outgoing/children/workflows)    │
@@ -84,10 +84,10 @@ Today: nothing (no fetches). After the §5 prompts: WebSocket at `/ws`, `GET /ap
                                    Claude Code (bundled binary, your login)
 ```
 
-### 2.1 Daemon repo layout (`archmap/`)
+### 2.1 Daemon repo layout (`ruah/`)
 
 ```
-package.json          name archmap, type module, bin { archmap: dist/cli.js }, engines node >=22
+package.json          name ruah, type module, bin { ruah: dist/cli.js }, engines node >=22
 src/cli.ts            node:util parseArgs → scan | serve | mcp
 src/contracts/architecture.ts   zod schema + types (CONTRACTS §1)
 src/contracts/ws.ts             zod schema + types (CONTRACTS §2)
@@ -126,14 +126,14 @@ const entry = createRequire(import.meta.url).resolve("@agentclientprotocol/claud
 const child = spawn(process.execPath, [entry], { cwd: root, stdio: ["pipe", "pipe", "pipe"], env: presetEnv });
 const stream = ndJsonStream(Writable.toWeb(child.stdin), Readable.toWeb(child.stdout));
 
-const app = client({ name: "archmap" })
+const app = client({ name: "ruah" })
   .onRequest("session/request_permission", ({ params, signal }) => permissions.ask(params, signal)); // returns RequestPermissionResponse
 const conn = app.connect(stream);                                   // long-lived; conn.closed resolves on exit
 
 await conn.agent.request("initialize", {
   protocolVersion: PROTOCOL_VERSION,
   clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-  clientInfo: { name: "archmap", version },
+  clientInfo: { name: "ruah", version },
 });
 const session = await conn.agent.buildSession(root).start();        // ActiveSession; modes in session.modes
 
@@ -158,7 +158,7 @@ Guard rails from BORROW.md §2.2: one active turn; ignore updates for other sess
 | Step | Target | How |
 | --- | --- | --- |
 | Page load → diagram | < 100 ms after WS open | daemon sends `architecture` immediately after `hello` |
-| `archmap serve` start → agent idle | ~1.5 s, before the user clicks anything | spawn + initialize + session/new at startup, not on first prompt |
+| `ruah app serve` start → agent idle | ~1.5 s, before the user clicks anything | spawn + initialize + session/new at startup, not on first prompt |
 | Click node → composer | 0 | UI only |
 | Send → `turn.started` | < 20 ms | context pack is built from an in-memory index |
 | Send → first `stream.text` or `stream.tool_call` | 1–3 s (model bound) | prompt sent as one `session/prompt`; `resource_link` blocks so Claude opens files without a search round-trip |
@@ -192,9 +192,9 @@ Ends with the screen recording in §4.
 | 1.5 | Lovable prompts L1–L6 applied, iterated against `--mock`, then against the real agent | 1 | 1.4 |
 | 1.6 | Hand-written `architecture.json` for the demo repo; rehearse; record | 0.5 | 1.5 |
 
-Definition of done: `archmap serve <repo>` opens the viewer; clicking `invoices-api`, typing one line, and pressing Enter streams Claude's read tool calls on the node's files within 3 s; an edit shows the permission card; Allow shows the diff; Stop cancels; killing the adapter process mid-turn yields `agent.status{error}` and the daemon recovers on the next prompt.
+Definition of done: `ruah app serve <repo>` opens the viewer; clicking `invoices-api`, typing one line, and pressing Enter streams Claude's read tool calls on the node's files within 3 s; an edit shows the permission card; Allow shows the diff; Stop cancels; killing the adapter process mid-turn yields `agent.status{error}` and the daemon recovers on the next prompt.
 
-### Phase 2 — `archmap scan` (3 d) → Milestone M2
+### Phase 2 — `ruah app scan` (3 d) → Milestone M2
 
 | # | Task | Est. |
 | --- | --- | --- |
@@ -203,16 +203,16 @@ Definition of done: `archmap serve <repo>` opens the viewer; clicking `invoices-
 | 2.3 | `layout.ts`: layers = top-level dirs; columns by type (frontend/external → left, gateway → 1, service/module → 2, datastore/queue → right); grid 260 × 110 px; stable ordering by id | 0.5 |
 | 2.4 | `--describe`: one prompt listing all nodes with paths, asks for `{ "<id>": "<2 sentences>" }`, read-only auto-permission policy (allow `read/search/think`, reject the rest), 3-minute timeout, writes descriptions back only for ids that exist | 0.5 |
 
-Definition of done: `archmap scan t3code/` produces ≥ 12 nodes (apps/*, packages/*), edges from workspace deps, three layers, and validates; `archmap scan "Architect's Canvas/"` produces module nodes for `src/components`, `src/routes`, `src/data`, `src/lib` with import edges.
+Definition of done: `ruah app scan t3code/` produces ≥ 12 nodes (apps/*, packages/*), edges from workspace deps, three layers, and validates; `ruah app scan "Architect's Canvas/"` produces module nodes for `src/components`, `src/routes`, `src/data`, `src/lib` with import edges.
 
 ### Phase 3 — Hardening and extras (3 d) → Milestone M3
 
 - Reconnect replay: ring buffer of the last turn's frames; a reconnecting viewer receives them after `hello`.
 - `architecture.save` / `PUT /api/architecture` with atomic write; the Details tab edits `notes` and `description` (prompt L7).
 - Mode selector (`mode.set` → `session/set_mode`), `session.reset`, `--mode` and `--yolo` flags.
-- `archmap mcp`: stdio MCP server exposing `get_architecture`, `get_node(id)`, `get_focus`; also passed to the agent via `session/new.mcpServers` when `--mcp` is set, so Claude can query the map itself.
-  Done 2026-09-23, wider than planned: read **and write** tools (`ruah_get_architecture`, `ruah_get_element`, `ruah_find_elements`, `ruah_add/update/remove_element`, `ruah_connect/disconnect`, `ruah_add/update_workflow`, `ruah_apply`), always on (no `--mcp`), in-process for Claude and `archmap mcp --daemon <url>` for ACP agents — CONTRACTS §1.7, `src/mcp/*`.
-- Packaging: `npm i -g archmap` / `npx archmap`; viewer build copied into `viewer/` by a `sync-viewer` script from a Lovable export path.
+- `ruah app mcp`: stdio MCP server exposing `get_architecture`, `get_node(id)`, `get_focus`; also passed to the agent via `session/new.mcpServers` when `--mcp` is set, so Claude can query the map itself.
+  Done 2026-09-23, wider than planned: read **and write** tools (`ruah_get_architecture`, `ruah_get_element`, `ruah_find_elements`, `ruah_add/update/remove_element`, `ruah_connect/disconnect`, `ruah_add/update_workflow`, `ruah_apply`), always on (no `--mcp`), in-process for Claude and `ruah app mcp --daemon <url>` for ACP agents — CONTRACTS §1.7, `src/mcp/*`.
+- Packaging: `npm i -g ruah` / `npx ruah`; viewer build copied into `viewer/` by a `sync-viewer` script from a Lovable export path.
 - Tool-update coalescing if the viewer stutters (BORROW.md §2.3).
 - Tests: bridge against the fake agent, pack goldens, store validation, one end-to-end test with `--mock`.
 
@@ -225,16 +225,16 @@ Codex via `codex-acp` (registry id `codex-acp`) as a second preset with `--agent
 | WP | Scope (files) | Inputs to give the model | Acceptance check | Depends on |
 | --- | --- | --- | --- | --- |
 | A — ACP bridge | `src/acp/*`, `test/fake-agent.ts`, `test/bridge.test.ts`, `scripts/spike-acp.ts` | CONTRACTS.md §2.1 (`StreamEvent`, `ToolCallView`, `PermissionOption`), §2.2 rules 4–5, §2.5, §3.3; BORROW.md §2.1–2.5 | fake-agent suite green (text, read tool, edit + permission, cancel, crash); spike numbers recorded in README | nothing; publishes the `AcpBridge` interface first (`start/prompt/cancel/setMode/onUpdate/onPermission/onTerminated/status`) |
-| B — Server, store, context pack | `src/contracts/*`, `src/context/*`, `src/serve/*`, `src/cli.ts` (serve only) | CONTRACTS.md §1, §2, §3 in full; PLAN.md §2.1–2.3 | `archmap serve --mock` drives a scripted turn end-to-end over WS; pack golden tests (§3.4 example first); validation tests for §1.2 rules 1–7 | the `AcpBridge` interface from A (stub is enough to start) |
+| B — Server, store, context pack | `src/contracts/*`, `src/context/*`, `src/serve/*`, `src/cli.ts` (serve only) | CONTRACTS.md §1, §2, §3 in full; PLAN.md §2.1–2.3 | `ruah app serve --mock` drives a scripted turn end-to-end over WS; pack golden tests (§3.4 example first); validation tests for §1.2 rules 1–7 | the `AcpBridge` interface from A (stub is enough to start) |
 | C — Viewer | Lovable prompts L1–L6 (Phase 1), L7 (Phase 3), L8 (Phase 4) | CONTRACTS.md §1.3, §2.1–2.4; PLAN.md §1.3, §5 | demo script §4 passes against `--mock`, then against the real agent | B for `--mock`; A+B for the real run |
-| D — Scanner | `src/scan/*`, `src/cli.ts` (scan) | CONTRACTS.md §1; PLAN.md Phase 2 table; ASSUMPTIONS.md 22–23 | `archmap scan t3code/` and `archmap scan "Architect's Canvas/"` produce valid files with the expected node counts; `--describe` fills descriptions on one of them | B (contracts + validator); A for `--describe` |
-| E — MCP + packaging | `src/mcp/*`, `scripts/sync-viewer.ts`, npm publish config, `THIRD_PARTY_NOTICES.md` | PLAN.md Phase 3; BORROW.md §2.4 (mcpServers row) and §3 | `archmap mcp` answers `get_architecture`/`get_node`; `npx archmap serve` works from a clean directory | B |
+| D — Scanner | `src/scan/*`, `src/cli.ts` (scan) | CONTRACTS.md §1; PLAN.md Phase 2 table; ASSUMPTIONS.md 22–23 | `ruah app scan t3code/` and `ruah app scan "Architect's Canvas/"` produce valid files with the expected node counts; `--describe` fills descriptions on one of them | B (contracts + validator); A for `--describe` |
+| E — MCP + packaging | `src/mcp/*`, `scripts/sync-viewer.ts`, npm publish config, `THIRD_PARTY_NOTICES.md` | PLAN.md Phase 3; BORROW.md §2.4 (mcpServers row) and §3 | `ruah app mcp` answers `get_architecture`/`get_node`; `npx ruah app serve` works from a clean directory | B |
 
 Handoff rules: every package receives CONTRACTS.md whole plus only its BORROW.md rows; no package reads another package's code; interface changes go through CONTRACTS.md first and are announced in its top-of-file changelog (add one when the first change happens).
 
 ## 4. Demo script (M1)
 
-1. Terminal: `archmap serve ~/code/acme-platform` → prints `viewer http://127.0.0.1:4177  agent claude-agent-acp 0.78.0 idle (1.4 s)`.
+1. Terminal: `ruah app serve ~/code/acme-platform` → prints `viewer http://127.0.0.1:4177  agent claude-agent-acp 0.78.0 idle (1.4 s)`.
 2. Browser: diagram renders; header shows `acme-platform` with a green dot (agent idle).
 3. Click `invoices-api` → popover → **Ask agent** → type `there might be a bug in how invoices are validated` → Enter.
 4. Agent tab: the user bubble shows the context chip `@services/invoices-api`; "context ▸" expands the exact pack. Within ~2 s tool rows appear: `Read invoices.routes.ts`, `Read invoices.service.ts` (cyan icons, paths clickable → Code tab). Text streams.

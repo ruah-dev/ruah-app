@@ -26,7 +26,7 @@ connections between them, and let the agent work across repos.
 ```
 Next to it: `architecture.json` for the system (the merged, namespaced map,
 including accepted suggested edges and hand edits). Each repo keeps its own
-`architecture.json` from `archmap scan`, unchanged.
+`architecture.json` from `ruah app scan`, unchanged.
 
 ## Model
 - Top level: one node per repo (type from its scan: frontend/service/…),

@@ -249,7 +249,7 @@ export function SettingsPage() {
   const offline = (
     <p className="py-3 text-[12.5px] text-muted-foreground">
       {daemon.source === "sample"
-        ? "No daemon connected. Start archmap serve <repo> to choose an agent."
+        ? "No daemon connected. Start ruah app serve <repo> to choose an agent."
         : "Waiting for the daemon…"}
     </p>
   );

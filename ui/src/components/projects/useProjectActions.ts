@@ -39,7 +39,7 @@ export function useProjectActions() {
     async (path: string, name?: string, projectId?: string) => {
       if (!connected) {
         toast.error("No Ruah daemon connected", {
-          description: "Start the Ruah app (or `archmap serve`) to open projects.",
+          description: "Start the Ruah app (or `ruah app serve`) to open projects.",
         });
         return false;
       }

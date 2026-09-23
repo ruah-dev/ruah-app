@@ -24,7 +24,7 @@ function executable(dir: string, name: string): string {
 }
 
 function sandbox() {
-  const base = mkdtempSync(path.join(tmpdir(), "archmap-agents-"));
+  const base = mkdtempSync(path.join(tmpdir(), "ruah-agents-"));
   dirs.push(base);
   const home = path.join(base, "home");
   const bin = path.join(base, "bin");
@@ -38,19 +38,19 @@ const base = { root: "/repo", clientVersion: "0" };
 describe("agent catalog", () => {
   it("resolves CLIs: override, PATH, ~/.local/bin, tool dir; ignores non-executables", () => {
     const { home, bin, env } = sandbox();
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [".opencode/bin"], env)).toBeUndefined();
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [".opencode/bin"], env)).toBeUndefined();
     const toolDir = executable(path.join(home, ".opencode", "bin"), "opencode");
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [".opencode/bin"], env)).toBe(toolDir);
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [".opencode/bin"], env)).toBe(toolDir);
     const local = executable(path.join(home, ".local", "bin"), "opencode");
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [".opencode/bin"], env)).toBe(local);
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [".opencode/bin"], env)).toBe(local);
     const onPath = executable(bin, "opencode");
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [".opencode/bin"], env)).toBe(onPath);
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [".opencode/bin"], env)).toBe(onPath);
     const custom = executable(path.join(home, "custom"), "oc");
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [], { ...env, ARCHMAP_OPENCODE_BIN: custom })).toBe(custom);
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [], { ...env, RUAH_OPENCODE_BIN: custom })).toBe(custom);
     // An override that does not exist means "not installed", not a fallback.
-    expect(resolveAgentBinary("opencode", "ARCHMAP_OPENCODE_BIN", [], { ...env, ARCHMAP_OPENCODE_BIN: path.join(home, "missing") })).toBeUndefined();
+    expect(resolveAgentBinary("opencode", "RUAH_OPENCODE_BIN", [], { ...env, RUAH_OPENCODE_BIN: path.join(home, "missing") })).toBeUndefined();
     writeFileSync(path.join(bin, "grok"), "not executable");
-    expect(resolveAgentBinary("grok", "ARCHMAP_GROK_BIN", [], env)).toBeUndefined();
+    expect(resolveAgentBinary("grok", "RUAH_GROK_BIN", [], env)).toBeUndefined();
   });
 
   it("lists the pickable agents with installed flags and hints; claude-acp only while current", () => {

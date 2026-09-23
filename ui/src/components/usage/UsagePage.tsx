@@ -230,7 +230,7 @@ export function UsagePage() {
                   ? `The daemon did not answer: ${summary.message}`
                   : daemon.source === "daemon"
                     ? "Tokens and cost appear here after the agent has worked on a few turns."
-                    : "Usage comes from the Ruah daemon. Start archmap serve <repo> to record it."
+                    : "Usage comes from the Ruah daemon. Start ruah app serve <repo> to record it."
               }
             />
           ) : (

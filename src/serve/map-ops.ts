@@ -6,7 +6,7 @@
 // in memory, so the user can undo that turn's map changes later.
 //
 // Agents reach it two ways: the Claude Agent SDK through an in-process MCP
-// server (no token needed), ACP agents through `archmap mcp` (stdio) which
+// server (no token needed), ACP agents through `ruah app mcp` (stdio) which
 // calls the token-authenticated /api/arch endpoints (map-ops-http.ts). Tokens
 // are per bridge (agent × project) random capabilities, never logged.
 import { createHash, randomBytes } from "node:crypto";
@@ -54,7 +54,7 @@ interface TurnSnapshot {
 
 export interface MapOpsServiceOptions {
   version: string;
-  /** How to start `archmap mcp` (default: this process's node + CLI entry). */
+  /** How to start `ruah app mcp` (default: this process's node + CLI entry). */
   launch?: () => { command: string; args: string[]; env?: Record<string, string> };
   /** How many turns keep an undo snapshot (default 30, oldest dropped first). */
   maxTurns?: number;
@@ -64,7 +64,7 @@ const hash = (token: string): string => createHash("sha256").update(token).diges
 
 /** node + the running CLI (dev: tsx loader flags from execArgv; desktop: Electron as node). */
 function defaultLaunch(): { command: string; args: string[]; env?: Record<string, string> } {
-  const entry = process.argv[1] !== undefined ? realpathSync(process.argv[1]) : "archmap";
+  const entry = process.argv[1] !== undefined ? realpathSync(process.argv[1]) : "ruah";
   return {
     command: process.execPath,
     args: [...process.execArgv, entry],

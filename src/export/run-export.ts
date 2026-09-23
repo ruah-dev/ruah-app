@@ -1,4 +1,4 @@
-// `archmap export drawio <repo> [--out <file>]` — writes the architecture as
+// `ruah app export drawio <repo> [--out <file>]` — writes the architecture as
 // a draw.io file. Reads <repo>/architecture.json (or the given .json file),
 // <repo>/.ruah/links.json and the cached cloud sync in ~/.ruah (RUAH_HOME);
 // never touches the network. `--out -` prints to stdout.
@@ -10,11 +10,11 @@ import { ruahHome } from "../usage/log.js";
 import { drawioFileName, toDrawio } from "./drawio.js";
 import { extrasFromDisk } from "./extras.js";
 
-const USAGE = "usage: archmap export drawio <repo> [--out <file>]\n";
+const USAGE = "usage: ruah app export drawio <repo> [--out <file>]\n";
 
 export async function runExport(argv: readonly string[], version: string): Promise<number> {
   const err = (m: string): number => {
-    process.stderr.write(`archmap export: ${m}\n`);
+    process.stderr.write(`ruah app export: ${m}\n`);
     return 2;
   };
   let parsed;
@@ -34,22 +34,22 @@ export async function runExport(argv: readonly string[], version: string): Promi
   const isFile = fs.statSync(abs).isFile();
   const root = isFile ? path.dirname(abs) : abs;
   const file = isFile ? abs : path.join(root, "architecture.json");
-  if (!fs.existsSync(file)) return err(`no architecture.json in ${target} (run \`archmap scan ${target}\` first)`);
+  if (!fs.existsSync(file)) return err(`no architecture.json in ${target} (run \`ruah app scan ${target}\` first)`);
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (e) {
-    process.stderr.write(`archmap export: cannot read ${file}: ${(e as Error).message}\n`);
+    process.stderr.write(`ruah app export: cannot read ${file}: ${(e as Error).message}\n`);
     return 1;
   }
   const result = validateArchitecture(raw, null);
   if (!result.ok) {
-    process.stderr.write(`archmap export: ${file} is invalid:\n  ${result.errors.join("\n  ")}\n`);
+    process.stderr.write(`ruah app export: ${file} is invalid:\n  ${result.errors.join("\n  ")}\n`);
     return 1;
   }
   const arch = result.value;
   const extras = extrasFromDisk(root, arch, ruahHome());
-  const xml = toDrawio(arch, { ...extras, rootName: path.basename(root), agent: `archmap ${version}` });
+  const xml = toDrawio(arch, { ...extras, rootName: path.basename(root), agent: `ruah ${version}` });
   const out = parsed.values.out;
   if (out === "-") {
     // Wait for the flush: the CLI calls process.exit() next, and pipes are asynchronous on macOS.
@@ -62,6 +62,6 @@ export async function runExport(argv: readonly string[], version: string): Promi
   fs.writeFileSync(tmp, xml);
   fs.renameSync(tmp, dest);
   const pages = (xml.match(/<diagram /g) ?? []).length;
-  process.stderr.write(`archmap export: wrote ${dest} (${pages} pages, ${arch.nodes.length} elements, ${arch.edges.length} links)\n`);
+  process.stderr.write(`ruah app export: wrote ${dest} (${pages} pages, ${arch.nodes.length} elements, ${arch.edges.length} links)\n`);
   return 0;
 }

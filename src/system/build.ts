@@ -39,7 +39,7 @@ import {
 } from "./signals.js";
 
 export interface BuildSystemOptions {
-  version?: string; // archmap version for generatedBy
+  version?: string; // ruah version for generatedBy
   now?: Date; // generatedAt; omitted when absent (byte-stable output)
   useGit?: boolean; // default true (git ls-files when a repo root has .git)
   previous?: Architecture | null; // existing system architecture.json to merge hand edits from
@@ -418,7 +418,7 @@ export function buildSystemArchitecture(system: LoadedSystem | string, opts: Bui
   let arch: Architecture = {
     version: 1,
     name: sys.name,
-    generatedBy: `archmap system ${opts.version ?? "0.1.0"}`,
+    generatedBy: `ruah app system ${opts.version ?? "0.1.0"}`,
     ...(opts.now !== undefined ? { generatedAt: opts.now.toISOString().replace(/\.\d{3}Z$/, "Z") } : {}),
     layers,
     nodes,

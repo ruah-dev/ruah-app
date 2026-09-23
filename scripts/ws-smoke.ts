@@ -1,5 +1,5 @@
 // scripts/ws-smoke.ts — drives the CONTRACTS.md §2.4 sequence against a
-// running daemon (start it with `archmap serve --mock <dir> --port <port>`).
+// running daemon (start it with `ruah app serve --mock <dir> --port <port>`).
 // Prints each frame as one line of JSON. Exits 0 when the full scripted turn
 // completes end-to-end, 1 otherwise.
 //

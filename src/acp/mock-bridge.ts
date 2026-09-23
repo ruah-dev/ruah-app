@@ -18,7 +18,7 @@ export interface MockBridgeOptions extends BridgeOptions {
   chunkDelayMs?: number;
 }
 
-const MOCK_AGENT = { name: "archmap-mock", version: "0.1.0" } as const;
+const MOCK_AGENT = { name: "ruah-mock", version: "0.1.0" } as const;
 const SESSION_ID = "mock-session-0000-0000-0000-000000000000";
 const MOCK_MODELS: ModelState["available"] = [
   { id: "default", name: "Default (recommended)", description: "Use the default model" },

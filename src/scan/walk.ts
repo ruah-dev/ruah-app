@@ -1,4 +1,4 @@
-// Repository walker for `archmap scan` (PLAN.md Phase 2, task 2.1).
+// Repository walker for `ruah app scan` (PLAN.md Phase 2, task 2.1).
 //
 // Lists repo-relative POSIX file paths, sorted. Uses `git ls-files` when the
 // root is a git work tree (respects every .gitignore), else a filesystem walk

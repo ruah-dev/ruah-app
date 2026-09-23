@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 function tmp(): string {
-  const dir = mkdtempSync(join(tmpdir(), "archmap-mapops-"));
+  const dir = mkdtempSync(join(tmpdir(), "ruah-mapops-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -442,7 +442,7 @@ describe("stdio MCP server", () => {
     expect(socket.archs().filter((m) => m.by?.kind === "agent")).toHaveLength(2);
   });
 
-  it("the built binary serves the tools (archmap mcp --daemon, token from the environment)", async () => {
+  it("the built binary serves the tools (ruah app mcp --daemon, token from the environment)", async () => {
     const cli = resolve("dist/cli.js");
     if (!existsSync(cli)) return; // pnpm build first (the smoke tests need it too)
     const { server, service, ctx, store } = await daemon();

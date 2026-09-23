@@ -1,5 +1,5 @@
 // src/serve/map-ops-http.ts — the local IPC endpoints the stdio MCP server
-// (`archmap mcp`) calls (CONTRACTS §1.7):
+// (`ruah app mcp`) calls (CONTRACTS §1.7):
 //   GET  /api/arch       → { revision, architecture }
 //   POST /api/arch/ops   { ops: ArchOp[] } → ArchOpsResponse (422 { error } when an op or validation fails)
 // Not for browsers: loopback peers only, no Origin header, and a per-session

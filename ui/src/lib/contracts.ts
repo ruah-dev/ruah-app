@@ -1,6 +1,6 @@
-// Contract types shared with the archmap daemon (archmap/docs/CONTRACTS.md §1.1 and §2.1).
+// Contract types shared with the ruah daemon (ruah/docs/CONTRACTS.md §1.1 and §2.1).
 // Copied from the Lovable prompt L1. Where the prompt text and the daemon's zod schemas
-// (archmap/src/contracts/ws.ts) disagree, the zod schemas win: ToolCallView.kind is an
+// (ruah/src/contracts/ws.ts) disagree, the zod schemas win: ToolCallView.kind is an
 // open string there, so it is an open union here too.
 
 // architecture.json (CONTRACTS.md §1.1)
@@ -52,7 +52,7 @@ export interface Workflow {
 export interface Architecture {
   version: 1;
   name: string; // display name, usually the repo directory name
-  generatedBy?: string; // e.g. "archmap scan 0.1.0"
+  generatedBy?: string; // e.g. "ruah app scan 0.1.0"
   generatedAt?: string;
   layers?: string[]; // drawn as labelled groups; order = drawing order
   nodes: ArchNode[];

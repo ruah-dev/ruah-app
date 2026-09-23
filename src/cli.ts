@@ -1,29 +1,34 @@
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
 
-const USAGE = `archmap — architecture map daemon
+const USAGE = `ruah app — the Ruah desktop app (architecture map + coding agents) and its daemon
 
 Usage:
-  archmap serve [<repo>] [options] serve the viewer + agent daemon
+  ruah app [<repo>]                 open the desktop app (on <repo>, e.g. \`ruah app .\`)
+  ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
-  archmap scan <repo> [options]    scan a repo into architecture.json
-  archmap system <cmd> <dir> ...   multi-repo system (ruah.system.json in <dir>):
+  ruah app scan <repo> [options]    scan a repo into architecture.json
+  ruah app system <cmd> <dir> ...   multi-repo system (ruah.system.json in <dir>):
     init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
     add <dir> <id>=<path>                                      add a repo
     scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
-  archmap export drawio <repo> [--out <file>]
+  ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)
-  archmap mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
+  ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
-  archmap --version                print version
-  archmap help                     this text
+  ruah app --version                print version
+  ruah app help                     this text
+
+  (\`ruah-app\` is the same command without the ruah toolkit.)
 
 serve options:
   --file <path>            architecture file (default <repo>/architecture.json)
@@ -82,7 +87,7 @@ async function serve(argv: readonly string[]): Promise<number> {
   const agent = values.agent as string | undefined;
   const { isAgentProvider } = await import("./acp/index.js");
   if (agent !== undefined && !isAgentProvider(agent)) {
-    process.stderr.write(`archmap serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
+    process.stderr.write(`ruah app serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
     return 2;
   }
   const { runServe } = await import("./serve/run-serve.js");
@@ -119,12 +124,12 @@ async function scan(argv: readonly string[]): Promise<number> {
       strict: true,
     });
   } catch (err) {
-    process.stderr.write(`archmap scan: ${(err as Error).message}\n`);
+    process.stderr.write(`ruah app scan: ${(err as Error).message}\n`);
     return 2;
   }
   const repo = parsed.positionals[0];
   if (repo === undefined) {
-    process.stderr.write("archmap scan: missing <repo> argument\n");
+    process.stderr.write("ruah app scan: missing <repo> argument\n");
     return 2;
   }
   const { runScan } = await import("./scan/run-scan.js");
@@ -149,13 +154,13 @@ async function mcp(argv: readonly string[]): Promise<number> {
       strict: true,
     }));
   } catch (err) {
-    process.stderr.write(`archmap mcp: ${(err as Error).message}\n`);
+    process.stderr.write(`ruah app mcp: ${(err as Error).message}\n`);
     return 2;
   }
   const daemon = values.daemon ?? process.env.RUAH_DAEMON_URL;
   const token = values.token ?? process.env.RUAH_MCP_TOKEN;
   if (daemon === undefined || token === undefined || token.length === 0) {
-    process.stderr.write("archmap mcp: needs --daemon <url> and a token (--token or RUAH_MCP_TOKEN)\n");
+    process.stderr.write("ruah app mcp: needs --daemon <url> and a token (--token or RUAH_MCP_TOKEN)\n");
     return 2;
   }
   const { httpMapBackend, serveMcpStdio } = await import("./mcp/stdio-server.js");
@@ -168,15 +173,49 @@ async function mcp(argv: readonly string[]): Promise<number> {
   });
 }
 
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Launches the Electron app from this package (detached, so the terminal is free). */
+function openDesktop(repo: string | undefined): number {
+  const root = dirname(dirname(fileURLToPath(import.meta.url))); // dist/cli.js → package root
+  if (!existsSync(join(root, "viewer", "index.html"))) {
+    process.stderr.write(`ruah app: the viewer is not built — run \`pnpm ui:build\` in ${root}\n`);
+    return 1;
+  }
+  let electron: string;
+  try {
+    electron = require("electron") as string; // the electron package exports its binary path
+  } catch {
+    process.stderr.write(`ruah app: Electron is not installed — run \`pnpm install\` in ${root}\n`);
+    return 1;
+  }
+  const args = [root, ...(repo !== undefined ? [resolve(repo)] : [])];
+  const child = spawn(electron, args, { detached: true, stdio: "ignore" });
+  child.unref();
+  process.stdout.write(`Opening Ruah${repo !== undefined ? ` on ${resolve(repo)}` : ""}…\n`);
+  return 0;
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === "--version" || cmd === "-v") {
     console.log(pkg.version);
     return 0;
   }
-  if (cmd === undefined || cmd === "help" || cmd === "--help" || cmd === "-h") {
+  if (cmd === "help" || cmd === "--help" || cmd === "-h") {
     process.stdout.write(USAGE);
-    return cmd === undefined ? 2 : 0;
+    return 0;
+  }
+  // `ruah app`, `ruah app open [<repo>]`, `ruah app <repo-dir>`: the desktop app.
+  if (cmd === undefined || cmd === "open" || (!cmd.startsWith("-") && isDirectory(cmd))) {
+    const repo = cmd === "open" ? rest[0] : cmd;
+    return openDesktop(repo);
   }
   switch (cmd) {
     case "serve": {
@@ -208,7 +247,7 @@ const isDirectRun =
 if (isDirectRun) {
   void main(process.argv.slice(2)).then((code) => {
     // process.exit() drops output still queued for a pipe (pipes are async on
-    // macOS: `archmap scan --dry-run | jq` was cut at 64 KB), so flush first.
+    // macOS: `ruah app scan --dry-run | jq` was cut at 64 KB), so flush first.
     const exit = (): void => process.exit(code);
     if (process.stdout.writableLength > 0) process.stdout.once("drain", exit);
     else exit();

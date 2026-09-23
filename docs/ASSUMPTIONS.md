@@ -7,7 +7,7 @@ Each entry: the assumption, why, and what changes if it is wrong. Nothing here b
 1. **No local t3code clone existed.** I searched `~/Projects`, `~/Downloads`, `~/Desktop`, `/tmp` and found nothing, so I cloned `https://github.com/pingdotgg/t3code.git` into `./t3code` (HEAD `eff44be4`, 2026-09-16). If you meant a different checkout (a fork, an older commit), point me at it; line numbers in BORROW.md are against this HEAD.
 2. **The Lovable folder `Architect's Canvas/` is a plain export, not a git clone.** No `.git` directory. Component and file references in PLAN.md/CONTRACTS.md are against the files as exported today.
 3. **The four deliverables live at the root of this working directory** (`/Users/petre/Projects/personal-projects/whz-arhy/`), next to `Architect's Canvas/` and `t3code/`. Move them into the daemon repo when you create it.
-4. **The daemon repo does not exist yet.** PLAN.md names it `archmap` and proposes a layout; the name is the working name from the brief.
+4. **The daemon repo does not exist yet.** PLAN.md names it `ruah` and proposes a layout; the name is the working name from the brief.
 5. **Development happens on macOS with Node 25.9 and pnpm 10.33** (what is installed here). Windows notes are included where t3code documents pitfalls, but nothing is tested on Windows.
 
 ## Agent and protocol

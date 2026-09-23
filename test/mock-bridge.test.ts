@@ -5,7 +5,7 @@ import type { ContentBlock } from "@agentclientprotocol/sdk";
 
 function blocks(file: string): ContentBlock[] {
   return [
-    { type: "text", text: "[archmap context]\nnode: invoices-api (service) id=api\n[/archmap context]" },
+    { type: "text", text: "[ruah context]\nnode: invoices-api (service) id=api\n[/ruah context]" },
     { type: "resource_link", uri: "file:///repo/services/app.ts", name: file },
   ];
 }

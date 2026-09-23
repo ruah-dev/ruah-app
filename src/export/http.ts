@@ -47,7 +47,7 @@ export function handleExportRequest(req: IncomingMessage, res: ServerResponse, u
   void extrasFromService(deps.integrations, deps.timeoutMs)
     .catch((err: unknown) => ({ notes: [`integrations unavailable: ${err instanceof Error ? err.message : String(err)}`] }))
     .then((extras) => {
-      const xml = toDrawio(arch, { ...extras, rootName: path.basename(store.root), agent: `archmap ${deps.version()}` });
+      const xml = toDrawio(arch, { ...extras, rootName: path.basename(store.root), agent: `ruah ${deps.version()}` });
       const body = Buffer.from(xml, "utf8");
       const name = drawioFileName(arch.name);
       res.writeHead(200, {

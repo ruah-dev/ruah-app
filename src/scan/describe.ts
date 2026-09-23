@@ -1,4 +1,4 @@
-// `archmap scan --describe` (PLAN.md 2.4, ASSUMPTIONS.md 23) — stub.
+// `ruah app scan --describe` (PLAN.md 2.4, ASSUMPTIONS.md 23) — stub.
 //
 // The real implementation sends one prompt listing every node (id, path,
 // files) through the AcpBridge under a read-only auto-permission policy

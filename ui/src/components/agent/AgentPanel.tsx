@@ -235,7 +235,7 @@ export function AgentPanel({
               </p>
               <p className="text-[12.5px] leading-relaxed text-muted-foreground">
                 {!connected
-                  ? "The agent runs inside the Ruah daemon. Start `archmap serve <repo>` and open the page it serves."
+                  ? "The agent runs inside the Ruah daemon. Start `ruah app serve <repo>` and open the page it serves."
                   : node
                     ? "Its path, files, links and workflows are attached to your message."
                     : onPickContext

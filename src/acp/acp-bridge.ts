@@ -11,13 +11,13 @@
 // session/update to BridgeEvents. Effect-TS stripped: plain async/await over
 // @agentclientprotocol/sdk's client() / ActiveSession. No fs/terminal client
 // capabilities (PLAN decision 3). One process, one session, one turn at a time.
-// Model selection (archmap's own): the agent's `model` session config option
+// Model selection (ruah's own): the agent's `model` session config option
 // (session/set_config_option, kept in sync by config_option_update), or the
 // older unstable `models` field + session/set_model; the chosen model is
 // re-applied to every new session (reset, crash respawn, cancel-timeout respawn).
 // Agents that offer modes only as a `mode` config option (OpenCode) get the
 // same treatment for setMode.
-// Usage (archmap's own): PromptResponse.usage (unstable; per turn in
+// Usage (ruah's own): PromptResponse.usage (unstable; per turn in
 // claude-agent-acp) → turn_finished.usage, the turn's cost = the change of the
 // cumulative usage_update.cost during the turn, the model from
 // `_meta.quota.model_usage` (claude-agent-acp / codex-acp) else the current
@@ -428,7 +428,7 @@ export class AcpProcessBridge implements AcpBridge {
     const proc = new AgentProcess(this.options.preset, this.root, this.options.onStderr);
     const rt: Runtime = {
       proc,
-      conn: client({ name: "archmap" })
+      conn: client({ name: "ruah" })
         .onRequest("session/request_permission", ({ params, signal }) => this.onPermissionRequest(rt, params, signal))
         .connect(proc.stream),
       init: undefined,
@@ -442,7 +442,7 @@ export class AcpProcessBridge implements AcpBridge {
       const init = await this.raceExit(rt, rt.conn.agent.request("initialize", {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-        clientInfo: { name: "archmap", version: this.options.clientVersion },
+        clientInfo: { name: "ruah", version: this.options.clientVersion },
       }));
       rt.init = init;
       this.imageCapability = init.agentCapabilities?.promptCapabilities?.image === true;
@@ -492,7 +492,7 @@ export class AcpProcessBridge implements AcpBridge {
         session = await this.loadSession(rt, load);
       } catch (err) {
         if (rt.proc.hasExited) throw err;
-        this.options.onStderr?.(`archmap: session/load ${load} failed (${errorMessage(err)}); starting a new session\n`);
+        this.options.onStderr?.(`ruah: session/load ${load} failed (${errorMessage(err)}); starting a new session\n`);
       }
     }
     if (session === undefined) {
@@ -531,7 +531,7 @@ export class AcpProcessBridge implements AcpBridge {
     try {
       return await tools.stdio();
     } catch (err) {
-      this.options.onStderr?.(`archmap: map tools unavailable (${errorMessage(err)})\n`);
+      this.options.onStderr?.(`ruah: map tools unavailable (${errorMessage(err)})\n`);
       return undefined;
     }
   }
@@ -585,7 +585,7 @@ export class AcpProcessBridge implements AcpBridge {
     try {
       await this.raceExit(rt, this.applyModel(rt, sessionId, chosen));
     } catch (err) {
-      this.options.onStderr?.(`archmap: could not re-apply model ${chosen}: ${errorMessage(err)}\n`);
+      this.options.onStderr?.(`ruah: could not re-apply model ${chosen}: ${errorMessage(err)}\n`);
     }
   }
 

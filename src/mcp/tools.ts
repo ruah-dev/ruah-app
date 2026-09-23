@@ -1,6 +1,6 @@
 // src/mcp/tools.ts — the ruah_* map tools (CONTRACTS §1.7), defined once and
 // served two ways: in-process to the Claude Agent SDK (sdk-server.ts,
-// createSdkMcpServer) and over stdio to ACP agents (`archmap mcp`,
+// createSdkMcpServer) and over stdio to ACP agents (`ruah app mcp`,
 // stdio-server.ts). A tool either reads the architecture or turns its
 // arguments into ArchOps; a MapBackend does the actual work (the daemon's
 // MapOpsService in-process, or its HTTP API from the stdio process), so every

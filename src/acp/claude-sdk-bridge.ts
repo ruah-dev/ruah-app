@@ -19,7 +19,7 @@
 // - result → turn_finished (resultOutcome / isInterruptedResult /
 //   terminalResultError);
 // - resume after the CLI exits unexpectedly (`resume: sessionId`).
-// Model selection is archmap's own (t3code's model catalog is not used): the
+// Model selection is ruah's own (t3code's model catalog is not used): the
 // list is query.supportedModels(), setModel() calls query.setModel(), and the
 // choice is passed as options.model to every respawned/resumed query. Until
 // the user picks one, the current model shown is ANTHROPIC_MODEL, else the
@@ -934,7 +934,7 @@ export class ClaudeSdkBridge implements AcpBridge {
       case "result": {
         this.hasHistory = true;
         // The reading advances for every result (also autonomous ones with no
-        // archmap turn), so the next turn's difference is only its own spend.
+        // ruah turn), so the next turn's difference is only its own spend.
         const { usage, reading } = resultUsage(message, session.usageReading, this.active?.model);
         session.usageReading = reading;
         this.handleResult(message, usage);
@@ -955,7 +955,7 @@ export class ClaudeSdkBridge implements AcpBridge {
         this.handleUser(message);
         return;
       default:
-        // Telemetry, hooks, tasks, rate limits, prompt suggestions: no archmap surface.
+        // Telemetry, hooks, tasks, rate limits, prompt suggestions: no ruah surface.
         return;
     }
   }
@@ -1097,13 +1097,13 @@ export class ClaudeSdkBridge implements AcpBridge {
   private readonly canUseTool: CanUseTool = async (toolName, toolInput, callbackOptions): Promise<PermissionResult> => {
     const turn = this.active;
     if (turn === undefined || turn.cancelled) {
-      return { behavior: "deny", message: "No active archmap turn.", interrupt: true };
+      return { behavior: "deny", message: "No active ruah turn.", interrupt: true };
     }
     // The ruah_* map tools never prompt.
     if (this.mapTools !== undefined && this.mapTools.allowedTools.includes(toolName)) {
       return { behavior: "allow", updatedInput: toolInput };
     }
-    // archmap has no surface for clarifying questions; steer the model to plain text.
+    // ruah has no surface for clarifying questions; steer the model to plain text.
     if (toolName === "AskUserQuestion") {
       return {
         behavior: "deny",
@@ -1166,7 +1166,7 @@ export class ClaudeSdkBridge implements AcpBridge {
           break;
         case "resource_link":
           // Same rendering as claude-agent-acp's formatUriAsLink, but with the
-          // repo-relative name archmap puts in `name`.
+          // repo-relative name ruah puts in `name`.
           content.push({ type: "text", text: `[@${block.name}](${block.uri})` });
           break;
         case "resource":

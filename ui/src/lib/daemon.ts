@@ -1,4 +1,4 @@
-// WebSocket client for the archmap daemon (CONTRACTS.md §2) exposed as a
+// WebSocket client for the ruah daemon (CONTRACTS.md §2) exposed as a
 // useSyncExternalStore store. Nothing here runs at module load: the socket is
 // opened by the first component that calls useDaemon() (in an effect), so the
 // SPA prerender never touches window/location.
@@ -895,7 +895,7 @@ export function sendPrompt(nodeId: string, text: string, attachments: Attachment
     turn.stopReason = "error";
     turn.error = state.projectSwitch
       ? `Still opening ${state.projectSwitch.name} — send it again in a moment.`
-      : "No archmap daemon connected. Start one with `archmap serve <repo>` to talk to the agent.";
+      : "No ruah daemon connected. Start one with `ruah app serve <repo>` to talk to the agent.";
   }
   set({ turns: [...state.turns, turn] });
   return turn.id;

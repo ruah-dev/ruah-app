@@ -54,7 +54,7 @@ export function buildContextPack(
   if (node === undefined) throw new Error(`unknown node: ${nodeId}`);
   const lines: string[] = [];
 
-  lines.push("[archmap context]");
+  lines.push("[ruah context]");
   lines.push(`node: ${collapse(node.name)} (${node.type}) id=${node.id}`);
 
   if (node.path !== undefined && node.path !== "") lines.push(`path: ${node.path}`);
@@ -126,7 +126,7 @@ export function buildContextPack(
     }
   }
 
-  lines.push("[/archmap context]");
+  lines.push("[/ruah context]");
   lines.push("");
   lines.push(`${INSTRUCTION_PREFIX}${root}${INSTRUCTION_SUFFIX}${options.mapTools === true ? MAP_TOOLS_SENTENCE : ""}`);
   if (userText !== undefined) {

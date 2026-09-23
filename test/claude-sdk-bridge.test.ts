@@ -27,7 +27,7 @@ import type { BridgeEvent } from "../src/acp/bridge.js";
 import { BusyError } from "../src/acp/bridge.js";
 import { ClaudeSdkBridge } from "../src/acp/claude-sdk-bridge.js";
 
-const ROOT = "/tmp/archmap-fake-repo";
+const ROOT = "/tmp/ruah-fake-repo";
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const MODELS: ModelInfo[] = [
   { value: "default", displayName: "Default (recommended)", description: "Opus 5.5 · Most capable", resolvedModel: "claude-opus-5-5" },
@@ -165,7 +165,7 @@ function setup(opts: { cancelTimeoutMs?: number; envModel?: string; configDir?: 
       preset: {
         command: "unused",
         args: [],
-        env: { ARCHMAP_TEST_ENV: "1", ANTHROPIC_MODEL: opts.envModel ?? "", CLAUDE_CONFIG_DIR: opts.configDir ?? "/nonexistent/archmap-test-claude" },
+        env: { RUAH_TEST_ENV: "1", ANTHROPIC_MODEL: opts.envModel ?? "", CLAUDE_CONFIG_DIR: opts.configDir ?? "/nonexistent/ruah-test-claude" },
       },
       clientVersion: "0.1.0",
     },
@@ -206,7 +206,7 @@ describe("ClaudeSdkBridge", () => {
     expect(options.includePartialMessages).toBe(true);
     expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
     expect(options.permissionMode).toBe("default");
-    expect(options.env?.ARCHMAP_TEST_ENV).toBe("1");
+    expect(options.env?.RUAH_TEST_ENV).toBe("1");
     expect(typeof options.sessionId).toBe("string");
     const idle = events.find((event) => event.type === "status" && event.state === "idle");
     expect(idle).toMatchObject({
@@ -235,13 +235,13 @@ describe("ClaudeSdkBridge", () => {
     };
     const handle = bridge.prompt("t1", [
       { type: "text", text: "explain" },
-      { type: "resource_link", uri: "file:///tmp/archmap-fake-repo/src/a.ts", name: "src/a.ts" },
+      { type: "resource_link", uri: "file:///tmp/ruah-fake-repo/src/a.ts", name: "src/a.ts" },
     ]);
     await expect(handle.done).resolves.toEqual({ stopReason: "end_turn" });
 
     expect(fake.received[0]?.message.content).toEqual([
       { type: "text", text: "explain" },
-      { type: "text", text: "[@src/a.ts](file:///tmp/archmap-fake-repo/src/a.ts)" },
+      { type: "text", text: "[@src/a.ts](file:///tmp/ruah-fake-repo/src/a.ts)" },
     ]);
     expect(streamEvents(events)).toEqual([
       { kind: "thought", text: "hmm" },
@@ -460,7 +460,7 @@ describe("ClaudeSdkBridge", () => {
   });
 
   it("shows the settings.json model as current, and an explicit default overrides it on new queries", async () => {
-    const configDir = mkdtempSync(join(tmpdir(), "archmap-claude-config-"));
+    const configDir = mkdtempSync(join(tmpdir(), "ruah-claude-config-"));
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, "settings.json"), JSON.stringify({ model: "sonnet" }));
     const { bridge, events, current } = setup({ configDir });
@@ -489,12 +489,12 @@ describe("ClaudeSdkBridge", () => {
     const fake = current();
     bridge.prompt("t10", [
       { type: "text", text: "context pack\n\nplease $review the invoices route" },
-      { type: "resource_link", uri: "file:///tmp/archmap-fake-repo/a.ts", name: "a.ts" },
+      { type: "resource_link", uri: "file:///tmp/ruah-fake-repo/a.ts", name: "a.ts" },
     ]);
     await waitFor(() => fake.received.length === 1 || undefined);
     expect(fake.received[0]?.message.content).toEqual([
       { type: "text", text: "context pack\n\nplease" },
-      { type: "text", text: "[@a.ts](file:///tmp/archmap-fake-repo/a.ts)" },
+      { type: "text", text: "[@a.ts](file:///tmp/ruah-fake-repo/a.ts)" },
       { type: "text", text: "/review the invoices route" },
     ]);
   });

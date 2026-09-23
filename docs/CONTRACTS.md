@@ -1,6 +1,6 @@
-# CONTRACTS.md — archmap coupling contracts
+# CONTRACTS.md — ruah coupling contracts
 
-These three contracts are the only coupling between the Lovable viewer ("Architect's Canvas") and the daemon (`archmap`). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
+These three contracts are the only coupling between the Lovable viewer ("Architect's Canvas") and the daemon (`ruah`). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
 
 Written 2026-09-16 against ACP `protocolVersion: 1`, `@agentclientprotocol/sdk` 1.4.0, `@agentclientprotocol/claude-agent-acp` 0.78.0.
 
@@ -16,7 +16,7 @@ Conventions that apply to all three contracts:
 
 ## 1. `architecture.json`
 
-The file lives at `<repo>/architecture.json` (override with `archmap serve --file`). The daemon reads, validates, watches, and serves it. The viewer never reads it from disk.
+The file lives at `<repo>/architecture.json` (override with `ruah app serve --file`). The daemon reads, validates, watches, and serves it. The viewer never reads it from disk.
 
 ### 1.1 Types
 
@@ -61,7 +61,7 @@ export interface Workflow {
 export interface Architecture {
   version: 1;
   name: string;         // display name, usually the repo directory name
-  generatedBy?: string; // e.g. "archmap scan 0.1.0"
+  generatedBy?: string; // e.g. "ruah app scan 0.1.0"
   generatedAt?: string;
   layers?: string[];    // drawn as labelled groups; order = drawing order
   nodes: ArchNode[];
@@ -108,7 +108,7 @@ The viewer keeps its internal `DiagramNode`/`Graph` types in `src/data/graphs.ts
 {
   "version": 1,
   "name": "acme-platform",
-  "generatedBy": "archmap scan 0.1.0",
+  "generatedBy": "ruah app scan 0.1.0",
   "generatedAt": "2026-09-16T10:00:00Z",
   "layers": ["clients", "edge", "services", "data", "third-party"],
   "nodes": [
@@ -161,7 +161,7 @@ The viewer keeps its internal `DiagramNode`/`Graph` types in `src/data/graphs.ts
 
 ### 1.5 System architectures (multi-repo, 2026-09-23)
 
-A system is defined by `ruah.system.json` (docs/MULTI-REPO.md): `{ "version": 1, "name": string, "repos": [{ "id": string, "path": string }] }`; repo ids match `^[a-z0-9][a-z0-9-]*$` (<= 63 chars) and are unique; paths are relative to the file. `archmap system scan <dir>` writes the system's `architecture.json` next to it, in the same format as §1.1 with these conventions:
+A system is defined by `ruah.system.json` (docs/MULTI-REPO.md): `{ "version": 1, "name": string, "repos": [{ "id": string, "path": string }] }`; repo ids match `^[a-z0-9][a-z0-9-]*$` (<= 63 chars) and are unique; paths are relative to the file. `ruah app system scan <dir>` writes the system's `architecture.json` next to it, in the same format as §1.1 with these conventions:
 
 - **Top level**: one node per repo (`id` = repo id, `repo` = repo id, `path` = repo id, `type` inferred: `frontend | service | worker | library | infra | gateway`), plus shared infrastructure (`datastore | queue | gateway | external`, no `repo`), deduplicated across repos by kind (`postgres`, `kafka`, `stripe`, …).
 - **Below a repo node**: that repo's own architecture, namespaced. Node ids `<repoId>:<nodeId>`, the repo's top-level nodes get `parent: <repoId>`, every node has `repo`. Workflow ids and steps are namespaced the same way.
@@ -244,10 +244,10 @@ A failing op or a result that fails §1.2 aborts the whole call; the tool answer
 
 **Transports.**
 - Claude Agent SDK: in-process (`createSdkMcpServer`), allowed without a permission prompt; the system prompt gets the tools hint appended.
-- ACP agents: `session/new` and `session/load` carry `mcpServers: [{ name: "ruah", command: <node>, args: [<cli>, "mcp", "--daemon", "http://127.0.0.1:<port>"], env: [{ name: "RUAH_MCP_TOKEN", value: <token> }] }]`. `archmap mcp --daemon <url> [--token <t>]` is a stdio MCP server (JSON-RPC 2.0, protocol `2025-06-18`, also `2025-03-26` / `2024-11-05`) with the same tools. The bridge answers the agent's permission requests for `ruah_*` tools with allow-once.
+- ACP agents: `session/new` and `session/load` carry `mcpServers: [{ name: "ruah", command: <node>, args: [<cli>, "mcp", "--daemon", "http://127.0.0.1:<port>"], env: [{ name: "RUAH_MCP_TOKEN", value: <token> }] }]`. `ruah app mcp --daemon <url> [--token <t>]` is a stdio MCP server (JSON-RPC 2.0, protocol `2025-06-18`, also `2025-03-26` / `2024-11-05`) with the same tools. The bridge answers the agent's permission requests for `ruah_*` tools with allow-once.
 - Both add one sentence to the context pack's instruction paragraph (§3.1): `You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.` (not for the mock agent; `RUAH_MAP_TOOLS=0` turns the tools off).
 
-**HTTP (local IPC for `archmap mcp`, not for browsers).**
+**HTTP (local IPC for `ruah app mcp`, not for browsers).**
 
 | Method + path | Body / result |
 | --- | --- |
@@ -417,9 +417,9 @@ export type ErrorCode =
 | `POST /api/rescan` | re-run the scanner on the served repo, merging hand edits; `{ ok, nodes, edges, layers, ms }` | Origin checked like `/ws` (403 otherwise); result is broadcast as `architecture` reason `saved`; 422 if the result fails validation |
 | `POST /api/attachments?name=<file name>` | raw image body → `{ id, name, mimeType, size, width?, height? }` | §5.6; Origin checked (403); 409 without a project; 413 over 10 MB; 415 not an image |
 | `GET /api/attachments/:id` | the stored image | §5.6; `id` must match `^[a-f0-9]{64}\.(png\|jpg\|gif\|webp)$` (400 otherwise), 404 unknown |
-| `GET /api/export/drawio` | the open project as an uncompressed draw.io file (`<mxfile>`): page "Overview" (top level, title block, legend), one page per element with children (named by breadcrumb, e.g. `api / routes`), one page "Workflow: <name>" per workflow, page "Specifications" (tables of every element, link and workflow) | `Content-Type: application/vnd.jgraph.mxfile; charset=utf-8`, `Content-Disposition: attachment; filename="<name>.drawio"`; 409 without a project. Elements and links are UserObjects whose properties carry the specs (`ruahId, type, layer, parent, repo, path, tech, files, description, notes, links, cloud, issues`; links: `from, to, kind, source, evidence`); drillable elements `link` to their page (`data:page/id,<pageId>`). Linked cloud resources and issues (§6) are included read-only when the integrations answer within 8 s, otherwise the export notes it on the Specifications page. Deterministic. CLI: `archmap export drawio <repo> [--out <file>]` (local files only: `.ruah/links.json`, cached `cloud.json`) |
+| `GET /api/export/drawio` | the open project as an uncompressed draw.io file (`<mxfile>`): page "Overview" (top level, title block, legend), one page per element with children (named by breadcrumb, e.g. `api / routes`), one page "Workflow: <name>" per workflow, page "Specifications" (tables of every element, link and workflow) | `Content-Type: application/vnd.jgraph.mxfile; charset=utf-8`, `Content-Disposition: attachment; filename="<name>.drawio"`; 409 without a project. Elements and links are UserObjects whose properties carry the specs (`ruahId, type, layer, parent, repo, path, tech, files, description, notes, links, cloud, issues`; links: `from, to, kind, source, evidence`); drillable elements `link` to their page (`data:page/id,<pageId>`). Linked cloud resources and issues (§6) are included read-only when the integrations answer within 8 s, otherwise the export notes it on the Specifications page. Deterministic. CLI: `ruah app export drawio <repo> [--out <file>]` (local files only: `.ruah/links.json`, cached `cloud.json`) |
 | `GET /api/usage/summary?range=24h\|7d\|30d` | `{ range, totals: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: number\|null, turns }, series: { t, agentId, model, inputTokens, outputTokens, costUsd\|null }[], byModel: { agentId, model, turns, inputTokens, outputTokens, costUsd\|null }[] }` | per-turn usage recorded by the daemon in `~/.ruah/usage.jsonl` (all repos); `t` = ISO bucket start (hourly for 24h, daily otherwise); `costUsd` only when the agent reports it |
-| `GET /api/arch`, `POST /api/arch/ops` | map ops for `archmap mcp` (§1.7) | loopback + capability token only; no Origin allowed |
+| `GET /api/arch`, `POST /api/arch/ops` | map ops for `ruah app mcp` (§1.7) | loopback + capability token only; no Origin allowed |
 | `GET /api/usage/limits` | `{ providers: { agentId, name, status: "available"\|"unavailable"\|"unknown", windows: { id, label, kind: "session"\|"weekly"\|"other", usedPercent: number\|null, resetsAt: string\|null }[], note? }[] }` | Claude: SDK `get_usage` + streamed `rate_limit_event` (port of t3code `claudeUsageLimits.ts`); other agents `unknown` unless their ACP usage updates say otherwise |
 
 ### 2.4 Example: one complete turn
@@ -437,7 +437,7 @@ export type ErrorCode =
 ```
 ```json
 {"type":"agent.status","state":"busy","sessionId":"b446fcb7-2900-4ab8-aa24-a2f428210c32"}
-{"type":"turn.started","turnId":"3f1c1c2e-8a7b-4a53-9a1a-5d1c0f0b7e11","nodeId":"api","text":"there might be a bug in how invoices are validated","contextPack":"[archmap context]\nnode: invoices-api (service) id=api\n…\n[/archmap context]"}
+{"type":"turn.started","turnId":"3f1c1c2e-8a7b-4a53-9a1a-5d1c0f0b7e11","nodeId":"api","text":"there might be a bug in how invoices are validated","contextPack":"[ruah context]\nnode: invoices-api (service) id=api\n…\n[/ruah context]"}
 {"type":"stream","turnId":"3f1c1c2e-8a7b-4a53-9a1a-5d1c0f0b7e11","event":{"kind":"text","text":"Looking at the validation path in "}}
 {"type":"stream","turnId":"3f1c1c2e-8a7b-4a53-9a1a-5d1c0f0b7e11","event":{"kind":"tool_call","toolCall":{"toolCallId":"toolu_01","title":"Read invoices.routes.ts","kind":"read","status":"in_progress","locations":[{"path":"services/invoices-api/src/routes/invoices/invoices.routes.ts"}]}}}
 {"type":"stream","turnId":"3f1c1c2e-8a7b-4a53-9a1a-5d1c0f0b7e11","event":{"kind":"tool_result","toolCall":{"toolCallId":"toolu_01","title":"Read invoices.routes.ts","kind":"read","status":"completed","locations":[{"path":"services/invoices-api/src/routes/invoices/invoices.routes.ts"}],"output":"import { Router } from \"express\";\n…"}}}
@@ -488,7 +488,7 @@ The context pack is the text the daemon prepends to the user's prompt. It is bui
 Lines appear in this fixed order. A line is omitted entirely when its source field is absent or empty. `THIS` is the literal token for the selected node inside edge/workflow lines.
 
 ```
-[archmap context]
+[ruah context]
 node: {name} ({type}) id={id}
 path: {path}
 description: {description}
@@ -509,7 +509,7 @@ outgoing:
 neighbors: {name}, {name}, …
 workflows:
 - {workflow.name}: step {i} of {n} ({prev.name} -> THIS -> {next.name})
-[/archmap context]
+[/ruah context]
 
 The user selected the node above on an architecture diagram of the repository at {root}. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 
@@ -549,7 +549,7 @@ One `resource_link` per listed file (same 12-file cap), only when the agent's `p
 ### 3.4 Example (node `api` from §1.4)
 
 ```
-[archmap context]
+[ruah context]
 node: invoices-api (service) id=api
 path: services/invoices-api
 description: Core business service. Handles invoice CRUD, validation and emits domain events.
@@ -571,7 +571,7 @@ outgoing:
 neighbors: api-gateway, postgres, events-bus, Stripe
 workflows:
 - Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
-[/archmap context]
+[/ruah context]
 
 The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 

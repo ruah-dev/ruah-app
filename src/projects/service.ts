@@ -301,7 +301,7 @@ export class ProjectService {
     return { project, ms, scanned };
   }
 
-  /** First open of a repo: `archmap scan` in-process, written atomically. */
+  /** First open of a repo: `ruah app scan` in-process, written atomically. */
   private scanInto(root: string, archPath: string): void {
     let arch: Architecture;
     try {

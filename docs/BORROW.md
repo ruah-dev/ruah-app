@@ -33,7 +33,7 @@ Verdicts: **copy** (take the code, keep attribution), **adapt** (re-implement th
 | Item | File(s) | Verdict | What we take |
 | --- | --- | --- | --- |
 | Spawn with `cwd`, merged env, stderr captured and capped (32 KiB per chunk), stderr forwarded to logs | `AcpSessionRuntime.ts` L70, L425–466 | adapt | `AgentProcess.spawn(preset, {cwd, env})`; keep a 64 KiB stderr ring buffer; include the tail in `agent_exited` errors. The Claude adapter logs structured lines to stderr (`[session/create] … phase=sdk-initialize durationMs=657`), so we can surface timings. |
-| Startup sequence `initialize → authenticate (only if authMethods non-empty) → session/new`; capability payload with explicit `fs:{readTextFile:false,writeTextFile:false}, terminal:false` | `AcpSessionRuntime.ts` L566–578, L695–721, L830–866 | adapt | Same order. `clientInfo: { name: "archmap", version }`. Phase 1 advertises no fs/terminal capabilities (verified the adapter still runs its own tools). |
+| Startup sequence `initialize → authenticate (only if authMethods non-empty) → session/new`; capability payload with explicit `fs:{readTextFile:false,writeTextFile:false}, terminal:false` | `AcpSessionRuntime.ts` L566–578, L695–721, L830–866 | adapt | Same order. `clientInfo: { name: "ruah", version }`. Phase 1 advertises no fs/terminal capabilities (verified the adapter still runs its own tools). |
 | Startup-metadata buffering: mode/config/commands updates that arrive while "Starting" are replayed once "Started" | `AcpSessionRuntime.ts` L68, L490–520, L866–905 | adapt | Record `modes` from `NewSessionResponse`; apply `current_mode_update` whenever it arrives. |
 | Ignore updates whose `sessionId` ≠ ours, and `_meta.isReplay === true` updates | `AcpSessionRuntime.ts` L521–531, `AcpRuntimeModel.ts` L697–700 | adapt | One line each. Subagent sessions and replays otherwise leak into the stream. |
 | One active prompt (two semaphores: serialization + dispatch) and a `dispatched` deferred so a `cancel` can target the prompt that is actually in flight | `AcpSessionRuntime.ts` L317–320, L937–1060 | adapt | `AcpBridge.prompt()` throws `busy` if a turn is active; `cancel()` reads the active turn from one field. No queueing in Phase 1. |
@@ -60,10 +60,10 @@ Verdicts: **copy** (take the code, keep attribution), **adapt** (re-implement th
 | Item | File(s) | Verdict | What we take |
 | --- | --- | --- | --- |
 | Pending-approval map keyed by request id holding a deferred; handler emits `request.opened`, awaits the decision, emits `request.resolved`, returns the ACP outcome | `CursorAdapter.ts` L519–523, L681–757 | adapt | `Map<requestId, {resolve, reject, turnId}>` in `AcpBridge`. |
-| Full-access auto-approve: pick the first `allow_always`/`allow_once` option when the mode says so | `CursorAdapter.ts` L688–697 (`selectAutoApprovedPermissionOption`) | adapt | Used by `archmap scan --describe` with a read-only policy (auto-allow `read/search/think`, auto-reject everything else) and by a `--yolo` flag on `serve`. |
+| Full-access auto-approve: pick the first `allow_always`/`allow_once` option when the mode says so | `CursorAdapter.ts` L688–697 (`selectAutoApprovedPermissionOption`) | adapt | Used by `ruah app scan --describe` with a read-only policy (auto-allow `read/search/think`, auto-reject everything else) and by a `--yolo` flag on `serve`. |
 | `acpPermissionOutcome` hard-codes option ids `allow-always` / `allow-once` / `reject-once` | `AcpAdapterSupport.ts` L45–56; commit `99d91ddaa` "keep unknown approvals actionable" | **do not port** | Option ids are agent-defined. The Claude adapter builds them per tool (`buildClaudePermissionOptions`). Relay `options[]` verbatim and send back the chosen `optionId`. |
 | `mapAcpToAdapterError`: process-exited → "session closed", everything else → request error with method | `AcpAdapterSupport.ts` L17–43 | adapt | Same two buckets. |
-| Passing the host's own MCP server to the agent via `session/new.mcpServers` (`{ type: "http", name, url, headers: [Authorization] }`) | `CursorAdapter.ts` L563–577 | read | Phase 3: `archmap mcp` can be handed to the agent this way, so `get_architecture` / `get_node` are native tools without a separate MCP config. |
+| Passing the host's own MCP server to the agent via `session/new.mcpServers` (`{ type: "http", name, url, headers: [Authorization] }`) | `CursorAdapter.ts` L563–577 | read | Phase 3: `ruah app mcp` can be handed to the agent this way, so `get_architecture` / `get_node` are native tools without a separate MCP config. |
 | Provider "instance" = `{ binaryPath, args, env, cwd }` with per-instance isolation; `CLAUDE_CONFIG_DIR` for separate accounts | `ProviderDriver.ts`, `docs/user/providers-claude.md` | read | `src/acp/presets.ts`: one preset `claudeCode = { command: process.execPath, args: [resolve("@agentclientprotocol/claude-agent-acp/dist/index.js")], env: passthrough(CLAUDE_CONFIG_DIR, ANTHROPIC_*, CLAUDE_CODE_EXECUTABLE) }`. Spawning the resolved JS with `process.execPath` avoids `npx` resolution latency and the Windows `.cmd` shim problem below. |
 | Windows: `.cmd/.bat/.ps1` shims cannot be spawned without a shell since Node 20.12 (`spawn EINVAL`); resolve to the real entry file | `Drivers/ClaudeExecutable.ts` L14–60 | read | Same rule for our preset. |
 | Mode naming for the UI: Supervised / Auto-accept edits / Auto / Full access | `docs/user/permission-modes.md` | read | Map to Claude adapter ids `default / acceptEdits / auto / bypassPermissions` (+ `plan`). |
@@ -95,7 +95,7 @@ What this means for us:
 
 - Code we **copy** or **adapt** closely (currently: the cancel sequence and constants, the tool-call merge logic, the permission map pattern) must carry attribution.
 - Design knowledge (**read** items) does not require attribution, but we credit it anyway in `THIRD_PARTY_NOTICES.md`.
-- No obligation to open-source archmap, no obligation to use the same license.
+- No obligation to open-source ruah, no obligation to use the same license.
 
 Add to the daemon repo:
 
@@ -117,7 +117,7 @@ Add to the daemon repo:
    // apps/server/src/provider/acp/AcpSessionRuntime.ts. Copyright (c) 2026 T3 Tools Inc. MIT License.
    ```
 
-3. If archmap is published under MIT too, keep our own `LICENSE` and the notices file side by side. If published under Apache-2.0, the MIT notice still travels in `THIRD_PARTY_NOTICES.md`.
+3. If ruah is published under MIT too, keep our own `LICENSE` and the notices file side by side. If published under Apache-2.0, the MIT notice still travels in `THIRD_PARTY_NOTICES.md`.
 
 ### 3.2 Other components we depend on
 

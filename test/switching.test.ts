@@ -384,7 +384,7 @@ describe("chats", () => {
     expect(chats.get(projectId, chat1)?.sessions).toEqual({ alpha: "alpha@" + path.basename(a.root) + "-s1" });
     const stored = chats.history(projectId, chat1)[0];
     expect(stored).toMatchObject({ turnId: "t1", nodeId: "api", stopReason: "end_turn", events: [{ kind: "text", text: "It is the N+1 query." }] });
-    expect(stored?.contextPack).toContain("[archmap context]");
+    expect(stored?.contextPack).toContain("[ruah context]");
 
     // chat.new: a fresh agent session (the old one belongs to chat 1).
     socket.receive({ type: "chat.new" });

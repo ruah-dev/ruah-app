@@ -12,7 +12,7 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
     // L6: static single-page build (.output/public/index.html + assets/) that any file
-    // server can host; the archmap daemon serves it with `archmap serve --viewer <dir>`.
+    // server can host; the ruah daemon serves it with `ruah app serve --viewer <dir>`.
     spa: { enabled: true, prerender: { outputPath: "/index.html" } },
   },
 });

@@ -78,7 +78,7 @@ export function imageBlockedReason(daemon: DaemonState): string | null {
 /** Why the composer cannot send right now, or null. Shown quietly under the surface. */
 function blockedReason(daemon: DaemonState): string | null {
   if (daemon.source === "sample")
-    return "No Ruah daemon connected — run `archmap serve <repo>` and open the page it serves to chat.";
+    return "No Ruah daemon connected — run `ruah app serve <repo>` and open the page it serves to chat.";
   if (daemon.source === null || daemon.connection === "connecting") return "Connecting to the daemon…";
   if (daemon.connection !== "open") return "Daemon disconnected — reconnecting…";
   if (daemon.agent?.state === "error")

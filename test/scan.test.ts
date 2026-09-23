@@ -1,4 +1,4 @@
-// `archmap scan` (PLAN.md Phase 2): fixture repos under test/fixtures/scan/
+// `ruah app scan` (PLAN.md Phase 2): fixture repos under test/fixtures/scan/
 // → node/edge counts, CONTRACTS.md §1.2 validation, determinism, and
 // hand-edit preservation on re-scan.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -82,7 +82,7 @@ describe("scanRepo: pnpm monorepo", () => {
 
   test("negated workspace globs and ignored dirs are skipped", () => {
     expect(arch.nodes.some((n) => n.path === "packages/ignored")).toBe(false);
-    const tmp = mkdtempSync(join(tmpdir(), "archmap-scan-"));
+    const tmp = mkdtempSync(join(tmpdir(), "ruah-scan-"));
     cpSync(root, tmp, { recursive: true });
     for (const junk of ["node_modules/left-pad", "apps/web/dist", "apps/api/build", ".git-not/x", "vendor/lib"]) {
       mkdirSync(join(tmp, junk), { recursive: true });
@@ -228,7 +228,7 @@ describe("hand-edit preservation", () => {
 
 describe("CLI", () => {
   test("scan --out writes a valid file, merging hand edits on the second run", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "archmap-scan-cli-"));
+    const dir = mkdtempSync(join(tmpdir(), "ruah-scan-cli-"));
     const out = join(dir, "arch.json");
     const errWrite = process.stderr.write.bind(process.stderr);
     const lines: string[] = [];
@@ -240,7 +240,7 @@ describe("CLI", () => {
       expect(await main(["scan", fixture("compose-stack"), "--out", out])).toBe(0);
       const written = JSON.parse(readFileSync(out, "utf8")) as Architecture;
       expect(validateArchitecture(written, fixture("compose-stack")).ok).toBe(true);
-      expect(written.generatedBy).toMatch(/^archmap scan /);
+      expect(written.generatedBy).toMatch(/^ruah app scan /);
       expect(lines.join("")).toMatch(/4 nodes \(4 top-level\), 3 edges, 2 layers \[apps, data\]/);
 
       written.nodes = written.nodes.map((n) => (n.id === "db" ? { ...n, description: "Main DB." } : n));

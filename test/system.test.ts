@@ -1,7 +1,7 @@
 // Multi-repo systems (docs/MULTI-REPO.md): ruah.system.json, the federated
 // system architecture over test/fixtures/system/ (web, invoices-api,
 // notify-worker, infra), cross-repo edges with evidence, determinism,
-// hand-edit preservation, suggestion parsing, and the `archmap system` CLI.
+// hand-edit preservation, suggestion parsing, and the `ruah app system` CLI.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,7 +27,7 @@ const FIXTURE = join(import.meta.dirname, "fixtures", "system");
 const REPLIES = join(FIXTURE, "agent-replies");
 
 function tmpCopy(): string {
-  const dir = mkdtempSync(join(tmpdir(), "archmap-system-"));
+  const dir = mkdtempSync(join(tmpdir(), "ruah-system-"));
   cpSync(FIXTURE, dir, { recursive: true });
   return dir;
 }
@@ -124,7 +124,7 @@ describe("buildSystemArchitecture: fixture polyrepo", () => {
   test("validates; every node laid out", () => {
     expectValid(arch);
     expect(arch.name).toBe("acme-platform");
-    expect(arch.generatedBy).toMatch(/^archmap system /);
+    expect(arch.generatedBy).toMatch(/^ruah app system /);
     expect(arch.generatedAt).toBeUndefined();
   });
 
@@ -308,7 +308,7 @@ describe("topic heuristics across libraries", () => {
   }
 
   test("amqplib, bullmq, NATS wildcards, SNS/SQS, Pub/Sub; gated by messaging deps", () => {
-    const root = mkdtempSync(join(tmpdir(), "archmap-topics-"));
+    const root = mkdtempSync(join(tmpdir(), "ruah-topics-"));
     const pub = repo(root, "orders", { amqplib: "1", bullmq: "5", nats: "2", "@aws-sdk/client-sns": "3", "@google-cloud/pubsub": "4" }, {
       "src/pub.js": [
         'channel.publish("orders", "order.placed", Buffer.from(body));',
@@ -417,7 +417,7 @@ describe("suggestions", () => {
   });
 });
 
-describe("archmap system CLI", () => {
+describe("ruah app system CLI", () => {
   test("init, add, scan, re-scan", async () => {
     const dir = tmpCopy();
     const platform = join(dir, "platform");

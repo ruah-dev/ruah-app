@@ -171,8 +171,8 @@ export function RemoteNotice({ remote, what }: { remote: Remote<unknown>; what: 
         title={noDaemon ? "No daemon connected" : `${what} isn't available on this daemon yet`}
         body={
           noDaemon
-            ? "Integrations run inside the Ruah daemon. Start `archmap serve <repo>` and open the page it serves."
-            : "Update archmap: this daemon predates integrations (CONTRACTS.md §6)."
+            ? "Integrations run inside the Ruah daemon. Start `ruah app serve <repo>` and open the page it serves."
+            : "Update ruah: this daemon predates integrations (CONTRACTS.md §6)."
         }
       />
     );

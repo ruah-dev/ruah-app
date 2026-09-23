@@ -1,4 +1,4 @@
-// `archmap scan` core: scanRepo(root, opts) → Architecture (PLAN.md Phase 2,
+// `ruah app scan` core: scanRepo(root, opts) → Architecture (PLAN.md Phase 2,
 // CONTRACTS.md §1, ASSUMPTIONS.md 22).
 //
 // Monorepo (workspaces found): one node per workspace package (layer = its
@@ -24,7 +24,7 @@ import { listFiles } from "./walk.js";
 
 export interface ScanOptions {
   name?: string; // display name (default: root directory name)
-  version?: string; // archmap version for generatedBy
+  version?: string; // ruah version for generatedBy
   now?: Date; // generatedAt; omitted when absent (keeps output byte-stable)
   useGit?: boolean; // default true: use `git ls-files` when root has .git
   previous?: Architecture | null; // existing architecture.json to merge hand edits from
@@ -312,7 +312,7 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
   let arch: Architecture = {
     version: 1,
     name: opts.name ?? basename(root.replace(/[\\/]+$/, "")),
-    generatedBy: `archmap scan ${opts.version ?? "0.1.0"}`,
+    generatedBy: `ruah app scan ${opts.version ?? "0.1.0"}`,
     ...(opts.now !== undefined ? { generatedAt: opts.now.toISOString().replace(/\.\d{3}Z$/, "Z") } : {}),
     layers,
     nodes,

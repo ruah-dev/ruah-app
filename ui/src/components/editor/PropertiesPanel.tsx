@@ -98,7 +98,7 @@ export function PropertiesPanel({
     <div className="space-y-4 px-5 py-5">
       {!editable ? (
         <p className="text-[12px] text-muted-foreground">
-          Read-only: editing saves to architecture.json and needs a connected archmap daemon.
+          Read-only: editing saves to architecture.json and needs a connected ruah daemon.
         </p>
       ) : null}
       {node ? (

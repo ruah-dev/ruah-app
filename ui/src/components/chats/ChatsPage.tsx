@@ -144,7 +144,7 @@ export function ChatsPage() {
         {!connected ? (
           <EmptyState
             title="No daemon connected"
-            body="Chats are stored by the Ruah daemon. Start the Ruah app (or archmap serve) to see them."
+            body="Chats are stored by the Ruah daemon. Start the Ruah app (or ruah app serve) to see them."
           />
         ) : error ? (
           <EmptyState title="Couldn't load chats" body={error} />

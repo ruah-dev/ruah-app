@@ -11,7 +11,7 @@
 // inline so the model can still start them through its Skill tool.
 //
 // t3code discovers skill names by scanning the filesystem (ClaudeSkills.ts);
-// archmap takes them from the SDK's initialize response (`commands`) instead,
+// ruah takes them from the SDK's initialize response (`commands`) instead,
 // which already reflects user, project and plugin skills.
 
 const SKILL_MENTION_PATTERN =

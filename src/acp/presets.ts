@@ -3,7 +3,7 @@
 // apps/server/src/provider/acp/GrokAcpSupport.ts (grokAcpSpawnArgs:
 // `grok agent stdio`) (MIT, eff44be43) — see THIRD_PARTY_NOTICES.md
 //
-// src/acp/presets.ts — the coding agents archmap can drive, how to launch each
+// src/acp/presets.ts — the coding agents ruah can drive, how to launch each
 // ACP one, and whether its CLI is installed. Only the default-mode launch args
 // are used (no --force / --always-approve / --permission-mode): permissions go
 // through session/request_permission and the viewer's mode picker. t3code's
@@ -113,33 +113,33 @@ export const AGENTS: readonly AgentDefinition[] = [
     name: "Cursor Agent",
     description: "Cursor's agent CLI over ACP (`cursor-agent acp`)",
     listed: true,
-    installHint: "Install the Cursor CLI (https://cursor.com/cli), then run `cursor-agent login`. Set ARCHMAP_CURSOR_BIN to use another binary.",
-    preset: cliAgent("cursor-agent", "ARCHMAP_CURSOR_BIN", ["acp"], [".cursor/bin"]),
+    installHint: "Install the Cursor CLI (https://cursor.com/cli), then run `cursor-agent login`. Set RUAH_CURSOR_BIN to use another binary.",
+    preset: cliAgent("cursor-agent", "RUAH_CURSOR_BIN", ["acp"], [".cursor/bin"]),
   },
   {
     id: "grok",
     name: "Grok Build",
     description: "xAI's Grok CLI over ACP (`grok agent stdio`)",
     listed: true,
-    installHint: "Install the Grok CLI (`grok`) and sign in with it. Set ARCHMAP_GROK_BIN to use another binary.",
-    preset: cliAgent("grok", "ARCHMAP_GROK_BIN", ["agent", "stdio"], [".grok/bin"]),
+    installHint: "Install the Grok CLI (`grok`) and sign in with it. Set RUAH_GROK_BIN to use another binary.",
+    preset: cliAgent("grok", "RUAH_GROK_BIN", ["agent", "stdio"], [".grok/bin"]),
   },
   {
     id: "kiro",
     name: "Kiro CLI",
     description: "Kiro's CLI over ACP (`kiro-cli acp`)",
     listed: true,
-    installHint: "Install Kiro CLI: https://kiro.dev/docs/cli/ — then run `kiro-cli login`. Set ARCHMAP_KIRO_BIN to use another binary.",
+    installHint: "Install Kiro CLI: https://kiro.dev/docs/cli/ — then run `kiro-cli login`. Set RUAH_KIRO_BIN to use another binary.",
     // Never -a/--trust-all-tools: tool approval goes through the viewer.
-    preset: cliAgent("kiro-cli", "ARCHMAP_KIRO_BIN", ["acp"]),
+    preset: cliAgent("kiro-cli", "RUAH_KIRO_BIN", ["acp"]),
   },
   {
     id: "opencode",
     name: "OpenCode",
     description: "OpenCode over ACP (`opencode acp`, stdio)",
     listed: true,
-    installHint: "Install OpenCode (https://opencode.ai), then run `opencode auth login`. Set ARCHMAP_OPENCODE_BIN to use another binary.",
-    preset: cliAgent("opencode", "ARCHMAP_OPENCODE_BIN", ["acp"], [".opencode/bin"]),
+    installHint: "Install OpenCode (https://opencode.ai), then run `opencode auth login`. Set RUAH_OPENCODE_BIN to use another binary.",
+    preset: cliAgent("opencode", "RUAH_OPENCODE_BIN", ["acp"], [".opencode/bin"]),
   },
   {
     id: "claude-acp",

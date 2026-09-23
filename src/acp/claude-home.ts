@@ -2,11 +2,11 @@
 //
 // src/acp/claude-home.ts — the environment the Claude Agent SDK child runs
 // with, plus the signed-out hint. t3code's per-instance `homePath` setting is
-// replaced by an inherited CLAUDE_CONFIG_DIR: archmap uses the user's own
+// replaced by an inherited CLAUDE_CONFIG_DIR: ruah uses the user's own
 // Claude Code setup (~/.claude, or wherever CLAUDE_CONFIG_DIR points).
 
 /**
- * Variables that mark the *parent* as a Claude Code session. When archmap is
+ * Variables that mark the *parent* as a Claude Code session. When ruah is
  * itself started from inside Claude Code they must not leak into the child,
  * which would otherwise treat itself as nested. The SDK sets its own
  * entrypoint.

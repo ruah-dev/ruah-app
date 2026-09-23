@@ -16,17 +16,12 @@ const ROOT = path.join(__dirname, "..");
 // Ruah brand mark (from ruah-website public/brand/ruah-icon.svg, on the macOS
 // 1024 icon grid); icon.icns is there for packaging.
 const APP_ICON = path.join(__dirname, "assets", "icon.png");
-// ARCHMAP_AGENT picks the initial agent (unset: the saved default agent, else "claude"):
+// RUAH_AGENT picks the initial agent (unset: the saved default agent, else "claude"):
 // "cursor", "grok", "kiro", "opencode", "acp" (Claude through the ACP adapter) or "mock"
 // (scripted, no agent). The viewer can switch agents at runtime.
-const AGENT = process.env.ARCHMAP_AGENT;
-// The Lovable viewer build (docs/PLAN.md: `viewer/`) when present, else the
-// placeholder renderer.
-const VIEWER_DIR =
-  process.env.ARCHMAP_VIEWER ??
-  (fs.existsSync(path.join(ROOT, "viewer", "index.html"))
-    ? path.join(ROOT, "viewer")
-    : path.join(ROOT, "renderer", "dist"));
+const AGENT = process.env.RUAH_AGENT;
+// The built viewer (`pnpm ui:build` → viewer/); RUAH_VIEWER overrides it.
+const VIEWER_DIR = process.env.RUAH_VIEWER ?? path.join(ROOT, "viewer");
 
 let daemon = null;
 let win = null;
@@ -34,14 +29,14 @@ let win = null;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const CLI = path.join(ROOT, "dist", "cli.js");
-const NODE = process.env.ARCHMAP_NODE ?? process.execPath;
+const NODE = process.env.RUAH_NODE ?? process.execPath;
 const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
 
 // Without a repo the daemon starts in the launcher state: the viewer's start
 // screen opens or creates a project (CONTRACTS §5), so there is no folder
 // picker or scan before startup any more.
 function startDaemon(repoDir) {
-  // No ARCHMAP_AGENT: the daemon starts the saved default agent (Settings → Agents).
+  // No RUAH_AGENT: the daemon starts the saved default agent (Settings → Agents).
   const agentArgs = AGENT === "mock" ? ["--mock"] : AGENT !== undefined ? ["--agent", AGENT] : [];
   const repoArgs = repoDir === undefined ? [] : [repoDir];
   daemon = spawn(
@@ -136,7 +131,7 @@ function stopDaemon() {
 }
 
 async function main() {
-  const repoDir = process.env.ARCHMAP_REPO ?? repoFromArgv(process.argv);
+  const repoDir = process.env.RUAH_REPO ?? repoFromArgv(process.argv);
   registerIpc();
   // Never attach to whatever already listens on the port (a leftover daemon
   // would show another state): start our own on a free port instead.
@@ -192,7 +187,7 @@ app.whenReady().then(() => {
   // Electron.app bundle, so set it at runtime; packaged builds use icon.icns).
   if (process.platform === "darwin" && app.dock) app.dock.setIcon(APP_ICON);
   main().catch((err) => {
-    process.stderr.write(`[archmap] ${err?.message ?? err}\n`);
+    process.stderr.write(`[ruah] ${err?.message ?? err}\n`);
     if (daemon) daemon.kill();
     app.exit(1);
   });

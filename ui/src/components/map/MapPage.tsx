@@ -114,7 +114,7 @@ function StatusIndicators() {
             </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-72">
-            No daemon connected — showing the bundled sample. Run archmap serve &lt;repo&gt; and
+            No daemon connected — showing the bundled sample. Run ruah app serve &lt;repo&gt; and
             open the page it serves.
           </TooltipContent>
         </Tooltip>

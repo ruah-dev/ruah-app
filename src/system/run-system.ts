@@ -1,8 +1,8 @@
-// `archmap system <init|add|scan>` (docs/MULTI-REPO.md).
+// `ruah app system <init|add|scan>` (docs/MULTI-REPO.md).
 //
-//   archmap system init <dir> --repo <id>=<path> … [--name <name>] [--force]
-//   archmap system add  <dir> <id>=<path>
-//   archmap system scan <dir> [--out <path>] [--dry-run]
+//   ruah app system init <dir> --repo <id>=<path> … [--name <name>] [--force]
+//   ruah app system add  <dir> <id>=<path>
+//   ruah app system scan <dir> [--out <path>] [--dry-run]
 //
 // <dir> is the folder holding ruah.system.json (or the file itself). Repo
 // paths on the command line resolve against the current directory and are
@@ -26,7 +26,7 @@ import {
 } from "./config.js";
 import { buildSystemArchitecture } from "./build.js";
 
-const err = (msg: string): void => void process.stderr.write(`archmap system: ${msg}\n`);
+const err = (msg: string): void => void process.stderr.write(`ruah app system: ${msg}\n`);
 
 function parseRepoSpec(spec: string, systemDir: string): SystemRepo | string {
   const eq = spec.indexOf("=");
@@ -64,7 +64,7 @@ function init(argv: string[]): number {
   }
   const file = systemFilePath(target);
   if (fs.existsSync(file) && parsed.values.force !== true) {
-    err(`init: ${file} already exists (use --force to overwrite, or 'archmap system add')`);
+    err(`init: ${file} already exists (use --force to overwrite, or 'ruah app system add')`);
     return 2;
   }
   const dir = path.dirname(file);
@@ -83,14 +83,14 @@ function init(argv: string[]): number {
     }
   }
   writeSystemFile(file, sys);
-  process.stderr.write(`archmap system: wrote ${file} (${sys.repos.length} repo${sys.repos.length === 1 ? "" : "s"})\n`);
+  process.stderr.write(`ruah app system: wrote ${file} (${sys.repos.length} repo${sys.repos.length === 1 ? "" : "s"})\n`);
   return 0;
 }
 
 function add(argv: string[]): number {
   const [target, spec, ...extra] = argv;
   if (target === undefined || spec === undefined || extra.length > 0) {
-    err("add: usage: archmap system add <dir> <id>=<path>");
+    err("add: usage: ruah app system add <dir> <id>=<path>");
     return 2;
   }
   let loaded;
@@ -112,7 +112,7 @@ function add(argv: string[]): number {
     err(`add: ${(e as Error).message}`);
     return 2;
   }
-  process.stderr.write(`archmap system: added ${r.id} (${r.path}) to ${loaded.file}\n`);
+  process.stderr.write(`ruah app system: added ${r.id} (${r.path}) to ${loaded.file}\n`);
   return 0;
 }
 
@@ -173,15 +173,15 @@ function scan(argv: string[], version: string): number {
   const json = `${JSON.stringify(arch, null, 2)}\n`;
   if (parsed.values["dry-run"] === true) {
     process.stdout.write(json);
-    process.stderr.write(`archmap system: dry run, ${line}\n`);
+    process.stderr.write(`ruah app system: dry run, ${line}\n`);
     return 0;
   }
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const tmp = `${out}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, json);
   fs.renameSync(tmp, out);
-  for (const r of result.repos) process.stderr.write(`archmap system:   ${r.id}: ${r.type}, ${r.nodes} nodes from ${r.source}\n`);
-  process.stderr.write(`archmap system: wrote ${out}: ${line}\n`);
+  for (const r of result.repos) process.stderr.write(`ruah app system:   ${r.id}: ${r.type}, ${r.nodes} nodes from ${r.source}\n`);
+  process.stderr.write(`ruah app system: wrote ${out}: ${line}\n`);
   return 0;
 }
 

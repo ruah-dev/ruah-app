@@ -1,4 +1,4 @@
-// src/serve/run-serve.ts — the `archmap serve [<repo>]` entry point: hub +
+// src/serve/run-serve.ts — the `ruah app serve [<repo>]` entry point: hub +
 // projects + server wiring, startup banner, --open. Without <repo> the daemon
 // starts in the launcher state (no project; CONTRACTS §5) and the viewer
 // opens or creates one over /api/projects/*. The agent of a project starts in
@@ -63,11 +63,11 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   if (flags.repo !== undefined) {
     const root = path.resolve(flags.repo);
     if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-      process.stderr.write(`archmap serve: repo directory not found: ${flags.repo}\n`);
+      process.stderr.write(`ruah app serve: repo directory not found: ${flags.repo}\n`);
       return 2;
     }
   } else if (flags.file !== undefined) {
-    process.stderr.write("archmap serve: --file needs a <repo>\n");
+    process.stderr.write("ruah app serve: --file needs a <repo>\n");
     return 2;
   }
   const t0 = Date.now();
@@ -76,7 +76,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     process.stdout.write(`${line}\n`);
   };
   const debug = (line: string): void => {
-    if (process.env.ARCHMAP_DEBUG === "1") process.stderr.write(`${line}\n`);
+    if (process.env.RUAH_DEBUG === "1") process.stderr.write(`${line}\n`);
   };
   const initialRoot = flags.repo !== undefined ? path.resolve(flags.repo) : (process.env.HOME ?? homedir());
   let hubRef: SessionHub | undefined;
@@ -99,7 +99,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
         : "claude";
   const check = catalog.check(agentId);
   if (!check.ok) {
-    process.stderr.write(`archmap serve: ${check.message}\n`);
+    process.stderr.write(`ruah app serve: ${check.message}\n`);
     return 2;
   }
   // Usage log in $RUAH_HOME (~/.ruah); the Claude limits probe is a CLI start
@@ -148,7 +148,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     try {
       await projects.open(flags.repo, flags.file !== undefined ? { file: flags.file } : {});
     } catch (err) {
-      process.stderr.write(`archmap serve: ${err instanceof ProjectError || err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`ruah app serve: ${err instanceof ProjectError || err instanceof Error ? err.message : String(err)}\n`);
       await hub.shutdown();
       return 2;
     }

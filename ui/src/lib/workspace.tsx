@@ -1,5 +1,5 @@
 // Workspace state. The project and its diagrams are DERIVED from architecture.json
-// (served by the archmap daemon, or the bundled sample when no daemon is reachable);
+// (served by the ruah daemon, or the bundled sample when no daemon is reachable);
 // editor operations become architecture.json edits that are saved back to the daemon
 // (src/lib/architecture-edit.ts + editArchitecture in src/lib/daemon.ts).
 // localStorage only keeps UI layout (panes, tabs, workflow node positions), keyed per repo root.

@@ -51,7 +51,7 @@ Keep adding entries as work lands.
   Cost: O(n) read per request (fine at ~1 KB/day of turns; rotate/compact if it ever grows to many MB); multi-model turns are attributed to the primary model; limits are not persisted (re-read on the first request after restart).
 
 ## Projects, runtime switching and chats (CONTRACTS §5, 2026-09-23)
-- **Launcher state as an explicit "no project" state (null object at the edges).** `SessionHub` with `open = null`; `archmap serve` without `<repo>`.
+- **Launcher state as an explicit "no project" state (null object at the edges).** `SessionHub` with `open = null`; `ruah app serve` without `<repo>`.
   Why: the app opens on a start screen instead of a blocking native folder picker; health, projects and usage work without a repo, and everything that needs a project answers one clear `409 {error:"no project open"}` (WS: `error{bad_message}`).
   Rejected: keeping "serve needs a repo" and restarting the daemon per project (seconds per switch, drops every socket and warm agent).
   Cost: every project-dependent endpoint/message has a null check.
@@ -182,7 +182,7 @@ Keep adding entries as work lands.
   Why: an agent editing `architecture.json` with its file tools bypasses validation, races the viewer's saves, and produces diffs the user cannot follow; tools give the agent a small typed vocabulary and the user a live, attributable stream of changes.
   Rejected: letting agents write the JSON (no validation until reload, no provenance, no live feedback); a WebSocket client inside the agent (every agent would need custom code — MCP is what they already speak).
   Cost: two transports to keep equal (in-process for the Claude SDK, stdio for ACP agents); the tool list is defined once (`src/mcp/tools.ts`) and served by both.
-- **One tool definition, two transports.** Claude (Agent SDK) gets `createSdkMcpServer` in-process — no subprocess, no token, a fresh server per `query()`; ACP agents get `archmap mcp --daemon <url>` in `session/new`/`session/load` `mcpServers`, a ~100-line hand-rolled stdio JSON-RPC server that forwards to the daemon. Tool input schemas are zod v4 shapes: the SDK's `tool()` takes them, `z.toJSONSchema` lists them for stdio.
+- **One tool definition, two transports.** Claude (Agent SDK) gets `createSdkMcpServer` in-process — no subprocess, no token, a fresh server per `query()`; ACP agents get `ruah app mcp --daemon <url>` in `session/new`/`session/load` `mcpServers`, a ~100-line hand-rolled stdio JSON-RPC server that forwards to the daemon. Tool input schemas are zod v4 shapes: the SDK's `tool()` takes them, `z.toJSONSchema` lists them for stdio.
   Rejected: `@modelcontextprotocol/sdk` as a new top-level dependency for five methods.
 - **Map tools never prompt.** Claude: `canUseTool` allows `mcp__ruah__*` (not `allowedTools`, which shadows `canUseTool` and makes the SDK warn on every query). ACP: the bridge answers the agent's `session/request_permission` for `ruah-ruah_*` with allow-once itself (Cursor asked on every call).
   Why: they only touch `architecture.json`, validated by the daemon, and the user can undo a turn's map changes — prompting for each would make "draw the architecture for feature X" unusable.

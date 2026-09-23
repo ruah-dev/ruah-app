@@ -14,6 +14,3 @@ contextBridge.exposeInMainWorld("ruah", {
     if (typeof target === "string") void ipcRenderer.invoke("ruah:reveal", target);
   },
 });
-
-// Kept for viewers built before window.ruah existed.
-contextBridge.exposeInMainWorld("archmap", { version });

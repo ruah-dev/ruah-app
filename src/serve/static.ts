@@ -26,9 +26,9 @@ const MIME: Record<string, string> = {
 
 const NO_VIEWER_PAGE = `<!doctype html>
 <html>
-  <head><meta charset="utf-8"><title>archmap daemon</title></head>
+  <head><meta charset="utf-8"><title>ruah daemon</title></head>
   <body style="font-family: ui-monospace, monospace; max-width: 640px; margin: 4rem auto; line-height: 1.6">
-    <h1>archmap daemon is running</h1>
+    <h1>ruah daemon is running</h1>
     <p>No viewer is being served because <code>--viewer</code> points at a directory that does not exist (default <code>./viewer</code>).</p>
     <p>Start the built viewer separately and point it at this daemon with the <code>?daemon=</code> fallback, e.g.</p>
     <p><code>http://localhost:5173/?daemon=ws://127.0.0.1:4177/ws</code></p>

@@ -4,7 +4,7 @@ A teaching document. It walks through the system design patterns used to build
 Ruah, using its real code as the worked example: what problem each pattern
 solved, why it was chosen here, what it costs, and when you should not use it.
 
-Ruah is the product name; the repository and CLI are still called `archmap`.
+Ruah is the product name; the repository and CLI are still called `ruah`.
 Ruah is a local daemon plus a desktop/web viewer. It scans repositories into
 architecture maps, drives coding agents (Claude Agent SDK and ACP agents such as
 Cursor, Grok, Kiro, OpenCode) with the selected part of the map as context,
@@ -52,7 +52,7 @@ Contents
  └─────────────┬─────────────────────────────────────────┬─────────────────────────────┘
                │ WebSocket /ws  (push: stream, status)   │ HTTP /api/*  (request/response)
                ▼                                         ▼
- ┌──────────────── archmap daemon  (Node 22, 127.0.0.1:4177, src/serve/*) ──────────────┐
+ ┌──────────────── ruah daemon  (Node 22, 127.0.0.1:4177, src/serve/*) ──────────────┐
  │ server.ts ── Origin check ── SessionHub (session.ts): open project, one active turn │
  │   │                            │                                                     │
  │   │ ArchitectureStore          │ BridgePool (warm agents, TTL + LRU)                 │
@@ -97,11 +97,11 @@ Every entry uses the same template:
 - **Problem.** A coding agent needs the repo on disk, the user's git, and the user's Claude/Cursor login. A browser tab has none of these. We also wanted the same UI in Electron, a normal browser and a Lovable preview.
 - **Pattern.** *Local-first client/server*: a long-running local process (daemon) owns all state and side effects; the UI is a static bundle that talks to it over localhost. Also called a *sidecar* when the desktop shell spawns it.
 - **Where in Ruah.** Daemon: `src/serve/run-serve.ts` (`runServe`), `src/serve/server.ts` (`startServer`), bound to `127.0.0.1:4177`. Viewer: `ui/` built to static files and served by `src/serve/static.ts` (`serveStatic`). Desktop: `electron/main.cjs` spawns `dist/cli.js serve` (`startDaemon`), polls `/api/health` (`waitForDaemon`), then loads `http://127.0.0.1:4177` in a window.
-- **Why here.** Code, credentials and agents never leave the machine. The viewer stays a static bundle any shell can host. The daemon can also run headless (`archmap serve <repo>` in a terminal).
+- **Why here.** Code, credentials and agents never leave the machine. The viewer stays a static bundle any shell can host. The daemon can also run headless (`ruah app serve <repo>` in a terminal).
 - **Rejected.** A cloud backend (latency, secrets, code leaving the machine). An Electron-only app with logic in the main process (no browser or Lovable path, and Node access next to the renderer).
 - **Costs.** One more process to start, supervise and version. Localhost is not a security boundary by itself (see #34). Electron refuses to start if a leftover daemon already answers on the port (`healthOnce()` pre-check in `main()`).
 - **Not when.** Multi-user collaboration on shared state, or data that must outlive one machine. Then you need a real server; local-first can still be the offline cache.
-- **Try it.** Run `archmap serve --mock <repo>` and open the URL in a browser, then in Electron. Same bundle, same daemon. List which parts of your own app need the user's machine and which only need a screen.
+- **Try it.** Run `ruah app serve --mock <repo>` and open the URL in a browser, then in Electron. Same bundle, same daemon. List which parts of your own app need the user's machine and which only need a screen.
 
 #### 2. Contract-first design (one source of coupling)
 
@@ -142,7 +142,7 @@ const message = result.data; // ← typed from here on
 
 - **Problem.** The first version required a repo on the command line. The desktop app then had to show a blocking native folder picker before anything else, and switching projects meant restarting the daemon.
 - **Pattern.** Model "no project" as a real, first-class state instead of an impossible one. A cousin of the *Null Object* pattern: callers get a defined answer instead of a crash.
-- **Where in Ruah.** `SessionHub` holds `open: OpenProject | null` (`src/serve/session.ts`); `archmap serve` without `<repo>` starts in this launcher state. Everything project-bound answers one clear error: HTTP `409 { error: "no project open" }` (`NO_PROJECT_MESSAGE`, checked in `startServer`), WS `error{bad_message}`. After `hello` the viewer gets `project{null}` + `agent.status{stopped}` and shows the start screen.
+- **Where in Ruah.** `SessionHub` holds `open: OpenProject | null` (`src/serve/session.ts`); `ruah app serve` without `<repo>` starts in this launcher state. Everything project-bound answers one clear error: HTTP `409 { error: "no project open" }` (`NO_PROJECT_MESSAGE`, checked in `startServer`), WS `error{bad_message}`. After `hello` the viewer gets `project{null}` + `agent.status{stopped}` and shows the start screen.
 - **Why here.** The app opens instantly on a start screen; health, projects, usage and integrations work without a repo.
 - **Rejected.** Keeping "serve needs a repo" and restarting per project (seconds per switch, drops sockets and warm agents).
 - **Costs.** Every project-dependent handler needs a null check. Missing one is a 500 instead of a 409.
@@ -196,7 +196,7 @@ export interface AcpBridge {
   listed: true,
   installHint: "Install Kiro CLI: https://kiro.dev/docs/cli/ — then run `kiro-cli login`. …",
   // Never -a/--trust-all-tools: tool approval goes through the viewer.
-  preset: cliAgent("kiro-cli", "ARCHMAP_KIRO_BIN", ["acp"]),
+  preset: cliAgent("kiro-cli", "RUAH_KIRO_BIN", ["acp"]),
 },
 ```
 
@@ -204,7 +204,7 @@ export interface AcpBridge {
 - **Rejected.** `switch (agentId)` spread over the server and the UI.
 - **Costs.** One indirection. The catalog re-probes the filesystem on every `check()`.
 - **Not when.** Two options that will never grow; an `if` is clearer.
-- **Try it.** Add a `codex` entry using `cliAgent("codex-acp", "ARCHMAP_CODEX_BIN", [])`. Check that it appears in the viewer's agent picker as "not installed" with your hint.
+- **Try it.** Add a `codex` entry using `cliAgent("codex-acp", "RUAH_CODEX_BIN", [])`. Check that it appears in the viewer's agent picker as "not installed" with your hint.
 
 #### 7. Anti-corruption layer
 
@@ -233,7 +233,7 @@ export interface AcpBridge {
 
 - **Problem.** Real agent turns are slow, cost money and are nondeterministic. UI work and protocol tests cannot wait on them.
 - **Pattern.** *Test doubles* (Meszaros): fakes and stubs placed at the process or I/O boundary, behind the same interface as production.
-- **Where in Ruah.** `MockBridge` (`src/acp/mock-bridge.ts`, `archmap serve --mock`): a scripted turn with text, a read, an edit, a permission request, a diff. `test/fake-agent.ts`: a real ACP agent *process* whose script is chosen by the prompt text (`text`, `tool`, `permission`, `hang`, `slow`, `crash`, …). Injection points: `ClaudeSdkBridgeDeps.queryImpl`, the `Runner` type in `src/integrations/exec.ts` (every CLI call can be faked), `MemorySecretStore` in `src/integrations/keychain.ts`, `Launcher` in `src/integrations/ruah.ts`.
+- **Where in Ruah.** `MockBridge` (`src/acp/mock-bridge.ts`, `ruah app serve --mock`): a scripted turn with text, a read, an edit, a permission request, a diff. `test/fake-agent.ts`: a real ACP agent *process* whose script is chosen by the prompt text (`text`, `tool`, `permission`, `hang`, `slow`, `crash`, …). Injection points: `ClaudeSdkBridgeDeps.queryImpl`, the `Runner` type in `src/integrations/exec.ts` (every CLI call can be faked), `MemorySecretStore` in `src/integrations/keychain.ts`, `Launcher` in `src/integrations/ruah.ts`.
 - **Why here.** The fake agent tests the real bridge over a real pipe, including crashes and a cancel that is never answered (`hang`), which you cannot reliably provoke with a real model. The mock let the whole viewer be built before the agent bridge worked.
 - **Rejected.** Mocking the SDK's internals function by function (brittle and tests nothing real).
 - **Costs.** Fakes drift from real agents; the fake agent logs protocol-visible effects to stderr (`fake: …`) so tests can assert ordering, which is extra machinery. Fakes do not replace live smoke tests (#47).
@@ -440,7 +440,7 @@ function reload(reason: StoreChangeReason): void {
 
 #### 22. Deterministic generation + merge of hand edits
 
-- **Problem.** `archmap scan` generates the map from the code. People then add descriptions, notes, layout and concepts the scanner cannot see. Re-scanning must not destroy that work, and re-scanning an unchanged repo must not produce a diff.
+- **Problem.** `ruah app scan` generates the map from the code. People then add descriptions, notes, layout and concepts the scanner cannot see. Re-scanning must not destroy that work, and re-scanning an unchanged repo must not produce a diff.
 - **Pattern.** *Deterministic generation* (same input → byte-identical output) plus a *three-way-ish merge* with explicit ownership rules per field: generated fields are refreshed, human fields win.
 - **Where in Ruah.** `scanRepo` in `src/scan/index.ts` ("Output is deterministic: sorted inputs, stable ids, no timestamps unless `opts.now` is given"); `listFiles` (`src/scan/walk.ts`) returns sorted paths. `mergeWithExisting` in `src/scan/merge.ts`: a node in both keeps `description`, `notes`, `x`, `y`; hand-added nodes (no `path`) survive; scanned nodes whose path vanished are dropped. `POST /api/rescan` runs scan + merge and saves through the store.
 - **Why here.** Diffs stay meaningful ("the scan found a new package"), so a re-scan is safe to run any time.
@@ -469,7 +469,7 @@ function reload(reason: StoreChangeReason): void {
 - **Rejected.** Per-language AST analysis (slow, still blind to config); runtime tracing (needs the system running).
 - **Costs.** Regex heuristics miss dynamic names (`topic: cfg.topic`) and localhost URLs; byte and file caps (`MAX_SIGNAL_FILES`, `MAX_REPO_BYTES`) can miss signals in huge repos.
 - **Not when.** The inference is cheap to verify by other means, or evidence would leak data the viewer should not see.
-- **Try it.** Run `archmap system scan` on two repos where one calls the other through an env var, then open the edge's evidence. Change the variable name so the rule no longer matches and see the edge disappear.
+- **Try it.** Run `ruah app system scan` on two repos where one calls the other through an env var, then open the edge's evidence. Change the variable name so the rule no longer matches and see the edge disappear.
 
 #### 25. Federation + namespacing (multi-repo systems)
 
@@ -480,7 +480,7 @@ function reload(reason: StoreChangeReason): void {
 - **Rejected.** One giant scan of a parent folder (repos are not siblings in general); renumbering duplicates (`api-2` changes meaning when order changes); a central database.
 - **Costs.** Edits made in the system view do not flow back into the repo's own file. Deduplication by kind collapses two genuinely separate Postgres clusters into one node. Every id validator had to learn the prefix (the viewer's did not at first; section 3).
 - **Not when.** Parts are not independently owned; a single model is simpler.
-- **Try it.** Create `ruah.system.json` for two repos that both have a node `api`. Run `archmap system scan` and look at the ids. Then call `resolveSystemPath` with `"other/../../etc/passwd"` and confirm it returns `null`.
+- **Try it.** Create `ruah.system.json` for two repos that both have a node `api`. Run `ruah app system scan` and look at the ids. Then call `resolveSystemPath` with `"other/../../etc/passwd"` and confirm it returns `null`.
 
 #### 26. Projections: one model, many views
 
@@ -624,7 +624,7 @@ export function originAllowed(origin: string | undefined, allowOrigins: readonly
 
 - **Problem.** The Electron renderer shows a web UI. Any XSS in it must not own the machine.
 - **Pattern.** *Least privilege at the IPC boundary*: `contextIsolation` on, no Node in the renderer, a tiny allow-listed API, arguments validated in the main process.
-- **Where in Ruah.** `electron/preload.cjs` exposes `window.ruah = { version, pickFolder, revealInFinder }` (plus a legacy `window.archmap = { version }`) through `contextBridge`. `electron/main.cjs` sets `contextIsolation: true, nodeIntegration: false` and validates IPC arguments (`ruah:reveal` only accepts absolute paths). The renderer never gets `ipcRenderer`.
+- **Where in Ruah.** `electron/preload.cjs` exposes `window.ruah = { version, pickFolder, revealInFinder }` (plus a legacy `window.ruah = { version }`) through `contextBridge`. `electron/main.cjs` sets `contextIsolation: true, nodeIntegration: false` and validates IPC arguments (`ruah:reveal` only accepts absolute paths). The renderer never gets `ipcRenderer`.
 - **Why here.** The desktop shell adds only what a browser cannot do (a native folder picker); everything else goes through the daemon's HTTP/WS API like in a browser.
 - **Rejected.** `nodeIntegration` or exposing `ipcRenderer` directly.
 - **Costs.** Every new native capability is a deliberate API addition.
@@ -870,7 +870,7 @@ Process
 
 | Force | Reach for | Ruah example |
 | --- | --- | --- |
-| Work must happen on the user's machine (files, logins, tools) | Local-first daemon + thin client (#1) | `archmap serve` + static viewer |
+| Work must happen on the user's machine (files, logins, tools) | Local-first daemon + thin client (#1) | `ruah app serve` + static viewer |
 | Several teams or agents build against each other in parallel | Contract-first + seams (#2, #12) | CONTRACTS.md, `openSystemProjectNotWired` |
 | Untrusted or hand-edited input | Parse at the boundary; keep last good (#3, #21) | `ClientMessageSchema`, `validateArchitecture` |
 | Many providers of the same capability | Ports and Adapters + catalog/factory (#5, #6) | `AcpBridge`, `AgentCatalog` |
@@ -907,7 +907,7 @@ Process
 | Bridge | Ruah's name for an agent adapter (`AcpBridge`). |
 | Context pack | The deterministic text describing the selected node, prepended to the user's question. |
 | CSRF | Cross-site request forgery: another website making the user's browser send requests to your server. |
-| Daemon | The long-running local process (`archmap serve`). |
+| Daemon | The long-running local process (`ruah app serve`). |
 | Evidence | `path:line` references that justify an inferred edge. |
 | Federation | Building one view from independently owned parts without taking ownership of them. |
 | Golden test | A test comparing output byte-for-byte with a stored expected file. |

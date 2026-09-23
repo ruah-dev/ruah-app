@@ -39,11 +39,11 @@ test("node with no edges, no files, no workflows: only node/path/description lin
   const pack = buildContextPack(idx, "solo", "/repo");
   expect(pack).toBe(
     [
-      "[archmap context]",
+      "[ruah context]",
       "node: Solo (module) id=solo",
       "path: src",
       "description: A lone module.",
-      "[/archmap context]",
+      "[/ruah context]",
       "",
       "The user selected the node above on an architecture diagram of the repository at /repo. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.",
     ].join("\n"),

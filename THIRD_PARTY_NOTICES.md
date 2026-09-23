@@ -8,7 +8,7 @@ Licensed under the MIT License, reproduced below.
 Files adapted from T3 Code (commit eff44be43), each marked with a header
 comment naming its source:
 
-| archmap file | T3 Code source |
+| ruah file | T3 Code source |
 | --- | --- |
 | `src/acp/claude-sdk-bridge.ts` | `apps/server/src/provider/Layers/ClaudeAdapter.ts` |
 | `src/acp/claude-executable.ts` | `apps/server/src/provider/Drivers/ClaudeExecutable.ts` |

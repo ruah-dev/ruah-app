@@ -1,4 +1,4 @@
-// Source snippets for the sample architecture. Only used when no archmap daemon is
+// Source snippets for the sample architecture. Only used when no ruah daemon is
 // reachable (e.g. the Lovable preview); with a daemon, the Code tab reads GET /api/file.
 export const sampleFiles: Record<string, string> = {
   "services/invoices-api/src/app.ts":

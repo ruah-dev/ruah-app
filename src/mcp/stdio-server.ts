@@ -1,4 +1,4 @@
-// src/mcp/stdio-server.ts — `archmap mcp --daemon <url>`: a minimal MCP
+// src/mcp/stdio-server.ts — `ruah app mcp --daemon <url>`: a minimal MCP
 // server over stdio (newline-delimited JSON-RPC 2.0, MCP 2025-06-18) for ACP
 // agents, which get it through session/new `mcpServers`. It lists the ruah_*
 // tools and forwards every call to the running daemon (GET /api/arch,
@@ -99,7 +99,7 @@ export function serveMcpStdio(
         return;
       }
       const p = handle(msg).catch((err: unknown) => {
-        io.log?.(`archmap mcp: ${String(err)}`);
+        io.log?.(`ruah app mcp: ${String(err)}`);
         if (msg.id !== undefined && msg.id !== null) fail(msg.id, -32603, err instanceof Error ? err.message : String(err));
       });
       pending.add(p);
