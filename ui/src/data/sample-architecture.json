@@ -1,0 +1,525 @@
+{
+  "version": 1,
+  "name": "acme-platform",
+  "generatedBy": "sample data (no daemon connected)",
+  "layers": [
+    "Clients",
+    "AWS · eu-west-1",
+    "Third parties",
+    "HTTP edge",
+    "Domain",
+    "Data access"
+  ],
+  "nodes": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "name": "web-app",
+      "description": "Customer-facing dashboard. Renders invoices, billing and org settings.",
+      "tech": [
+        "React 19",
+        "TanStack Router",
+        "Tailwind"
+      ],
+      "path": "apps/web",
+      "files": [
+        "apps/web/src/routes/invoices.tsx",
+        "apps/web/src/components/invoice-table.tsx",
+        "apps/web/src/hooks/use-invoices.ts",
+        "apps/web/src/lib/api-client.ts"
+      ],
+      "layer": "Clients",
+      "x": 0,
+      "y": 20
+    },
+    {
+      "id": "mobile",
+      "type": "frontend",
+      "name": "mobile-app",
+      "description": "Read-only companion app for approvals and notifications.",
+      "tech": [
+        "React Native",
+        "Expo"
+      ],
+      "path": "apps/mobile",
+      "layer": "Clients",
+      "x": 0,
+      "y": 108
+    },
+    {
+      "id": "gateway",
+      "type": "gateway",
+      "name": "api-gateway",
+      "description": "Terminates TLS, authenticates JWTs and fans requests out to services.",
+      "tech": [
+        "Envoy",
+        "Cloudflare"
+      ],
+      "path": "infra/gateway",
+      "layer": "AWS · eu-west-1",
+      "x": 340,
+      "y": 16
+    },
+    {
+      "id": "auth",
+      "type": "service",
+      "name": "auth-service",
+      "description": "Issues and rotates access tokens, owns org membership checks.",
+      "tech": [
+        "Go",
+        "Postgres"
+      ],
+      "path": "services/auth-service",
+      "layer": "AWS · eu-west-1",
+      "x": 340,
+      "y": 128
+    },
+    {
+      "id": "api",
+      "type": "service",
+      "name": "invoices-api",
+      "description": "Core business service. Handles invoice CRUD, validation and emits domain events.",
+      "notes": "Validation lives in routes/, not in the service layer. Known flaky: currency enum.",
+      "tech": [
+        "Node 22",
+        "Express",
+        "Zod",
+        "Postgres"
+      ],
+      "path": "services/invoices-api",
+      "files": [
+        "services/invoices-api/src/app.ts",
+        "services/invoices-api/src/routes/invoices/invoices.routes.ts",
+        "services/invoices-api/src/routes/invoices/invoices.service.ts",
+        "services/invoices-api/src/routes/invoices/invoices.repo.ts"
+      ],
+      "layer": "AWS · eu-west-1",
+      "x": 612,
+      "y": 16
+    },
+    {
+      "id": "billing",
+      "type": "service",
+      "name": "billing-service",
+      "description": "Calculates line items, VAT and settlement against the payment provider.",
+      "tech": [
+        "Node 22",
+        "Postgres"
+      ],
+      "path": "services/billing-service",
+      "layer": "AWS · eu-west-1",
+      "x": 612,
+      "y": 128
+    },
+    {
+      "id": "queue",
+      "type": "queue",
+      "name": "events-bus",
+      "description": "Durable pub/sub between services. Retries with exponential backoff.",
+      "tech": [
+        "SQS",
+        "SNS"
+      ],
+      "path": "infra/queues.tf",
+      "layer": "AWS · eu-west-1",
+      "x": 612,
+      "y": 240
+    },
+    {
+      "id": "worker",
+      "type": "service",
+      "name": "notify-worker",
+      "description": "Consumes domain events and delivers email plus outbound webhooks.",
+      "tech": [
+        "Node 22",
+        "Resend"
+      ],
+      "path": "services/notify-worker",
+      "layer": "AWS · eu-west-1",
+      "x": 612,
+      "y": 352
+    },
+    {
+      "id": "pg",
+      "type": "datastore",
+      "name": "postgres",
+      "description": "Primary relational store. 42 tables, row-level security enabled.",
+      "tech": [
+        "Postgres 16",
+        "PgBouncer"
+      ],
+      "layer": "AWS · eu-west-1",
+      "x": 884,
+      "y": 16
+    },
+    {
+      "id": "redis",
+      "type": "datastore",
+      "name": "redis",
+      "description": "Session cache, idempotency keys and distributed locks.",
+      "tech": [
+        "Redis 7"
+      ],
+      "layer": "AWS · eu-west-1",
+      "x": 884,
+      "y": 128
+    },
+    {
+      "id": "blob",
+      "type": "datastore",
+      "name": "object-store",
+      "description": "Generated PDF documents and export archives.",
+      "tech": [
+        "S3"
+      ],
+      "layer": "AWS · eu-west-1",
+      "x": 884,
+      "y": 240
+    },
+    {
+      "id": "stripe",
+      "type": "external",
+      "name": "Stripe",
+      "description": "Charges, refunds and payout reconciliation webhooks.",
+      "tech": [
+        "REST",
+        "Webhooks"
+      ],
+      "layer": "Third parties",
+      "x": 0,
+      "y": 296
+    },
+    {
+      "id": "jira",
+      "type": "external",
+      "name": "Jira Cloud",
+      "description": "Issue tracker driving the delivery workflow for this codebase.",
+      "tech": [
+        "REST",
+        "Webhooks"
+      ],
+      "layer": "Third parties",
+      "x": 0,
+      "y": 384
+    },
+    {
+      "id": "http-in",
+      "type": "external",
+      "name": "incoming request",
+      "description": "Every request arrives here with a verified JWT and a request id.",
+      "layer": "HTTP edge",
+      "parent": "api",
+      "x": 0,
+      "y": 16
+    },
+    {
+      "id": "routes",
+      "type": "module",
+      "name": "routes/",
+      "description": "Express routers. One file per resource, all mounted in app.ts.",
+      "path": "services/invoices-api/src/routes",
+      "files": [
+        "services/invoices-api/src/routes/invoices/invoices.routes.ts",
+        "services/invoices-api/src/app.ts"
+      ],
+      "layer": "HTTP edge",
+      "parent": "api",
+      "x": 0,
+      "y": 128
+    },
+    {
+      "id": "middleware",
+      "type": "module",
+      "name": "middleware/",
+      "description": "Cross-cutting request handling: auth, request logging, error mapping.",
+      "path": "services/invoices-api/src/middleware",
+      "files": [
+        "services/invoices-api/src/middleware/auth.ts"
+      ],
+      "layer": "HTTP edge",
+      "parent": "api",
+      "x": 0,
+      "y": 240
+    },
+    {
+      "id": "controllers",
+      "type": "module",
+      "name": "handlers/",
+      "description": "Thin adapters: parse input with Zod, call domain services, shape responses.",
+      "path": "services/invoices-api/src/handlers",
+      "layer": "Domain",
+      "parent": "api",
+      "x": 304,
+      "y": 72
+    },
+    {
+      "id": "domain",
+      "type": "module",
+      "name": "services/",
+      "description": "Invoice lifecycle rules, numbering, state transitions and event emission.",
+      "path": "services/invoices-api/src/services",
+      "files": [
+        "services/invoices-api/src/routes/invoices/invoices.service.ts"
+      ],
+      "layer": "Domain",
+      "parent": "api",
+      "x": 304,
+      "y": 208
+    },
+    {
+      "id": "repos",
+      "type": "module",
+      "name": "repositories/",
+      "description": "Every SQL statement in the service lives behind these repository objects.",
+      "path": "services/invoices-api/src/repositories",
+      "files": [
+        "services/invoices-api/src/routes/invoices/invoices.repo.ts"
+      ],
+      "layer": "Data access",
+      "parent": "api",
+      "x": 608,
+      "y": 72
+    },
+    {
+      "id": "models",
+      "type": "module",
+      "name": "models/",
+      "description": "Zod schemas and TypeScript types shared by handlers and services.",
+      "path": "services/invoices-api/src/models",
+      "files": [
+        "services/invoices-api/src/routes/invoices/invoices.types.ts"
+      ],
+      "layer": "Data access",
+      "parent": "api",
+      "x": 608,
+      "y": 208
+    },
+    {
+      "id": "db-conn",
+      "type": "datastore",
+      "name": "lib/db.ts",
+      "description": "Postgres pool with statement timeouts and query logging.",
+      "path": "services/invoices-api/src/lib/db.ts",
+      "layer": "Data access",
+      "parent": "api",
+      "x": 884,
+      "y": 72
+    },
+    {
+      "id": "queue-lib",
+      "type": "queue",
+      "name": "lib/queue.ts",
+      "description": "Publishes domain events to the events bus with an outbox guarantee.",
+      "path": "services/invoices-api/src/lib/queue.ts",
+      "layer": "Data access",
+      "parent": "api",
+      "x": 884,
+      "y": 208
+    },
+    {
+      "id": "w-intake",
+      "type": "step",
+      "name": "Intake",
+      "description": "Anyone files a request. Product triages within one working day."
+    },
+    {
+      "id": "w-backlog",
+      "type": "step",
+      "name": "Backlog",
+      "description": "Refined ticket with acceptance criteria and an estimate."
+    },
+    {
+      "id": "w-sprint",
+      "type": "step",
+      "name": "Selected for sprint",
+      "description": "Pulled into the active sprint during planning."
+    },
+    {
+      "id": "w-progress",
+      "type": "step",
+      "name": "In progress",
+      "description": "Branch created from the ticket key. Drill in for the request lifecycle."
+    },
+    {
+      "id": "w-pr",
+      "type": "step",
+      "name": "In review",
+      "description": "PR opened, CI green required, one approval minimum."
+    },
+    {
+      "id": "w-qa",
+      "type": "step",
+      "name": "QA",
+      "description": "Tested on the per-PR preview environment against the criteria."
+    },
+    {
+      "id": "w-staging",
+      "type": "step",
+      "name": "Staging",
+      "description": "Merged and auto-deployed to staging."
+    },
+    {
+      "id": "w-release",
+      "type": "step",
+      "name": "Release",
+      "description": "Progressive rollout with automatic rollback on error budget burn."
+    },
+    {
+      "id": "w-done",
+      "type": "step",
+      "name": "Done",
+      "description": "Verified in production, ticket closed and release notes updated."
+    }
+  ],
+  "edges": [
+    {
+      "from": "web",
+      "to": "gateway",
+      "label": "https",
+      "kind": "async"
+    },
+    {
+      "from": "mobile",
+      "to": "gateway",
+      "label": "https",
+      "kind": "sync"
+    },
+    {
+      "from": "gateway",
+      "to": "auth",
+      "label": "verify",
+      "kind": "sync"
+    },
+    {
+      "from": "gateway",
+      "to": "api",
+      "label": "/v1/invoices",
+      "kind": "async"
+    },
+    {
+      "from": "gateway",
+      "to": "billing",
+      "label": "/v1/billing",
+      "kind": "sync"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "sql",
+      "kind": "data"
+    },
+    {
+      "from": "api",
+      "to": "redis",
+      "label": "cache",
+      "kind": "data"
+    },
+    {
+      "from": "api",
+      "to": "queue",
+      "label": "publish",
+      "kind": "event"
+    },
+    {
+      "from": "billing",
+      "to": "pg",
+      "label": "sql",
+      "kind": "data"
+    },
+    {
+      "from": "billing",
+      "to": "stripe",
+      "label": "charge",
+      "kind": "sync"
+    },
+    {
+      "from": "queue",
+      "to": "worker",
+      "label": "consume",
+      "kind": "event"
+    },
+    {
+      "from": "worker",
+      "to": "blob",
+      "label": "store pdf",
+      "kind": "data"
+    },
+    {
+      "from": "auth",
+      "to": "redis",
+      "label": "sessions",
+      "kind": "data"
+    },
+    {
+      "from": "http-in",
+      "to": "routes",
+      "kind": "async"
+    },
+    {
+      "from": "routes",
+      "to": "middleware",
+      "label": "guards",
+      "kind": "sync"
+    },
+    {
+      "from": "routes",
+      "to": "controllers",
+      "label": "dispatch",
+      "kind": "async"
+    },
+    {
+      "from": "controllers",
+      "to": "domain",
+      "label": "invoke",
+      "kind": "async"
+    },
+    {
+      "from": "controllers",
+      "to": "models",
+      "label": "validate",
+      "kind": "sync"
+    },
+    {
+      "from": "domain",
+      "to": "repos",
+      "label": "persist",
+      "kind": "async"
+    },
+    {
+      "from": "domain",
+      "to": "queue-lib",
+      "label": "emit",
+      "kind": "event"
+    },
+    {
+      "from": "repos",
+      "to": "db-conn",
+      "label": "sql",
+      "kind": "data"
+    },
+    {
+      "from": "repos",
+      "to": "models",
+      "label": "map rows",
+      "kind": "data"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "jira-delivery",
+      "name": "Jira delivery flow",
+      "description": "PLAT board · ticket lifecycle and handoffs",
+      "steps": [
+        "w-intake",
+        "w-backlog",
+        "w-sprint",
+        "w-progress",
+        "w-pr",
+        "w-qa",
+        "w-staging",
+        "w-release",
+        "w-done"
+      ]
+    }
+  ]
+}
