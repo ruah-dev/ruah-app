@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { AgentPanel, NewSessionButton } from "./AgentPanel";
+import { ChatSwitcher } from "@/components/chats/ChatSwitcher";
 
 export function AgentPage() {
   const { daemon, architecture } = useWorkspace();
@@ -30,7 +31,13 @@ export function AgentPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title={
-          chat ? (
+          daemon.projectsSupported && daemon.project ? (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="text-muted-foreground">Agent</span>
+              <span className="text-faint">/</span>
+              <ChatSwitcher className="-ms-1" />
+            </span>
+          ) : chat ? (
             <span className="flex min-w-0 items-center gap-2">
               <span className="text-muted-foreground">Agent</span>
               <span className="text-faint">/</span>

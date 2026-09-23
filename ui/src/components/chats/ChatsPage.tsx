@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MessageSquarePlus, MessagesSquare, RefreshCw, Search } from "lucide-react";
 import type { RecentChat } from "@/lib/contracts";
-import { fetchRecentChats } from "@/lib/daemon";
+import { fetchRecentChats, prefetchChat, prefetchProject } from "@/lib/daemon";
 import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { PageHeader } from "@/components/shell/AppShell";
@@ -192,7 +192,12 @@ export function ChatsPage() {
                   type="button"
                   role="listitem"
                   data-active={i === activeRow}
-                  onMouseEnter={() => setActive(chatIndexes.indexOf(i))}
+                  onMouseEnter={() => {
+                    setActive(chatIndexes.indexOf(i));
+                    // Hover prefetch: opening it (even in another project) paints from cache.
+                    void prefetchChat(r.chat.projectId, r.chat.id);
+                    if (r.chat.projectId !== daemon.project?.id) void prefetchProject(r.chat.projectId);
+                  }}
                   onClick={() => void actions.showChat(r.chat)}
                   className={cn(
                     "flex h-[calc(100%-4px)] w-full min-w-0 items-center gap-3 rounded-lg px-3 text-left transition-colors",
