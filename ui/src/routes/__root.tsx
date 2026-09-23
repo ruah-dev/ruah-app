@@ -10,7 +10,8 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { WorkbenchProvider } from "@/lib/workbench";
-import { applyTheme, readTheme } from "@/lib/theme";
+import { applyPalette, applyTheme, readPalette, readTheme, useColorScheme } from "@/lib/theme";
+import { Phantom } from "@/components/brand/RuahLogo";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -21,16 +22,17 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+      <div className="flex max-w-md flex-col items-center text-center">
+        <Phantom size={64} expression="idle" />
+        <p className="eyebrow mt-6">404</p>
+        <h1 className="heading mt-2 text-[24px] text-foreground">Page not found</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to dashboard
           </Link>
@@ -49,9 +51,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
+      <div className="flex max-w-md flex-col items-center text-center">
+        <Phantom size={64} expression="error" float={false} />
+        <h1 className="heading mt-6 text-[22px] text-foreground">
+          This page didn&apos;t load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
@@ -62,13 +65,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try again
           </button>
           <a
             href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="inline-flex items-center justify-center rounded-lg border border-hairline bg-surface-1 px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go home
           </a>
@@ -90,7 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Ruah maps a codebase from services down to files, with workflows and a coding agent on every element.",
       },
       { name: "application-name", content: "Ruah" },
-      { name: "theme-color", content: "#26282b" },
+      { name: "theme-color", content: "#20201e" },
       { name: "color-scheme", content: "light dark" },
       { property: "og:site_name", content: "Ruah" },
       { property: "og:type", content: "website" },
@@ -101,7 +104,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/icon.svg", type: "image/svg+xml" },
+      { rel: "alternate icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
   shellComponent: RootShell,
@@ -110,11 +114,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-const THEME_BOOT = `try{var p=localStorage.getItem("ruah.theme")||"dark";var m=p==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(m);r.style.colorScheme=m}catch(e){}`;
+// Mirrors lib/theme.ts (applyTheme + applyPalette) so the first paint has the saved theme.
+const THEME_BOOT = `try{var p=localStorage.getItem("ruah.theme")||"dark";var m=p==="system"?(matchMedia("(prefers-contrast: more)").matches?"contrast":matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;if(["dark","light","contrast"].indexOf(m)<0)m="dark";var s=m==="light"?"light":"dark";var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(s);r.dataset.theme=m;r.style.colorScheme=s;var a=localStorage.getItem("ruah.palette");if(a==="dusk"||a==="sunrise")r.dataset.palette=a}catch(e){}`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className="dark" data-theme="dark" suppressHydrationWarning>
       <head>
         {/* Apply the saved theme before first paint (no flash of the wrong theme). */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
@@ -130,7 +135,11 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useEffect(() => applyTheme(readTheme()), []);
+  useEffect(() => {
+    applyTheme(readTheme());
+    applyPalette(readPalette());
+  }, []);
+  const scheme = useColorScheme();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -143,7 +152,7 @@ function RootComponent() {
             </AppShell>
           </WorkbenchProvider>
         </WorkspaceProvider>
-        <Toaster position="bottom-right" theme="dark" closeButton />
+        <Toaster position="bottom-right" theme={scheme} closeButton />
       </TooltipProvider>
     </QueryClientProvider>
   );

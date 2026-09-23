@@ -5,10 +5,27 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Ruah design system — the colours, surfaces and marks of the ruah website
+ * (ruah-website/src/app/globals.css): warm charcoal surfaces (never blue-black), a warm text
+ * scale, teal / lavender / sage / amber / coral / slate.
+ * Typography is app-like, not the website's editorial pairing (the user found DM Sans +
+ * Instrument Serif wrong inside the app, 2026-09-23): the system UI font for all text
+ * (as in Cursor / Claude Code / t3code), Geist Mono for code, paths, ids and tokens, and Jura
+ * only for the "ruah" wordmark.
+ *
+ * Semantic colour roles (never hardcode colours in components):
+ *   teal (primary / ruah-*)  — brand + interactive only: primary actions, focus, selection,
+ *                              the active nav indicator, links
+ *   lavender (ai / lavender-*) — everything AI / agent
+ *   sage (ok)  · amber (warn) · coral (bad / destructive) · slate (info / metadata)
+ *
+ * The app's dark theme is lifted above the website's (#111110) so panels and borders stay
+ * clearly visible for long working sessions (the user asked for "dark, but more visible").
+ *
  * Type + rhythm scale. New UI uses these names instead of arbitrary sizes:
  *   text-meta 11.5 · text-label 12 · text-ui-sm 12.5 · text-ui 13 · text-body 13.5 ·
- *   text-title 15 · text-display 22;  h-row 28px (list rows) · h-row-lg 32px (nav, inputs) ·
- *   h-bar 48px (page / pane headers).
+ *   text-title 15;  h-row 28px (list rows) · h-row-lg 32px (nav, inputs) · h-bar 48px (headers).
+ *   `heading` is the title style (semibold, tight tracking); pair it with a size.
  */
 @theme {
   --text-meta: 11.5px;
@@ -23,25 +40,134 @@
   --text-body--line-height: 1.6;
   --text-title: 15px;
   --text-title--line-height: 1.35;
-  --text-display: 22px;
-  --text-display--line-height: 1.2;
   --spacing-row: 1.75rem;
   --spacing-row-lg: 2rem;
   --spacing-bar: 3rem;
+
+  /* Brand scales (fixed values, identical to the website). */
+  --color-ruah-50: #e8faf7;
+  --color-ruah-100: #b8f0e7;
+  --color-ruah-200: #88e6d7;
+  --color-ruah-300: #4dd9c5;
+  --color-ruah-400: #00d2b9;
+  --color-ruah-500: #00bea8;
+  --color-ruah-600: #009e8c;
+  --color-ruah-700: #007e70;
+  --color-ruah-800: #005e54;
+  --color-ruah-900: #003e38;
+
+  --color-lavender-50: #f3eeff;
+  --color-lavender-100: #e1d6fb;
+  --color-lavender-200: #cfbdf8;
+  --color-lavender-300: #c2a7f7;
+  --color-lavender-400: #b594f5;
+  --color-lavender-500: #9773e4;
+  --color-lavender-600: #7d58cc;
+  --color-lavender-700: #5f41a4;
+  --color-lavender-800: #412c74;
+  --color-lavender-900: #2a1c4e;
+
+  --color-sage-50: #eef5e7;
+  --color-sage-100: #d5e5c3;
+  --color-sage-200: #bcd49e;
+  --color-sage-300: #9ec281;
+  --color-sage-400: #7fb069;
+  --color-sage-500: #67994f;
+  --color-sage-600: #507e3c;
+  --color-sage-700: #3c6029;
+  --color-sage-800: #2a441c;
+  --color-sage-900: #1b2d11;
+
+  --color-amber-50: #fdf6e8;
+  --color-amber-100: #fae8c2;
+  --color-amber-200: #f4d48e;
+  --color-amber-300: #edbf5e;
+  --color-amber-400: #e5a84b;
+  --color-amber-500: #d09430;
+  --color-amber-600: #ad7a22;
+  --color-amber-700: #8a6118;
+  --color-amber-800: #674810;
+  --color-amber-900: #44300a;
+
+  --color-coral-50: #fef2f1;
+  --color-coral-100: #fce0de;
+  --color-coral-200: #f9c0bb;
+  --color-coral-300: #f49a92;
+  --color-coral-400: #f07068;
+  --color-coral-500: #dc5850;
+  --color-coral-600: #b8453e;
+  --color-coral-700: #94342f;
+  --color-coral-800: #702622;
+  --color-coral-900: #4c1916;
+
+  --color-slate-50: #eef1f5;
+  --color-slate-100: #d6dce5;
+  --color-slate-200: #b7c0cf;
+  --color-slate-300: #8a97ae;
+  --color-slate-400: #5b6b88;
+  --color-slate-500: #45536c;
+  --color-slate-600: #344054;
+  --color-slate-700: #26303e;
+  --color-slate-800: #1a2028;
+  --color-slate-900: #0f1319;
+
+  /* palette variants (Settings → Appearance → Accent) */
+  --color-dusk-500: #8b6ed2;
+  --color-sunrise-500: #d6854a;
+
+  --color-warm-50: #faf9f7;
+  --color-warm-100: #f0eee9;
+  --color-warm-200: #dedad3;
+  --color-warm-300: #b8b3a8;
+  --color-warm-400: #8f8a7e;
+  --color-warm-500: #706b60;
+  --color-warm-600: #565248;
+  --color-warm-700: #3f3c35;
+  --color-warm-800: #2c2a25;
+
+  /* Spacing scale — 4 px base (the default Tailwind scale is also 4 px, so p-1 = sp-1). */
+  --spacing-sp-1: 4px;
+  --spacing-sp-2: 8px;
+  --spacing-sp-3: 12px;
+  --spacing-sp-4: 16px;
+  --spacing-sp-5: 20px;
+  --spacing-sp-6: 24px;
+  --spacing-sp-8: 32px;
+  --spacing-sp-10: 40px;
+  --spacing-sp-12: 48px;
+
+  --ease-expo: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/*
- * Ruah design tokens. Visual approach adapted from t3code apps/web/src/index.css (MIT):
- * neutral near-black surfaces, separation by tone rather than borders, one accent,
- * system UI font with mono reserved for paths and code. Never hardcode colors in components.
- */
+/* Bundled fonts (SIL OFL 1.1, see THIRD_PARTY_NOTICES.md) — the desktop app works offline. */
+@font-face {
+  font-family: "Jura";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/jura-latin-variable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/geist-mono-variable.woff2") format("woff2");
+}
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 3px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-xs);
+  --radius-md: 6px;
+  --radius-lg: var(--r-sm);
+  --radius-xl: var(--r-md);
+  --radius-2xl: var(--r-lg);
+  --radius-3xl: var(--r-xl);
+  --radius-pill: var(--r-pill);
+
+  --shadow-card: var(--elev-card);
+  --shadow-elevated: var(--elev-elevated);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -54,6 +180,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -62,9 +189,11 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
   --color-hairline: var(--hairline);
   --color-message: var(--message);
   --color-composer: var(--composer);
@@ -72,6 +201,7 @@
   --color-grid: var(--grid);
   --color-edge: var(--edge);
   --color-edge-active: var(--edge-active);
+  --color-group: var(--group);
   --color-node-service: var(--node-service);
   --color-node-data: var(--node-data);
   --color-node-queue: var(--node-queue);
@@ -88,116 +218,261 @@
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
+  --color-info: var(--info);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-brand: var(--brand);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --font-mono: var(--font-mono-stack);
   --font-sans: var(--font-sans-stack);
-  --font-display: var(--font-display-stack);
+  --font-brand: var(--font-brand-stack);
 }
 
+/* ---------------------------------------------------------------------------------------------
+ * Dark (default) — the brand's warm charcoal, lifted.
+ *   sidebar #1a1a19 < page #20201e < panels #272725 < controls #333331; borders #3a3a37;
+ *   text #f0eee9, secondary #b8b3a8, tertiary hints #8f8a7e.
+ * ------------------------------------------------------------------------------------------- */
 :root {
   --radius: 0.5rem;
-  --font-sans-stack:
-    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, ui-sans-serif, sans-serif;
-  --font-display-stack: var(--font-sans-stack);
-  --font-mono-stack:
-    ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pill: 999px;
 
-  /* neutral scale (chroma 0): background < panels < controls < active */
-  --background: oklch(0.235 0.004 260);
-  --foreground: oklch(0.97 0 0);
-  --surface-1: oklch(0.265 0.004 260);
-  --surface-2: oklch(0.3 0.004 260);
-  --surface-3: oklch(0.345 0.004 260);
-  --hairline: oklch(1 0 0 / 0.14);
+  --font-sans-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono-stack: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --font-brand-stack: "Jura", -apple-system, system-ui, sans-serif;
 
-  --card: oklch(0.265 0.004 260);
+  --elev-card: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 30px -14px rgba(0, 0, 0, 0.45);
+  --elev-elevated: 0 6px 24px -6px rgba(0, 0, 0, 0.45), 0 20px 50px -18px rgba(0, 0, 0, 0.5);
+  --grain-opacity: 0.03;
+
+  --surface-0: #1a1a19;
+  --background: #20201e;
+  --foreground: #f0eee9;
+  --surface-1: #272725;
+  --surface-2: #2e2e2c;
+  --surface-3: #353533;
+  --surface-4: #3d3d3a;
+  --hairline: #3a3a37;
+
+  --card: #272725;
   --card-foreground: var(--foreground);
-  --popover: oklch(0.285 0.004 260);
+  --popover: #2a2a28;
   --popover-foreground: var(--foreground);
 
-  /* the one accent */
-  --primary: oklch(0.72 0.16 258);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.3 0.004 260);
+  --brand: #00d2b9;
+  --primary: #00bea8;
+  --primary-foreground: #111110;
+  --secondary: #2e2e2c;
   --secondary-foreground: var(--foreground);
-  --muted: oklch(0.3 0.004 260);
-  --muted-foreground: oklch(0.78 0 0);
-  --accent: oklch(1 0 0 / 0.09);
+  --muted: #2e2e2c;
+  --muted-foreground: #b8b3a8;
+  --faint: #8f8a7e;
+  --accent: #333331;
   --accent-foreground: var(--foreground);
-  --destructive: oklch(0.64 0.19 25);
-  --destructive-foreground: oklch(0.98 0 0);
+  --destructive: #dc5850;
+  --destructive-foreground: #faf9f7;
 
-  --border: oklch(1 0 0 / 0.14);
-  --input: oklch(1 0 0 / 0.18);
-  --ring: oklch(0.72 0.16 258 / 0.7);
+  --border: #3a3a37;
+  --input: #77726a;
+  --ring: #00bea8;
+
+  /* agent / AI identity */
+  --ai: #b594f5;
+  --ai-foreground: #1a1426;
 
   /* chat */
-  --message: oklch(0.33 0.004 260);
-  --composer: oklch(0.285 0.004 260);
+  --message: #313130;
+  --composer: #2a2a28;
 
   /* canvas */
-  --canvas: oklch(0.235 0.004 260);
-  --grid: oklch(0.46 0 0);
-  --edge: oklch(0.64 0 0);
-  --edge-active: oklch(0.78 0.14 258);
+  --canvas: #20201e;
+  --grid: #4f4b44;
+  --edge: #8f8a7e;
+  --edge-active: #00d2b9;
+  --group: #b8b3a8;
 
-  /* element kinds: muted hues so the diagram stays calm */
-  --node-service: oklch(0.8 0.11 250);
-  --node-data: oklch(0.82 0.11 155);
-  --node-queue: oklch(0.86 0.11 85);
-  --node-external: oklch(0.8 0.01 265);
-  --node-frontend: oklch(0.82 0.12 320);
-  --node-file: oklch(0.84 0.1 205);
-  --node-gateway: oklch(0.84 0.12 40);
-  --node-step: oklch(0.8 0.08 265);
+  /* element kinds — one brand hue each, bright enough for the lifted dark canvas */
+  --node-service: #00d2b9;
+  --node-frontend: #b594f5;
+  --node-data: #9ec281;
+  --node-queue: #e5a84b;
+  --node-gateway: #f49a92;
+  --node-external: #8a97ae;
+  --node-file: #b8b3a8;
+  --node-step: #cfbdf8;
 
-  --ok: oklch(0.8 0.15 155);
-  --warn: oklch(0.86 0.13 80);
-  --bad: oklch(0.72 0.19 25);
+  --ok: #7fb069;
+  --warn: #e5a84b;
+  --bad: #f07068;
+  --info: #8a97ae;
 
-  /* chart series: the accent, then neutrals (dataviz: no extra palette) */
   --series-1: var(--primary);
-  --series-2: color-mix(in oklab, var(--foreground) 78%, var(--background));
-  --series-3: color-mix(in oklab, var(--primary) 50%, var(--foreground));
-  --series-4: color-mix(in oklab, var(--foreground) 48%, var(--background));
-  --series-5: color-mix(in oklab, var(--foreground) 28%, var(--background));
+  --series-2: var(--ai);
+  --series-3: var(--warn);
+  --series-4: var(--ok);
+  --series-5: var(--info);
+
+  --sidebar: var(--surface-0);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--hairline);
+  --sidebar-ring: var(--ring);
 }
 
-/* Light theme (Settings → Appearance). Same hierarchy, inverted: panels a touch darker than
-   the page, hairlines from black. */
-html.light {
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.24 0 0);
-  --surface-1: oklch(0.975 0 0);
-  --surface-2: oklch(0.955 0 0);
-  --surface-3: oklch(0.925 0 0);
-  --hairline: oklch(0 0 0 / 0.08);
-  --card: oklch(1 0 0);
-  --popover: oklch(1 0 0);
-  --primary: oklch(0.52 0.19 262);
-  --secondary: oklch(0.955 0 0);
-  --muted: oklch(0.955 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0 0 0 / 0.045);
-  --border: oklch(0 0 0 / 0.08);
-  --input: oklch(0 0 0 / 0.12);
-  --ring: oklch(0.52 0.19 262 / 0.5);
-  --message: oklch(0.945 0 0);
-  --composer: oklch(1 0 0);
-  --canvas: oklch(0.985 0 0);
-  --grid: oklch(0.8 0 0);
-  --edge: oklch(0.7 0 0);
-  --edge-active: oklch(0.52 0.19 262);
-  --node-service: oklch(0.52 0.12 250);
-  --node-data: oklch(0.52 0.12 155);
-  --node-queue: oklch(0.6 0.12 75);
-  --node-external: oklch(0.5 0.01 265);
-  --node-frontend: oklch(0.52 0.14 320);
-  --node-file: oklch(0.52 0.1 205);
-  --node-gateway: oklch(0.56 0.13 40);
-  --node-step: oklch(0.5 0.08 265);
-  --ok: oklch(0.56 0.14 155);
-  --warn: oklch(0.62 0.14 70);
-  --bad: oklch(0.56 0.2 25);
+/* Light — the brand's warm light (Settings → Appearance). */
+html[data-theme="light"] {
+  --elev-card: 0 1px 2px rgba(44, 42, 37, 0.06), 0 10px 30px -16px rgba(44, 42, 37, 0.18);
+  --elev-elevated: 0 6px 24px -8px rgba(44, 42, 37, 0.16), 0 20px 50px -20px rgba(44, 42, 37, 0.2);
+  --grain-opacity: 0.025;
+
+  --surface-0: #f3f1ec;
+  --background: #faf9f7;
+  --foreground: #1a1a19;
+  --surface-1: #f6f4ef;
+  --surface-2: #efece6;
+  --surface-3: #e6e2da;
+  --surface-4: #dcd8cf;
+  --hairline: #e0dcd4;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --brand: #00bea8;
+  --primary: #007e70;
+  --primary-foreground: #ffffff;
+  --secondary: #efece6;
+  --muted: #efece6;
+  --muted-foreground: #565248;
+  --faint: #706b60;
+  --accent: #ebe8e1;
+  --destructive: #b8453e;
+  --border: #e0dcd4;
+  --input: #8f8a7e;
+  --ring: #007e70;
+  --ai: #7d58cc;
+  --ai-foreground: #ffffff;
+  --message: #efece6;
+  --composer: #ffffff;
+  --canvas: #faf9f7;
+  --grid: #cfcac0;
+  --edge: #8f8a7e;
+  --edge-active: #009e8c;
+  --group: #706b60;
+  --node-service: #007e70;
+  --node-frontend: #7d58cc;
+  --node-data: #507e3c;
+  --node-queue: #8a6118;
+  --node-gateway: #b8453e;
+  --node-external: #45536c;
+  --node-file: #565248;
+  --node-step: #412c74;
+  --ok: #507e3c;
+  --warn: #8a6118;
+  --bad: #b8453e;
+  --info: #45536c;
+}
+
+/* High contrast — the brand's contrast theme: true black, white text, brighter accents. */
+html[data-theme="contrast"] {
+  --elev-card: 0 0 0 1px #5a5a5a;
+  --elev-elevated: 0 0 0 1px #8a8a8a, 0 12px 40px -12px rgba(0, 0, 0, 0.8);
+  --grain-opacity: 0;
+
+  --surface-0: #000000;
+  --background: #000000;
+  --foreground: #ffffff;
+  --surface-1: #0a0a0a;
+  --surface-2: #1a1a1a;
+  --surface-3: #2a2a2a;
+  --surface-4: #3a3a3a;
+  --hairline: #5a5a5a;
+  --card: #0a0a0a;
+  --popover: #0f0f0f;
+  --brand: #00f0d3;
+  --primary: #00f0d3;
+  --primary-foreground: #000000;
+  --secondary: #1a1a1a;
+  --muted: #1a1a1a;
+  --muted-foreground: #d0d0d0;
+  --faint: #b0b0b0;
+  --accent: #262626;
+  --destructive: #f49a92;
+  --destructive-foreground: #000000;
+  --border: #5a5a5a;
+  --input: #8a8a8a;
+  --ring: #00f0d3;
+  --ai: #cfbdf8;
+  --ai-foreground: #000000;
+  --message: #1a1a1a;
+  --composer: #0a0a0a;
+  --canvas: #000000;
+  --grid: #4a4a4a;
+  --edge: #b0b0b0;
+  --edge-active: #00f0d3;
+  --group: #d0d0d0;
+  --node-service: #4dd9c5;
+  --node-frontend: #c2a7f7;
+  --node-data: #bcd49e;
+  --node-queue: #edbf5e;
+  --node-gateway: #f49a92;
+  --node-external: #b7c0cf;
+  --node-file: #dedad3;
+  --node-step: #e1d6fb;
+  --ok: #9ec281;
+  --warn: #edbf5e;
+  --bad: #f49a92;
+  --info: #b7c0cf;
+}
+
+/* Accent palettes (Settings → Appearance): swap the interactive accent, keep everything else. */
+html[data-palette="dusk"] {
+  --primary: #9d82e6;
+  --ring: #9d82e6;
+  --edge-active: #b594f5;
+  --brand: #b594f5;
+}
+html[data-palette="sunrise"] {
+  --primary: #d6854a;
+  --ring: #d6854a;
+  --edge-active: #e5a84b;
+  --brand: #e5a84b;
+}
+html[data-theme="light"][data-palette="dusk"] {
+  --primary: #6a4fbf;
+  --ring: #6a4fbf;
+  --edge-active: #7d58cc;
+  --brand: #7d58cc;
+}
+html[data-theme="light"][data-palette="sunrise"] {
+  --primary: #a85f28;
+  --ring: #a85f28;
+  --edge-active: #ad7a22;
+  --brand: #d6854a;
+}
+html[data-theme="contrast"][data-palette="dusk"] {
+  --primary: #cfbdf8;
+  --ring: #cfbdf8;
+  --edge-active: #cfbdf8;
+  --brand: #cfbdf8;
+}
+html[data-theme="contrast"][data-palette="sunrise"] {
+  --primary: #f4b27a;
+  --ring: #f4b27a;
+  --edge-active: #f4d48e;
+  --brand: #f4b27a;
 }
 
 .dark {
@@ -231,14 +506,18 @@ html.light {
     letter-spacing: 0;
   }
 
+  code, kbd, samp, pre {
+    font-family: var(--font-mono-stack);
+  }
+
   ::selection {
-    background: color-mix(in oklab, var(--primary) 35%, transparent);
+    background: color-mix(in oklab, var(--primary) 28%, transparent);
   }
 
   /* thin, quiet scrollbars */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--hairline) transparent;
+    scrollbar-color: var(--surface-4) transparent;
   }
 
   :focus-visible {
@@ -260,11 +539,61 @@ html.light {
   }
 }
 
+/* Grain overlay (website `.grain`): fixed, never interactive, barely there. */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html[data-theme="contrast"] .grain::after {
+  display: none;
+}
+
+/* Titles: the system font, semibold, slightly tightened. Pair with a size. */
+@utility heading {
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+}
+
+/* Small uppercase kicker above a headline ("The toolchain" on the website). */
+@utility eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+@utility text-gradient-ruah {
+  background: linear-gradient(135deg, var(--brand), var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@utility divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
+}
+
+/* Warm card: tone + hairline + soft warm shadow (website tool cards / DoubleBezelCard). */
+@utility card-warm {
+  background: var(--color-card);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-card);
+}
+
 /* sidebar / list primitives shared by every section */
 @utility section-label {
   font-size: var(--text-label);
   font-weight: 500;
-  color: color-mix(in oklab, var(--color-muted-foreground) 80%, transparent);
+  color: var(--color-faint);
 }
 
 @utility list-row {
@@ -274,14 +603,14 @@ html.light {
   min-width: 0;
   align-items: center;
   gap: 0.5rem;
-  border-radius: calc(var(--radius) - 2px);
+  border-radius: 6px;
   padding-inline: 0.5rem;
   font-size: var(--text-ui);
   text-align: start;
-  color: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+  color: var(--color-muted-foreground);
   transition: background-color 120ms, color 120ms;
   &:hover {
-    background: color-mix(in oklab, var(--color-accent) 70%, transparent);
+    background: color-mix(in oklab, var(--color-accent) 75%, transparent);
     color: var(--color-foreground);
   }
   &[data-active="true"] {
@@ -302,28 +631,28 @@ html.light {
   font-size: 10.5px;
   line-height: 1;
   color: var(--color-muted-foreground);
-  background: color-mix(in oklab, var(--color-foreground) 6%, transparent);
+  background: var(--color-surface-2);
   box-shadow: inset 0 0 0 1px var(--color-hairline);
 }
 
 /* floating control clusters on the canvas (zoom, palette tray) */
 @utility control-glass {
-  background: color-mix(in oklab, var(--color-popover) 88%, transparent);
+  background: color-mix(in oklab, var(--color-popover) 90%, transparent);
   backdrop-filter: blur(12px) saturate(1.1);
   box-shadow:
     0 0 0 1px var(--color-hairline),
-    0 10px 28px -14px oklch(0 0 0 / 0.7);
+    var(--elev-card);
 }
 
 @utility node-elevated {
-  box-shadow: 0 6px 18px -10px oklch(0 0 0 / 0.65);
+  box-shadow: var(--elev-card);
 }
 
 @utility grid-canvas {
   background-color: var(--color-canvas);
-  background-image: radial-gradient(circle, var(--color-grid) 0.75px, transparent 0.9px);
+  background-image: radial-gradient(circle, var(--color-grid) 0.8px, transparent 1px);
   background-size: 22px 22px;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 /* rounded chat composer surface (pattern from t3code components/chat/ComposerSurface.tsx, MIT) */
@@ -331,8 +660,7 @@ html.light {
   background: var(--color-composer);
   box-shadow:
     inset 0 0 0 1px var(--color-hairline),
-    inset 0 1px 0 oklch(1 0 0 / 0.03),
-    0 12px 28px -18px oklch(0 0 0 / 0.6);
+    var(--elev-card);
 }
 
 @utility edge-flow {
@@ -352,5 +680,18 @@ html.light {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Phantom idle drift (website mascot); disabled by the reduced-motion rule above. */
+@keyframes phantom-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-4px) rotate(1.2deg);
+  }
+  66% {
+    transform: translateY(-2px) rotate(-1.2deg);
   }
 }

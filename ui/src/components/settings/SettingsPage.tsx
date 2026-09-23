@@ -7,20 +7,26 @@ import { Link } from "@tanstack/react-router";
 import { CLIENT_ID, setAgent, setAgentMode, setModel } from "@/lib/daemon";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
-import { useTheme, type ThemePref } from "@/lib/theme";
+import { usePalette, useTheme, type PalettePref, type ThemePref } from "@/lib/theme";
 import { AgentMark, modeLabel, plain } from "@/components/agent/ComposerControls";
 import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { cn } from "@/lib/utils";
 
+const PALETTES: readonly { value: PalettePref; label: string; swatch: string }[] = [
+  { value: "teal", label: "Teal", swatch: "bg-ruah-500" },
+  { value: "dusk", label: "Dusk", swatch: "bg-dusk-500" },
+  { value: "sunrise", label: "Sunrise", swatch: "bg-sunrise-500" },
+];
+
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
-        {description ? <p className="mt-0.5 text-[12.5px] text-muted-foreground">{description}</p> : null}
+        <h2 className="heading text-title text-foreground">{title}</h2>
+        {description ? <p className="mt-1 text-[12.5px] text-muted-foreground">{description}</p> : null}
       </div>
-      <div className="divide-y divide-hairline border-y border-hairline">{children}</div>
+      <div className="card-warm divide-y divide-hairline px-4">{children}</div>
     </section>
   );
 }
@@ -76,6 +82,7 @@ export function SettingsPage() {
   const { daemon } = useWorkspace();
   const wb = useWorkbench();
   const [theme, setTheme] = useTheme();
+  const [palette, setPalette] = usePalette();
   const [health, setHealth] = useState<{ version?: string; agent?: unknown } | null>(null);
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const running = daemon.turns.some((t) => !t.stopReason);
@@ -172,24 +179,47 @@ export function SettingsPage() {
             <Row label="Connected services" hint="DigitalOcean, AWS, Jira, GitHub, ruah">
               <Link
                 to="/integrations"
-                className="flex h-7 items-center rounded-md bg-foreground/[0.06] px-2.5 text-[12.5px] text-foreground hover:bg-foreground/10"
+                className="flex h-7 items-center rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground hover:bg-surface-3"
               >
                 Manage
               </Link>
             </Row>
           </Group>
 
-          <Group title="Appearance">
-            <Row label="Theme">
+          <Group title="Appearance" description="The Ruah design system: warm surfaces, one accent.">
+            <Row label="Theme" hint="Dark is lifted for long sessions; High contrast is pure black and white.">
               <Segmented
                 value={theme}
                 onChange={(v: ThemePref) => setTheme(v)}
                 options={[
-                  { value: "system", label: "System" },
                   { value: "dark", label: "Dark" },
                   { value: "light", label: "Light" },
+                  { value: "contrast", label: "High contrast" },
+                  { value: "system", label: "System" },
                 ]}
               />
+            </Row>
+            <Row label="Accent" hint="Buttons, focus, links and the active page.">
+              <div role="radiogroup" aria-label="Accent colour" className="flex items-center gap-1">
+                {PALETTES.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={palette === p.value}
+                    onClick={() => setPalette(p.value)}
+                    className={cn(
+                      "flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12.5px] transition-colors",
+                      palette === p.value
+                        ? "bg-surface-3 text-foreground shadow-sm ring-1 ring-hairline"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    <span className={cn("size-3 rounded-full ring-1 ring-foreground/15", p.swatch)} />
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </Row>
           </Group>
 
@@ -198,7 +228,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={wb.resetOnboarding}
-                className="h-7 rounded-md bg-foreground/[0.06] px-2.5 text-[12.5px] text-foreground hover:bg-foreground/10"
+                className="h-7 rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground hover:bg-surface-3"
               >
                 Show guide
               </button>
