@@ -267,3 +267,63 @@ declare global {
     ruah?: RuahDesktopBridge;
   }
 }
+
+// Integrations (CONTRACTS.md §6.1): cloud, work items, ruah orchestration.
+export interface IntegrationInfo {
+  id: "digitalocean" | "aws" | "jira" | "github" | "ruah" | (string & {});
+  family: "cloud" | "work" | "orchestration";
+  name: string;
+  status: "connected" | "not_connected" | "cli_missing" | "error";
+  detail?: string; // e.g. "doctl context: default", "AWS CLI not installed"
+  setupHint?: string; // what the user runs / enters to connect
+  accounts?: { id: string; label: string }[]; // aws profiles, doctl contexts, jira sites
+}
+
+export type CloudResourceType =
+  | "compute"
+  | "container"
+  | "function"
+  | "app"
+  | "database"
+  | "cache"
+  | "queue"
+  | "storage"
+  | "loadbalancer"
+  | "gateway"
+  | "cdn"
+  | "dns"
+  | "kubernetes"
+  | "other";
+
+export interface CloudResource {
+  id: string; // provider-native id (ARN, DO URN)
+  provider: "digitalocean" | "aws" | (string & {});
+  type: CloudResourceType;
+  service: string; // "droplet", "apps", "ec2", "lambda", "rds", …
+  name: string;
+  region?: string;
+  status?: string;
+  tags?: Record<string, string>;
+  consoleUrl?: string;
+  linkedNodeId?: string; // architecture element it runs (tag ruah:node, name match, or manual)
+  /** Viewer extension (optional, not in §6.1 yet): how linkedNodeId was set. Absent = automatic. */
+  linkSource?: "tag" | "name" | "manual";
+}
+
+/** POST /api/cloud/sync and GET /api/cloud/resources. */
+export interface CloudSyncResult {
+  resources: CloudResource[];
+  syncedAt: string | null;
+  errors: { provider: string; message: string }[];
+}
+
+export interface WorkItem {
+  id: string; // "PLAT-123", "owner/repo#42"
+  provider: "jira" | "github" | (string & {});
+  title: string;
+  status: string;
+  url: string;
+  assignee?: string;
+  updatedAt: string;
+  linkedNodeIds: string[]; // stored links (elements ↔ issues)
+}

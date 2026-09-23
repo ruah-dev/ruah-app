@@ -22,6 +22,7 @@ import { useWorkbench, type PanelView } from "@/lib/workbench";
 import { ROOT_DIAGRAM_ID, ancestry, indexArchitecture, levelDiagramId, parseDiagramId } from "@/lib/architecture";
 import { dismissError, rescan } from "@/lib/daemon";
 import { toast } from "sonner";
+import { isCloudDiagramId } from "@/lib/integrations";
 import { EditorCanvas } from "@/components/editor/EditorCanvas";
 import { Palette } from "@/components/editor/Palette";
 import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
@@ -168,6 +169,7 @@ function Crumbs({ diagram }: { diagram: Diagram }) {
   if (diagram.mode === "architecture")
     chain.forEach((n) => items.push({ label: n.name, id: levelDiagramId(n.id) }));
   else items.push({ label: diagram.title });
+  if (isCloudDiagramId(diagram.id)) items.push({ label: diagram.title });
   if (items.length === 0) items.push({ label: diagram.title });
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-[13px]">
@@ -288,12 +290,14 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
     ws.daemon.source === "daemon" &&
     ws.architecture.nodes.length === 0 &&
     diagram.mode === "architecture";
+  // The derived Cloud level is read-only: it is not part of architecture.json.
+  const derived = isCloudDiagramId(diagram.id);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <EditorCanvas
         emptyHint={!emptyProject}
         diagram={diagram}
-        editable={wb.editing}
+        editable={wb.editing && !derived}
         selectedNodeId={wb.selectedNodeId}
         selectedEdge={wb.selectedEdge}
         onSelectNode={wb.selectNode}
@@ -315,7 +319,7 @@ function Canvas({ diagram, showTray }: { diagram: Diagram; showTray: boolean }) 
         onAsk={(node) => wb.ask(node)}
         onCopyContext={wb.copyContext}
       />
-      {showTray ? <PaletteTray /> : null}
+      {showTray && !derived ? <PaletteTray /> : null}
       {emptyProject ? <EmptyMap /> : null}
       {ws.daemon.source === null ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">

@@ -1,14 +1,8 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ComposerSurface.tsx and
 // ComposerPrimaryActions.tsx (MIT): a rounded surface, auto-growing textarea, controls in the
 // bottom row, a round send / stop button on the right.
-import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import { onComposerDraft, takeComposerDraft } from "@/lib/composer-draft";
 import { ArrowUp, AtSign, Square, X } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import { kindStyles } from "@/components/explorer/kinds";
@@ -90,6 +84,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const switching = daemon.agentSwitch;
   const inputDisabled = !!reason || running || !!switching;
   const canSend = !inputDisabled && !!node && draft.trim().length > 0;
+
+  // "Draft … with the agent" elsewhere in the UI parks text for the composer (never auto-sent).
+  useEffect(() => {
+    const take = () => {
+      const text = takeComposerDraft();
+      if (text === null) return;
+      setDraft(text);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    take();
+    return onComposerDraft(take);
+  }, []);
 
   useLayoutEffect(() => {
     const el = inputRef.current;

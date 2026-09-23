@@ -8,7 +8,7 @@ import {
   CircleHelp,
   Cloud,
   LayoutDashboard,
-  ListTodo,
+  ListChecks,
   Loader2,
   Map as MapIcon,
   Menu,
@@ -50,6 +50,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { RuahMark } from "./RuahMark";
 import { AgentSidebarSection, MapSidebarSection } from "./SidebarSections";
+import { NavBadge } from "@/components/orchestration/navBadges";
 
 export { RuahMark };
 
@@ -67,10 +68,10 @@ export const NAV = [
   { to: "/map", label: "Map", icon: MapIcon, key: "m" },
   { to: "/agent", label: "Agent", icon: MessageSquare, key: "a" },
   { to: "/chats", label: "Chats", icon: MessagesSquare, key: "c" },
-  { to: "/tasks", label: "Tasks", icon: ListTodo, key: "t", optional: true },
-  { to: "/integrations", label: "Integrations", icon: Plug, key: "i", optional: true },
-  { to: "/cloud", label: "Cloud", icon: Cloud, key: "l", optional: true },
+  { to: "/tasks", label: "Tasks", icon: ListChecks, key: "t" },
+  { to: "/cloud", label: "Cloud", icon: Cloud, key: "l" },
   { to: "/usage", label: "Usage", icon: BarChart3, key: "u" },
+  { to: "/integrations", label: "Integrations", icon: Plug, key: "i" },
   { to: "/settings", label: "Settings", icon: Settings, key: "s" },
 ] as const satisfies readonly NavItemDef[];
 
@@ -198,7 +199,7 @@ function NavItem({
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group/nav flex h-row-lg items-center gap-2.5 rounded-md text-ui transition-colors",
+        "group/nav relative flex h-row-lg items-center gap-2.5 rounded-md text-ui transition-colors",
         collapsed ? "w-8 justify-center" : "px-2",
         active
           ? "bg-accent text-foreground"
@@ -206,12 +207,15 @@ function NavItem({
       )}
     >
       <Icon className="size-4 shrink-0" strokeWidth={active ? 2.1 : 1.8} />
-      {collapsed ? null : (
+      {collapsed ? (
+        <NavBadge path={item.to} collapsed />
+      ) : (
         <>
           <span className="truncate">{item.label}</span>
           <kbd className="ms-auto font-sans text-[10.5px] tracking-wider text-muted-foreground/0 transition-colors group-hover/nav:text-muted-foreground/60">
             G {item.key.toUpperCase()}
           </kbd>
+          <NavBadge path={item.to} collapsed={false} />
         </>
       )}
     </Link>
