@@ -69,6 +69,27 @@ Keep adding entries as work lands.
 - **Port decisions, then code, from a reference implementation (t3code, MIT) with attribution.**
 - **Verify for real:** live smoke turns, browser checks, not just unit tests.
 
-## Planned (multi-repo, usage)
-- **Namespacing** (`repoId:nodeId`) for federated models; **edge provenance** (scan/suggested/manual).
-- **AI suggestions as proposals, never facts** (accept/reject per edge with evidence).
+## Multi-repo systems (`src/system/*`, 2026-09-23)
+- **Federation over a shared definition file (federated model, composition over aggregation).** `ruah.system.json` lists repos by relative path; `buildSystemArchitecture` composes one system map from each repo's *own* `architecture.json` (reused when valid, else scanned in memory) instead of re-modelling the repos.
+  Why: each repo keeps owning its map (its own hand edits stay authoritative), the system file is small, committable and shareable; adding a repo = one line.
+  Rejected: one giant scan of a parent folder (repos are not siblings in general, loses per-repo edits); a central database (not diffable/reviewable).
+  Cost: a repo map edited inside the system view does not flow back into the repo's file (the system file is a projection plus system-level edits).
+- **Namespacing to avoid identifier collisions.** Node ids `<repoId>:<nodeId>`, paths `<repoId>/<path>`; the repo node is the parent of the repo's top level, so drill-down = "open the repo".
+  Why: two repos both have `api`/`src`; a prefix keeps ids unique, stable across scans, and reversible (`resolveSystemPath` maps a system path back to the repo on disk).
+  Rejected: renumbering/suffixing duplicates (`api-2` changes meaning when repo order changes); nested files per repo (the viewer and context pack want one model).
+  Cost: the id pattern (CONTRACTS.md conventions) gained an optional `<repoId>:` prefix; the viewer's own id check must accept it.
+- **Deduplication by canonical key (entity resolution).** Shared infra from several repos (compose `db: postgres:16`, a `pg` dependency, a `postgres://` URL) resolves to one top-level node keyed by infra kind (`postgres`), not by the local name.
+  Why: the point of the system view is to see who shares what; three "db" boxes hide that.
+  Cost: two genuinely separate Postgres clusters collapse into one node (split by hand if it matters).
+- **Edge provenance (`source: scan | suggested | manual`).** Every edge says where it came from; re-scans replace exactly the `scan` set and keep the rest (`src/system/merge.ts`).
+  Why: deterministic regeneration and human knowledge can coexist without a diff/patch step; the UI can style or filter by provenance.
+  Rejected: remembering "deleted" scan edges (tombstones) — not needed yet; a separate overlay file for hand edits (two files to keep in sync).
+  Cost: a client that strips unknown fields turns scan edges into `manual` ones that re-scans can no longer replace (contract requires round-tripping).
+- **Evidence-backed inference (explainable heuristics).** Cross-repo edges come only from rules that can point at a line: compose/k8s/terraform, env/config/source URLs and `*_URL`/`*_HOST` values, topic names published in one repo and consumed in another, internal package dependencies. Each edge carries `evidence: ["repo/path:line", …]`.
+  Why: a map people trust must be checkable in one click; evidence also lets the user judge false positives instead of the tool hiding uncertainty.
+  Rejected: AST/type-level analysis per language (slow, per-language work, still blind to config); runtime tracing (needs the system running).
+  Cost: regex heuristics miss dynamic names (`topic: cfg.topic`), localhost URLs and monorepo path strings (`"apps/server/dist/bin.mjs"`); bounded file/byte caps can miss signals in huge repos.
+- **AI suggestions as proposals, never facts (human-in-the-loop, dependency injection).** `suggestConnections(system, runAgent)` takes the agent call as an injected function, asks for JSON edges with file:line evidence and confidence, then validates: unknown nodes, self-edges, out-of-range confidence, evidence that is malformed / outside the repo / past the end of the file are rejected; duplicates of known edges are dropped. Accepted ones become `source: "suggested"` edges that survive re-scans.
+  Why: LLM output is useful for what heuristics cannot see but must not silently change the model; injection keeps the library testable with canned replies and provider-agnostic.
+  Rejected: letting the agent edit `architecture.json` directly (unreviewable, can corrupt the file).
+  Cost: rejected suggestions are not remembered yet, so the agent may propose them again.
