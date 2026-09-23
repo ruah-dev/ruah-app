@@ -374,6 +374,13 @@ export function EditorCanvas({
   useEffect(() => {
     setFilters(NO_FILTERS);
   }, [diagram.id]);
+  // A new focus / filter: frame what is left.
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    if (filtersRef.current === filters) return;
+    filtersRef.current = filters;
+    if (filters !== NO_FILTERS) requestAnimationFrame(() => fitRef.current(true));
+  }, [filters]);
 
   // ---- input: wheel (pan / zoom), background drag, node drag ----------------
   const toWorld = useCallback((clientX: number, clientY: number) => {
@@ -421,6 +428,8 @@ export function EditorCanvas({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      // Portalled popovers (filters) bubble React events here although they are not on the canvas.
+      if (!shellRef.current?.contains(e.target as Node)) return;
       if ((e.target as HTMLElement).closest("[data-node],[data-ui]")) return;
       stopAnim();
       onSelectNode(null);
@@ -748,7 +757,7 @@ export function EditorCanvas({
         if (linkFrom) setCursor(toWorld(e.clientX, e.clientY));
       }}
       onDoubleClick={(e) => {
-        if (!editable) return;
+        if (!editable || !shellRef.current?.contains(e.target as Node)) return;
         if ((e.target as HTMLElement).closest("[data-node],[data-ui]")) return;
         const p = toWorld(e.clientX, e.clientY);
         onAddNode(diagram.mode === "workflow" ? "step" : "service", snap(p.x), snap(p.y));

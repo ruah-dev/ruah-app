@@ -67,7 +67,7 @@ export function FilterMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className={cn(btn, "w-auto gap-1 px-2 text-[12px]", active ? "text-primary" : "")} aria-label="Filters" title="Filter, focus and group">
+        <button type="button" className={cn(btn, "flex w-auto gap-1 px-2 text-[12px]", active ? "text-primary" : "")} aria-label="Filters" title="Filter, focus and group">
           <Filter className="size-3.5" />
           {active ? <span className="tabular-nums">{active}</span> : null}
         </button>

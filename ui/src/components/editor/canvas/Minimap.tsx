@@ -96,7 +96,8 @@ export const Minimap = forwardRef<MinimapHandle, Props>(function Minimap({ nodes
     onJump((e.clientX - rect.left - t.ox) / t.s, (e.clientY - rect.top - t.oy) / t.s);
   };
 
-  if (!world || nodes.length < 2) return null;
+  // Small levels fit on screen anyway: the minimap would only cover content.
+  if (!world || nodes.length < 12) return null;
   return (
     <canvas
       ref={canvasRef}
