@@ -137,10 +137,13 @@ export function buildPromptBlocks(
   root: string,
   links: boolean,
 ): ContentBlock[] {
-  const blocks: ContentBlock[] = [{ type: "text", text: pack }];
-  if (!links) return blocks;
-  for (const rel of files.slice(0, FILE_LIMIT)) {
-    blocks.push({ type: "resource_link", uri: pathToFileURL(resolve(root, rel)).href, name: rel });
-  }
-  return blocks;
+  // Links first, pack text last: the pack ends with the user's question, and
+  // agents join adjacent blocks, so a link right after the question reads as
+  // part of it (e.g. "Reply with exactly: OK[@src/app.ts](…)" got echoed).
+  const text: ContentBlock = { type: "text", text: pack };
+  if (!links) return [text];
+  const linkBlocks: ContentBlock[] = files
+    .slice(0, FILE_LIMIT)
+    .map((rel) => ({ type: "resource_link", uri: pathToFileURL(resolve(root, rel)).href, name: rel }));
+  return [...linkBlocks, text];
 }

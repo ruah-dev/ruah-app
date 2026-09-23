@@ -176,6 +176,8 @@ export type ClientMessage =
   | { type: "cancel"; turnId: string }
   | { type: "session.reset" }                                             // Phase 3: new ACP session (drops agent memory)
   | { type: "mode.set"; modeId: string }                                  // Phase 3: session/set_mode
+  | { type: "model.set"; modelId: string }                                // switch model for the live session
+  | { type: "agent.set"; agentId: string }                                // switch coding agent: stops the current one (cancelling any turn), starts the new one with a fresh session
   | { type: "architecture.save"; architecture: Architecture };            // Phase 3: daemon validates + writes the file
 
 // ---------- daemon -> viewer ----------
@@ -184,7 +186,7 @@ export type ServerMessage =
       root: string; path: string; architecture: Architecture }            // root = absolute repo dir on the daemon host
   | { type: "architecture.error"; path: string; message: string }         // file invalid; previous revision stays live
   | { type: "agent.status"; state: AgentState; agent?: { name: string; version: string };
-      sessionId?: string; modes?: ModeState; error?: string }
+      sessionId?: string; modes?: ModeState; models?: ModelState; agents?: AgentChoiceState; error?: string }
   | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string }
   | { type: "stream"; turnId: string; event: StreamEvent }
   | { type: "permission.request"; turnId: string; requestId: string;
@@ -198,6 +200,16 @@ export type StopReason = "end_turn" | "max_tokens" | "max_turn_requests" | "refu
 
 export interface ModeState {
   currentModeId: string;                                         // Claude adapter: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
+  available: { id: string; name: string; description?: string }[];
+}
+
+export interface AgentChoiceState {
+  currentAgentId: string;                                        // "claude" (Claude Agent SDK) | "cursor" | "grok" | "kiro" (ACP)
+  available: { id: string; name: string; installed: boolean; description?: string; installHint?: string }[];
+}
+
+export interface ModelState {
+  currentModelId: string;                                        // e.g. "default", "opus", "sonnet", "haiku" (agent-defined ids)
   available: { id: string; name: string; description?: string }[];
 }
 
@@ -229,6 +241,7 @@ export interface PermissionOption {
 
 export type ErrorCode =
   | "bad_message"          // frame failed validation
+  | "save_rejected"        // architecture.save failed validation or could not be written
   | "unknown_node"         // prompt.nodeId not in current architecture
   | "busy"                 // a turn is active; prompt rejected
   | "no_turn"              // cancel/permission.response for an unknown turn or request
@@ -264,6 +277,9 @@ export type ErrorCode =
 | `GET /api/context/:nodeId` | `text/plain` context pack for the node | used by "Copy context" in the node popover |
 | `GET /api/file?path=<rel>` | `{ path, lang, content }` | inside root only; max 512 KiB; binary → 415; missing → 404 |
 | `PUT /api/architecture` | Phase 3, same as `architecture.save` | body validated, written atomically |
+| `POST /api/rescan` | re-run the scanner on the served repo, merging hand edits; `{ ok, nodes, edges, layers, ms }` | Origin checked like `/ws` (403 otherwise); result is broadcast as `architecture` reason `saved`; 422 if the result fails validation |
+| `GET /api/usage/summary?range=24h\|7d\|30d` | `{ range, totals: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: number\|null, turns }, series: { t, agentId, model, inputTokens, outputTokens, costUsd\|null }[], byModel: { agentId, model, turns, inputTokens, outputTokens, costUsd\|null }[] }` | per-turn usage recorded by the daemon in `~/.ruah/usage.jsonl` (all repos); `t` = ISO bucket start (hourly for 24h, daily otherwise); `costUsd` only when the agent reports it |
+| `GET /api/usage/limits` | `{ providers: { agentId, name, status: "available"\|"unavailable"\|"unknown", windows: { id, label, kind: "session"\|"weekly"\|"other", usedPercent: number\|null, resetsAt: string\|null }[], note? }[] }` | Claude: SDK `get_usage` + streamed `rate_limit_event` (port of t3code `claudeUsageLimits.ts`); other agents `unknown` unless their ACP usage updates say otherwise |
 
 ### 2.4 Example: one complete turn
 
@@ -315,8 +331,10 @@ The option ids above (`allow`, `allow_always`, `reject`) are illustrative. The d
 | `permission.response` | `RequestPermissionResponse { outcome: { outcome: "selected", optionId } }` or `{ outcome: "cancelled" }` |
 | `cancel` | `session/cancel` notification; prompt returns `stopReason: "cancelled"` |
 | `mode.set` | `session/set_mode { sessionId, modeId }` |
-| `agent.status.modes` | `NewSessionResponse.modes` and `current_mode_update` |
-| ignored | `user_message_chunk`, `available_commands_update`, `config_option_update`, `usage_update`, `session_info_update`, any `_`-prefixed extension method |
+| `model.set` | `session/set_config_option` on the agent's `model` option (fallback `session/set_model`); Claude SDK provider: `query.setModel()` |
+| `agent.status.modes` | `NewSessionResponse.modes` and `current_mode_update`; agents without `modes` (OpenCode): the `select` config option with category `mode`, switched via `session/set_config_option` |
+| `agent.status.models` | `NewSessionResponse.configOptions` (the `select` option with category `model`) and `config_option_update`; fallback: the unstable `NewSessionResponse.models` |
+| ignored | `user_message_chunk`, `available_commands_update`, `config_option_update` (except the model option), `usage_update`, `session_info_update`, any `_`-prefixed extension method |
 
 ---
 
@@ -376,10 +394,12 @@ The daemon sends `session/prompt` with:
 
 ```json
 [
-  { "type": "text", "text": "<the full string from §3.1>" },
-  { "type": "resource_link", "uri": "file:///abs/repo/services/invoices-api/src/app.ts", "name": "services/invoices-api/src/app.ts" }
+  { "type": "resource_link", "uri": "file:///abs/repo/services/invoices-api/src/app.ts", "name": "services/invoices-api/src/app.ts" },
+  { "type": "text", "text": "<the full string from §3.1>" }
 ]
 ```
+
+Links come first and the text block last, because the text ends with the user's question and agents concatenate adjacent blocks: a link placed right after the question was read as part of it (2026-09-23).
 
 One `resource_link` per listed file (same 12-file cap), only when the agent's `promptCapabilities` allow it (the Claude adapter treats them as `@`-mentions and opens the files without a tool round-trip). `--no-links` disables them. The text block is the contract; the links are an optimisation.
 

@@ -16,6 +16,29 @@ export const ModeStateSchema = z.object({
 });
 export type ModeState = z.infer<typeof ModeStateSchema>;
 
+// Same shape as ModeState: the models the agent offers and the active one.
+export const ModelStateSchema = z.object({
+  currentModelId: z.string(),
+  available: z.array(z.object({ id: z.string(), name: z.string(), description: z.string().optional() })),
+});
+export type ModelState = z.infer<typeof ModelStateSchema>;
+
+// Which coding agent drives the session. `installed` is false when the CLI
+// was not found on PATH (the viewer shows it disabled with an install hint).
+export const AgentChoiceStateSchema = z.object({
+  currentAgentId: z.string(), // "claude" | "cursor" | "grok" | "kiro" (open)
+  available: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      installed: z.boolean(),
+      description: z.string().optional(),
+      installHint: z.string().optional(),
+    }),
+  ),
+});
+export type AgentChoiceState = z.infer<typeof AgentChoiceStateSchema>;
+
 export const ToolCallViewSchema = z.object({
   toolCallId: z.string(),
   title: z.string(),
@@ -59,6 +82,7 @@ export type StreamEvent = z.infer<typeof StreamEventSchema>;
 
 export const ErrorCodeSchema = z.enum([
   "bad_message",
+  "save_rejected", // architecture.save failed validation or could not be written
   "unknown_node",
   "busy",
   "no_turn",
@@ -83,6 +107,8 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("cancel"), turnId: z.string() }),
   z.object({ type: z.literal("session.reset") }),
   z.object({ type: z.literal("mode.set"), modeId: z.string() }),
+  z.object({ type: z.literal("model.set"), modelId: z.string() }),
+  z.object({ type: z.literal("agent.set"), agentId: z.string() }),
   z.object({ type: z.literal("architecture.save"), architecture: ArchitectureSchema }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
@@ -104,6 +130,8 @@ export const ServerMessageSchema = z.union([
     agent: z.object({ name: z.string(), version: z.string() }).optional(),
     sessionId: z.string().optional(),
     modes: ModeStateSchema.optional(),
+    models: ModelStateSchema.optional(),
+    agents: AgentChoiceStateSchema.optional(),
     error: z.string().optional(),
   }),
   z.object({

@@ -1,5 +1,7 @@
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -18,10 +20,20 @@ serve options:
   --port <n>               port to listen on (default 4177)
   --host <addr>            bind address (default 127.0.0.1)
   --viewer <dir>           static viewer directory (default ./viewer)
+  --agent <id>             initial coding agent (switchable from the viewer):
+                           claude (Claude Code via the Claude Agent SDK, default),
+                           cursor (cursor-agent acp), grok (grok agent stdio),
+                           kiro (kiro-cli acp), opencode (opencode acp),
+                           acp | claude-acp (Claude via claude-agent-acp)
   --mock                   run the scripted mock agent instead of Claude Code
   --allow-origin <glob>    extra allowed websocket origin (repeatable)
   --no-links               omit resource_link blocks from prompts
   --open                   open the viewer URL in the default browser
+
+scan options:
+  --out <path>             output file (default <repo>/architecture.json)
+  --dry-run                print the JSON to stdout instead of writing it
+  --describe               ask the agent to write node descriptions (needs the agent bridge)
 `;
 
 async function serve(argv: readonly string[]): Promise<number> {
@@ -38,6 +50,7 @@ async function serve(argv: readonly string[]): Promise<number> {
       host: { type: "string", default: "127.0.0.1" },
       viewer: { type: "string", default: "viewer" },
       mock: { type: "boolean", default: false },
+      agent: { type: "string", default: "claude" },
       "allow-origin": { type: "string", multiple: true, default: [] },
       links: { type: "boolean", default: true },
       open: { type: "boolean", default: false },
@@ -46,6 +59,12 @@ async function serve(argv: readonly string[]): Promise<number> {
   });
   if (repo === undefined) {
     process.stderr.write("archmap serve: missing <repo> argument\n");
+    return 2;
+  }
+  const agent = values.agent as string;
+  const { isAgentProvider } = await import("./acp/index.js");
+  if (!isAgentProvider(agent)) {
+    process.stderr.write(`archmap serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
     return 2;
   }
   const { runServe } = await import("./serve/run-serve.js");
@@ -57,11 +76,46 @@ async function serve(argv: readonly string[]): Promise<number> {
       host: values.host as string,
       viewer: values.viewer as string,
       mock: values.mock === true,
+      agent,
       allowOrigins: ((values["allow-origin"] as string[] | undefined) ?? []).filter(
         (o): o is string => typeof o === "string",
       ),
       links: values.links !== false,
       open: values.open === true,
+    },
+    pkg.version,
+  );
+}
+
+async function scan(argv: readonly string[]): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: [...argv],
+      options: {
+        out: { type: "string" },
+        "dry-run": { type: "boolean", default: false },
+        describe: { type: "boolean", default: false },
+      },
+      allowPositionals: true,
+      strict: true,
+    });
+  } catch (err) {
+    process.stderr.write(`archmap scan: ${(err as Error).message}\n`);
+    return 2;
+  }
+  const repo = parsed.positionals[0];
+  if (repo === undefined) {
+    process.stderr.write("archmap scan: missing <repo> argument\n");
+    return 2;
+  }
+  const { runScan } = await import("./scan/run-scan.js");
+  return runScan(
+    {
+      repo,
+      ...(parsed.values.out !== undefined ? { out: parsed.values.out } : {}),
+      dryRun: parsed.values["dry-run"] === true,
+      describe: parsed.values.describe === true,
     },
     pkg.version,
   );
@@ -81,7 +135,9 @@ async function main(argv: readonly string[]): Promise<number> {
     case "serve": {
       return await serve(rest);
     }
-    case "scan":
+    case "scan": {
+      return await scan(rest);
+    }
     case "mcp": {
       parseArgs({ args: rest, strict: false });
       console.log("not implemented");
@@ -94,7 +150,7 @@ async function main(argv: readonly string[]): Promise<number> {
 }
 
 const isDirectRun =
-  process.argv[1] !== undefined && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 
 if (isDirectRun) {
   void main(process.argv.slice(2)).then((code) => process.exit(code));

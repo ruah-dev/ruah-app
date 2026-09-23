@@ -161,16 +161,16 @@ test("neighbors: unique, incoming before outgoing, max 12", () => {
   expect(pack).toContain("neighbors: In1, Dup");
 });
 
-test("buildPromptBlocks: text block first, one resource_link per file, file:// URIs", () => {
+test("buildPromptBlocks: one resource_link per file, file:// URIs, text block last", () => {
   const blocks = buildPromptBlocks(
     GOLDEN,
     arch.nodes.find((n) => n.id === "api")?.files ?? [],
     ROOT,
     true,
   );
-  expect(blocks[0]).toEqual({ type: "text", text: GOLDEN });
   expect(blocks).toHaveLength(5);
-  expect(blocks[1]).toEqual({
+  expect(blocks[4]).toEqual({ type: "text", text: GOLDEN });
+  expect(blocks[0]).toEqual({
     type: "resource_link",
     uri: "file:///Users/petre/code/acme-platform/services/invoices-api/src/app.ts",
     name: "services/invoices-api/src/app.ts",
