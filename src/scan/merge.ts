@@ -9,8 +9,12 @@
 //    `path` (a hand-added concept: an external, a step, a datastore). Scanned
 //    nodes whose path disappeared are dropped. A kept node's missing parent is
 //    cleared; its layer is appended to `layers` if the scan lacks it.
-// 3. Existing edges touching a kept hand-added node are kept when both ends
-//    still exist. All other edges come from the scan.
+// 3. Existing edges the user owns — `source` "manual" or "suggested" — are kept
+//    when both ends still exist, and replace a scanned edge between the same
+//    two nodes (the user's label/kind wins). Existing edges touching a kept
+//    hand-added node are kept too. Everything else comes from the scan; an
+//    existing edge without `source` predates provenance and counts as scan
+//    output (the scanner now writes source "scan" on every edge).
 // 4. Existing workflows are kept when every step still exists.
 import type { Architecture, ArchEdge, ArchNode } from "../contracts/architecture.js";
 
@@ -43,10 +47,14 @@ export function mergeWithExisting(scanned: Architecture, existing: Architecture)
 
   const keptIds = new Set(kept.map((n) => n.id));
   const edgeKey = (e: ArchEdge): string => `${e.from}\u0000${e.to}\u0000${e.label ?? ""}`;
-  const edges = [...scanned.edges];
+  const owned = (e: ArchEdge): boolean => e.source === "manual" || e.source === "suggested";
+  const userEdges = existing.edges.filter((e) => owned(e) && allIds.has(e.from) && allIds.has(e.to));
+  const userPairs = new Set(userEdges.map((e) => `${e.from}\u0000${e.to}`));
+  // A user edge between the same two nodes supersedes the scanned one.
+  const edges = scanned.edges.filter((e) => !userPairs.has(`${e.from}\u0000${e.to}`));
   const seen = new Set(edges.map(edgeKey));
-  for (const e of existing.edges) {
-    if (!(keptIds.has(e.from) || keptIds.has(e.to))) continue;
+  for (const e of [...userEdges, ...existing.edges.filter((x) => !owned(x))]) {
+    if (!owned(e) && !(keptIds.has(e.from) || keptIds.has(e.to))) continue;
     if (!allIds.has(e.from) || !allIds.has(e.to) || seen.has(edgeKey(e))) continue;
     seen.add(edgeKey(e));
     edges.push(e);

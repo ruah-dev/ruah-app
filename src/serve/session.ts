@@ -20,6 +20,8 @@ import { BridgePool, DEFAULT_MAX_LIVE_BRIDGES, type BridgeStatus, type PooledBri
 import { appendStreamEvent, type ChatStore } from "../projects/chat-store.js";
 
 const MAX_FRAME_BYTES = 1_048_576;
+/** How long a running turn survives with no viewer connected (page reloads reconnect well within it). */
+export const DISCONNECT_GRACE_MS = Number.parseInt(process.env.RUAH_DISCONNECT_GRACE_MS ?? "5000", 10);
 /** Same id as src/acp/index.ts MOCK_AGENT_ID (not imported: index.ts pulls in every bridge). */
 const MOCK_AGENT_ID = "mock";
 export const NO_PROJECT_MESSAGE = "no project open";
@@ -738,9 +740,16 @@ export function attachSession(hub: SessionHub, socket: WebSocket): void {
   socket.on("close", () => {
     session.alive = false;
     hub.sockets.delete(socket);
-    // §2.2 rule 6: viewer disconnect during a turn = cancel.
-    if (hub.activeTurnId() !== undefined) {
-      void hub.cancelActive("socket closed");
+    // §2.2 rule 6: cancel a running turn only when the LAST viewer is gone and
+    // none reconnects within the grace period (another tab, or a page reload,
+    // keeps the turn alive).
+    if (hub.activeTurnId() !== undefined && hub.sockets.size === 0) {
+      const turnId = hub.activeTurnId();
+      setTimeout(() => {
+        if (hub.sockets.size === 0 && turnId !== undefined && hub.activeTurnId() === turnId) {
+          void hub.cancelActive("last viewer disconnected");
+        }
+      }, DISCONNECT_GRACE_MS).unref();
     }
   });
 

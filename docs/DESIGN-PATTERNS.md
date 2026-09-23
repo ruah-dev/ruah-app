@@ -447,7 +447,7 @@ function reload(reason: StoreChangeReason): void {
 - **Rejected.** Regenerating from scratch (loses human knowledge); storing hand edits in an overlay file (two files to keep consistent).
 - **Costs.** The merge rules are code that must be understood by users. **Known gap:** the single-repo merge keeps only edges that touch a hand-added node, so a hand-drawn edge between two *scanned* nodes is dropped on re-scan even though the editor marks it `source: "manual"`. The system merge (#23) handles this correctly; the repo merge does not yet.
 - **Not when.** Nobody edits the output; then just regenerate.
-- **Try it.** Fix the known gap: make `mergeWithExisting` keep existing edges whose `source` is `manual` or `suggested` when both ends still exist, mirroring `mergeSystemWithExisting`. Write the test first.
+- **Try it.** Read how `mergeWithExisting` keeps `manual` / `suggested` edges and lets an edited edge replace the scanned one between the same two nodes (test: "re-scan keeps the user's edges" in `test/scan.test.ts`). Then extend it: remember edges the user *deleted* so a re-scan does not bring them back (a tombstone list).
 
 #### 23. Provenance on derived data
 
@@ -814,8 +814,8 @@ Each entry: symptom → root cause → fix → general lesson.
 
 Still open, found while writing this document:
 
-- **Single-repo re-scan drops hand-drawn edges between scanned nodes.** `mergeWithExisting` (`src/scan/merge.ts`) keeps only edges touching hand-added nodes and ignores `source`, so the `manual` marking from fix 8 does not protect edges in a plain repo. The system merge gets this right. Lesson: when you introduce provenance, apply it in every merge path, not just the new one.
-- **Any closing tab cancels the running turn**, even if another tab is still connected (`attachSession` close handler). Harmless with one window; surprising with two.
+- **Single-repo re-scan dropped hand-drawn edges between scanned nodes** — *fixed after this document was first written.* `mergeWithExisting` ignored `source`; now the scanner marks every edge `source: "scan"` and the merge keeps `manual`/`suggested` edges (an edited edge wins over the scanned one). Lesson: when you introduce provenance, apply it in every merge path, not just the new one.
+- **Any closing tab cancelled the running turn**, even with another tab connected — *fixed:* the turn is cancelled only when the last viewer is gone and none reconnects within `DISCONNECT_GRACE_MS` (5 s), so a reload or a second tab keeps it running. Lesson: rules written for "one client" need revisiting the day you allow several.
 
 ---
 

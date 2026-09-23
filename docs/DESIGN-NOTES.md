@@ -30,7 +30,7 @@ Keep adding entries as work lands.
 - **Event-driven push over WebSocket + request/response over HTTP.** `src/serve/server.ts`, `session.ts`.
   Why: streaming tokens/tool calls need push; files/context are cacheable GETs.
 - **Observer / pub-sub.** `bridge.on(listener)`, `store.onChange`, `SessionHub.broadcast`.
-- **State replay on connect (last-known state).** `SessionHub.lastStatus` + `agentStatusMessage()` after `hello`.
+- **State replay on connect (last-known state).** the last-known status per warm-pool entry (`PooledBridge.status`, merged by `mergeStatus`) sent after `hello`.
   Why: a late-joining client must not wait for the next change to know the agent/model/modes. (Bug found and fixed 2026-09-22.)
 - **Single-writer concurrency: one active turn.** `BusyError`, hub's `activeTurn`.
   Why: one agent session = one conversation; avoids interleaved edits.
@@ -106,13 +106,13 @@ Keep adding entries as work lands.
   Rejected: AWS/DO SDKs (heavy deps, own credential handling). Cost: CLI must be installed (`cli_missing` + `setupHint`); CLI output formats can drift (mappers ignore what they do not know).
 - **Credential delegation.** Cloud uses the CLI's existing login (doctl contexts, AWS profiles/SSO, `gh auth`); Ruah stores only the *selection* (`~/.ruah/integrations.json`, mode 0600, no secrets). The one token Ruah must keep (Jira) goes to the macOS Keychain via `/usr/bin/security` (service `ruah`, account `jira:<host>`), verified with `/myself` *before* it is stored. "Disconnect" clears Ruah's selection/token; it never logs a CLI out.
   Why: no secret files to leak, back up or commit; users keep one login per provider.
-  Rejected: an encrypted token file (key management), env vars (leak into child processes/logs). Cost: macOS-only token storage (other platforms get a clear error); `security … -w <token>` briefly exposes the token in the process list to same-user processes (the only non-interactive `security` form).
+  Rejected: an encrypted token file (key management), env vars (leak into child processes/logs). Cost: macOS-only token storage (other platforms get a clear error); writes use `security -i` with the command on stdin so the token never appears in a process argument list (fixed 2026-09-23; `-w <token>` in argv was visible to same-user processes).
 - **Safe process execution.** `src/integrations/exec.ts`: `execFile` with an args array (no shell), 20 s timeout, bounded output, Homebrew dirs appended to `PATH` (GUI launches), user text passed as `--flag=value` (never parseable as a flag), names/profiles/globs validated by regex, error messages built without arguments and passed through `redact()` (known secrets + token-shaped patterns) before they reach the viewer.
 - **Read-only by default; mutations only on explicit request.** Sync/search/status call only `list`/`describe`/`get`/`view`. The only writes: `POST /api/work/create` (issue), ruah task create/start/done/merge/cancel and workflow run. Long-running ruah executors (`task start`, `workflow run`) are launched detached with a log under `~/.ruah/projects/<id>/ruah/`; Ruah never runs `ruah init` or `--skip-gates`. All POSTs pass the `/ws` Origin check.
 - **Links as code.** Element ↔ work-item links live in `<repo>/.ruah/links.json` (sorted, de-duplicated, stable 2-space JSON, rewritten only on change) so a team shares them through git and diffs stay one line per link. Cloud links are machine-specific (accounts differ per developer), so they live in `~/.ruah/projects/<id>/cloud.json` with the last sync; linking is recomputed on every read (manual > `ruah:node` tag > unique exact/normalized name match), so architecture edits show up without re-syncing.
   Rejected: storing links inside `architecture.json` (couples the diagram to one tracker; noisy diffs). Cost: two link stores with different sharing semantics.
 
-## Planned (multi-repo, usage)
+## Earlier plans (now implemented — see the sections above and docs/DESIGN-PATTERNS.md)
 - **Namespacing** (`repoId:nodeId`) for federated models; **edge provenance** (scan/suggested/manual).
 - **AI suggestions as proposals, never facts** (accept/reject per edge with evidence).
 ## Multi-repo systems (`src/system/*`, 2026-09-23)

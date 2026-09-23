@@ -451,3 +451,26 @@ describe("chats", () => {
     expect(chats.get(projectId, chatId)?.turnCount).toBe(2);
   });
 });
+
+describe("viewer disconnects (§2.2 rule 6)", () => {
+  it("closing one of two tabs keeps the turn; closing the last one cancels it after the grace period", async () => {
+    const { hub, switcher, socket } = setup();
+    const a = project("repo-disconnect");
+    hub.setProject(a.runtime());
+    await until(() => hub.agentState() === "idle");
+    const bridge = switcher.bridge("alpha", a.root);
+    const second = new FakeSocket();
+    attachSession(hub, second as unknown as WebSocket);
+    second.receive({ type: "hello", protocol: 1, client: "test/1" });
+
+    socket.receive({ type: "prompt", turnId: "t-dc", nodeId: "api", text: "Keep going" });
+    expect(hub.activeTurnId()).toBe("t-dc");
+    socket.close(); // another tab is still watching
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(bridge.calls).not.toContain("cancel:t-dc");
+    expect(hub.activeTurnId()).toBe("t-dc");
+
+    second.close(); // last viewer gone → cancelled after the grace period (RUAH_DISCONNECT_GRACE_MS in tests)
+    await until(() => bridge.calls.includes("cancel:t-dc"), 3000);
+  });
+});

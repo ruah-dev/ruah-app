@@ -11,6 +11,7 @@ import { parseToml, tomlGet } from "../src/scan/mini-toml.js";
 import { parseYaml, yamlGet, yamlStrings } from "../src/scan/mini-yaml.js";
 import { applyDescriptions } from "../src/scan/describe.js";
 import { scanRepo } from "../src/scan/index.js";
+import { mergeWithExisting } from "../src/scan/merge.js";
 import { main } from "../src/cli.js";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "scan");
@@ -284,5 +285,28 @@ describe("mini parsers and describe helper", () => {
     const r = applyDescriptions(arch, { db: "Primary store.", nope: "x", api: 3 });
     expect(r.described).toBe(1);
     expect(r.architecture.nodes.find((n) => n.id === "db")?.description).toBe("Primary store.");
+  });
+});
+
+describe("re-scan keeps the user's edges", () => {
+  test("keeps manual and suggested edges, lets an edited edge replace the scanned one, drops stale scan edges", () => {
+    const scanned: Architecture = {
+      version: 1, name: "r", layers: [], workflows: [],
+      nodes: [{ id: "a", type: "module", name: "a", path: "a" }, { id: "b", type: "module", name: "b", path: "b" }, { id: "c", type: "module", name: "c", path: "c" }],
+      edges: [{ from: "a", to: "b", label: "imports", source: "scan" }],
+    };
+    const existing: Architecture = {
+      ...scanned,
+      edges: [
+        { from: "a", to: "b", label: "calls billing", source: "manual" },  // edited scan edge
+        { from: "b", to: "c", label: "publishes", source: "manual" },       // drawn by hand
+        { from: "c", to: "a", source: "suggested", evidence: ["c/x.ts:3"] }, // accepted suggestion
+        { from: "c", to: "b", source: "scan" },                             // import that no longer exists
+        { from: "a", to: "gone", source: "manual" },                        // end no longer exists
+      ],
+    };
+    const merged = mergeWithExisting(scanned, existing);
+    const keys = merged.edges.map((e) => `${e.from}>${e.to}:${e.label ?? ""}:${e.source ?? ""}`).sort();
+    expect(keys).toEqual(["a>b:calls billing:manual", "b>c:publishes:manual", "c>a::suggested"]);
   });
 });
