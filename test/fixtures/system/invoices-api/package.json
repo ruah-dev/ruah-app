@@ -1,0 +1,15 @@
+{
+  "name": "@acme/invoices-api",
+  "version": "1.4.0",
+  "description": "Invoices API: creates invoices, stores them in Postgres and publishes invoice events.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.13.0"
+  }
+}

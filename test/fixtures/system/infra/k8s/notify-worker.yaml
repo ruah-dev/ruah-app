@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notify-worker
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: notify-worker
+          image: ghcr.io/acme/notify-worker:1.1
+          env:
+            - name: INVOICES_API_URL
+              value: http://invoices-api.default.svc.cluster.local:8080

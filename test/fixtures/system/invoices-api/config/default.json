@@ -1,0 +1,5 @@
+{
+  "port": 8080,
+  "databaseUrl": "postgres://app@postgres:5432/invoices",
+  "kafka": { "brokers": ["kafka:9092"] }
+}

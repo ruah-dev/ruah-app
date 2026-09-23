@@ -1,0 +1,14 @@
+{
+  "name": "@acme/notify-worker",
+  "private": true,
+  "description": "Sends an email to the customer for every new invoice.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@acme/invoices-api": "^1.4.0",
+    "kafkajs": "^2.2.4",
+    "resend": "^4.0.0"
+  }
+}

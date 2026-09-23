@@ -1,0 +1,33 @@
+services:
+  web:
+    build: ../web
+    ports:
+      - "5173:5173"
+    environment:
+      INVOICES_URL: http://invoices-api:8080
+    depends_on:
+      - invoices-api
+
+  invoices-api:
+    image: ghcr.io/acme/invoices-api:1.4
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/invoices
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      - db
+      - kafka
+
+  notify-worker:
+    image: ghcr.io/acme/notify-worker:1.1
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    depends_on:
+      - kafka
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: app
+
+  kafka:
+    image: bitnami/kafka:3.7
