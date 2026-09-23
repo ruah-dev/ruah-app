@@ -1,16 +1,25 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ComposerSurface.tsx and
 // ComposerPrimaryActions.tsx (MIT): a rounded surface, auto-growing textarea, controls in the
 // bottom row, a round send / stop button on the right.
-import { useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ArrowUp, AtSign, Square, X } from "lucide-react";
 import type { DiagramNode } from "@/data/graphs";
 import { kindStyles } from "@/components/explorer/kinds";
 import {
   setAgent,
   setAgentMode,
+  setAgentModel,
   setModel,
   type DaemonState,
 } from "@/lib/daemon";
+import { consumeModelPickerRequest, onModelPickerRequest } from "@/lib/bus";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +48,8 @@ type Props = {
   onClearContext?: (() => void) | undefined;
   /** When set and nothing is selected, show an "Add context" button. */
   onPickContext?: (() => void) | undefined;
+  /** This composer owns the global ⌘. shortcut (only one mounted composer should). */
+  keyboard?: boolean;
 };
 
 /** Why the composer cannot send right now, or null. Shown quietly under the surface. */
@@ -54,11 +65,21 @@ function blockedReason(daemon: DaemonState): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
-  { node, contextPath, daemon, running, onSend, onStop, onClearContext, onPickContext },
+  { node, contextPath, daemon, running, onSend, onStop, onClearContext, onPickContext, keyboard = true },
   ref,
 ) {
   const [draft, setDraft] = useState("");
-  const [pendingAgent, setPendingAgent] = useState<string | null>(null);
+  const [pendingAgent, setPendingAgent] = useState<{ agentId: string; modelId: string | null } | null>(
+    null,
+  );
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // ⌘. (global): open the agent · model picker of this composer.
+  useEffect(() => {
+    if (!keyboard) return;
+    if (consumeModelPickerRequest()) setPickerOpen(true);
+    return onModelPickerRequest(() => setPickerOpen(true));
+  }, [keyboard]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
@@ -83,11 +104,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     setDraft("");
   };
 
-  const requestAgent = (agentId: string) => {
-    if (running) setPendingAgent(agentId);
+  const requestAgent = (agentId: string, modelId: string | null = null) => {
+    if (running) setPendingAgent({ agentId, modelId });
+    else if (modelId) setAgentModel(agentId, modelId);
     else setAgent(agentId);
   };
-  const pendingName = daemon.agent?.agents?.available.find((a) => a.id === pendingAgent)?.name;
+  const pendingName = daemon.agent?.agents?.available.find(
+    (a) => a.id === pendingAgent?.agentId,
+  )?.name;
 
   const placeholder = switching
     ? `Starting ${switching.name}…`
@@ -171,10 +195,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           <AgentModelPicker
             agents={connected ? daemon.agent?.agents : undefined}
             models={connected ? daemon.agent?.models : undefined}
+            modelsByAgent={daemon.modelsByAgent}
             switching={switching}
             disabled={!connected || running}
+            open={pickerOpen && connected && !running}
+            onOpenChange={setPickerOpen}
             onModel={(id) => setModel(id)}
-            onAgent={requestAgent}
+            onAgent={(id) => requestAgent(id)}
+            onAgentModel={(id, modelId) => requestAgent(id, modelId)}
           />
           <ModePicker
             modes={connected && !switching ? daemon.agent?.modes : undefined}
@@ -227,7 +255,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             <AlertDialogAction
               className="h-8 rounded-lg text-[13px]"
               onClick={() => {
-                if (pendingAgent) setAgent(pendingAgent);
+                if (pendingAgent)
+                  setAgentModel(pendingAgent.agentId, pendingAgent.modelId);
                 setPendingAgent(null);
               }}
             >
