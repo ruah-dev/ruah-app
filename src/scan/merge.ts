@@ -5,9 +5,10 @@
 // 1. A node whose id is in both files keeps the existing file's `description`,
 //    `notes`, `x` and `y` (hand edits win over heuristics); everything else
 //    (type, name, tech, path, files, layer, parent) is refreshed by the scan.
-// 2. An existing node the scan did not produce is kept only when it has no
-//    `path` (a hand-added concept: an external, a step, a datastore). Scanned
-//    nodes whose path disappeared are dropped. A kept node's missing parent is
+// 2. An existing node the scan did not produce is kept when it has no `path`
+//    (a hand-added concept: an external, a step, a datastore) or when its
+//    `path` still exists under `root` (e.g. a level pinned from drill-in, or a
+//    folder the user added by hand). Nodes whose path disappeared are dropped. A kept node's missing parent is
 //    cleared; its layer is appended to `layers` if the scan lacks it.
 // 3. Existing edges the user owns — `source` "manual" or "suggested" — are kept
 //    when both ends still exist, and replace a scanned edge between the same
@@ -16,9 +17,19 @@
 //    existing edge without `source` predates provenance and counts as scan
 //    output (the scanner now writes source "scan" on every edge).
 // 4. Existing workflows are kept when every step still exists.
+import { existsSync } from "node:fs";
+import { resolve, sep } from "node:path";
 import type { Architecture, ArchEdge, ArchNode } from "../contracts/architecture.js";
 
-export function mergeWithExisting(scanned: Architecture, existing: Architecture): Architecture {
+/** A repo-relative path that still exists inside `root` (never outside it). */
+function pathStillExists(root: string, rel: string): boolean {
+  const base = resolve(root);
+  const abs = resolve(base, rel);
+  if (abs !== base && !abs.startsWith(base + sep)) return false;
+  return existsSync(abs);
+}
+
+export function mergeWithExisting(scanned: Architecture, existing: Architecture, root?: string): Architecture {
   const old = new Map(existing.nodes.map((n) => [n.id, n]));
   const scannedIds = new Set(scanned.nodes.map((n) => n.id));
 
@@ -35,7 +46,9 @@ export function mergeWithExisting(scanned: Architecture, existing: Architecture)
     return merged;
   });
 
-  const kept: ArchNode[] = existing.nodes.filter((n) => !scannedIds.has(n.id) && n.path === undefined);
+  const kept: ArchNode[] = existing.nodes.filter(
+    (n) => !scannedIds.has(n.id) && (n.path === undefined || (root !== undefined && pathStillExists(root, n.path))),
+  );
   const allIds = new Set([...scannedIds, ...kept.map((n) => n.id)]);
   const layers = [...(scanned.layers ?? [])];
   for (const n of kept) {

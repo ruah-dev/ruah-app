@@ -441,7 +441,9 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
         notice={<LevelNotice diagram={diagram} />}
         emptyHint={!emptyProject}
         diagram={diagram}
-        editable={wb.editing && !derived}
+        // View mode edits too (move, connect, rename — the user relies on it);
+        // Edit mode adds the element palette. Derived levels (cloud) stay read-only.
+        editable={ws.editable && !derived}
         selectedNodeId={wb.selectedNodeId}
         selectedEdge={wb.selectedEdge}
         onSelectNode={wb.selectNode}

@@ -310,3 +310,25 @@ describe("re-scan keeps the user's edges", () => {
     expect(keys).toEqual(["a>b:calls billing:manual", "b>c:publishes:manual", "c>a::suggested"]);
   });
 });
+
+describe("re-scan keeps pinned levels", () => {
+  test("an existing node whose path still exists survives; one whose path is gone is dropped", () => {
+    const root = mkdtempSync(join(tmpdir(), "ruah-pin-"));
+    mkdirSync(join(root, "src", "billing"), { recursive: true });
+    writeFileSync(join(root, "src", "billing", "index.ts"), "export const x = 1;\n");
+    const scanned: Architecture = { version: 1, name: "r", layers: [], workflows: [], nodes: [{ id: "src", type: "module", name: "src", path: "src" }], edges: [] };
+    const existing: Architecture = {
+      ...scanned,
+      nodes: [
+        ...scanned.nodes,
+        { id: "src/billing", type: "module", name: "billing", path: "src/billing", parent: "src" }, // pinned from drill-in
+        { id: "src/gone", type: "module", name: "gone", path: "src/gone", parent: "src" },          // folder deleted since
+        { id: "outside", type: "module", name: "outside", path: "../etc" },                          // never outside root
+      ],
+      edges: [{ from: "src/billing", to: "src", source: "manual" }],
+    };
+    const merged = mergeWithExisting(scanned, existing, root);
+    expect(merged.nodes.map((n) => n.id).sort()).toEqual(["src", "src/billing"]);
+    expect(merged.edges).toEqual([{ from: "src/billing", to: "src", source: "manual" }]);
+  });
+});

@@ -321,7 +321,7 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
   };
   // Provenance: every scanned edge is marked, so re-scans replace only these.
   arch = { ...arch, edges: arch.edges.map((e) => ({ ...e, source: "scan" })) };
-  if (opts.previous !== undefined && opts.previous !== null) arch = mergeWithExisting(arch, opts.previous);
+  if (opts.previous !== undefined && opts.previous !== null) arch = mergeWithExisting(arch, opts.previous, root);
   return layoutArchitecture(arch);
 }
 
