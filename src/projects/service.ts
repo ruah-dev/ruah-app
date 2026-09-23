@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFile } from "node:child_process";
 import type { Architecture } from "../contracts/architecture.js";
-import type { ProjectInfo } from "../contracts/ws.js";
+import type { ChatInfo, ProjectInfo, TurnRecord } from "../contracts/ws.js";
 import type { ProjectsList, RecentChat } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { createArchitectureStore, type ArchitectureStore } from "../serve/architecture-store.js";
@@ -48,6 +48,28 @@ export const openSystemProjectNotWired: OpenSystemProject = (root) =>
 export interface ProjectHost {
   setProject(runtime: ProjectRuntime | null): void;
   project(): ProjectInfo | null;
+  /** Makes a chat of the open project active (open with `chatId` on the project that is already open). */
+  openChat?(chatId: string): void;
+  /** The open project's store (previews of the current project). */
+  readonly store?: ArchitectureStore | null;
+}
+
+/** GET /api/projects/preview: what the viewer needs to paint a project before switching to it. */
+export interface ProjectPreview {
+  project: ProjectInfo;
+  /** Stored architecture.json (null for systems that are not open, or when missing/invalid). */
+  architecture: Architecture | null;
+  chats: ChatInfo[];
+  /** The chat the project opens on (persisted, §5.5). */
+  activeChatId: string | null;
+  /** That chat's turns, so the chat paints at once too. */
+  activeTurns: TurnRecord[];
+}
+
+/** Project ids are sha1 prefixes; anything else never reaches a path. */
+const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+export function isProjectId(id: string): boolean {
+  return PROJECT_ID.test(id);
 }
 
 export interface ProjectServiceDeps {
@@ -97,6 +119,16 @@ function defaultGitInit(dir: string): Promise<void> {
   });
 }
 
+/** architecture.json of a project that is not open (preview only; invalid or missing = null). */
+function readArchitecture(file: string): Architecture | null {
+  try {
+    const result = validateArchitecture(JSON.parse(fs.readFileSync(file, "utf8")), null);
+    return result.ok ? result.value : null;
+  } catch {
+    return null;
+  }
+}
+
 function isDirectory(p: string): boolean {
   try {
     return fs.statSync(p).isDirectory();
@@ -114,8 +146,12 @@ export class ProjectService {
     return { current: this.deps.host.project(), recent: this.deps.projects.list() };
   }
 
-  /** Opens a folder as the current project (see file header). `file` overrides <root>/architecture.json. */
-  open(inputPath: string, options: { file?: string } = {}): Promise<OpenResult> {
+  /**
+   * Opens a folder as the current project (see file header). `file` overrides
+   * <root>/architecture.json; `chatId` opens the project on that chat (one
+   * step instead of open + chat.open; unknown ids are ignored).
+   */
+  open(inputPath: string, options: { file?: string; chatId?: string | undefined } = {}): Promise<OpenResult> {
     return this.serialize(() => this.openNow(inputPath, options));
   }
 
@@ -158,10 +194,12 @@ export class ProjectService {
     return this.deps.projects.forget(id);
   }
 
-  /** Chats of every project, newest first, with the project's name and root. */
-  recentChats(limit: number): RecentChat[] {
+  /** Chats of every project (or of `projectId` only), newest first, with the project's name and root. */
+  recentChats(limit: number, projectId?: string): RecentChat[] {
     const out: RecentChat[] = [];
-    for (const chat of this.deps.chats.recent(Number.MAX_SAFE_INTEGER)) {
+    if (projectId !== undefined && !isProjectId(projectId)) return out;
+    const source = projectId !== undefined ? this.deps.chats.recentIn(projectId, limit) : this.deps.chats.recent(Number.MAX_SAFE_INTEGER);
+    for (const chat of source) {
       if (out.length >= limit) break;
       const project = this.deps.projects.lookup(chat.projectId);
       if (project === undefined) continue;
@@ -170,7 +208,36 @@ export class ProjectService {
     return out;
   }
 
+  /** A stored chat's turns (any project; hover prefetch). Undefined = unknown project or chat. */
+  chatHistory(projectId: string, chatId: string): TurnRecord[] | undefined {
+    if (!isProjectId(projectId) || this.deps.chats.get(projectId, chatId) === undefined) return undefined;
+    return this.deps.chats.history(projectId, chatId);
+  }
+
+  /** Everything to paint a project before (or while) switching to it. Undefined = unknown id. */
+  preview(id: string): ProjectPreview | undefined {
+    if (!isProjectId(id)) return undefined;
+    const current = this.deps.host.project();
+    const isCurrent = current !== null && current.id === id;
+    const info: ProjectInfo | undefined = isCurrent ? current : (this.deps.projects.get(id) ?? this.lookupInfo(id));
+    if (info === undefined) return undefined;
+    let architecture: Architecture | null = null;
+    if (isCurrent) architecture = this.deps.host.store?.current() ?? null;
+    else if (info.kind === "repo") architecture = readArchitecture(path.join(info.root, ARCHITECTURE_FILE));
+    const chats = this.deps.chats.list(id);
+    const persisted = this.deps.chats.activeChat(id);
+    const activeChatId = persisted !== undefined ? persisted : (chats[0]?.id ?? null);
+    const activeTurns = activeChatId !== null ? this.deps.chats.history(id, activeChatId) : [];
+    return { project: info, architecture, chats, activeChatId, activeTurns };
+  }
+
   // ----- internals -----
+
+  private lookupInfo(id: string): ProjectInfo | undefined {
+    const identity = this.deps.projects.lookup(id);
+    if (identity === undefined) return undefined;
+    return { id: identity.id, name: identity.name, root: identity.root, kind: identity.kind, lastOpenedAt: new Date(0).toISOString() };
+  }
 
   private serialize<T>(task: () => Promise<T>): Promise<T> {
     const run = this.queue.then(task, task);
@@ -178,7 +245,7 @@ export class ProjectService {
     return run;
   }
 
-  private async openNow(inputPath: string, options: { file?: string }): Promise<OpenResult> {
+  private async openNow(inputPath: string, options: { file?: string; chatId?: string | undefined }): Promise<OpenResult> {
     const started = performance.now();
     const trimmed = inputPath.trim();
     if (trimmed.length === 0) throw new ProjectError(400, "path is empty");
@@ -193,11 +260,15 @@ export class ProjectService {
     const id = projectIdFor(root);
 
     const current = this.deps.host.project();
+    const chatId = options.chatId !== undefined && this.deps.chats.get(id, options.chatId) !== undefined ? options.chatId : undefined;
     if (current !== null && current.id === id && options.file === undefined) {
-      // Already open: only the recent list changes.
+      // Already open: only the recent list changes (and the requested chat opens).
       const project = this.deps.projects.touch({ id, name: current.name, root, kind: current.kind });
+      if (chatId !== undefined) this.deps.host.openChat?.(chatId);
       return { project, ms: Math.round(performance.now() - started), scanned: false };
     }
+    // The hub opens the project on its persisted active chat (§5.5): point it at the requested one.
+    if (chatId !== undefined) this.deps.chats.setActiveChat(id, chatId);
 
     let store: ArchitectureStore;
     let kind: ProjectInfo["kind"] = "repo";

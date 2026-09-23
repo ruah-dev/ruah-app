@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { ChatInfoSchema, TurnRecordSchema, type ChatInfo, type StreamEvent, type TurnRecord } from "../contracts/ws.js";
 import { atomicWriteFileSync, readFirstLine } from "./fs-util.js";
+import { ProjectStateStore } from "./project-state.js";
 
 export const CHAT_TITLE_MAX = 80;
 export const NEW_CHAT_TITLE = "New chat";
@@ -98,11 +99,31 @@ export interface ChatStoreOptions {
 
 export class ChatStore {
   private readonly cache = new Map<string, Map<string, ChatHeader>>();
+  /** Per-project state.json (the last active chat, CONTRACTS §5.5). */
+  readonly state: ProjectStateStore;
 
   constructor(
     readonly home: string,
     private readonly options: ChatStoreOptions = {},
-  ) {}
+  ) {
+    this.state = new ProjectStateStore(home, options.onError !== undefined ? { onError: options.onError } : {});
+  }
+
+  /**
+   * The chat last active in the project, persisted across daemon restarts:
+   * a chat id that still exists, null when the project was left without one,
+   * undefined when nothing (valid) was recorded.
+   */
+  activeChat(projectId: string): string | null | undefined {
+    const stored = this.state.activeChat(projectId);
+    if (stored === null || stored === undefined) return stored;
+    return this.get(projectId, stored) !== undefined ? stored : undefined;
+  }
+
+  /** Remembers the active chat of a project in state.json (atomic write; unchanged values are not rewritten). */
+  setActiveChat(projectId: string, chatId: string | null): void {
+    this.state.setActiveChat(projectId, chatId);
+  }
 
   chatsDir(projectId: string): string {
     return path.join(this.home, "projects", projectId, "chats");
@@ -188,6 +209,11 @@ export class ChatStore {
     fs.rmSync(this.chatFile(projectId, chatId), { force: true });
     this.headers(projectId).delete(chatId);
     return true;
+  }
+
+  /** The newest `limit` chats of one project. */
+  recentIn(projectId: string, limit: number): ChatInfo[] {
+    return this.list(projectId).slice(0, Math.max(0, limit));
   }
 
   /** Headers of every chat of every project, newest first. */

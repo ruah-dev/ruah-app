@@ -234,6 +234,9 @@ export class SessionHub {
   private initialChat(projectId: string): string | null {
     const chats = this.options.chats;
     if (chats === undefined) return null;
+    // Persisted in state.json (survives restarts; set ahead by "open project at chat").
+    const persisted = chats.activeChat(projectId);
+    if (persisted !== undefined) return persisted;
     const remembered = this.lastChat.get(projectId);
     if (remembered !== undefined && (remembered === null || chats.get(projectId, remembered) !== undefined)) return remembered;
     return chats.list(projectId)[0]?.id ?? null;
@@ -535,6 +538,7 @@ export class SessionHub {
     const model = entry.status.models?.currentModelId;
     const chat = chats.create(open.info.id, { agentId: this.currentAgentId, model, title: text });
     this.activeChatId = chat.id;
+    chats.setActiveChat(open.info.id, chat.id);
     // The bridge's session was bound to "no chat", i.e. it is empty or was reset: it now belongs to this chat.
     if (entry.chatId === null || entry.chatId === undefined) entry.chatId = chat.id;
     this.broadcastChats();
@@ -603,7 +607,10 @@ export class SessionHub {
 
   private setActiveChat(chatId: string | null): void {
     this.activeChatId = chatId;
-    if (this.open !== null) this.lastChat.set(this.open.info.id, chatId);
+    if (this.open !== null) {
+      this.lastChat.set(this.open.info.id, chatId);
+      this.options.chats?.setActiveChat(this.open.info.id, chatId);
+    }
     const entry = this.entry;
     if (entry !== undefined) {
       void this.bindSession(entry).catch((err: unknown) => this.options.debug(`session switch failed: ${String(err)}`));
