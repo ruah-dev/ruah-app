@@ -8,6 +8,7 @@ import type {
   Architecture,
   ClientMessage,
   ModeState,
+  AgentChoiceState,
   ModelState,
   PermissionOption,
   ServerMessage,
@@ -34,7 +35,14 @@ export interface AgentStatus {
   sessionId?: string;
   modes?: ModeState;
   models?: ModelState;
+  agents?: AgentChoiceState;
   error?: string;
+}
+
+/** Set by setAgent until agent.status reports the new agent idle (or failing). */
+export interface AgentSwitch {
+  agentId: string;
+  name: string;
 }
 
 export interface PermissionRequest {
@@ -65,6 +73,9 @@ export interface Turn {
   resolved: PermissionRecord[];
   stopReason?: StopReason;
   error?: string;
+  /** Epoch ms, viewer clock. */
+  startedAt: number;
+  finishedAt?: number;
 }
 
 export type SaveState = "idle" | "pending" | "saving" | "error";
@@ -84,6 +95,9 @@ export interface DaemonState {
   turns: Turn[];
   lastError: { code: string; message: string } | null;
   save: SaveState;
+  /** Epoch ms of the last architecture.json write confirmed by the daemon (this session). */
+  lastSavedAt: number | null;
+  agentSwitch: AgentSwitch | null;
   wsUrl: string | null;
   httpOrigin: string | null;
 }
@@ -101,6 +115,8 @@ const INITIAL: DaemonState = {
   turns: [],
   lastError: null,
   save: "idle",
+  lastSavedAt: null,
+  agentSwitch: null,
   wsUrl: null,
   httpOrigin: null,
 };
@@ -252,6 +268,7 @@ function connect() {
     );
     set({
       connection: everOpened ? "closed" : state.connection,
+      agentSwitch: null,
       turns,
       agent: everOpened ? null : state.agent,
     });
@@ -308,6 +325,7 @@ function handle(msg: ServerMessage) {
         path: msg.path,
         archError: null,
         save: editsPending() ? state.save : "idle",
+        ...(msg.reason === "saved" ? { lastSavedAt: Date.now() } : {}),
       });
       return;
     }
@@ -316,7 +334,17 @@ function handle(msg: ServerMessage) {
       return;
     case "agent.status": {
       const prev = state.agent;
+      const switching = state.agentSwitch;
+      // A switch is over once the new agent reports idle (or gives up). Its model list comes
+      // with that status; the previous agent's list must not linger meanwhile.
+      const switchDone =
+        !!switching &&
+        (msg.state === "error" ||
+          msg.state === "stopped" ||
+          (msg.state === "idle" && (msg.agents?.currentAgentId ?? switching.agentId) === switching.agentId));
+      const keepModels = !switching || msg.models !== undefined;
       set({
+        agentSwitch: switchDone ? null : switching,
         agent: {
           state: msg.state,
           ...((msg.agent ?? prev?.agent) ? { agent: (msg.agent ?? prev?.agent)! } : {}),
@@ -324,7 +352,10 @@ function handle(msg: ServerMessage) {
             ? { sessionId: (msg.sessionId ?? prev?.sessionId)! }
             : {}),
           ...((msg.modes ?? prev?.modes) ? { modes: (msg.modes ?? prev?.modes)! } : {}),
-          ...((msg.models ?? prev?.models) ? { models: (msg.models ?? prev?.models)! } : {}),
+          ...((msg.models ?? (keepModels ? prev?.models : undefined))
+            ? { models: (msg.models ?? prev?.models)! }
+            : {}),
+          ...((msg.agents ?? prev?.agents) ? { agents: (msg.agents ?? prev?.agents)! } : {}),
           ...(msg.error !== undefined ? { error: msg.error } : {}),
         },
       });
@@ -346,6 +377,7 @@ function handle(msg: ServerMessage) {
               events: [],
               permission: null,
               resolved: [],
+              startedAt: Date.now(),
             },
           ],
         });
@@ -391,6 +423,7 @@ function handle(msg: ServerMessage) {
         ...t,
         permission: null,
         stopReason: msg.stopReason,
+        finishedAt: Date.now(),
         ...(msg.error !== undefined ? { error: msg.error } : {}),
       }));
       return;
@@ -438,6 +471,7 @@ export function sendPrompt(nodeId: string, text: string): string {
     events: [],
     permission: null,
     resolved: [],
+    startedAt: Date.now(),
   };
   const ok = state.source === "daemon" && send({ type: "prompt", turnId: turn.id, nodeId, text });
   if (!ok) {
@@ -497,6 +531,22 @@ export function sendModel(modelId: string): boolean {
 }
 
 export const setModel = sendModel;
+
+/** Switch coding agent. The daemon stops any running turn and starts a new session; until the
+ * new agent reports idle the UI shows a quiet "Starting …" state (state.agentSwitch). */
+export function setAgent(agentId: string): boolean {
+  const agents = state.agent?.agents;
+  const choice = agents?.available.find((a) => a.id === agentId);
+  if (!state.agent || !agents || !choice || !choice.installed) return false;
+  if (agents.currentAgentId === agentId) return true;
+  if (!send({ type: "agent.set", agentId })) return false;
+  const { models: _dropped, ...rest } = state.agent;
+  set({
+    agentSwitch: { agentId, name: choice.name },
+    agent: { ...rest, state: "starting", agents: { ...agents, currentAgentId: agentId } },
+  });
+  return true;
+}
 
 export function resetSession() {
   if (send({ type: "session.reset" })) set({ turns: state.turns.filter((t) => !t.stopReason) });
@@ -604,6 +654,7 @@ export const daemonActions = {
   setFocus,
   setAgentMode,
   setModel,
+  setAgent,
   resetSession,
   editArchitecture,
   fetchFile,

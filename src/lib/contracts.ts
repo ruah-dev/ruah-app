@@ -69,6 +69,7 @@ export type ClientMessage =
   | { type: "session.reset" } // Phase 3: new ACP session (drops agent memory)
   | { type: "mode.set"; modeId: string } // Phase 3: session/set_mode
   | { type: "model.set"; modelId: string } // switch the agent's model (one of agent.status.models.available)
+  | { type: "agent.set"; agentId: string } // switch coding agent (one of agent.status.agents.available); new session
   | { type: "architecture.save"; architecture: Architecture }; // Phase 3: daemon validates + writes the file
 
 // ---------- daemon -> viewer ----------
@@ -89,6 +90,7 @@ export type ServerMessage =
       sessionId?: string;
       modes?: ModeState;
       models?: ModelState; // absent when the agent does not offer a model choice
+      agents?: AgentChoiceState; // absent when the daemon cannot switch agents
       error?: string;
     }
   | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string }
@@ -130,6 +132,18 @@ export interface ModeState {
 export interface ModelState {
   currentModelId: string;
   available: { id: string; name: string; description?: string }[];
+}
+
+/** The coding agents the daemon can run (Claude Code, Cursor Agent, …) and the active one. */
+export interface AgentChoiceState {
+  currentAgentId: string;
+  available: {
+    id: string;
+    name: string;
+    installed: boolean;
+    description?: string;
+    installHint?: string; // shown when installed is false
+  }[];
 }
 
 export type StreamEvent =
