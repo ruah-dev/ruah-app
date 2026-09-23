@@ -139,3 +139,30 @@ Keep adding entries as work lands.
   Why: LLM output is useful for what heuristics cannot see but must not silently change the model; injection keeps the library testable with canned replies and provider-agnostic.
   Rejected: letting the agent edit `architecture.json` directly (unreviewable, can corrupt the file).
   Cost: rejected suggestions are not remembered yet, so the agent may propose them again.
+
+## Drill-in and the scalable map (`src/expand/*`, `ui/src/components/editor/*`, 2026-09-23)
+- **Lazy expansion / ephemeral derived data.** `architecture.json` stops at packages/modules; everything below (folders → files → symbols) is computed on demand by `GET /api/expand/:id` from the working tree and never stored (CONTRACTS §1.6). The viewer caches levels per project (`ui/src/lib/expand.ts`) and *merges* them into the map's architecture, so toGraph, breadcrumbs and the outline need no second code path.
+  Why: a full-depth scan of a monorepo would be tens of thousands of nodes in a file people edit and review; the stored map stays the curated, human-owned view, while depth is always fresh from disk (the agent just edited a file → next expand shows it).
+  Rejected: scanning deeper into `architecture.json` (huge diffs, stale immediately, hand edits drown); a language server / TS compiler for symbols (heavy dependency, per-language setup).
+  Cost: regex parsing misses exotic syntax (nested/dynamic exports, decorators on multi-line signatures); expanded levels are read-only until pinned; a re-scan drops pinned levels (they have paths the scanner did not produce).
+- **Self-describing hierarchical ids (materialised path).** Expanded ids are `<parentId>/<name>` and `<fileId>#<symbol>`; the daemon resolves any of them from a cold cache by expanding the ancestors (`Expander.locate`).
+  Why: ids survive a daemon restart, a reload of the viewer (tabs on a deep level restore themselves, `lineage` rebuilds the breadcrumb) and chats (turns keep their `nodeId`); prompts and `/api/context` work for folders, files and symbols without any server-side session state.
+  Rejected: opaque random ids + a server registry (lost on restart, needs GC).
+  Cost: ids are long; renaming a file changes the id (like a path).
+- **Cache-aside with coarse invalidation.** File list cached 4 s per repo, per-file parses keyed by `(mtime, size)`, levels keyed by the file-list instance. Peeks (`/api/expand-peek`) batch "N inside" counts for a whole level in one request.
+  Why: drilling feels instant after the first read; no watcher needed.
+  Cost: a new file can take up to 4 s to appear.
+- **Camera outside React (imperative transform + React for structure only).** Pan/zoom mutate one `transform` on the world layer; React re-renders only when the view leaves the rendered window, crosses a level-of-detail step, or the data changes. `will-change` is set only while moving so text re-rasterises crisp at rest.
+  Why: 60 fps pan/zoom on 1,000 elements / 3,000 edges (headless Chrome, 1440×900: pan 60 fps p95 17.5 ms at every zoom; zoom sweep 12 %→150 %→12 % 60 fps p95 17.5 ms).
+  Rejected: camera in React state (re-renders every card per frame); a canvas/WebGL renderer (loses DOM text, a11y, selection, the existing card design).
+  Cost: two sources of truth for the camera (ref + quantised state); careful effect ordering.
+- **Viewport culling (virtualisation in 2-D).** Above 160 elements only cards/edges intersecting the viewport grown by 60 % are mounted; routes carry a bounding box for the edge test.
+- **Level of detail (semantic zoom).** Full card (icon, name, tech in mono, "N inside" chip) ≥ 50 %; compact bar + 2-line name ≥ 20 %; tiny blocks below. Text and toolbars counter-scale through a `--inv-k` CSS variable updated in 25 % steps, and a detail switch mid-gesture waits until the wheel pauses.
+  Why: at 12 % a 13 px label is 1.5 px — noise; big maps need shape and colour first, names as you approach.
+  Cost: a short visual "pop" when the detail step lands.
+- **Orthogonal routing with obstacle-aware gutters.** Ports spread along each side ordered by the far end; a Z route is used when it crosses no card (spatial hash), else the edge runs in the column/row gutters. Shared gutters read as light bundles.
+  Rejected: full edge bundling / a layout engine (ELK/dagre: new dependency, positions would fight hand layout).
+  Cost: dense graphs still form a "grid" of gutter lines; labels only on demand.
+- **Progressive disclosure for focus.** Search (⌘F, with "elsewhere in the map" hits), kind/layer filters, 1-/2-hop neighbourhood, collapsible layer groups (members fold into one card, edges merged with counts), selection emphasis with everything else ≥ 60 %.
+  Why: the user reported things "disappearing" at 35 %; focus should emphasise, never hide unless asked.
+- **Context follows navigation.** The agent's subject is the selection, else the element whose level is open; symbols carry file + line range into the pack.

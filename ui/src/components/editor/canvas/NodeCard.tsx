@@ -174,9 +174,9 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
   const opacity = tone === "dimmed" ? "opacity-60" : "opacity-100";
   const ring =
     tone === "current"
-      ? "ring-3 ring-warn/70"
+      ? "border-warn! ring-4 ring-warn/35"
       : tone === "match"
-        ? "ring-2 ring-warn/45"
+        ? "border-warn/70! ring-2 ring-warn/25"
         : selected
           ? "ring-3 ring-primary/25"
           : "";
