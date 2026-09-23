@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Markdown } from "./Markdown";
 import { PermissionCard } from "./PermissionCard";
 import { RowDisclosure, ToolCallRow } from "./ToolCallRow";
+import { TurnAttachments } from "./Attachments";
 
 type Segment =
   | { k: "text"; text: string }
@@ -195,6 +196,7 @@ export function TurnView({
     <div id={`turn-${turn.id}`} className="scroll-mt-4 space-y-3">
       {/* user */}
       <div className="flex flex-col items-end gap-1">
+        <TurnAttachments attachments={turn.attachments} />
         <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
           {turn.text}
         </div>

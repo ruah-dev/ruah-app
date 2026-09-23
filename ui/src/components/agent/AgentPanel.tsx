@@ -1,7 +1,8 @@
 // Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
 // (MIT): a centered, readable message column with the composer docked at the bottom.
-import { useEffect, useMemo, useRef } from "react";
-import { MessageSquarePlus, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { ImagePlus, MessageSquarePlus, RotateCcw } from "lucide-react";
+import type { AttachmentMeta } from "@/lib/contracts";
 import { Phantom } from "@/components/brand/RuahLogo";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
@@ -9,7 +10,7 @@ import { contextPathOf } from "@/lib/architecture";
 import { cancel, resetSession, sendPrompt, type DaemonState } from "@/lib/daemon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Composer, type ComposerHandle } from "./Composer";
+import { Composer, imageBlockedReason, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
 
 const suggestions = [
@@ -124,14 +125,88 @@ export function AgentPanel({
     el.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [focusTurnId]);
 
-  const send = (text: string) => {
+  const send = (text: string, attachments: AttachmentMeta[] = []) => {
     if (!node || running) return;
     stickRef.current = true;
-    sendPrompt(node.id, text);
+    sendPrompt(node.id, text, attachments);
   };
 
+  // Drag & drop images anywhere on the chat (thread or composer). dragenter/leave fire for every
+  // child, so count them; only file drags show the overlay.
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const hasFiles = (e: ReactDragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const dropReason = connected ? imageBlockedReason(daemon) : "Chat needs a connected daemon";
+
+  // A file dropped next to the drop zone must not make the page (or the Electron window)
+  // navigate to it.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => {
+      window.removeEventListener("dragover", guard);
+      window.removeEventListener("drop", guard);
+    };
+  }, []);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = dropReason ? "none" : "copy";
+      }}
+      onDragLeave={(e) => {
+        if (!hasFiles(e)) return;
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
+        composerRef.current?.addFiles(Array.from(e.dataTransfer.files));
+      }}
+    >
+      {dragging ? (
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-2 z-20 grid place-items-center rounded-2xl border-2 border-dashed backdrop-blur-[2px]",
+            dropReason
+              ? "border-warn/50 bg-warn/[0.06]"
+              : "border-primary/60 bg-primary/[0.08]",
+          )}
+        >
+          <div className="flex max-w-[22rem] flex-col items-center gap-2 px-6 text-center">
+            <span
+              className={cn(
+                "grid size-10 place-items-center rounded-full",
+                dropReason ? "bg-warn/15 text-warn" : "bg-primary/15 text-primary",
+              )}
+            >
+              <ImagePlus className="size-5" />
+            </span>
+            <p className="heading text-[14px] text-foreground">
+              {dropReason ? "Can't attach images here" : "Drop images to attach"}
+            </p>
+            <p className="text-[12px] text-muted-foreground">
+              {dropReason ?? "PNG, JPEG, GIF or WebP · up to 10 MB each · 8 per message"}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div
         ref={scrollRef}
         onScroll={(e) => {

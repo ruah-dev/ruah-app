@@ -6,6 +6,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import type {
   AgentState,
   Architecture,
+  AttachmentInfo,
+  AttachmentMeta,
   ClientMessage,
   ModeState,
   AgentChoiceState,
@@ -74,6 +76,8 @@ export interface Turn {
   nodeId: string;
   text: string;
   contextPack: string;
+  /** Images sent with the prompt (§5.6). */
+  attachments?: AttachmentMeta[];
   events: StreamEvent[];
   permission: PermissionRequest | null;
   resolved: PermissionRecord[];
@@ -387,6 +391,7 @@ function recordToTurn(r: TurnRecord, idle: boolean): Turn {
     nodeId: r.nodeId,
     text: r.text,
     contextPack: r.contextPack,
+    ...(r.attachments?.length ? { attachments: r.attachments } : {}),
     events: r.events,
     permission: null,
     resolved: [],
@@ -601,7 +606,12 @@ function handle(msg: ServerMessage) {
       return;
     case "turn.started": {
       if (state.turns.some((t) => t.id === msg.turnId)) {
-        updateTurn(msg.turnId, (t) => ({ ...t, contextPack: msg.contextPack, nodeId: msg.nodeId }));
+        updateTurn(msg.turnId, (t) => ({
+          ...t,
+          contextPack: msg.contextPack,
+          nodeId: msg.nodeId,
+          ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
+        }));
       } else {
         // Started from another viewer tab: show it here too.
         set({
@@ -612,6 +622,7 @@ function handle(msg: ServerMessage) {
               nodeId: msg.nodeId,
               text: msg.text,
               contextPack: msg.contextPack,
+              ...(msg.attachments?.length ? { attachments: msg.attachments } : {}),
               events: [],
               permission: null,
               resolved: [],
@@ -700,18 +711,29 @@ const newId = () =>
     ? crypto.randomUUID()
     : `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-export function sendPrompt(nodeId: string, text: string): string {
+export function sendPrompt(nodeId: string, text: string, attachments: AttachmentMeta[] = []): string {
   const turn: Turn = {
     id: newId(),
     nodeId,
     text,
     contextPack: "",
+    ...(attachments.length ? { attachments } : {}),
     events: [],
     permission: null,
     resolved: [],
     startedAt: Date.now(),
   };
-  const ok = state.source === "daemon" && send({ type: "prompt", turnId: turn.id, nodeId, text });
+  const ok =
+    state.source === "daemon" &&
+    send({
+      type: "prompt",
+      turnId: turn.id,
+      nodeId,
+      text,
+      ...(attachments.length
+        ? { attachments: attachments.map(({ id, name }) => ({ id, name })) }
+        : {}),
+    });
   if (!ok) {
     turn.stopReason = "error";
     turn.error =
@@ -1071,6 +1093,65 @@ export async function fetchContext(nodeId: string): Promise<string> {
   const r = await fetch(`${state.httpOrigin}/api/context/${encodeURIComponent(nodeId)}`);
   if (!r.ok) throw new Error(`context request failed (${r.status})`);
   return r.text();
+}
+
+// ---------------------------------------------------------------------------
+// image attachments (§5.6)
+
+/** Types the daemon accepts (it sniffs the bytes; this only filters obvious misses early). */
+export const ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS = 8;
+
+/** URL of a stored image of the open project (thumbnails, lightbox). */
+export function attachmentUrl(id: string, s: DaemonState = state): string | null {
+  return s.httpOrigin ? `${s.httpOrigin}/api/attachments/${encodeURIComponent(id)}` : null;
+}
+
+/** Whether the current agent takes images; `null` = not known yet (ACP agent not initialized). */
+export function agentTakesImages(s: DaemonState = state): boolean | null {
+  const agents = s.agent?.agents;
+  const current = agents?.available.find((a) => a.id === agents.currentAgentId);
+  return current?.images ?? null;
+}
+
+export interface UploadHandle {
+  done: Promise<AttachmentInfo>;
+  abort: () => void;
+}
+
+/** Uploads one image (raw body). XHR rather than fetch for upload progress. */
+export function uploadAttachment(
+  file: Blob,
+  name: string,
+  onProgress?: (fraction: number) => void,
+): UploadHandle {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<AttachmentInfo>((resolve, reject) => {
+    if (!state.httpOrigin || state.source !== "daemon") {
+      reject(new Error("No daemon connected"));
+      return;
+    }
+    xhr.open("POST", `${state.httpOrigin}/api/attachments?name=${encodeURIComponent(name)}`);
+    xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      let body: (AttachmentInfo & { error?: string }) | null = null;
+      try {
+        body = JSON.parse(xhr.responseText) as AttachmentInfo & { error?: string };
+      } catch {
+        body = null;
+      }
+      if (xhr.status === 200 && body?.id) resolve(body);
+      else reject(new Error(body?.error ?? `upload failed (${xhr.status || "network"})`));
+    };
+    xhr.onerror = () => reject(new Error("upload failed (network)"));
+    xhr.onabort = () => reject(new Error("upload cancelled"));
+    xhr.send(file);
+  });
+  return { done, abort: () => xhr.abort() };
 }
 
 // ---------------------------------------------------------------------------

@@ -65,7 +65,13 @@ export type ClientMessage =
   | { type: "hello"; protocol: 1; client: string } // first frame. client = "architects-canvas/<version>"
   | { type: "architecture.get" } // re-request current file
   | { type: "focus.set"; nodeId: string | null } // selection changed (daemon logs it; MCP exposes it)
-  | { type: "prompt"; turnId: string; nodeId: string; text: string } // turnId: viewer-generated UUID
+  | {
+      type: "prompt";
+      turnId: string;
+      nodeId: string;
+      text: string;
+      attachments?: AttachmentRef[]; // ≤ 8 images uploaded via POST /api/attachments (§5.6)
+    } // turnId: viewer-generated UUID
   | { type: "permission.response"; requestId: string; optionId: string } // optionId must be one of the offered options
   | { type: "permission.response"; requestId: string; cancelled: true } // user dismissed
   | { type: "cancel"; turnId: string }
@@ -101,7 +107,14 @@ export type ServerMessage =
       agents?: AgentChoiceState; // absent when the daemon cannot switch agents
       error?: string;
     }
-  | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string }
+  | {
+      type: "turn.started";
+      turnId: string;
+      nodeId: string;
+      contextPack: string;
+      text: string;
+      attachments?: AttachmentMeta[];
+    }
   | { type: "stream"; turnId: string; event: StreamEvent }
   | {
       type: "permission.request";
@@ -155,7 +168,30 @@ export interface AgentChoiceState {
     installed: boolean;
     description?: string;
     installHint?: string; // shown when installed is false
+    images?: boolean; // takes images in prompts (§5.6); absent = not known yet
   }[];
+}
+
+// Image attachments (CONTRACTS.md §5.6)
+/** POST /api/attachments answer. id = "<sha256>.<png|jpg|gif|webp>". */
+export interface AttachmentInfo {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+/** What a prompt references. */
+export interface AttachmentRef {
+  id: string;
+  name: string;
+}
+/** What turn.started / TurnRecord carry. */
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  mimeType: string;
 }
 
 export type StreamEvent =
@@ -240,6 +276,7 @@ export interface TurnRecord {
   nodeId: string;
   text: string;
   contextPack: string;
+  attachments?: AttachmentMeta[];
   events: StreamEvent[];
   stopReason?: StopReason;
   startedAt: string;
