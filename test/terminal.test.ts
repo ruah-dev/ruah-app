@@ -171,7 +171,8 @@ describe("terminal environment", () => {
   test("login shell from $SHELL, falling back to /bin/zsh or /bin/sh", () => {
     expect(resolveShell({ SHELL: "/bin/sh" }, "darwin")).toEqual({ shell: "/bin/sh", args: ["-l"] });
     const fallback = resolveShell({ SHELL: "/no/such/shell" }, "darwin");
-    expect(fallback.args).toEqual(["-l"]);
+    expect(fallback.args[0]).toBe("-l");
+    expect(resolveShell({ SHELL: "/bin/zsh" }, "darwin")).toEqual({ shell: "/bin/zsh", args: ["-l", "-o", "nopromptsp"] });
     expect(["/bin/zsh", "/bin/bash", "/bin/sh"]).toContain(fallback.shell);
   });
 });

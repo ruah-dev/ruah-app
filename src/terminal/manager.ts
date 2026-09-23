@@ -10,7 +10,7 @@
 import { randomBytes } from "node:crypto";
 import * as path from "node:path";
 import type { TerminalInfo, TerminalServerMessage } from "../contracts/terminal.js";
-import { TerminalError, allowedRoots, resolveTerminalCwd, type TerminalProject } from "./cwd.js";
+import { TerminalError, resolveTerminalCwd, type TerminalProject } from "./cwd.js";
 import { resolveShell, terminalEnv, type ShellCommand } from "./env.js";
 import { ScrollbackBuffer, altScreenAfter } from "./history.js";
 import { loadPty, type PtyLoadResult, type PtyProcess } from "./pty.js";
@@ -141,13 +141,14 @@ export class TerminalManager {
         cwd,
         cols: request.cols,
         rows: request.rows,
-        env: terminalEnv(this.options.env ?? process.env, { projectRoot: project.root, version: this.options.version }),
+        // PWD: shells keep a logical $PWD (symlinked folders) when it names the cwd.
+        env: { ...terminalEnv(this.options.env ?? process.env, { projectRoot: project.root, version: this.options.version }), PWD: cwd },
       });
     } catch (err) {
       throw new TerminalError(`could not start ${shell.shell}: ${err instanceof Error ? err.message : String(err)}`, 500);
     }
     const id = `t_${randomBytes(6).toString("hex")}`;
-    const title = request.title?.trim() || (cwd === allowedRoots(project)[0] ? path.basename(shell.shell) : path.basename(cwd));
+    const title = request.title?.trim() || (cwd === path.resolve(project.root) ? path.basename(shell.shell) : path.basename(cwd));
     const session: Session = {
       info: {
         id,

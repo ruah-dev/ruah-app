@@ -29,7 +29,9 @@ export function resolveShell(env: NodeJS.ProcessEnv = process.env, platform: Nod
     (c): c is string => typeof c === "string" && c.trim().length > 0 && path.isAbsolute(c.trim()),
   );
   const shell = candidates.find((c) => isExecutable(c.trim()))?.trim() ?? "/bin/sh";
-  return { shell, args: ["-l"] };
+  // zsh: no PROMPT_SP (as t3code does) — its inverse "%" end-of-line mark otherwise shows up
+  // after resizes and in a replay painted at another width.
+  return { shell, args: path.basename(shell) === "zsh" ? ["-l", "-o", "nopromptsp"] : ["-l"] };
 }
 
 const BLOCKED_KEYS = new Set([

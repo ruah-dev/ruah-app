@@ -3,7 +3,7 @@
 // element's folder (its `path`, else its first file's folder). A file resolves
 // to its folder and a path that does not exist (yet) to its nearest existing
 // parent. The result must stay inside the project root or, for a system, one
-// of its repo roots — symlinks included.
+// of its repo roots — symlinks resolved for the check; the logical path is returned.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ArchitectureStore } from "../serve/architecture-store.js";
@@ -57,7 +57,7 @@ export function resolveTerminalCwd(project: TerminalProject, spec: { cwd?: strin
     if (rel === undefined && spec.cwd === undefined) throw new TerminalError(`unknown element "${spec.nodeId}"`, 404);
   }
   rel ??= spec.cwd;
-  if (rel === undefined || rel === "" || rel === ".") return realOrSelf(project.root);
+  if (rel === undefined || rel === "" || rel === ".") return path.resolve(project.root);
   if (rel.includes("\0")) throw new TerminalError("invalid path");
 
   let abs: string;
@@ -92,5 +92,6 @@ export function resolveTerminalCwd(project: TerminalProject, spec: { cwd?: strin
 
   const real = realOrSelf(dir);
   if (!allowedRoots(project).some((root) => inside(real, root))) throw new TerminalError("the folder is outside the project", 403);
-  return real;
+  // The logical path (as the user knows it, e.g. under a symlinked ~/Projects): the shell shows it as $PWD.
+  return dir;
 }
