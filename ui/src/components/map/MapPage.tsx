@@ -2,7 +2,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ChatHeader.tsx and
 // PanelLayoutControls.tsx (MIT): a borderless header row, quiet crumbs, icon controls on the right.
 import { Fragment, useMemo, useState } from "react";
-import {
+import { ArrowLeft,
   AlertTriangle,
   ChevronRight,
   Code2,
@@ -248,8 +248,20 @@ function Crumbs({ diagram }: { diagram: Diagram }) {
   const inside = diagram.mode === "architecture" && !isCloudDiagramId(diagram.id);
   const currentParent = ref?.mode === "architecture" ? ref.parentId : null;
   const hasChildrenHere = inside && diagram.nodes.some((n) => n.drill);
+  const canGoUp = items.length > 1;
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden text-[13px]">
+      {canGoUp ? (
+        <button
+          type="button"
+          onClick={() => wb.goUp()}
+          title="Up one level (Backspace, Esc or ⌥↑)"
+          aria-label="Up one level"
+          className="mr-1.5 flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-[12.5px] text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" /> Up
+        </button>
+      ) : null}
       {shown.map((it, i) => {
         const last = i === shown.length - 1;
         const isFold = it.label === "…" && folded.length > 0;

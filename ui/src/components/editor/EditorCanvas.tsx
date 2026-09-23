@@ -625,9 +625,11 @@ export function EditorCanvas({
       if (!shellRef.current?.isConnected || shellRef.current.offsetParent === null) return;
       const sel = K.selectedNodeId && K.nodes.some((n) => n.id === K.selectedNodeId) ? K.selectedNodeId : null;
       if (e.key === "Escape") {
+        // Esc peels one thing at a time: search, pending link, selection, then the level.
         if (K.searchOpen) closeSearch();
         else if (K.linkFrom) setLinkFrom(null);
-        else onSelectNode(null);
+        else if (sel) onSelectNode(null);
+        else K.onGoUp?.();
         return;
       }
       if (e.altKey && e.key === "ArrowUp") {
@@ -641,14 +643,18 @@ export function EditorCanvas({
         if (n?.drill) drillAnimated(n);
         return;
       }
-      if (e.key === "Delete" || e.key === "Backspace") {
+      // Backspace always goes up a level (never deletes: View mode is editable and
+      // Backspace was the documented "up" key). Delete (fn+⌫) or ⌘⌫ removes the selection.
+      if (e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey))) {
         if (K.editable && sel && !isGroupNodeId(sel)) {
           e.preventDefault();
           K.onDeleteNode(sel);
-        } else if (e.key === "Backspace" && K.onGoUp) {
-          e.preventDefault();
-          K.onGoUp();
         }
+        return;
+      }
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        K.onGoUp?.();
         return;
       }
       if (e.key.startsWith("Arrow") && !e.altKey) {
@@ -762,6 +768,13 @@ export function EditorCanvas({
       ref={shellRef}
       className="relative min-h-0 flex-1 touch-none overflow-hidden select-none"
       onPointerDown={onPointerDown}
+      // Mouse "back" button (button 3) goes up a level, like a browser back.
+      onMouseUp={(e) => {
+        if (e.button === 3) {
+          e.preventDefault();
+          onGoUp?.();
+        }
+      }}
       onPointerMove={(e) => {
         if (linkFrom) setCursor(toWorld(e.clientX, e.clientY));
       }}
