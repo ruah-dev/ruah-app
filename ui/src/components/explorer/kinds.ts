@@ -43,22 +43,85 @@ import type { NodeKind } from "@/data/graphs";
 type KindStyle = {
   label: string;
   icon: typeof Server;
-  /** token color class used for icon + accent line */
+  /** token color class used for the icon */
   color: string;
+  /** kind-tinted border (selected / accent) */
   border: string;
+  /** kind-tinted icon tile background */
+  tint: string;
+  /** kind accent bar on the node's leading edge */
+  bar: string;
   glow: string;
 };
 
-const make = (
-  label: string,
-  icon: typeof Server,
-  token: "service" | "data" | "queue" | "external" | "frontend" | "gateway" | "step" | "file",
-): KindStyle => ({
+type Token = "service" | "data" | "queue" | "external" | "frontend" | "gateway" | "step" | "file";
+
+// Literal class names: Tailwind only generates classes it can find verbatim in the source.
+// Kind → Ruah palette: service teal · frontend lavender · data sage · queue amber · gateway coral ·
+// external slate · file + module warm neutral · step pale lavender (see styles.css --node-*).
+const TOKEN_CLASSES: Record<Token, Omit<KindStyle, "label" | "icon">> = {
+  service: {
+    color: "text-node-service",
+    border: "border-node-service/35",
+    tint: "bg-node-service/14",
+    bar: "bg-node-service",
+    glow: "shadow-[0_0_0_1px_var(--node-service)]",
+  },
+  data: {
+    color: "text-node-data",
+    border: "border-node-data/35",
+    tint: "bg-node-data/14",
+    bar: "bg-node-data",
+    glow: "shadow-[0_0_0_1px_var(--node-data)]",
+  },
+  queue: {
+    color: "text-node-queue",
+    border: "border-node-queue/35",
+    tint: "bg-node-queue/14",
+    bar: "bg-node-queue",
+    glow: "shadow-[0_0_0_1px_var(--node-queue)]",
+  },
+  external: {
+    color: "text-node-external",
+    border: "border-node-external/35",
+    tint: "bg-node-external/14",
+    bar: "bg-node-external",
+    glow: "shadow-[0_0_0_1px_var(--node-external)]",
+  },
+  frontend: {
+    color: "text-node-frontend",
+    border: "border-node-frontend/35",
+    tint: "bg-node-frontend/14",
+    bar: "bg-node-frontend",
+    glow: "shadow-[0_0_0_1px_var(--node-frontend)]",
+  },
+  gateway: {
+    color: "text-node-gateway",
+    border: "border-node-gateway/35",
+    tint: "bg-node-gateway/14",
+    bar: "bg-node-gateway",
+    glow: "shadow-[0_0_0_1px_var(--node-gateway)]",
+  },
+  step: {
+    color: "text-node-step",
+    border: "border-node-step/35",
+    tint: "bg-node-step/14",
+    bar: "bg-node-step",
+    glow: "shadow-[0_0_0_1px_var(--node-step)]",
+  },
+  file: {
+    color: "text-node-file",
+    border: "border-node-file/35",
+    tint: "bg-node-file/14",
+    bar: "bg-node-file",
+    glow: "shadow-[0_0_0_1px_var(--node-file)]",
+  },
+};
+
+const make = (label: string, icon: typeof Server, token: Token): KindStyle => ({
   label,
   icon,
-  color: `text-node-${token}`,
-  border: `border-node-${token}/35`,
-  glow: `shadow-[0_0_0_1px_var(--node-${token})]`,
+  ...TOKEN_CLASSES[token],
 });
 
 export const kindStyles: Record<NodeKind, KindStyle> = {
@@ -99,7 +162,7 @@ export const kindStyles: Record<NodeKind, KindStyle> = {
   user: make("user group", Users, "frontend"),
   external: make("external", Globe, "external"),
   // code
-  module: make("module", Folder, "step"),
+  module: make("module", Folder, "file"),
   file: make("file", FileCode2, "file"),
   api: make("api contract", Braces, "file"),
   // workflow

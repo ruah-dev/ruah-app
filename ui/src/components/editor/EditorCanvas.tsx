@@ -284,11 +284,11 @@ export function EditorCanvas({
           {diagram.groups?.map((g) => (
             <div
               key={g.id}
-              className="absolute rounded-xl border border-hairline bg-foreground/[0.015]"
+              className="absolute rounded-2xl border border-dashed border-group/35 bg-group/[0.03]"
               style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
             >
-              <span className="absolute -top-2.5 left-3 flex items-center gap-1.5 bg-canvas px-1.5 text-[11px] text-muted-foreground">
-                <GroupIcon className="size-3 opacity-70" />
+              <span className="absolute -top-2.5 left-3 flex items-center gap-1.5 rounded-md bg-canvas px-1.5 text-[11px] font-medium tracking-wide text-group uppercase">
+                <GroupIcon className="size-3" />
                 {g.label}
               </span>
             </div>
@@ -360,11 +360,11 @@ export function EditorCanvas({
                   height: node.h ?? NODE_H,
                 }}
                 className={cn(
-                  "node-elevated group absolute flex flex-col justify-center gap-0.5 rounded-lg border bg-surface-1 px-3 transition-[opacity,border-color,background-color,box-shadow] duration-150",
+                  "node-elevated group absolute flex flex-col justify-center gap-0.5 rounded-xl border bg-card px-3 transition-[opacity,border-color,background-color,box-shadow] duration-150",
                   editable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                   isSelected
-                    ? "border-primary/70 bg-surface-2 ring-2 ring-primary/15"
-                    : "border-hairline hover:border-foreground/15 hover:bg-surface-2",
+                    ? "border-primary bg-surface-2 ring-3 ring-primary/20"
+                    : "border-hairline hover:border-surface-4 hover:bg-surface-2",
                   dimmed ? "opacity-35" : "opacity-100",
                 )}
                 onPointerDown={(e) => {
@@ -397,8 +397,12 @@ export function EditorCanvas({
                 onMouseEnter={() => setHoverId(node.id)}
                 onMouseLeave={() => setHoverId(null)}
               >
+                <span
+                  aria-hidden
+                  className={cn("absolute inset-y-3 left-0 w-[3px] rounded-e-pill opacity-80", style.bar)}
+                />
                 <span className="flex items-center gap-2">
-                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface-3/60">
+                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-md", style.tint)}>
                     <Icon className={cn("size-3.5", style.color)} />
                   </span>
                   {editingId === node.id ? (
@@ -456,7 +460,7 @@ export function EditorCanvas({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-6"
+                        className="size-6 text-ai hover:bg-ai/12 hover:text-ai"
                         aria-label="Ask agent"
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={() => onAsk(node)}
@@ -513,7 +517,7 @@ export function EditorCanvas({
       {diagram.nodes.length === 0 && emptyHint ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="text-center">
-            <p className="text-[13.5px] font-medium text-foreground">Empty diagram</p>
+            <p className="heading text-[16px] text-foreground">Empty diagram</p>
             <p className="mt-1 text-[12.5px] text-muted-foreground">
               {editable
                 ? "Drag an element from the tray, double-click the canvas, or press N."
@@ -557,7 +561,7 @@ export function EditorCanvas({
       </div>
 
       {editable ? (
-        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-[11px] text-muted-foreground/60 md:inline-flex">
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-[11px] text-faint md:inline-flex">
           <MousePointer2 className="size-3" />
           {linkFrom
             ? "Click a target element to connect · Esc cancels"

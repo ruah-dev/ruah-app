@@ -186,7 +186,7 @@ export function CreateRuahTaskDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="task-files" className="text-[12.5px] font-normal text-muted-foreground">
-              Files to lock <span className="text-muted-foreground/60">· globs, one per line</span>
+              Files to lock <span className="text-faint">· globs, one per line</span>
             </Label>
             <Textarea
               id="task-files"

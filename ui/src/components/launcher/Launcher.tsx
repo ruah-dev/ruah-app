@@ -20,7 +20,7 @@ import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { VirtualList } from "@/components/common/VirtualList";
-import { RuahMark } from "@/components/shell/RuahMark";
+import { RuahLogo } from "@/components/brand/RuahLogo";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
 import { KindBadge, ProjectTile } from "@/components/projects/ProjectBits";
 import { pinnedShortcut } from "@/components/projects/ProjectPalette";
@@ -50,9 +50,9 @@ function ActionRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="group/action flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-45"
+      className="group/action flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-45"
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted-foreground shadow-[inset_0_0_0_1px_var(--color-hairline)] transition-colors group-hover/action:text-foreground">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-hairline bg-surface-1 text-muted-foreground transition-colors group-hover/action:border-primary/40 group-hover/action:text-brand">
         <Icon className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
@@ -90,7 +90,7 @@ function RecentRow({
       onMouseEnter={onHover}
       className={cn(
         "group/recent relative flex h-[calc(100%-4px)] items-center gap-3 rounded-xl px-3 transition-colors",
-        active ? "bg-accent" : "hover:bg-accent/60",
+        active ? "bg-surface-2 shadow-[inset_0_0_0_1px_var(--color-hairline)]" : "hover:bg-surface-2/70",
       )}
     >
       <button
@@ -106,7 +106,7 @@ function RecentRow({
           <span className="truncate text-ui font-medium text-foreground">{project.name}</span>
           <KindBadge kind={project.kind} />
           {current ? (
-            <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[10.5px] font-medium text-primary">
+            <span className="shrink-0 rounded-pill bg-primary/12 px-1.5 text-[10.5px] font-medium text-brand">
               open
             </span>
           ) : null}
@@ -214,8 +214,9 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const dismissOnboarding = () => wb.finishOnboarding();
 
   return (
-    <div className="flex h-dvh flex-col overflow-y-auto bg-background text-foreground">
+    <div className="grain flex h-dvh flex-col overflow-y-auto bg-background text-foreground">
       <header className="flex h-bar shrink-0 items-center gap-2 px-5 max-md:px-4">
+        <RuahLogo size="sm" className="me-2" />
         {overlay && backLabel ? (
           <button
             type="button"
@@ -229,22 +230,22 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         ) : null}
         <span className="flex-1" />
         {daemon.daemonVersion ? (
-          <span className="text-meta text-muted-foreground/60">daemon {daemon.daemonVersion}</span>
+          <span className="font-mono text-meta text-faint">daemon {daemon.daemonVersion}</span>
         ) : null}
       </header>
 
       <main className="mx-auto flex w-full max-w-[60rem] flex-1 flex-col px-8 pt-[max(2rem,8vh)] pb-10 max-md:px-4 max-md:pt-4">
-        <div className="flex items-center gap-3">
-          <RuahMark className="size-10 rounded-xl [&>svg]:size-5" />
-          <div>
-            <h1 className="text-display font-semibold tracking-tight">Ruah</h1>
-            <p className="text-ui-sm text-muted-foreground">
-              Map a codebase, then ask about any part of it.
-            </p>
-          </div>
+        <div className="max-w-2xl">
+          <p className="eyebrow">Architecture workspace</p>
+          <h1 className="heading mt-3 text-[28px] text-foreground max-md:text-[24px]">
+            Map a codebase, <span className="text-muted-foreground">then ask about any part of it.</span>
+          </h1>
+          <p className="mt-3 text-body text-muted-foreground">
+            Services down to files, workflows, cloud and issues — with a coding agent on every element.
+          </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-[17rem_minmax(0,1fr)] gap-10 max-md:mt-6 max-md:grid-cols-1 max-md:gap-6">
+        <div className="mt-12 grid grid-cols-[17rem_minmax(0,1fr)] gap-10 max-md:mt-6 max-md:grid-cols-1 max-md:gap-6">
           <section aria-label="Start" className="space-y-1">
             <h2 className="section-label px-3 pb-1.5">Start</h2>
             <ActionRow
@@ -282,7 +283,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
               />
             ) : null}
             {sample ? (
-              <div className="mt-4 space-y-2 rounded-xl bg-warn/[0.07] p-3 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-warn)_18%,transparent)]">
+              <div className="mt-4 space-y-2 rounded-xl border border-warn/25 bg-warn/[0.07] p-3">
                 <p className="text-ui-sm text-foreground">No Ruah daemon connected</p>
                 <p className="text-meta leading-relaxed text-muted-foreground">
                   Opening and creating projects needs the Ruah app (or{" "}
@@ -324,7 +325,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                       }}
                       placeholder="Filter…"
                       aria-label="Filter recent projects"
-                      className="h-full min-w-0 flex-1 bg-transparent text-ui-sm outline-none placeholder:text-muted-foreground/70"
+                      className="h-full min-w-0 flex-1 bg-transparent text-ui-sm outline-none placeholder:text-faint"
                     />
                   </label>
                 ) : null}
@@ -371,7 +372,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           </div>
         </div>
 
-        <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-10 text-meta text-muted-foreground/80 max-md:hidden">
+        <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-10 text-meta text-faint max-md:hidden">
           <span className="flex items-center gap-1">
             <kbd className="kbd">↑</kbd>
             <kbd className="kbd">↓</kbd> choose

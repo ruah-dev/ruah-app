@@ -24,6 +24,7 @@ import { useProjectActions } from "@/components/projects/useProjectActions";
 import { relativeTime } from "@/lib/time";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Phantom } from "@/components/brand/RuahLogo";
 
 function Section({
   title,
@@ -37,9 +38,9 @@ function Section({
   className?: string;
 }) {
   return (
-    <section className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <div className="flex h-6 items-center justify-between gap-3">
-        <h2 className="text-[13px] font-medium text-foreground">{title}</h2>
+    <section className={cn("card-warm flex min-w-0 flex-col gap-3 p-5 max-md:p-4", className)}>
+      <div className="flex min-h-7 items-center justify-between gap-3">
+        <h2 className="heading text-title text-foreground">{title}</h2>
         {action}
       </div>
       {children}
@@ -50,8 +51,8 @@ function Section({
 function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5" title={hint}>
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <span className="text-[22px] leading-tight font-semibold tracking-tight text-foreground tabular-nums">
+      <span className="eyebrow">{label}</span>
+      <span className="heading text-[24px] text-foreground tabular-nums">
         {value}
       </span>
     </div>
@@ -75,14 +76,17 @@ function RecentChats() {
       }
     >
       {chats.length === 0 ? (
-        <Quiet>
-          No chats in this project yet. Select an element on the map and ask the agent about it —
-          or{" "}
-          <button type="button" onClick={actions.startChat} className="text-foreground underline-offset-2 hover:underline">
-            start a chat
-          </button>
-          .
-        </Quiet>
+        <div className="flex items-center gap-4 py-2">
+          <Phantom expression="agent" size={44} glow={false} />
+          <Quiet>
+            No chats in this project yet. Select an element on the map and ask the agent about it —
+            or{" "}
+            <button type="button" onClick={actions.startChat} className="text-primary underline-offset-2 hover:underline">
+              start a chat
+            </button>
+            .
+          </Quiet>
+        </div>
       ) : (
         <ul className="-mx-2">
           {chats.map((c) => (
@@ -211,7 +215,7 @@ export function DashboardPage() {
         <RescanButton />
         <Link
           to="/map"
-          className="flex h-7 items-center gap-1.5 rounded-md bg-foreground/[0.06] px-2.5 text-[12.5px] text-foreground transition-colors hover:bg-foreground/10"
+          className="flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           <MapIcon className="size-3.5" />
           Open map
@@ -219,16 +223,17 @@ export function DashboardPage() {
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-8 max-md:px-4 max-md:py-6">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 max-md:px-4 max-md:py-6">
           {/* repo header */}
-          <header className="flex flex-col gap-2">
-            <h1 className="text-[24px] leading-tight font-semibold tracking-tight text-foreground">
+          <header className="flex flex-col gap-2 pb-2">
+            <p className="eyebrow">Project</p>
+            <h1 className="heading text-[26px] text-foreground max-md:text-[22px]">
               {app.name}
             </h1>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
               {daemon.root ? <span className="truncate font-mono text-[12px]">{daemon.root}</span> : null}
               {daemon.source === "sample" ? (
-                <span className="text-warn">Sample data — no daemon connected</span>
+                <span className="rounded-pill bg-warn/12 px-2 py-0.5 text-warn">Sample data — no daemon connected</span>
               ) : null}
               <span className="flex items-center gap-2">
                 <span className={cn("size-1.5 rounded-full", agentDotClass(daemon))} />
@@ -252,7 +257,7 @@ export function DashboardPage() {
             </div>
             <div className="grid gap-x-10 gap-y-6 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
               <div className="flex flex-col gap-1.5">
-                <span className="text-[12px] text-muted-foreground">Elements by kind</span>
+                <span className="eyebrow">Elements by kind</span>
                 {stats.kinds.length === 0 ? <Quiet>No elements yet.</Quiet> : null}
                 {stats.kinds.slice(0, 8).map(([k, count]) => {
                   const style = kindStyles[k as keyof typeof kindStyles];
@@ -263,9 +268,9 @@ export function DashboardPage() {
                         <Icon className={cn("size-3.5 shrink-0", style.color)} />
                         <span className="truncate">{style.label}</span>
                       </span>
-                      <span className="h-1.5 rounded-full bg-foreground/[0.06]">
+                      <span className="h-1.5 rounded-full bg-surface-3">
                         <span
-                          className="block h-full rounded-full bg-foreground/35"
+                          className={cn("block h-full rounded-full opacity-85", style.bar)}
                           style={{ width: `${Math.max(4, (count / maxKind) * 100)}%` }}
                         />
                       </span>
@@ -275,21 +280,21 @@ export function DashboardPage() {
                 })}
               </div>
               <dl className="grid grid-cols-[6rem_minmax(0,1fr)] content-start gap-x-3 gap-y-1.5 text-[12.5px]">
-                <dt className="text-muted-foreground">Scanned</dt>
+                <dt className="text-faint">Scanned</dt>
                 <dd className="truncate text-foreground/85">
                   {Number.isFinite(generated) ? formatAgo(generated) : "—"}
                 </dd>
-                <dt className="text-muted-foreground">By</dt>
+                <dt className="text-faint">By</dt>
                 <dd className="truncate text-foreground/85">{architecture.generatedBy ?? "hand-written"}</dd>
-                <dt className="text-muted-foreground">Last saved</dt>
+                <dt className="text-faint">Last saved</dt>
                 <dd className="truncate text-foreground/85">
                   {daemon.lastSavedAt ? formatAgo(daemon.lastSavedAt) : "Not this session"}
                 </dd>
-                <dt className="text-muted-foreground">Revision</dt>
+                <dt className="text-faint">Revision</dt>
                 <dd className="text-foreground/85 tabular-nums">{daemon.revision || "—"}</dd>
                 {architecture.layers?.length ? (
                   <>
-                    <dt className="text-muted-foreground">Layers</dt>
+                    <dt className="text-faint">Layers</dt>
                     <dd className="text-foreground/85">{architecture.layers.join(" · ")}</dd>
                   </>
                 ) : null}
@@ -297,7 +302,7 @@ export function DashboardPage() {
             </div>
           </Section>
 
-          <div className="grid gap-10 border-t border-hairline pt-8 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
             <Section title="Hotspots">
               {stats.hotspots.length === 0 ? (
                 <Quiet>No links between elements yet.</Quiet>
@@ -317,7 +322,7 @@ export function DashboardPage() {
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-[13px] text-foreground">{node.name}</span>
                             {node.path ? (
-                              <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                              <span className="block truncate font-mono text-[11px] text-faint">
                                 {node.path}
                               </span>
                             ) : null}
@@ -383,7 +388,7 @@ export function DashboardPage() {
             )}
           </div>
 
-          <div className="border-t border-hairline pt-8">
+          <div>
             <Section
               title="Usage · 7 days"
               action={
@@ -401,7 +406,7 @@ export function DashboardPage() {
                   />
                   <Stat label="Cost" value={usageCost === null ? "—" : formatUsd(usageCost)} />
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-[12px] text-muted-foreground">Top model</span>
+                    <span className="eyebrow">Top model</span>
                     {(() => {
                       const top = [...usage.data.byModel].sort(
                         (a, b) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens),

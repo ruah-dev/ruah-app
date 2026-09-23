@@ -33,7 +33,7 @@ function TasksBadge({ collapsed }: { collapsed: boolean }) {
     return (
       <span
         aria-label={`${n} running`}
-        className="absolute top-1 right-1 size-1.5 animate-pulse rounded-full bg-primary"
+        className="absolute top-1 right-1 size-1.5 animate-pulse rounded-full bg-warn"
       />
     );
   return (
@@ -41,10 +41,10 @@ function TasksBadge({ collapsed }: { collapsed: boolean }) {
       aria-label={`${n} running`}
       title={`${n} running`}
       className={cn(
-        "flex h-4 min-w-4 shrink-0 items-center justify-center gap-1 rounded-full bg-primary/15 px-1.5 text-[10.5px] font-medium text-primary tabular-nums",
+        "flex h-4 min-w-4 shrink-0 items-center justify-center gap-1 rounded-full bg-warn/15 px-1.5 text-[10.5px] font-medium text-warn tabular-nums",
       )}
     >
-      <span className="size-1 animate-pulse rounded-full bg-primary" />
+      <span className="size-1 animate-pulse rounded-full bg-warn" />
       {n}
     </span>
   );

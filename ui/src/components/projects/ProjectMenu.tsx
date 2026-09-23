@@ -66,7 +66,7 @@ export function ProjectMenu({ dotClass }: { dotClass: string }) {
         {switching ? (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
         ) : (
-          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <ChevronsUpDown className="size-3.5 shrink-0 text-faint" />
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={4} className="w-72 rounded-xl border-hairline p-1">

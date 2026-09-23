@@ -48,7 +48,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { RuahMark } from "./RuahMark";
+import { RuahLogo, RuahMark } from "@/components/brand/RuahLogo";
 import { AgentSidebarSection, MapSidebarSection } from "./SidebarSections";
 import { NavBadge } from "@/components/orchestration/navBadges";
 
@@ -202,17 +202,26 @@ function NavItem({
         "group/nav relative flex h-row-lg items-center gap-2.5 rounded-md text-ui transition-colors",
         collapsed ? "w-8 justify-center" : "px-2",
         active
-          ? "bg-accent text-foreground"
-          : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+          ? "bg-accent text-foreground font-medium"
+          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" strokeWidth={active ? 2.1 : 1.8} />
+      {active ? (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-pill bg-primary",
+            collapsed ? "-start-2" : "-start-2",
+          )}
+        />
+      ) : null}
+      <Icon className={cn("size-4 shrink-0", active && "text-brand")} strokeWidth={active ? 2.1 : 1.8} />
       {collapsed ? (
         <NavBadge path={item.to} collapsed />
       ) : (
         <>
           <span className="truncate">{item.label}</span>
-          <kbd className="ms-auto font-sans text-[10.5px] tracking-wider text-muted-foreground/0 transition-colors group-hover/nav:text-muted-foreground/60">
+          <kbd className="ms-auto font-sans text-[10.5px] font-normal tracking-wider text-transparent transition-colors group-hover/nav:text-faint">
             G {item.key.toUpperCase()}
           </kbd>
           <NavBadge path={item.to} collapsed={false} />
@@ -225,7 +234,7 @@ function NavItem({
     <Tooltip>
       <TooltipTrigger asChild>{link}</TooltipTrigger>
       <TooltipContent side="right">
-        {item.label} <span className="ms-1 text-muted-foreground">G {item.key.toUpperCase()}</span>
+        {item.label} <span className="ms-1 text-faint">G {item.key.toUpperCase()}</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -306,7 +315,7 @@ export function AppSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full min-h-0 shrink-0 flex-col bg-surface-1",
+        "flex h-full min-h-0 shrink-0 flex-col bg-sidebar",
         !mobile && "border-e border-hairline",
         collapsed ? "w-12 items-center" : mobile ? "w-full" : "w-60",
       )}
@@ -326,7 +335,7 @@ export function AppSidebar({
                 onClick={() => wb.setSidebarCollapsed(false)}
                 className="group/mark relative grid size-8 place-items-center rounded-md hover:bg-accent"
               >
-                <RuahMark className="group-hover/mark:opacity-0" />
+                <RuahMark size={24} className="group-hover/mark:opacity-0" />
                 <PanelLeftOpen className="absolute size-4 text-muted-foreground opacity-0 group-hover/mark:opacity-100" />
               </button>
             </TooltipTrigger>
@@ -334,8 +343,7 @@ export function AppSidebar({
           </Tooltip>
         ) : (
           <>
-            <RuahMark />
-            <span className="text-[14px] font-semibold tracking-tight">Ruah</span>
+            <RuahLogo size="sm" className="ps-0.5" />
             <span className="flex-1" />
             {mobile ? null : (
               <Tooltip>
@@ -369,7 +377,7 @@ export function AppSidebar({
                 <ProjectTile project={{ id: current.id, name: current.name }} className="size-5 text-[10px]" />
                 <span
                   className={cn(
-                    "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-surface-1",
+                    "absolute right-1 bottom-1 size-2 rounded-full ring-2 ring-sidebar",
                     daemon.projectSwitch ? "bg-warn animate-pulse" : agentDotClass(daemon),
                   )}
                 />
@@ -412,11 +420,11 @@ export function AppSidebar({
           <button
             type="button"
             onClick={() => wb.setSearchOpen(true)}
-            className="group/nav flex h-row-lg w-full items-center gap-2.5 rounded-md px-2 text-ui text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+            className="group/nav flex h-row-lg w-full items-center gap-2.5 rounded-md px-2 text-ui text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <Search className="size-4" strokeWidth={1.8} />
             Search
-            <kbd className="ms-auto font-sans text-[10.5px] text-muted-foreground/60">/</kbd>
+            <kbd className="kbd ms-auto">/</kbd>
           </button>
         )}
       </nav>
@@ -471,7 +479,7 @@ function SearchDialog() {
   const nav = useNavItems();
   return (
     <CommandDialog open={wb.searchOpen} onOpenChange={wb.setSearchOpen}>
-      <CommandInput placeholder="Search elements, paths, workflows, pages…" className="text-[13.5px]" />
+      <CommandInput placeholder="Search elements, paths, workflows, pages…" className="text-body" />
       <CommandList className="max-h-[min(60vh,420px)]">
         <CommandEmpty className="py-6 text-center text-[13px] text-muted-foreground">
           Nothing matches.
@@ -493,7 +501,7 @@ function SearchDialog() {
               >
                 <Icon className={cn("size-4", kind.color)} />
                 <span className="truncate">{n.name}</span>
-                <span className="ms-auto truncate font-mono text-[11.5px] text-muted-foreground">
+                <span className="ms-auto truncate font-mono text-[11.5px] text-faint">
                   {n.path ?? n.type}
                 </span>
               </CommandItem>
@@ -531,9 +539,7 @@ function SearchDialog() {
             >
               <item.icon className="size-4 text-muted-foreground" />
               {item.label}
-              <span className="ms-auto text-[11px] text-muted-foreground">
-                G {item.key.toUpperCase()}
-              </span>
+              <kbd className="kbd ms-auto">G {item.key.toUpperCase()}</kbd>
             </CommandItem>
           ))}
         </CommandGroup>
@@ -558,7 +564,7 @@ function SwitchingContent({ name }: { name: string }) {
           ))}
         </div>
         <div className="absolute inset-0 grid place-items-center">
-          <p className="flex items-center gap-2 rounded-full bg-popover px-3.5 py-1.5 text-ui-sm text-muted-foreground shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+          <p className="flex items-center gap-2 rounded-full border border-hairline bg-popover px-3.5 py-1.5 text-ui-sm text-muted-foreground shadow-elevated">
             <Loader2 className="size-3.5 animate-spin" />
             Opening {name}…
           </p>
@@ -614,7 +620,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const project = { id: daemon.project?.id ?? daemon.root ?? "sample", name: daemon.project?.name ?? daemon.architecture?.name ?? "Ruah" };
     const current = nav.find((n) => isActive(pathname, n.to));
     return (
-      <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <div className="grain flex h-dvh flex-col overflow-hidden bg-background text-foreground">
         {dialogs}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-hairline px-2">
           <button
@@ -625,7 +631,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Menu className="size-4.5" />
           </button>
-          <span className="text-[14px] font-medium">{current?.label ?? "Ruah"}</span>
+          <span className="heading text-[15px]">{current?.label ?? "Ruah"}</span>
           <span className="flex-1" />
           <button
             type="button"
@@ -658,7 +664,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-background text-foreground">
+    <div className="grain flex h-dvh overflow-hidden bg-background text-foreground">
       {dialogs}
       <AppSidebar collapsed={wb.sidebarCollapsed} />
       <main className="flex min-w-0 flex-1 flex-col">{content}</main>
@@ -683,7 +689,7 @@ export function PageHeader({
         className,
       )}
     >
-      <h1 className="min-w-0 truncate text-[14px] font-medium text-foreground max-md:hidden">
+      <h1 className="heading min-w-0 truncate text-title text-foreground max-md:hidden">
         {title}
       </h1>
       <span className="flex-1" />

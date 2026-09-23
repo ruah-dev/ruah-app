@@ -75,7 +75,7 @@ export function DiffBlock({
   const oldLines = ev.oldText === null ? [] : ev.oldText.split("\n");
   const newLines = ev.newText.split("\n");
   return (
-    <div className="overflow-hidden rounded-lg bg-surface-1 ring-1 ring-hairline">
+    <div className="overflow-hidden rounded-xl bg-surface-1 shadow-card ring-1 ring-hairline">
       <button
         type="button"
         onClick={() => onOpenPath?.(ev.path)}
@@ -134,8 +134,8 @@ function PlanList({ entries }: { entries: PlanEntry[] }) {
                   e.status === "completed"
                     ? "text-ok"
                     : e.status === "in_progress"
-                      ? "text-primary"
-                      : "text-muted-foreground/60",
+                      ? "text-warn"
+                      : "text-faint",
                 )}
               />
               <span
@@ -198,7 +198,7 @@ export function TurnView({
         <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
           {turn.text}
         </div>
-        <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-muted-foreground/70">
+        <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-faint">
           @{contextPath}
         </span>
       </div>
@@ -206,8 +206,8 @@ export function TurnView({
       {/* assistant */}
       <div className="space-y-2 text-[13.5px] leading-relaxed text-foreground/90">
         {turn.contextPack ? (
-          <RowDisclosure icon={FileCode2} label="Context sent to the agent">
-            <pre className="max-h-60 overflow-auto rounded-md bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/75 ring-1 ring-hairline">
+          <RowDisclosure icon={FileCode2} label="Context sent to the agent" tone="ai">
+            <pre className="max-h-60 overflow-auto rounded-lg bg-ai/[0.06] p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/80 ring-1 ring-ai/25">
               {turn.contextPack}
             </pre>
           </RowDisclosure>
@@ -225,7 +225,7 @@ export function TurnView({
               );
             case "thought":
               return (
-                <RowDisclosure key={i} icon={Brain} label="Thinking">
+                <RowDisclosure key={i} icon={Brain} label="Thinking" tone="ai">
                   <p className="pb-1 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
                     {s.text}
                   </p>
@@ -250,7 +250,7 @@ export function TurnView({
                   {denied ? (
                     <X className="size-3.5 shrink-0" />
                   ) : (
-                    <Check className="size-3.5 shrink-0" />
+                    <Check className="size-3.5 shrink-0 text-ok" />
                   )}
                   <span className="truncate">
                     {permissionVerb(s.rec)} · {s.rec.toolCall.title}
@@ -265,7 +265,7 @@ export function TurnView({
         ) : null}
         {showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
           <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-            <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+            <span className="size-1.5 animate-pulse rounded-full bg-ai" />
             Working…
           </p>
         ) : null}
@@ -275,7 +275,9 @@ export function TurnView({
               "text-[12px]",
               turn.stopReason === "error" || turn.stopReason === "refusal"
                 ? "text-bad"
-                : "text-muted-foreground",
+                : turn.stopReason === "cancelled"
+                  ? "text-muted-foreground"
+                  : "text-warn",
             )}
           >
             {stopLabel[turn.stopReason] ?? turn.stopReason}

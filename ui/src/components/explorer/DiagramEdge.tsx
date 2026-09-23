@@ -40,7 +40,7 @@ export function DiagramEdge({ edge, from, to, state }: Props) {
 
   const isActive = state === "active";
   const stroke = isActive ? "var(--edge-active)" : "var(--edge)";
-  const opacity = state === "dimmed" ? 0.18 : isActive ? 1 : 0.65;
+  const opacity = state === "dimmed" ? 0.2 : isActive ? 1 : 0.9;
   const mx = (sx + ex) / 2;
   const my = (sy + ey) / 2;
 
@@ -50,7 +50,8 @@ export function DiagramEdge({ edge, from, to, state }: Props) {
         d={d}
         fill="none"
         stroke={stroke}
-        strokeWidth={isActive ? 1.8 : 1.2}
+        strokeWidth={isActive ? 1.8 : 1.3}
+        vectorEffect="non-scaling-stroke"
         className={edge.animated || isActive ? "edge-flow" : undefined}
         markerEnd={isActive ? "url(#arrow-active)" : "url(#arrow)"}
       />

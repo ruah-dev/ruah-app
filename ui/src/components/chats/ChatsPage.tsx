@@ -132,7 +132,7 @@ export function ChatsPage() {
             }}
             placeholder="Filter chats and projects…"
             aria-label="Filter chats"
-            className="h-full min-w-0 flex-1 bg-transparent text-ui outline-none placeholder:text-muted-foreground/70"
+            className="h-full min-w-0 flex-1 bg-transparent text-ui outline-none placeholder:text-faint"
           />
           {chats ? (
             <span className="shrink-0 text-meta text-muted-foreground">
@@ -183,7 +183,7 @@ export function ChatsPage() {
                       current
                     </span>
                   ) : null}
-                  <span className="ms-auto truncate font-mono text-meta text-muted-foreground/70">
+                  <span className="ms-auto truncate font-mono text-meta text-faint">
                     {prettyPath(r.root)}
                   </span>
                 </div>

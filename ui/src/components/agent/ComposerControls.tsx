@@ -36,7 +36,7 @@ const controlClass =
   "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
 
 const cmdItemClass =
-  "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-ui data-[selected=true]:bg-accent data-[disabled=true]:opacity-45";
+  "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-ui data-[selected=true]:bg-ai/12 data-[disabled=true]:opacity-45";
 
 const itemClass =
   "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-[13px] focus:bg-accent data-[disabled]:opacity-45";
@@ -54,7 +54,7 @@ export function AgentMark({ name, className }: { name: string; className?: strin
     <span
       aria-hidden
       className={cn(
-        "grid size-4 shrink-0 place-items-center rounded-[4px] bg-foreground/10 text-[8px] leading-none font-semibold tracking-tight text-foreground/80",
+        "grid size-4 shrink-0 place-items-center rounded-[4px] bg-ai/18 text-[8px] leading-none font-semibold tracking-tight text-ai ring-1 ring-ai/25",
         className,
       )}
     >
@@ -159,7 +159,7 @@ export function AgentModelPicker({
       className={cmdItemClass}
     >
       <OptionText name={m.name} description={plain(m.description)} />
-      <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !active && "invisible")} />
+      <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !active && "invisible")} />
     </CommandItem>
   );
 
@@ -183,7 +183,7 @@ export function AgentModelPicker({
         align="start"
         side="top"
         sideOffset={6}
-        className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border-hairline p-0"
+        className="w-80 max-w-[calc(100vw-2rem)] rounded-xl border-hairline p-0 shadow-elevated"
       >
         <Command
           className="bg-transparent"
@@ -209,7 +209,7 @@ export function AgentModelPicker({
                         <AgentMark name={a.name} />
                         {a.name}
                         {isCurrent ? (
-                          <span className="text-[10.5px] text-muted-foreground/70">current</span>
+                          <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
                         ) : null}
                       </span>
                     }
@@ -230,7 +230,7 @@ export function AgentModelPicker({
                           name={isCurrent ? "Default model" : `Use ${a.name}`}
                           description={isCurrent ? "This agent picks its model." : plain(a.description) || "Starts a new session"}
                         />
-                        <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !isCurrent && "invisible")} />
+                        <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !isCurrent && "invisible")} />
                       </CommandItem>
                     )}
                   </CommandGroup>
@@ -317,7 +317,7 @@ export function ModePicker({
             >
               <MIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               <OptionText name={modeLabel(m)} description={m.description} />
-              <Check className={cn("mt-0.5 size-3.5 shrink-0 text-primary", !active && "invisible")} />
+              <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !active && "invisible")} />
             </DropdownMenuItem>
           );
         })}

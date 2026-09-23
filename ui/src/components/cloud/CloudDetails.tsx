@@ -29,7 +29,7 @@ export function ElementCloudSection({ node }: { node: DiagramNode }) {
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
         <h3 className="text-[12px] font-medium text-muted-foreground">Runs on</h3>
-        <span className="text-[11.5px] text-muted-foreground/60">{linked.length}</span>
+        <span className="text-[11.5px] text-faint">{linked.length}</span>
         <span className="flex-1" />
         <Link
           to="/cloud"
@@ -51,7 +51,7 @@ export function ElementCloudSection({ node }: { node: DiagramNode }) {
               <span className="min-w-0 truncate text-[12.5px] text-foreground/90" title={r.id}>
                 {r.name}
               </span>
-              <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+              <span className="shrink-0 font-mono text-[11px] text-faint">
                 {providerLabel(r.provider)} · {r.service}
                 {r.region ? ` · ${r.region}` : ""}
               </span>
@@ -175,7 +175,7 @@ export function CloudResourceDetails({ node }: { node: DiagramNode }) {
           ) : null}
         </div>
         {!r.linkedNodeId ? (
-          <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+          <p className="text-[12px] leading-relaxed text-faint">
             Tag the resource <span className="font-mono text-foreground/80">ruah:node=&lt;element id&gt;</span> to
             link it automatically on the next sync.
           </p>

@@ -140,7 +140,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     <div className="space-y-1.5">
       <div
         className={cn(
-          "composer-surface rounded-[20px] transition-shadow focus-within:shadow-[inset_0_0_0_1px_var(--color-input)]",
+          "composer-surface rounded-[20px] transition-shadow focus-within:shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-primary)_55%,transparent),var(--elev-card)]",
           reason && "opacity-80",
         )}
         onClick={(e) => {
@@ -151,7 +151,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         {node ? (
           <div className="flex px-3 pt-2.5">
             <span
-              className="group/chip flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-surface-3/70 ps-1.5 pe-1 text-[11.5px] text-foreground/85"
+              className="group/chip flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-ai/10 ps-1.5 pe-1 text-[11.5px] text-foreground/90 ring-1 ring-ai/25"
               title={contextPath}
             >
               {KindIcon ? <KindIcon className={cn("size-3 shrink-0", kind!.color)} /> : null}
@@ -195,7 +195,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           }}
           placeholder={placeholder}
           aria-label="Message the agent"
-          className="block max-h-[220px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-2.5 pb-1 text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 disabled:cursor-not-allowed"
+          className="block max-h-[220px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-2.5 pb-1 text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-faint disabled:cursor-not-allowed"
         />
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <AgentModelPicker
@@ -241,13 +241,13 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       </div>
       {reason ? (
-        <p className="px-3 text-center text-[11.5px] text-muted-foreground/80">{reason}</p>
+        <p className="px-3 text-center text-[11.5px] text-faint">{reason}</p>
       ) : null}
 
       <AlertDialog open={pendingAgent !== null} onOpenChange={(o) => !o && setPendingAgent(null)}>
         <AlertDialogContent className="max-w-sm rounded-xl border-hairline bg-popover p-5">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">
+            <AlertDialogTitle className="heading text-[15px]">
               Switch to {pendingName ?? "another agent"}?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-[13px]">

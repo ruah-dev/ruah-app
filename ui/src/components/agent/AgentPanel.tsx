@@ -1,7 +1,8 @@
 // Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
 // (MIT): a centered, readable message column with the composer docked at the bottom.
 import { useEffect, useMemo, useRef } from "react";
-import { MessageSquarePlus, RotateCcw, Wind } from "lucide-react";
+import { MessageSquarePlus, RotateCcw } from "lucide-react";
+import { Phantom } from "@/components/brand/RuahLogo";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
 import { contextPathOf } from "@/lib/architecture";
@@ -21,7 +22,8 @@ export function agentDotClass(daemon: Pick<DaemonState, "connection" | "agent" |
   if (daemon.source === "sample") return "bg-muted-foreground/50";
   if (daemon.connection !== "open") return "bg-bad";
   const s = daemon.agent?.state;
-  if (s === "idle") return "bg-ok";
+  // Ready = the agent's own colour (lavender); working = amber; trouble = coral.
+  if (s === "idle") return "bg-ai";
   if (s === "busy" || s === "starting") return "bg-warn";
   return "bg-bad";
 }
@@ -142,20 +144,18 @@ export function AgentPanel({
           <div className="mx-auto w-full max-w-[46rem] space-y-6 px-4 pt-6" aria-busy="true" aria-label="Loading chat">
             {[0, 1].map((i) => (
               <div key={i} className="space-y-2.5">
-                <div className="ms-auto h-8 w-2/5 animate-pulse rounded-2xl bg-foreground/[0.06]" />
-                <div className="h-3 w-4/5 animate-pulse rounded bg-foreground/[0.05]" />
-                <div className="h-3 w-3/5 animate-pulse rounded bg-foreground/[0.05]" />
-                <div className="h-3 w-2/3 animate-pulse rounded bg-foreground/[0.05]" />
+                <div className="ms-auto h-8 w-2/5 animate-pulse rounded-2xl bg-surface-2" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-surface-2" />
+                <div className="h-3 w-3/5 animate-pulse rounded bg-surface-2" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-surface-2" />
               </div>
             ))}
           </div>
         ) : turns.length === 0 ? (
           <div className="mx-auto flex h-full max-w-[26rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-            <span className="grid size-9 place-items-center rounded-xl bg-surface-2 text-primary">
-              <Wind className="size-4.5" />
-            </span>
-            <div className="space-y-1">
-              <p className="text-[15px] font-medium text-foreground">
+            <Phantom expression={connected ? "agent" : "thinking"} size={56} />
+            <div className="space-y-1.5">
+              <p className="heading text-[16px] text-foreground">
                 {node ? `Ask about ${node.label}` : "Ask Ruah about this codebase"}
               </p>
               <p className="text-[12.5px] leading-relaxed text-muted-foreground">
@@ -175,7 +175,7 @@ export function AgentPanel({
                     key={s}
                     type="button"
                     onClick={() => send(s)}
-                    className="rounded-lg px-3 py-1.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="rounded-pill border border-hairline bg-surface-1 px-3 py-1.5 text-[12.5px] text-muted-foreground transition-colors hover:border-ai/45 hover:bg-ai/10 hover:text-foreground"
                   >
                     {s}
                   </button>

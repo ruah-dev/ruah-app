@@ -28,7 +28,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="grid size-6 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+      className="grid size-6 place-items-center rounded-md text-faint transition-colors hover:bg-accent hover:text-foreground"
     >
       <Plus className="size-3.5" />
     </button>
@@ -150,7 +150,7 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
         {workflows.length ? (
           <div className="space-y-px">{workflows.map((d) => row(d))}</div>
         ) : (
-          <p className="px-2 text-label text-muted-foreground/70">None in architecture.json</p>
+          <p className="px-2 text-label text-faint">None in architecture.json</p>
         )}
       </CollapsibleSection>
 
@@ -158,7 +158,7 @@ export function MapSidebarSection({ onNavigate }: { onNavigate?: (() => void) | 
         id="map.files"
         label="Files"
         defaultOpen={false}
-        icon={<FolderTree className="size-3 shrink-0 text-muted-foreground/70" />}
+        icon={<FolderTree className="size-3 shrink-0 text-faint" />}
       >
         <div className="pt-0.5">
             <RepoTree
@@ -189,8 +189,8 @@ export function turnStatus(t: Turn): { label: string; tone: "run" | "ok" | "warn
 }
 
 export const toneDot = {
-  run: "bg-primary animate-pulse",
-  ok: "bg-muted-foreground/50",
+  run: "bg-ai animate-pulse",
+  ok: "bg-ok",
   warn: "bg-warn",
   bad: "bg-bad",
 } as const;
@@ -211,7 +211,7 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
       count={turns.length}
     >
       {turns.length === 0 ? (
-        <p className="px-2 text-label leading-relaxed text-muted-foreground/70">
+        <p className="px-2 text-label leading-relaxed text-faint">
           No messages yet. Select an element and ask about it.
         </p>
       ) : (
@@ -235,7 +235,7 @@ export function AgentSidebarSection({ onNavigate }: { onNavigate?: (() => void) 
                   <span className={cn("size-1.5 shrink-0 rounded-full", toneDot[st.tone])} />
                   <span className="truncate text-[13px] text-foreground/85">{t.text}</span>
                 </span>
-                <span className="truncate ps-3.5 text-[11.5px] text-muted-foreground/70">
+                <span className="truncate ps-3.5 text-[11.5px] text-faint">
                   {names.get(t.nodeId) ?? t.nodeId}
                 </span>
               </button>

@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Code2,
   Columns2,
-  Layers,
   Loader2,
   MessageSquare,
   MoreHorizontal,
@@ -15,6 +14,7 @@ import {
   PanelRightOpen,
   Plus,
   ScanSearch,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useWorkspace, type Diagram, type Pane } from "@/lib/workspace";
@@ -41,6 +41,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { Phantom } from "@/components/brand/RuahLogo";
 
 export const iconButton =
   "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
@@ -60,7 +61,7 @@ export function Segmented<T extends string>({
   return (
     <div
       role="tablist"
-      className={cn("flex h-7 items-center gap-0.5 rounded-lg bg-foreground/[0.045] p-0.5", className)}
+      className={cn("flex h-7 items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 ring-1 ring-hairline", className)}
     >
       {options.map((o) => (
         <button
@@ -74,7 +75,7 @@ export function Segmented<T extends string>({
           className={cn(
             "h-6 rounded-md px-2.5 text-[12.5px] transition-colors disabled:opacity-40",
             value === o.value
-              ? "bg-surface-3 text-foreground shadow-sm"
+              ? "bg-surface-4 text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
@@ -177,7 +178,7 @@ function Crumbs({ diagram }: { diagram: Diagram }) {
         const last = i === items.length - 1;
         return (
           <Fragment key={`${it.label}-${i}`}>
-            {i > 0 ? <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" /> : null}
+            {i > 0 ? <ChevronRight className="size-3.5 shrink-0 text-faint" /> : null}
             {last || !it.id ? (
               <span className={cn("truncate", last ? "font-medium text-foreground" : "text-muted-foreground")}>
                 {it.label}
@@ -243,12 +244,10 @@ function EmptyMap() {
   };
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
-      <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl bg-popover/90 px-6 py-6 text-center shadow-[inset_0_0_0_1px_var(--color-hairline)] backdrop-blur">
-        <span className="grid size-10 place-items-center rounded-xl bg-surface-3 text-muted-foreground">
-          <Layers className="size-4.5" />
-        </span>
-        <div className="space-y-1">
-          <p className="text-title font-medium">An empty map</p>
+      <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
+        <Phantom expression="idle" size={52} />
+        <div className="space-y-1.5">
+          <p className="heading text-[16px] text-foreground">An empty map</p>
           <p className="text-ui-sm leading-relaxed text-muted-foreground">
             {wb.editing
               ? "Drag an element from the palette onto the canvas, double-click the canvas, or press N."
@@ -260,7 +259,7 @@ function EmptyMap() {
             type="button"
             onClick={() => void scan()}
             disabled={scanning || !ws.editable}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-surface-3 px-3 text-ui-sm text-foreground transition-colors hover:bg-surface-3/70 disabled:opacity-50"
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-3 text-ui-sm text-foreground transition-colors hover:bg-surface-3 disabled:opacity-50"
           >
             {scanning ? <Loader2 className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}
             {scanning ? "Scanning…" : "Scan repo"}
@@ -567,9 +566,9 @@ function MobileMap() {
             wb.setPanelView("agent");
             wb.setSheetOpen(true);
           }}
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary px-3.5 text-[13px] font-medium text-primary-foreground"
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-ai px-3.5 text-[13px] font-medium text-ai-foreground"
         >
-          <MessageSquare className="size-3.5" />
+          <Sparkles className="size-3.5" />
           {node ? "Ask" : "Agent"}
         </button>
       </div>
@@ -578,7 +577,7 @@ function MobileMap() {
           <SheetHeader className="sr-only">
             <SheetTitle>Agent and details</SheetTitle>
           </SheetHeader>
-          <div className="mx-auto mt-2 mb-1 h-1 w-9 shrink-0 rounded-full bg-foreground/15" />
+          <div className="mx-auto mt-2 mb-1 h-1 w-9 shrink-0 rounded-full bg-surface-4" />
           <div className="min-h-0 flex-1">
             <SidePanel mobile />
           </div>

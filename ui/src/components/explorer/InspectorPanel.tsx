@@ -60,13 +60,13 @@ function LinkRow({
         onClick={onSelect}
         className="-mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-accent"
       >
-        <Arrow className="size-3 shrink-0 text-muted-foreground/70" />
+        <Arrow className="size-3 shrink-0 text-faint" />
         <span className="truncate text-[12.5px] text-foreground/90">{link.name}</span>
         {link.label ? (
           <span className="truncate text-[11.5px] text-muted-foreground">{link.label}</span>
         ) : null}
         {link.kind ? (
-          <span className="ms-auto shrink-0 text-[11px] text-muted-foreground/60">{link.kind}</span>
+          <span className="ms-auto shrink-0 text-[11px] text-faint">{link.kind}</span>
         ) : null}
       </button>
     </li>
@@ -76,8 +76,8 @@ function LinkRow({
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
-      <MousePointerClick className="size-5 text-muted-foreground/60" />
-      <p className="text-[13.5px] font-medium text-foreground">{title}</p>
+      <MousePointerClick className="size-5 text-faint" />
+      <p className="heading text-title text-foreground">{title}</p>
       <p className="text-[12.5px] leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
@@ -136,11 +136,11 @@ function Details({
     <div className="space-y-6 px-5 pt-5 pb-8">
       <div className="space-y-3">
         <div className="flex items-start gap-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-2">
+          <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", style.tint)}>
             <Icon className={cn("size-4", style.color)} />
           </span>
           <div className="min-w-0 flex-1 pt-px">
-            <p className="truncate text-[15px] font-medium text-foreground">{node.label}</p>
+            <p className="heading truncate text-[16px] text-foreground">{node.label}</p>
             {node.subtitle ? (
               <p className="truncate text-[12.5px] text-muted-foreground">{node.subtitle}</p>
             ) : null}
@@ -220,7 +220,7 @@ function Details({
           <ul className="space-y-1">
             {flows.map((w) => (
               <li key={w.id} className="flex items-center gap-2 text-[12.5px] text-foreground/90">
-                <Workflow className="size-3.5 text-muted-foreground/70" />
+                <Workflow className="size-3.5 text-faint" />
                 {w.name}
                 <span className="text-[11.5px] text-muted-foreground">
                   step {w.steps.indexOf(node.id) + 1} of {w.steps.length}

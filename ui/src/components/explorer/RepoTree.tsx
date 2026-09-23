@@ -42,7 +42,7 @@ export function RepoTree({
 
   if (tree.length === 0) {
     return (
-      <p className="px-2 text-label text-muted-foreground/70">No paths in architecture.json yet.</p>
+      <p className="px-2 text-label text-faint">No paths in architecture.json yet.</p>
     );
   }
 

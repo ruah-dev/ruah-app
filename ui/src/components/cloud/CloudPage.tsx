@@ -229,7 +229,7 @@ export function CloudPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter by name, region, tag, element…"
               aria-label="Filter resources"
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/60"
+              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-faint"
             />
           </div>
           {providersInData.length > 1 ? (
@@ -274,8 +274,8 @@ export function CloudPage() {
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : (
                 <>
-                  <Cloud className="size-5 text-muted-foreground/60" />
-                  <p className="text-[13.5px] font-medium text-foreground">
+                  <Cloud className="size-5 text-faint" />
+                  <p className="heading text-[16px] text-foreground">
                     {all.length ? "Nothing matches the filter" : "No resources yet"}
                   </p>
                   <p className="max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">

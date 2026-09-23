@@ -90,7 +90,7 @@ export function ElementPicker({
           ) : Icon ? (
             <Icon className={cn("size-3.5 shrink-0", style!.color)} />
           ) : (
-            <Link2 className="size-3.5 shrink-0 text-muted-foreground/60" />
+            <Link2 className="size-3.5 shrink-0 text-faint" />
           )}
           {linked ? (
             <>
@@ -102,11 +102,11 @@ export function ElementPicker({
               {resource.linkedNodeId}
             </span>
           ) : (
-            <span className="min-w-0 truncate text-muted-foreground/70 group-hover/pick:text-muted-foreground">
+            <span className="min-w-0 truncate text-faint group-hover/pick:text-muted-foreground">
               {error ? "Link failed — retry" : "Link element…"}
             </span>
           )}
-          <ChevronsUpDown className="ms-auto size-3 shrink-0 text-muted-foreground/0 group-hover/pick:text-muted-foreground/70" />
+          <ChevronsUpDown className="ms-auto size-3 shrink-0 text-muted-foreground/0 group-hover/pick:text-faint" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 border-hairline p-0">

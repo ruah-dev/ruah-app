@@ -34,7 +34,7 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
         <h3 className="text-[12px] font-medium text-muted-foreground">Agent tasks</h3>
-        {mine.length ? <span className="text-[11.5px] text-muted-foreground/60">{mine.length}</span> : null}
+        {mine.length ? <span className="text-[11.5px] text-faint">{mine.length}</span> : null}
         <span className="flex-1" />
         {status?.initialized ? (
           <button type="button" className={quietButton} onClick={() => setOpen(true)}>
@@ -43,7 +43,7 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
         ) : null}
       </div>
       {status && !status.initialized ? (
-        <p className="text-[12px] text-muted-foreground/80">
+        <p className="text-[12px] text-faint">
           ruah isn't set up here. See <Link to="/tasks" className="text-foreground/90 hover:underline">Tasks</Link>{" "}
           to initialise it.
         </p>
@@ -51,7 +51,7 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
         <ul>
           {mine.map((t) => (
             <li key={t.name} className="flex min-w-0 items-center gap-2 py-1">
-              <ListChecks className="size-3.5 shrink-0 text-muted-foreground/70" />
+              <ListChecks className="size-3.5 shrink-0 text-faint" />
               <Link to="/tasks" className="min-w-0 truncate font-mono text-[12px] text-foreground/90 hover:underline">
                 {t.name}
               </Link>
@@ -69,7 +69,7 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
           ))}
         </ul>
       ) : status ? (
-        <p className="text-[12px] text-muted-foreground/80">
+        <p className="text-[12px] text-faint">
           No open tasks on these files. A task runs an agent in its own worktree with the files locked.
         </p>
       ) : null}

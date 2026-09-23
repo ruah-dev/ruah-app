@@ -181,7 +181,7 @@ export function CreateIssueDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="issue-body" className="text-[12.5px] font-normal text-muted-foreground">
-                Description <span className="text-muted-foreground/60">· Markdown, prefilled from the element</span>
+                Description <span className="text-faint">· Markdown, prefilled from the element</span>
               </Label>
               <Textarea
                 id="issue-body"

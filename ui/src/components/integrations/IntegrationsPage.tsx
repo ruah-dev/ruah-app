@@ -246,8 +246,9 @@ export function IntegrationsPage() {
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-6 py-8 max-md:px-4">
-          <div className="space-y-1">
-            <p className="text-[13px] leading-relaxed text-muted-foreground">
+          <div className="space-y-2">
+            <p className="eyebrow">Connected services</p>
+            <p className="text-[13.5px] leading-relaxed text-muted-foreground">
               Connect your cloud, issue tracker and ruah so the map shows what runs where and who is
               working on it. Credentials stay with the provider CLIs or in your Keychain.
             </p>
@@ -256,12 +257,12 @@ export function IntegrationsPage() {
           {grouped.map((f) => (
             <section key={f.id} className="flex flex-col gap-3">
               <div>
-                <h2 className="text-[14px] font-medium text-foreground">{f.title}</h2>
-                <p className="mt-0.5 text-[12.5px] text-muted-foreground">{f.description}</p>
+                <h2 className="heading text-title text-foreground">{f.title}</h2>
+                <p className="mt-1 text-[12.5px] text-muted-foreground">{f.description}</p>
               </div>
               <div
                 className={cn(
-                  "divide-y divide-hairline border-y border-hairline",
+                  "card-warm divide-y divide-hairline px-4",
                   placeholder && remote.status !== "loading" && "opacity-60",
                 )}
               >

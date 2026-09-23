@@ -48,6 +48,7 @@ import {
 import type { StatusTone } from "@/lib/integrations";
 import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
 import { cn } from "@/lib/utils";
+import { Phantom } from "@/components/brand/RuahLogo";
 
 const STATUS: Record<string, { label: string; tone: StatusTone; order: number }> = {
   "in-progress": { label: "Running", tone: "warn", order: 0 },
@@ -97,7 +98,7 @@ function TaskRow({
     <div role="row" className={cn(COLS, "min-h-11 border-b border-hairline px-5 py-1.5 max-md:px-3")}>
       <div role="cell" className="min-w-0">
         <p className="flex items-center gap-1.5 truncate text-[13px] text-foreground" title={task.prompt ?? undefined}>
-          {task.parent ? <span className="text-muted-foreground/50">↳</span> : null}
+          {task.parent ? <span className="text-faint">↳</span> : null}
           <span className="truncate font-mono text-[12.5px]">{task.name}</span>
         </p>
         {task.prompt ? (
@@ -114,13 +115,13 @@ function TaskRow({
       </div>
       <div role="cell" className="min-w-0">
         <p className="flex min-w-0 items-center gap-1 font-mono text-[12px] text-foreground/85">
-          <GitBranch className="size-3 shrink-0 text-muted-foreground/70" />
+          <GitBranch className="size-3 shrink-0 text-faint" />
           <span className="truncate" title={task.branch}>
             {task.branch ?? "—"}
           </span>
         </p>
         {task.worktree ? (
-          <p className="truncate font-mono text-[11px] text-muted-foreground/70" title={task.worktree}>
+          <p className="truncate font-mono text-[11px] text-faint" title={task.worktree}>
             {task.worktree}
           </p>
         ) : null}
@@ -129,7 +130,7 @@ function TaskRow({
         {files.length ? (
           <>
             {files[0]}
-            {files.length > 1 ? <span className="text-muted-foreground/60"> +{files.length - 1}</span> : null}
+            {files.length > 1 ? <span className="text-faint"> +{files.length - 1}</span> : null}
           </>
         ) : (
           <span className="text-muted-foreground/40">—</span>
@@ -170,10 +171,8 @@ function TaskRow({
 function NotInitialized({ hint }: { hint?: string | undefined }) {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-16 text-center">
-      <span className="grid size-9 place-items-center rounded-xl bg-surface-2 text-primary">
-        <ListChecks className="size-4.5" />
-      </span>
-      <p className="text-[15px] font-medium text-foreground">ruah isn't set up in this repository</p>
+      <Phantom expression="idle" size={56} />
+      <p className="heading text-[16px] text-foreground">ruah isn&apos;t set up in this repository</p>
       <p className="text-[12.5px] leading-relaxed text-muted-foreground">
         {hint ??
           "ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once without stepping on each other. Initialise it once in the repo root:"}
@@ -353,8 +352,8 @@ export function TasksPage() {
                   ))
                 ) : (
                   <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                    <ListChecks className="size-5 text-muted-foreground/60" />
-                    <p className="text-[13.5px] font-medium text-foreground">
+                    <ListChecks className="size-5 text-faint" />
+                    <p className="heading text-[16px] text-foreground">
                       {tasks.length ? "No open tasks" : "No tasks yet"}
                     </p>
                     <p className="max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
@@ -388,11 +387,11 @@ export function TasksPage() {
                     const isBusy = busy?.key === `wf:${w.name}`;
                     return (
                       <div key={w.name} className="flex min-h-11 items-center gap-3 py-1.5">
-                        <Workflow className="size-4 shrink-0 text-muted-foreground/70" />
+                        <Workflow className="size-4 shrink-0 text-faint" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] text-foreground">{w.name}</p>
                           {w.path ? (
-                            <p className="truncate font-mono text-[11px] text-muted-foreground/70">{w.path}</p>
+                            <p className="truncate font-mono text-[11px] text-faint">{w.path}</p>
                           ) : null}
                         </div>
                         {total ? (

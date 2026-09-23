@@ -56,7 +56,7 @@ export function CodeTab({
   if (!path) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-[13.5px] font-medium text-foreground">No file attached</p>
+        <p className="heading text-title text-foreground">No file attached</p>
         <p className="text-[12.5px] text-muted-foreground">
           Add paths to <span className="font-mono">files</span> in architecture.json, or drill in to
           a child element.

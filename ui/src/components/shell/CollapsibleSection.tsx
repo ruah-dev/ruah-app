@@ -61,14 +61,14 @@ export function CollapsibleSection({
         <CollapsibleTrigger className="flex h-6 min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring">
           <ChevronRight
             className={cn(
-              "size-3 shrink-0 text-muted-foreground/60 transition-transform",
+              "size-3 shrink-0 text-faint transition-transform",
               open && "rotate-90",
             )}
           />
           {icon}
           <span className="section-label truncate">{label}</span>
           {count !== undefined && count > 0 ? (
-            <span className="text-[10.5px] text-muted-foreground/50 tabular-nums">{count}</span>
+            <span className="text-[10.5px] text-faint tabular-nums">{count}</span>
           ) : null}
         </CollapsibleTrigger>
         {action ? <span className="flex shrink-0 items-center">{action}</span> : null}

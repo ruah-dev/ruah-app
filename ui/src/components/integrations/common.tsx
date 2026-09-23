@@ -12,22 +12,32 @@ import {
   Droplet,
   Plug,
   SquareKanban,
-  Wind,
   type LucideIcon,
 } from "lucide-react";
 import type { IntegrationInfo } from "@/lib/contracts";
 import type { Remote, StatusTone } from "@/lib/integrations";
 import { cn } from "@/lib/utils";
+import { RuahMark } from "@/components/brand/RuahLogo";
 
+// Third-party services get the quiet metadata palette (slate / amber / warm), never a vendor's
+// own brand colour; ruah itself carries the spirit mark.
 const PROVIDER_MARK: Record<string, { icon: LucideIcon; className: string }> = {
-  digitalocean: { icon: Droplet, className: "bg-[oklch(0.62_0.16_250/0.16)] text-[oklch(0.72_0.14_250)]" },
-  aws: { icon: Cloud, className: "bg-[oklch(0.74_0.15_65/0.16)] text-[oklch(0.8_0.14_70)]" },
-  jira: { icon: SquareKanban, className: "bg-[oklch(0.6_0.17_262/0.16)] text-[oklch(0.72_0.14_262)]" },
-  github: { icon: CircleDot, className: "bg-foreground/[0.08] text-foreground/85" },
-  ruah: { icon: Wind, className: "bg-primary/15 text-primary" },
+  digitalocean: { icon: Droplet, className: "bg-info/15 text-info" },
+  aws: { icon: Cloud, className: "bg-warn/15 text-warn" },
+  jira: { icon: SquareKanban, className: "bg-info/15 text-info" },
+  github: { icon: CircleDot, className: "bg-surface-3 text-foreground/85" },
 };
 
 export function ProviderMark({ id, className }: { id: string; className?: string }) {
+  if (id === "ruah")
+    return (
+      <span
+        aria-hidden
+        className={cn("grid size-8 shrink-0 place-items-center rounded-lg bg-surface-3 ring-1 ring-hairline", className)}
+      >
+        <RuahMark size={20} />
+      </span>
+    );
   const mark = PROVIDER_MARK[id] ?? { icon: Plug, className: "bg-foreground/[0.06] text-muted-foreground" };
   const Icon = mark.icon;
   return (
@@ -41,6 +51,7 @@ export function ProviderMark({ id, className }: { id: string; className?: string
 }
 
 export function ProviderGlyph({ id, className }: { id: string; className?: string }) {
+  if (id === "ruah") return <RuahMark size={14} className={className} />;
   const mark = PROVIDER_MARK[id] ?? { icon: Plug, className: "" };
   const Icon = mark.icon;
   const color = mark.className.split(" ").find((c) => c.startsWith("text-")) ?? "text-muted-foreground";
@@ -71,11 +82,11 @@ export function CopyCommand({ command, className }: { command: string; className
   return (
     <div
       className={cn(
-        "group/cmd flex h-8 min-w-0 items-center gap-2 rounded-md bg-foreground/[0.045] ps-2.5 pe-1 font-mono text-[12px] text-foreground/90",
+        "group/cmd flex h-8 min-w-0 items-center gap-2 rounded-lg bg-surface-0 ps-2.5 pe-1 font-mono text-[12px] text-foreground/90 ring-1 ring-hairline",
         className,
       )}
     >
-      <span className="shrink-0 text-muted-foreground/60 select-none">$</span>
+      <span className="shrink-0 text-faint select-none">$</span>
       <span className="min-w-0 flex-1 truncate" title={command}>
         {command}
       </span>
@@ -96,7 +107,7 @@ export const toneDotClass: Record<StatusTone, string> = {
   ok: "bg-ok",
   warn: "bg-warn",
   bad: "bg-bad",
-  idle: "bg-muted-foreground/40",
+  idle: "bg-info",
 };
 
 export function StatusDot({ tone, className }: { tone: StatusTone; className?: string }) {
@@ -128,10 +139,10 @@ export function Pill({
     <span
       className={cn(
         "inline-flex h-5 max-w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[11.5px] whitespace-nowrap",
-        tone === "ok" && "bg-ok/10 text-ok",
-        tone === "warn" && "bg-warn/10 text-warn",
-        tone === "bad" && "bg-bad/10 text-bad",
-        tone === "idle" && "bg-foreground/[0.055] text-muted-foreground",
+        tone === "ok" && "bg-ok/12 text-ok",
+        tone === "warn" && "bg-warn/12 text-warn",
+        tone === "bad" && "bg-bad/12 text-bad",
+        tone === "idle" && "bg-info/12 text-info",
         className,
       )}
     >
@@ -186,7 +197,7 @@ export function Notice({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-lg border px-3.5 py-3",
+        "flex items-start gap-3 rounded-xl border px-3.5 py-3",
         tone === "bad" ? "border-bad/25 bg-bad/[0.06]" : tone === "warn" ? "border-warn/25 bg-warn/[0.06]" : "border-hairline bg-surface-1",
       )}
     >
@@ -218,7 +229,7 @@ export const quietButton =
   "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
 
 export const solidButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-foreground/[0.07] px-2.5 text-[12.5px] text-foreground transition-colors hover:bg-foreground/[0.11] disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground transition-colors hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-40";
 
 export const primaryButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40";

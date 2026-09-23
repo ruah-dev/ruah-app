@@ -158,8 +158,8 @@ function IssueRow({ item, onUnlink }: { item: WorkItem; onUnlink: () => void }) 
           <Pill tone={workStatusTone(item.status)} className="h-4 px-1 text-[11px]">
             {item.status}
           </Pill>
-          {item.assignee ? <span className="truncate">{item.assignee}</span> : <span className="text-muted-foreground/60">Unassigned</span>}
-          <span className="shrink-0 text-muted-foreground/60">· {timeAgo(item.updatedAt)}</span>
+          {item.assignee ? <span className="truncate">{item.assignee}</span> : <span className="text-faint">Unassigned</span>}
+          <span className="shrink-0 text-faint">· {timeAgo(item.updatedAt)}</span>
         </div>
       </div>
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/issue:opacity-100 focus-within:opacity-100">
@@ -236,7 +236,7 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
         <h3 className="text-[12px] font-medium text-muted-foreground">Issues</h3>
-        {items.length ? <span className="text-[11.5px] text-muted-foreground/60">{items.length}</span> : null}
+        {items.length ? <span className="text-[11.5px] text-faint">{items.length}</span> : null}
         <span className="flex-1" />
         {connected ? (
           <>
@@ -286,7 +286,7 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
           ))}
         </ul>
       ) : (
-        <p className={cn("text-[12px] text-muted-foreground/80")}>
+        <p className={cn("text-[12px] text-faint")}>
           {connected ? (
             "No linked issues."
           ) : (

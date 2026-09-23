@@ -130,7 +130,7 @@ export function UsagePriceOverrides({
                         onChange={(e) => update(r.id, { [f.key]: e.target.value })}
                         placeholder={f.optional ? "Input" : "Auto"}
                         className={cn(
-                          "h-7 w-full rounded-md bg-foreground/[0.05] px-2 text-right text-[12px] tabular-nums outline-none placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-ring",
+                          "h-7 w-full rounded-md bg-foreground/[0.05] px-2 text-right text-[12px] tabular-nums outline-none placeholder:text-faint focus:ring-1 focus:ring-ring",
                         )}
                       />
                     </td>

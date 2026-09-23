@@ -28,7 +28,7 @@ export const iconByKind: Record<string, typeof Wrench> = {
 };
 
 export const statusDot: Record<ToolCallView["status"], string> = {
-  pending: "bg-muted-foreground/60",
+  pending: "bg-info",
   in_progress: "bg-warn animate-pulse",
   completed: "bg-ok",
   failed: "bg-bad",
@@ -50,7 +50,7 @@ export function RowDisclosure({
   trailing?: ReactNode;
   children?: ReactNode;
   defaultOpen?: boolean | undefined;
-  tone?: "muted" | "bad";
+  tone?: "muted" | "bad" | "ai";
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const canExpand = children !== undefined && children !== null && children !== false;
@@ -69,19 +69,19 @@ export function RowDisclosure({
         <Icon
           className={cn(
             "size-3.5 shrink-0",
-            tone === "bad" ? "text-bad" : "text-muted-foreground/80",
+            tone === "bad" ? "text-bad" : tone === "ai" ? "text-ai" : "text-muted-foreground",
           )}
         />
         <span
           className={cn(
             "min-w-0 truncate text-[12.5px]",
-            tone === "bad" ? "text-bad" : "text-muted-foreground",
+            tone === "bad" ? "text-bad" : tone === "ai" ? "text-ai" : "text-muted-foreground",
           )}
         >
           {label}
         </span>
         {detail ? (
-          <span className="min-w-0 shrink truncate font-mono text-[11px] text-muted-foreground/60">
+          <span className="min-w-0 shrink truncate font-mono text-[11px] text-faint">
             {detail}
           </span>
         ) : null}
@@ -89,7 +89,7 @@ export function RowDisclosure({
           {trailing}
           <ChevronRight
             className={cn(
-              "size-3 text-muted-foreground/60 transition-transform duration-150",
+              "size-3 text-faint transition-transform duration-150",
               open && "rotate-90",
               !canExpand && "invisible",
             )}
@@ -149,7 +149,7 @@ export function ToolCallRow({
             </p>
           ) : null}
           {call.output ? (
-            <pre className="max-h-48 overflow-auto rounded-md bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/80 ring-1 ring-hairline">
+            <pre className="max-h-48 overflow-auto rounded-lg bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">
               {call.output}
             </pre>
           ) : null}

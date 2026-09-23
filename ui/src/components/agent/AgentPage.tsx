@@ -33,7 +33,7 @@ export function AgentPage() {
           chat ? (
             <span className="flex min-w-0 items-center gap-2">
               <span className="text-muted-foreground">Agent</span>
-              <span className="text-muted-foreground/50">/</span>
+              <span className="text-faint">/</span>
               <span className="truncate">{chat.title || "Untitled chat"}</span>
             </span>
           ) : daemon.projectsSupported && daemon.turns.length === 0 ? (

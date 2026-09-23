@@ -36,7 +36,7 @@ function Field({
     <div className="space-y-1.5">
       <Label className="flex items-center justify-between text-[12px] font-medium text-muted-foreground">
         {label}
-        {hint ? <span className="text-[12px] font-normal text-muted-foreground/70">{hint}</span> : null}
+        {hint ? <span className="text-[12px] font-normal text-faint">{hint}</span> : null}
       </Label>
       {children}
     </div>

@@ -81,7 +81,7 @@ function Tags({ tags }: { tags: Record<string, string> | undefined }) {
         </span>
       ))}
       {entries.length > 2 ? (
-        <span className="shrink-0 text-[11px] text-muted-foreground/70">+{entries.length - 2}</span>
+        <span className="shrink-0 text-[11px] text-faint">+{entries.length - 2}</span>
       ) : null}
     </span>
   );
@@ -205,7 +205,7 @@ function RowView({
     return (
       <div className="flex h-full items-end gap-2 border-b border-hairline px-5 pb-1.5 ps-11 max-md:px-3">
         <span className="font-mono text-[12px] text-foreground/80">{row.region}</span>
-        <span className="text-[11.5px] text-muted-foreground/70">{row.count}</span>
+        <span className="text-[11.5px] text-faint">{row.count}</span>
       </div>
     );
   }
@@ -218,7 +218,7 @@ function RowView({
         <span className="text-[12px] font-medium text-muted-foreground">
           {CLOUD_TYPE_LABEL[row.type as keyof typeof CLOUD_TYPE_LABEL] ?? row.type}
         </span>
-        <span className="text-[11.5px] text-muted-foreground/60">{row.count}</span>
+        <span className="text-[11.5px] text-faint">{row.count}</span>
       </div>
     );
   }
@@ -237,7 +237,7 @@ function RowView({
         <span className="min-w-0 truncate text-[13px] text-foreground" title={r.id}>
           {r.name}
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">{r.service}</span>
+        <span className="shrink-0 font-mono text-[11px] text-faint">{r.service}</span>
       </span>
       <span role="cell" className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
         <StatusDot tone={tone} />

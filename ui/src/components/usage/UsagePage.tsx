@@ -50,8 +50,8 @@ const RANGE_OPTIONS = [
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <span className="text-[15px] font-medium text-foreground tabular-nums">{value}</span>
+      <span className="eyebrow">{label}</span>
+      <span className="heading text-[20px] text-foreground tabular-nums">{value}</span>
     </div>
   );
 }
@@ -59,8 +59,8 @@ function Metric({ label, value }: { label: string; value: string }) {
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-24 text-center">
-      <BarChart3 className="size-5 text-muted-foreground/60" />
-      <p className="text-[14px] font-medium text-foreground">{title}</p>
+      <BarChart3 className="size-5 text-faint" />
+      <p className="heading text-[16px] text-foreground">{title}</p>
       <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );

@@ -84,7 +84,7 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
             actions.startChat();
             onNavigate?.();
           }}
-          className="grid size-6 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+          className="grid size-6 place-items-center rounded-md text-faint transition-colors hover:bg-accent hover:text-foreground"
         >
           <Plus className="size-3.5" />
         </button>
@@ -98,7 +98,7 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
       <CollapsibleSection id="chats" label="Chats" count={chats.length} action={newButton}>
         {chats.length === 0 ? (
           <div className="px-2 pt-0.5 pb-1">
-            <p className="text-label leading-relaxed text-muted-foreground/75">
+            <p className="text-label leading-relaxed text-faint">
               No chats yet. Select an element and ask about it — each conversation is kept here.
             </p>
           </div>
@@ -143,9 +143,9 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
                         {c.title || "Untitled chat"}
                       </span>
                       {live ? (
-                        <span className="pointer-events-none size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+                        <span className="pointer-events-none size-1.5 shrink-0 animate-pulse rounded-full bg-ai" />
                       ) : null}
-                      <span className="pointer-events-none shrink-0 text-meta text-muted-foreground/70 group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden">
+                      <span className="pointer-events-none shrink-0 text-meta text-faint group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden">
                         {relativeTime(c.updatedAt)}
                       </span>
                       <DropdownMenu>
