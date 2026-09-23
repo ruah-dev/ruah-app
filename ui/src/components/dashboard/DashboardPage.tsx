@@ -2,7 +2,8 @@
 // (architecture.json over the socket, agent.status, this session's turns, /api/usage).
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Map as MapIcon, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, Download, Map as MapIcon, RefreshCw } from "lucide-react";
+import { downloadDrawio } from "@/lib/export";
 import { kindFor } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
@@ -213,6 +214,23 @@ export function DashboardPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Dashboard">
         <RescanButton />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => void downloadDrawio(daemon.httpOrigin)}
+              disabled={daemon.source !== "daemon"}
+              className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <Download className="size-3.5" />
+              Export draw.io
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-80">
+            Download the architecture as a draw.io file: a page per level and workflow, plus a
+            Specifications page with every element's tech, files, links, cloud resources and issues.
+          </TooltipContent>
+        </Tooltip>
         <Link
           to="/map"
           className="flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"

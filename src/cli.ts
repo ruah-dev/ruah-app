@@ -16,6 +16,9 @@ Usage:
     init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
     add <dir> <id>=<path>                                      add a repo
     scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
+  archmap export drawio <repo> [--out <file>]
+                                   write the architecture as a draw.io file (pages per
+                                   drill level + workflow + Specifications; --out - = stdout)
   archmap mcp <repo>               stdio MCP server
   archmap --version                print version
   archmap help                     this text
@@ -155,6 +158,10 @@ async function main(argv: readonly string[]): Promise<number> {
       const { runSystem } = await import("./system/run-system.js");
       return await runSystem(rest, pkg.version);
     }
+    case "export": {
+      const { runExport } = await import("./export/run-export.js");
+      return await runExport(rest, pkg.version);
+    }
     case "mcp": {
       parseArgs({ args: rest, strict: false });
       console.log("not implemented");
@@ -170,7 +177,13 @@ const isDirectRun =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
 
 if (isDirectRun) {
-  void main(process.argv.slice(2)).then((code) => process.exit(code));
+  void main(process.argv.slice(2)).then((code) => {
+    // process.exit() drops output still queued for a pipe (pipes are async on
+    // macOS: `archmap scan --dry-run | jq` was cut at 64 KB), so flush first.
+    const exit = (): void => process.exit(code);
+    if (process.stdout.writableLength > 0) process.stdout.once("drain", exit);
+    else exit();
+  });
 }
 
 export { main };

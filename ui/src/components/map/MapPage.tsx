@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Code2,
   Columns2,
+  Download,
   Loader2,
   MessageSquare,
   MoreHorizontal,
@@ -21,6 +22,7 @@ import { useWorkspace, type Diagram, type Pane } from "@/lib/workspace";
 import { useWorkbench, type PanelView } from "@/lib/workbench";
 import { ROOT_DIAGRAM_ID, ancestry, indexArchitecture, levelDiagramId, parseDiagramId } from "@/lib/architecture";
 import { dismissError, rescan } from "@/lib/daemon";
+import { downloadDrawio } from "@/lib/export";
 import { toast } from "sonner";
 import { isCloudDiagramId } from "@/lib/integrations";
 import { EditorCanvas } from "@/components/editor/EditorCanvas";
@@ -347,6 +349,13 @@ function PaneMenu({ pane, diagram }: { pane: Pane; diagram: Diagram }) {
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => ws.openTab(pane.id, "code", diagram.id)}>
           <Code2 className="text-muted-foreground" /> Open code in a tab
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={ws.daemon.source !== "daemon"}
+          onSelect={() => void downloadDrawio(ws.daemon.httpOrigin)}
+        >
+          <Download className="text-muted-foreground" /> Export → draw.io
         </DropdownMenuItem>
         {ws.app.panes.length > 1 ? (
           <>
