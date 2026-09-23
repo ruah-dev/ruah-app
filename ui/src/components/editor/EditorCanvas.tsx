@@ -543,9 +543,11 @@ export function EditorCanvas({
           if (node.layer) act.current.toggleGroup(node.layer);
           return;
         }
-        if (latest.current.editable && !node.ephemeral) setEditingId(node.id);
-        else if (node.drill) act.current.drillAnimated(node);
+        // Drilling wins in every mode (View included): double-click always goes a level
+        // down when there is one. Rename is double-click on a leaf, or F2 on any element.
+        if (node.drill) act.current.drillAnimated(node);
         else if (node.symbol) act.current.onOpenCode(node);
+        else if (latest.current.editable && !node.ephemeral) setEditingId(node.id);
       },
       hover: (id) => setHoverId(id),
       drill: (node) => act.current.drillAnimated(node),
@@ -682,6 +684,13 @@ export function EditorCanvas({
         e.preventDefault();
         if (n.drill) drillAnimated(n);
         else if (n.symbol) onOpenCode(n);
+        return;
+      }
+      if (e.key === "F2" && sel && K.editable) {
+        const n = nodeById.get(sel);
+        if (!n || n.ephemeral || isGroupNodeId(sel)) return;
+        e.preventDefault();
+        setEditingId(sel);
         return;
       }
       if (e.key === "f" && !e.altKey) {
