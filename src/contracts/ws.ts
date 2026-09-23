@@ -36,10 +36,31 @@ export const AgentChoiceStateSchema = z.object({
       installHint: z.string().optional(),
       /** Whether the agent accepts images in prompts (Claude SDK: true; ACP: promptCapabilities.image). Absent = not known yet. */
       images: z.boolean().optional(),
+      /**
+       * Pre-warm state of this agent for the open project (installed agents only):
+       * "ready" = a live bridge is idle (agent.set is instant), "starting" = one is
+       * starting (agent.set attaches to it), "cold" = nothing running.
+       */
+      warm: z.enum(["ready", "starting", "cold"]).optional(),
+      /** Why the last pre-warm of this agent failed (it stays "cold"; the current agent is unaffected). */
+      warmError: z.string().optional(),
+      /** Models / modes last reported by this agent (non-current agents; the current one's are top-level). */
+      models: ModelStateSchema.optional(),
+      modes: ModeStateSchema.optional(),
     }),
   ),
 });
 export type AgentChoiceState = z.infer<typeof AgentChoiceStateSchema>;
+export type WarmState = "ready" | "starting" | "cold";
+
+// Saved per-agent defaults (settings.json): the agent used at startup, and the
+// model / permission mode each agent starts with.
+export const AgentDefaultsSchema = z.object({
+  agentId: z.string(),
+  models: z.record(z.string(), z.string()),
+  modes: z.record(z.string(), z.string()),
+});
+export type AgentDefaults = z.infer<typeof AgentDefaultsSchema>;
 
 export const ToolCallViewSchema = z.object({
   toolCallId: z.string(),
@@ -170,6 +191,15 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("mode.set"), modeId: z.string() }),
   z.object({ type: z.literal("model.set"), modelId: z.string() }),
   z.object({ type: z.literal("agent.set"), agentId: z.string() }),
+  // Start agents in the background (default: every installed agent but the current one) so agent.set is instant.
+  z.object({ type: z.literal("agent.prewarm"), agentIds: z.array(z.string()).max(16).optional() }),
+  // Settings → Agents: saved defaults (null clears an entry). Applies to agents started or bound later.
+  z.object({
+    type: z.literal("defaults.set"),
+    agentId: z.string().optional(),
+    models: z.record(z.string(), z.string().nullable()).optional(),
+    modes: z.record(z.string(), z.string().nullable()).optional(),
+  }),
   z.object({ type: z.literal("architecture.save"), architecture: ArchitectureSchema }),
   // §5.2 chats
   z.object({ type: z.literal("chat.new") }),
@@ -199,6 +229,8 @@ export const ServerMessageSchema = z.union([
     models: ModelStateSchema.optional(),
     agents: AgentChoiceStateSchema.optional(),
     error: z.string().optional(),
+    /** Saved defaults (~/.ruah/settings.json) merged with the built-in edit-without-asking modes. */
+    defaults: AgentDefaultsSchema.optional(),
   }),
   z.object({
     type: z.literal("turn.started"),
@@ -207,6 +239,8 @@ export const ServerMessageSchema = z.union([
     contextPack: z.string(),
     text: z.string(),
     attachments: z.array(AttachmentMetaSchema).optional(),
+    /** The agent is still starting: the prompt waits and is sent once it is idle (a second turn.started follows without it). */
+    queued: z.literal(true).optional(),
   }),
   z.object({ type: z.literal("stream"), turnId: z.string(), event: StreamEventSchema }),
   z.object({

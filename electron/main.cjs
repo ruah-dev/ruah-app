@@ -16,10 +16,10 @@ const ROOT = path.join(__dirname, "..");
 // Ruah brand mark (from ruah-website public/brand/ruah-icon.svg, on the macOS
 // 1024 icon grid); icon.icns is there for packaging.
 const APP_ICON = path.join(__dirname, "assets", "icon.png");
-// ARCHMAP_AGENT picks the initial agent: "claude" (Claude Agent SDK, default),
+// ARCHMAP_AGENT picks the initial agent (unset: the saved default agent, else "claude"):
 // "cursor", "grok", "kiro", "opencode", "acp" (Claude through the ACP adapter) or "mock"
 // (scripted, no agent). The viewer can switch agents at runtime.
-const AGENT = process.env.ARCHMAP_AGENT ?? "claude";
+const AGENT = process.env.ARCHMAP_AGENT;
 // The Lovable viewer build (docs/PLAN.md: `viewer/`) when present, else the
 // placeholder renderer.
 const VIEWER_DIR =
@@ -41,7 +41,8 @@ const NODE_ENV = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
 // screen opens or creates a project (CONTRACTS §5), so there is no folder
 // picker or scan before startup any more.
 function startDaemon(repoDir) {
-  const agentArgs = AGENT === "mock" ? ["--mock"] : ["--agent", AGENT];
+  // No ARCHMAP_AGENT: the daemon starts the saved default agent (Settings → Agents).
+  const agentArgs = AGENT === "mock" ? ["--mock"] : AGENT !== undefined ? ["--agent", AGENT] : [];
   const repoArgs = repoDir === undefined ? [] : [repoDir];
   daemon = spawn(
     NODE,

@@ -1,16 +1,20 @@
 // src/serve/bridge-pool.ts — warm pool (keep-alive cache) of agent bridges,
 // keyed by (project root, agent id). The SessionHub uses one bridge at a
-// time; the one it lets go (agent.set, project switch) stays alive for
-// `ttlMs` so switching back is instant (no CLI start, same agent session).
-// At most `maxLive` bridges run: acquiring a new one first evicts the oldest
-// idle bridge. ttlMs 0 = stop on release (the pre-pool behaviour). The pool
-// also keeps each bridge's last-known status (agent/session/modes/models),
-// merged across events, so a re-acquired bridge is described at once.
+// time (the current one, `inUse`); the one it lets go (agent.set, project
+// switch) stays alive for `ttlMs` so switching back is instant (no CLI start,
+// same agent session), and `prewarm` starts bridges speculatively (agent
+// picker open, agents used in the project before) so switching *to* them is
+// instant too. At most `maxLive` bridges run: the least recently used warm
+// bridge is evicted first; the current bridge never is. ttlMs 0 = stop on
+// release (the pre-pool behaviour). `start` is single-flight per bridge, so
+// a switch to a bridge that is still starting attaches to that start. The
+// pool also keeps each bridge's last-known status (agent/session/modes/
+// models), merged across events, so a re-acquired bridge is described at once.
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import type { AgentState, ModeState, ModelState } from "../contracts/ws.js";
 
-export const DEFAULT_WARM_TTL_MS = 5 * 60_000;
-export const DEFAULT_MAX_LIVE_BRIDGES = 2;
+export const DEFAULT_WARM_TTL_MS = 15 * 60_000;
+export const DEFAULT_MAX_LIVE_BRIDGES = 4;
 
 export interface BridgeStatus {
   state: AgentState;
@@ -33,6 +37,16 @@ export interface PooledBridge {
   used: boolean;
   inUse: boolean;
   releasedAt: number | undefined;
+  /** Last time the hub used, released, pre-warmed or touched it (LRU order). */
+  lastUsedAt: number;
+  /** Started by prewarm() and not taken by the hub yet. */
+  speculative: boolean;
+  /** The in-flight start() (single-flight; see BridgePool.start). */
+  starting: Promise<void> | undefined;
+  /** Saved model / mode being applied to a new session (prompts wait for it). */
+  configuring: Promise<void> | undefined;
+  /** Session id the saved model / mode were last applied to (once per session). */
+  configuredSession: string | undefined;
   timer: NodeJS.Timeout | undefined;
   unsubscribe: () => void;
 }
@@ -91,8 +105,10 @@ export class BridgePool {
     if (warm !== undefined) {
       this.clearTimer(warm);
       warm.inUse = true;
+      warm.speculative = false;
       warm.releasedAt = undefined;
-      this.options.debug?.(`bridge pool: reuse ${agentId} @ ${root}`);
+      warm.lastUsedAt = this.now();
+      this.options.debug?.(`bridge pool: reuse ${agentId} @ ${root} (${warm.status.state})`);
       return { entry: warm, fresh: false };
     }
     const bridge = this.options.create(agentId, root);
@@ -100,6 +116,48 @@ export class BridgePool {
     const entry = this.track(root, agentId, bridge);
     entry.status = { state: "starting" };
     return { entry, fresh: true };
+  }
+
+  /**
+   * A warm (not in use) bridge for (root, agentId) for pre-warming: the live
+   * one (touched: its TTL restarts), or a new, not started one (`fresh`).
+   * Undefined when the pool is full and making room would evict a warm bridge
+   * of the same project (speculation never displaces speculation) or the
+   * current one. Throws when the factory does.
+   */
+  prewarm(root: string, agentId: string): { entry: PooledBridge; fresh: boolean } | undefined {
+    const live = this.find(root, agentId);
+    if (live !== undefined) {
+      if (!live.inUse) this.park(live);
+      return { entry: live, fresh: false };
+    }
+    if (this.entries.length >= this.options.maxLive) {
+      const victim = this.lru().find((e) => e.root !== root);
+      if (victim === undefined) return undefined;
+      void this.evict(victim, "pool cap (pre-warm)");
+    }
+    const bridge = this.options.create(agentId, root);
+    const entry = this.track(root, agentId, bridge);
+    entry.status = { state: "starting" };
+    entry.speculative = true;
+    this.park(entry);
+    return { entry, fresh: true };
+  }
+
+  /** Starts the bridge once: a start already in flight is shared (a switch attaches to a pre-warm). */
+  start(entry: PooledBridge): Promise<void> {
+    if (entry.starting !== undefined) return entry.starting;
+    const starting = entry.bridge.start().finally(() => {
+      if (entry.starting === starting) entry.starting = undefined;
+    });
+    entry.starting = starting;
+    return starting;
+  }
+
+  /** Stops and forgets a bridge that is not in use (e.g. a failed pre-warm). */
+  discard(entry: PooledBridge, why: string): Promise<void> {
+    if (entry.inUse) return Promise.resolve();
+    return this.evict(entry, why);
   }
 
   /** Adds an existing (possibly already started) bridge as in use. */
@@ -118,15 +176,9 @@ export class BridgePool {
   release(entry: PooledBridge): Promise<void> {
     if (!this.entries.includes(entry)) return Promise.resolve();
     entry.inUse = false;
-    entry.releasedAt = this.options.now?.() ?? Date.now();
-    const unhealthy = entry.status.state === "error" || entry.status.state === "stopped";
+    const unhealthy = (entry.status.state === "error" || entry.status.state === "stopped") && entry.starting === undefined;
     if (this.options.ttlMs <= 0 || unhealthy) return this.evict(entry, unhealthy ? "not running" : "released");
-    this.clearTimer(entry);
-    entry.timer = setTimeout(() => {
-      entry.timer = undefined;
-      if (!entry.inUse) void this.evict(entry, "idle ttl expired");
-    }, this.options.ttlMs);
-    entry.timer.unref?.();
+    this.park(entry);
     this.makeRoom(this.options.maxLive);
     return Promise.resolve();
   }
@@ -138,6 +190,29 @@ export class BridgePool {
 
   // ----- internals -----
 
+  private now(): number {
+    return this.options.now?.() ?? Date.now();
+  }
+
+  /** Not in use: stamps it, (re)starts its idle TTL. */
+  private park(entry: PooledBridge): void {
+    entry.inUse = false;
+    entry.releasedAt = this.now();
+    entry.lastUsedAt = entry.releasedAt;
+    this.clearTimer(entry);
+    if (this.options.ttlMs <= 0) return;
+    entry.timer = setTimeout(() => {
+      entry.timer = undefined;
+      if (!entry.inUse) void this.evict(entry, "idle ttl expired");
+    }, this.options.ttlMs);
+    entry.timer.unref?.();
+  }
+
+  /** Warm (not in use) bridges, least recently used first. */
+  private lru(): PooledBridge[] {
+    return this.entries.filter((e) => !e.inUse).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+  }
+
   private track(root: string, agentId: string, bridge: AcpBridge): PooledBridge {
     const entry: PooledBridge = {
       root,
@@ -148,6 +223,11 @@ export class BridgePool {
       used: false,
       inUse: true,
       releasedAt: undefined,
+      lastUsedAt: this.now(),
+      speculative: false,
+      starting: undefined,
+      configuring: undefined,
+      configuredSession: undefined,
       timer: undefined,
       unsubscribe: () => {},
     };
@@ -161,11 +241,10 @@ export class BridgePool {
     return entry;
   }
 
-  /** Evicts idle bridges, oldest release first, until at most `limit` are live. */
+  /** Evicts warm bridges, least recently used first, until at most `limit` are live (never the current one). */
   private makeRoom(limit: number): void {
-    const idle = this.entries.filter((e) => !e.inUse).sort((a, b) => (a.releasedAt ?? 0) - (b.releasedAt ?? 0));
     let live = this.entries.length;
-    for (const entry of idle) {
+    for (const entry of this.lru()) {
       if (live <= limit) break;
       live -= 1;
       void this.evict(entry, "pool cap");

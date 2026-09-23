@@ -16,6 +16,7 @@ import { probeClaudePlanUsage } from "../usage/claude-probe.js";
 import { ProjectsStore } from "../projects/projects-store.js";
 import { ChatStore } from "../projects/chat-store.js";
 import { AttachmentStore } from "../projects/attachment-store.js";
+import { SettingsStore } from "../projects/settings-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
@@ -28,7 +29,8 @@ export interface ServeFlags {
   host: string;
   viewer: string;
   mock: boolean;
-  agent: AgentProvider;
+  /** Absent = the saved default agent (settings.json), else Claude Code. */
+  agent?: AgentProvider;
   allowOrigins: string[];
   links: boolean;
   open: boolean;
@@ -39,11 +41,20 @@ export interface ServeHooks {
   openSystemProject?: OpenSystemProject;
 }
 
-/** RUAH_WARM_TTL_MS overrides the 5-minute keep-alive of agents the hub let go (0 = stop at once). */
-function warmTtlMs(): number {
-  const raw = process.env.RUAH_WARM_TTL_MS;
+function envInt(name: string, fallback: number, min: number): number {
+  const raw = process.env[name];
   const value = raw !== undefined ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_WARM_TTL_MS;
+  return Number.isFinite(value) && value >= min ? value : fallback;
+}
+
+/** RUAH_WARM_TTL_MS overrides the 15-minute keep-alive of warm agents (0 = stop at once, no pre-warming). */
+function warmTtlMs(): number {
+  return envInt("RUAH_WARM_TTL_MS", DEFAULT_WARM_TTL_MS, 0);
+}
+
+/** RUAH_MAX_LIVE_AGENTS overrides the cap of 4 live agent processes (current + warm). */
+function maxLiveAgents(): number {
+  return envInt("RUAH_MAX_LIVE_AGENTS", DEFAULT_MAX_LIVE_BRIDGES, 1);
 }
 
 export async function runServe(flags: ServeFlags, version: string, hooks: ServeHooks = {}): Promise<number> {
@@ -68,13 +79,22 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   };
   const initialRoot = flags.repo !== undefined ? path.resolve(flags.repo) : (process.env.HOME ?? homedir());
   const catalog = new AgentCatalog({ root: initialRoot, clientVersion: version, onStderr: debug }, { mock: flags.mock });
-  const agentId = flags.mock ? MOCK_AGENT_ID : agentIdOf(flags.agent);
+  const home = ruahHome();
+  const settings = new SettingsStore(home, { onError: (line) => process.stderr.write(`${line}\n`) });
+  // --agent wins; else the saved default agent when it is installed; else Claude Code.
+  const saved = settings.get().defaultAgentId;
+  const agentId = flags.mock
+    ? MOCK_AGENT_ID
+    : flags.agent !== undefined
+      ? agentIdOf(flags.agent)
+      : saved !== undefined && catalog.check(saved).ok
+        ? saved
+        : "claude";
   const check = catalog.check(agentId);
   if (!check.ok) {
     process.stderr.write(`archmap serve: ${check.message}\n`);
     return 2;
   }
-  const home = ruahHome();
   // Usage log in $RUAH_HOME (~/.ruah); the Claude limits probe is a CLI start
   // without a model turn — RUAH_CLAUDE_USAGE_PROBE=0 turns it off.
   let hubRef: SessionHub | undefined;
@@ -101,8 +121,11 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     usage,
     chats,
     attachments,
+    settings,
     warmTtlMs: warmTtlMs(),
-    maxLiveBridges: DEFAULT_MAX_LIVE_BRIDGES,
+    maxLiveBridges: maxLiveAgents(),
+    // The scripted mock must not start real agent CLIs behind the user's back.
+    prewarm: !flags.mock && process.env.RUAH_PREWARM !== "0",
   });
   hubRef = hub;
   const projects = new ProjectService({

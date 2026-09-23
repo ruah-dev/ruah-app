@@ -222,9 +222,12 @@ export type ClientMessage =
   | { type: "permission.response"; requestId: string; cancelled: true }   // user dismissed
   | { type: "cancel"; turnId: string }
   | { type: "session.reset" }                                             // Phase 3: new ACP session (drops agent memory)
-  | { type: "mode.set"; modeId: string }                                  // Phase 3: session/set_mode
-  | { type: "model.set"; modelId: string }                                // switch model for the live session
-  | { type: "agent.set"; agentId: string }                                // switch coding agent: stops the current one (cancelling any turn), starts the new one with a fresh session
+  | { type: "mode.set"; modeId: string }                                  // Phase 3: session/set_mode; saved as that agent's default mode (§5.7)
+  | { type: "model.set"; modelId: string }                                // switch model for the live session; saved as that agent's default model (§5.7)
+  | { type: "agent.set"; agentId: string }                                // switch coding agent (cancelling any turn): a pre-warmed one is swapped in at once, else started; saved as the default agent
+  | { type: "agent.prewarm"; agentIds?: string[] }                        // start these agents in the background (default: every installed agent but the current one) (§5.7)
+  | { type: "defaults.set"; agentId?: string;                             // Settings → Agents: saved defaults (§5.7); null clears an entry
+      models?: Record<string, string | null>; modes?: Record<string, string | null> }
   | { type: "architecture.save"; architecture: Architecture };            // Phase 3: daemon validates + writes the file
 
 // ---------- daemon -> viewer ----------
@@ -233,9 +236,11 @@ export type ServerMessage =
       root: string; path: string; architecture: Architecture }            // root = absolute repo dir on the daemon host
   | { type: "architecture.error"; path: string; message: string }         // file invalid; previous revision stays live
   | { type: "agent.status"; state: AgentState; agent?: { name: string; version: string };
-      sessionId?: string; modes?: ModeState; models?: ModelState; agents?: AgentChoiceState; error?: string }
+      sessionId?: string; modes?: ModeState; models?: ModelState; agents?: AgentChoiceState; error?: string;
+      defaults?: { agentId: string; models: Record<string, string>; modes: Record<string, string> } } // §5.7
   | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string;
-      attachments?: { id: string; name: string; mimeType: string }[] }  // the prompt's images (§5.6), absent when none
+      attachments?: { id: string; name: string; mimeType: string }[]    // the prompt's images (§5.6), absent when none
+      queued?: true }                                                    // the agent is still starting; a second turn.started (without it) follows when the prompt is sent
   | { type: "stream"; turnId: string; event: StreamEvent }
   | { type: "permission.request"; turnId: string; requestId: string;
       toolCall: ToolCallView; options: PermissionOption[] }
@@ -254,7 +259,10 @@ export interface ModeState {
 export interface AgentChoiceState {
   currentAgentId: string;                                        // "claude" (Claude Agent SDK) | "cursor" | "grok" | "kiro" (ACP)
   available: { id: string; name: string; installed: boolean; description?: string; installHint?: string;
-               images?: boolean }[];                              // takes images in prompts (§5.6); absent = not known yet
+               images?: boolean;                                  // takes images in prompts (§5.6); absent = not known yet
+               warm?: "ready" | "starting" | "cold";              // installed agents, open project: pre-warm state (§5.7)
+               warmError?: string;                                // why the last pre-warm failed (the agent stays cold)
+               models?: ModelState; modes?: ModeState }[];        // last reported by that agent (non-current agents)
 }
 
 export interface ModelState {
@@ -305,7 +313,7 @@ export type ErrorCode =
 
 1. `hello` first. Any other frame before `hello` → `error{bad_message}` and the socket is closed.
 2. Daemon → viewer after `hello`: `architecture{reason:"initial"}` then `agent.status`. `agent.status` is re-sent on every state change.
-3. `prompt` is accepted only when `agent.status.state === "idle"`. Otherwise `error{busy, turnId}`. Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`.
+3. `prompt` is accepted when `agent.status.state === "idle"` (or `"error"`: the agent is restarted). Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`. **While the current agent is `starting`** (e.g. right after `agent.set` to a cold agent, or while it applies its saved model / mode) the prompt is **queued** instead of refused: `turn.started{queued:true}` at once (the viewer shows the user bubble with "waiting for <agent>…"), then — once the agent is idle — the prompt is sent and a second `turn.started` (without `queued`) follows. One prompt can wait at a time (another one → `error{busy, turnId}`). `cancel` of a queued turn ends it with `turn.finished{cancelled}` without it ever reaching the agent; a switch (agent, project, chat) does the same. If the agent fails to start, the queued turn ends `turn.finished{error, error:"<agent> did not start: <reason>"}`. A queued or cancelled turn is stored in its chat like any other. Otherwise (`busy`, `stopped`) → `error{busy, turnId}`.
 4. `permission.request` blocks the agent until `permission.response` arrives. There is no daemon-side timeout in Phase 1. `permission.resolved` is echoed so a second viewer tab stays consistent.
 5. `cancel` makes the daemon (a) answer every pending `permission.request` of that turn with ACP `{outcome:"cancelled"}`, (b) send ACP `session/cancel`, (c) wait up to 15 s for the ACP prompt response, then `turn.finished{stopReason:"cancelled"}`. If the agent does not respond in 15 s the daemon kills and respawns it and sends `turn.finished{stopReason:"error"}` + `agent.status`.
 6. A running turn is cancelled only when the **last** viewer disconnects and none reconnects within 5 s (`RUAH_DISCONNECT_GRACE_MS`); another open tab or a page reload keeps it running. (Later: buffer the turn's events and replay them on reconnect.)
@@ -576,6 +584,54 @@ Screenshots and mockups travel **over HTTP, not the WebSocket** (frames stay ≤
 3. **Prompt** `{ type: "prompt", …, attachments: [{ id, name }] }` (≤ 8, validated by the frame schema). The daemon reads each file and puts one ACP `image` block per image **before** the text (§3.3). Rejections (`error{bad_message, turnId}`, no turn starts): the current agent cannot read images — `"<agent> can't read images — switch to Claude Code or remove the image"` — or a referenced file is missing (`attachment not found: <name> — attach it again`).
 4. **Which agents take images:** the Claude Agent SDK always (PNG, JPEG, GIF, WebP); ACP agents when `initialize` answered `agentCapabilities.promptCapabilities.image: true`. `agent.status.agents.available[].images` carries it (absent until an ACP agent has been initialized once); unknown counts as "no" for a prompt. The viewer disables attaching while the current agent's `images` is not `true`.
 5. **History:** `turn.started` and the stored `TurnRecord` carry `attachments: { id, name, mimeType }[]`, so `chat.history` redraws the thumbnails (`GET /api/attachments/:id`). Images are **not deleted with a chat** (they are content-addressed and may be shared between chats); remove `~/.ruah/projects/<id>/attachments/` by hand to reclaim space.
+
+### 5.7 Instant agent switching and saved defaults (2026-09-23)
+
+**Pre-warming.** `agent.prewarm { agentIds? }` starts agents in the background
+for the open project without changing the current agent: default = every
+installed agent except the current one (agents this project's chats used first).
+They start one at a time, after the current agent is up (lowest priority), and
+stay in the warm pool. The viewer sends it when the Agent · Model picker opens
+(all) and when the pointer rests on an agent row (that one). The daemon also
+pre-warms by itself: 3 s after a project opened and its agent is idle, the (at
+most 2) agents this project used before. `agents.available[].warm` reports
+`"ready"` (idle: `agent.set` makes it current in the same tick — measured < 1 ms
+server-side), `"starting"` (`agent.set` attaches to that start; no second
+process) or `"cold"`; `agent.status` is re-sent whenever a warm state changes. A
+pre-warm that fails (e.g. Kiro not logged in) is stopped, reported as `cold` with
+`warmError`, never as the current agent's `error`, and not retried for 5 min
+(an explicit `agent.set` always tries). Off with `RUAH_PREWARM=0`, with
+`--mock`, and when `RUAH_WARM_TTL_MS=0`.
+
+**Pool.** At most 4 live agent processes (`RUAH_MAX_LIVE_AGENTS`), each warm one
+kept 15 min after its last use (`RUAH_WARM_TTL_MS`); the least recently used
+warm one is evicted first and the current agent never. A pre-warm never evicts
+another warm agent of the same project (only one of another project); an
+`agent.set` evicts whatever is least recently used.
+
+**Saved defaults.** `$RUAH_HOME/settings.json` (`~/.ruah`, atomic writes):
+`{ version: 1, defaultAgentId?, models: { [agentId]: modelId }, modes: { [agentId]: modeId } }`
+(unknown keys are kept). `agent.set` saves the default agent, `model.set` /
+`mode.set` (once the agent accepted them) the current agent's default model /
+mode; `defaults.set` (Settings → Agents) writes them directly (an unknown or
+uninstalled `agentId` → `error`) and applies the new model / mode to that
+agent's idle live processes in the open project. `serve` without `--agent`
+starts the saved default agent when installed, else Claude Code. `agent.status.defaults`
+carries `{ agentId, models, modes }` — the saved values, with `modes` filled in
+by the built-in default modes below.
+
+Which model / mode a **new agent session** gets (new process, reset, resumed
+chat), applied once per session before a prompt is sent (prompts wait):
+1. the choice made in this project during this daemon's life (`model.set` /
+   `mode.set`; cleared for an agent by `defaults.set`),
+2. else the saved default for the agent,
+3. else (mode only) the built-in default: the agent's "edit files without
+   asking" mode — Claude Code / claude-acp `acceptEdits`, Cursor `agent`, OpenCode
+   `build`, Kiro / others a mode that reads as "accept edits" / "auto edit" and not
+   as bypass / trust-all, Grok none (its default stays). Shell commands and other
+   tools still ask. Never `bypassPermissions`, `--trust-all-tools` or `--force`.
+A choice the agent does not offer is skipped. Later mode changes the agent makes
+itself (leaving plan mode) are not reverted.
 
 ## 6. Integrations (2026-09-23)
 

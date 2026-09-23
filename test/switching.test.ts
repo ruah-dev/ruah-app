@@ -206,7 +206,7 @@ function project(name: string): Project {
   };
 }
 
-function setup(opts: { warmTtlMs?: number } = {}) {
+function setup(opts: { warmTtlMs?: number; maxLiveBridges?: number } = {}) {
   const home = tempDir("ruah-home-");
   const chats = new ChatStore(home);
   const switcher = new FakeSwitcher();
@@ -219,6 +219,8 @@ function setup(opts: { warmTtlMs?: number } = {}) {
     agents: switcher,
     chats,
     warmTtlMs: opts.warmTtlMs ?? 60_000,
+    maxLiveBridges: opts.maxLiveBridges ?? 2,
+    autoPrewarmDelayMs: -1,
   });
   cleanups.push(() => hub.shutdown());
   const socket = new FakeSocket();

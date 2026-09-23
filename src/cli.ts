@@ -70,16 +70,16 @@ async function serve(argv: readonly string[]): Promise<number> {
       host: { type: "string", default: "127.0.0.1" },
       viewer: { type: "string", default: "viewer" },
       mock: { type: "boolean", default: false },
-      agent: { type: "string", default: "claude" },
+      agent: { type: "string" },
       "allow-origin": { type: "string", multiple: true, default: [] },
       links: { type: "boolean", default: true },
       open: { type: "boolean", default: false },
     },
     strict: false,
   });
-  const agent = values.agent as string;
+  const agent = values.agent as string | undefined;
   const { isAgentProvider } = await import("./acp/index.js");
-  if (!isAgentProvider(agent)) {
+  if (agent !== undefined && !isAgentProvider(agent)) {
     process.stderr.write(`archmap serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
     return 2;
   }
@@ -92,7 +92,7 @@ async function serve(argv: readonly string[]): Promise<number> {
       host: values.host as string,
       viewer: values.viewer as string,
       mock: values.mock === true,
-      agent,
+      ...(agent !== undefined && isAgentProvider(agent) ? { agent } : {}),
       allowOrigins: ((values["allow-origin"] as string[] | undefined) ?? []).filter(
         (o): o is string => typeof o === "string",
       ),

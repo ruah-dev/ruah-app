@@ -4,10 +4,27 @@
 // see bridge-pool.ts), the one active turn, and the chats of the open project
 // (every turn is recorded into the active chat). Several sockets may connect;
 // all receive broadcasts. agent.set swaps the bridge for another agent's
-// (AgentSwitcher, e.g. AgentCatalog).
+// (AgentSwitcher, e.g. AgentCatalog). Other agents are pre-warmed in the
+// background (agent.prewarm, and the agents a project used before) so a switch
+// is a swap; a prompt sent while the current agent starts waits in a one-slot
+// queue. Saved defaults (settings.json: agent, model and mode per agent) are
+// applied to every new agent session.
 import { createHash } from "node:crypto";
 import type { WebSocket } from "ws";
-import type { AgentChoiceState, AttachmentMeta, ClientMessage, ErrorCode, ProjectInfo, ServerMessage, StopReason, TurnRecord } from "../contracts/ws.js";
+import type {
+  AgentChoiceState,
+  AgentDefaults,
+  AttachmentMeta,
+  ClientMessage,
+  ErrorCode,
+  ModeState,
+  ModelState,
+  ProjectInfo,
+  ServerMessage,
+  StopReason,
+  TurnRecord,
+  WarmState,
+} from "../contracts/ws.js";
 import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
@@ -19,6 +36,8 @@ import type { UsageSink } from "../usage/index.js";
 import { BridgePool, DEFAULT_MAX_LIVE_BRIDGES, type BridgeStatus, type PooledBridge } from "./bridge-pool.js";
 import { appendStreamEvent, type ChatStore } from "../projects/chat-store.js";
 import type { AttachmentStore } from "../projects/attachment-store.js";
+import type { SettingsStore } from "../projects/settings-store.js";
+import { BUILT_IN_DEFAULT_MODES, builtInDefaultMode } from "../acp/default-modes.js";
 
 const MAX_FRAME_BYTES = 1_048_576;
 /** How long a running turn survives with no viewer connected (page reloads reconnect well within it). */
@@ -26,6 +45,12 @@ export const DISCONNECT_GRACE_MS = Number.parseInt(process.env.RUAH_DISCONNECT_G
 /** Same id as src/acp/index.ts MOCK_AGENT_ID (not imported: index.ts pulls in every bridge). */
 const MOCK_AGENT_ID = "mock";
 export const NO_PROJECT_MESSAGE = "no project open";
+/** Delay between a project opening (current agent idle) and pre-warming the agents it used before. */
+export const DEFAULT_AUTO_PREWARM_DELAY_MS = 3000;
+/** How many previously used agents a project open pre-warms. */
+const AUTO_PREWARM_MAX = 2;
+/** A pre-warm that failed (e.g. not logged in) is not tried again for this long (agent.set always tries). */
+export const DEFAULT_PREWARM_RETRY_MS = 5 * 60_000;
 
 /** Builds bridges for agent.set and project switches. AgentCatalog (src/acp/index.ts) implements it. */
 export interface AgentSwitcher {
@@ -64,6 +89,23 @@ export interface SessionHubOptions {
   maxLiveBridges?: number;
   /** Enables image attachments on prompts (CONTRACTS §5.6). */
   attachments?: AttachmentStore;
+  /** Saved defaults (agent, model and mode per agent); without it only the built-in default modes apply. */
+  settings?: SettingsStore;
+  /** Pre-warming of other agents (agent.prewarm + automatic); needs warmTtlMs > 0. Default true. */
+  prewarm?: boolean;
+  /** Delay before a project open pre-warms its previously used agents (default 3 s; < 0 = never). */
+  autoPrewarmDelayMs?: number;
+  /** How long a failed pre-warm is not retried (default 5 min). */
+  prewarmRetryMs?: number;
+}
+
+/** A prompt that arrived while the current agent was starting: sent once it is idle. */
+interface QueuedTurn {
+  turnId: string;
+  entry: PooledBridge;
+  blocks: ContentBlock[];
+  socket: WebSocket;
+  started: Extract<ServerMessage, { type: "turn.started" }>;
 }
 
 interface OpenProject extends ProjectRuntime {
@@ -110,6 +152,22 @@ export class SessionHub {
   private readonly lastChat = new Map<string, string | null>();
   /** Image support last reported by each agent's bridge (ACP: known after initialize). */
   private readonly imageSupport = new Map<string, boolean>();
+  /** Agent the daemon started with (defaults.agentId when none is saved). */
+  private readonly startupAgentId: string;
+  /** This daemon session's model / mode choice per (project root, agent): wins over the saved default. */
+  private readonly sessionModels = new Map<string, string>();
+  private readonly sessionModes = new Map<string, string>();
+  /** Models / modes last reported per agent (shown for agents that are not current). */
+  private readonly knownModels = new Map<string, ModelState>();
+  private readonly knownModes = new Map<string, ModeState>();
+  /** Failed pre-warms per (root, agent): stay cold with the reason, no retry for prewarmRetryMs. */
+  private readonly prewarmFailures = new Map<string, { error: string; at: number }>();
+  private prewarmQueue: string[] = [];
+  private prewarmRunning = false;
+  private autoPrewarm: { projectId: string; timer: NodeJS.Timeout | undefined } | undefined;
+  private queued: QueuedTurn | undefined;
+  /** Warm-state fingerprint of the last broadcast agent.status (re-broadcast when it changes). */
+  private lastWarmSignature = "";
 
   constructor(
     store: ArchitectureStore | null,
@@ -117,6 +175,7 @@ export class SessionHub {
     readonly options: SessionHubOptions,
   ) {
     this.currentAgentId = options.agentId ?? "unknown";
+    this.startupAgentId = this.currentAgentId;
     this.pool = new BridgePool({
       create: (agentId, root) => {
         if (options.agents === undefined) throw new Error("agent switching is not available");
@@ -196,6 +255,8 @@ export class SessionHub {
     this.open = next !== null ? this.attachProject(next) : null;
     this.activeChatId = next !== null ? this.initialChat(next.info.id) : null;
     this.detachedStatus = { state: "stopped" };
+    this.prewarmQueue = [];
+    this.cancelAutoPrewarm();
 
     this.broadcast({ type: "project", project: this.project() });
     if (next !== null) {
@@ -206,7 +267,11 @@ export class SessionHub {
     this.broadcastChats();
     this.broadcastHistory();
     if (next !== null) this.activateBridge();
-    this.broadcast(this.agentStatusMessage());
+    this.broadcastStatus();
+    if (next !== null) {
+      this.autoPrewarm = { projectId: next.info.id, timer: undefined };
+      this.maybeAutoPrewarm();
+    }
   }
 
   private attachProject(runtime: ProjectRuntime): OpenProject {
@@ -253,9 +318,10 @@ export class SessionHub {
     const { entry, fresh } = acquired;
     this.entry = entry;
     void (async () => {
+      if (entry.starting !== undefined) await entry.starting.catch(() => {});
       await this.bindSession(entry);
       const state = entry.bridge.status();
-      if (fresh || state === "stopped" || state === "error") await entry.bridge.start();
+      if (fresh || state === "stopped" || state === "error") await this.pool.start(entry);
     })().catch((err: unknown) => {
       this.options.debug(`${entry.agentId} failed to start: ${err instanceof Error ? err.message : String(err)}`);
     });
@@ -266,8 +332,7 @@ export class SessionHub {
    * session for this agent is resumed; a chat without one gets a fresh session
    * unless the bridge's session is still empty.
    */
-  private async bindSession(entry: PooledBridge): Promise<void> {
-    const chatId = this.entry === entry ? this.activeChatId : entry.chatId ?? null;
+  private async bindSession(entry: PooledBridge, chatId: string | null = this.entry === entry ? this.activeChatId : entry.chatId ?? null): Promise<void> {
     if (entry.chatId === chatId) return;
     const projectId = this.open?.info.id;
     const desired = chatId !== null && projectId !== undefined ? this.options.chats?.get(projectId, chatId)?.sessions?.[entry.agentId] : undefined;
@@ -288,10 +353,13 @@ export class SessionHub {
   /**
    * agent.set: the current agent's active turn finishes "cancelled"; the agent
    * is parked warm (or stopped when the pool keeps nothing warm) and the new
-   * one is taken from the pool or started with a fresh session. An unknown or
-   * uninstalled agent is rejected before anything is torn down. A new agent
-   * that fails to start is left in state "error" (its status carries the
-   * reason); the viewer can pick another agent.
+   * one is taken from the pool — a pre-warmed, idle one becomes current at
+   * once (agent.status idle in the same tick), one that is still starting is
+   * attached to (no second process) — or started with a fresh session. An
+   * unknown or uninstalled agent is rejected before anything is torn down. A
+   * new agent that fails to start is left in state "error" (its status
+   * carries the reason); the viewer can pick another agent. The choice is
+   * saved as the default agent.
    */
   async switchAgent(agentId: string, socket?: WebSocket): Promise<void> {
     const agents = this.options.agents;
@@ -304,14 +372,15 @@ export class SessionHub {
     if (!check.ok) return fail(check.code, check.message);
     const state = this.agentState();
     if (agentId === this.currentAgentId && (state === "idle" || state === "busy")) {
-      this.broadcast(this.agentStatusMessage());
+      this.broadcastStatus();
       return;
     }
     const open = this.open;
     if (open === null) {
       // Launcher state: remembered for the next project.
       this.currentAgentId = agentId;
-      this.broadcast(this.agentStatusMessage());
+      this.saveDefaultAgent(agentId);
+      this.broadcastStatus();
       return;
     }
     let acquired: { entry: PooledBridge; fresh: boolean };
@@ -326,8 +395,12 @@ export class SessionHub {
     const next = acquired.entry;
     this.entry = next;
     this.currentAgentId = agentId;
-    this.broadcast(this.agentStatusMessage());
-    this.options.info(`switching agent to ${agentId}${acquired.fresh ? "" : " (warm)"}`);
+    this.prewarmQueue = this.prewarmQueue.filter((id) => id !== agentId);
+    this.prewarmFailures.delete(this.key(open.store.root, agentId));
+    this.saveDefaultAgent(agentId);
+    this.broadcastStatus();
+    const how = acquired.fresh ? "cold start" : next.status.state === "idle" ? "warm, ready" : `warm, ${next.status.state}`;
+    this.options.info(`switching agent to ${agentId} (${how})`);
     try {
       if (previous !== undefined && previous !== next) {
         try {
@@ -337,15 +410,345 @@ export class SessionHub {
         }
       }
       try {
+        // A pre-warm still starting this agent: attach to it instead of spawning another process.
+        if (next.starting !== undefined) await next.starting.catch(() => {});
         await this.bindSession(next);
         const nextState = next.bridge.status();
-        if (acquired.fresh || nextState === "stopped" || nextState === "error") await next.bridge.start();
+        if (acquired.fresh || nextState === "stopped" || nextState === "error") await this.pool.start(next);
       } catch (err) {
         fail("agent_spawn_failed", `${agentId} failed to start: ${(err as Error).message}`);
       }
     } finally {
       this.switching = false;
     }
+  }
+
+  private key(root: string, agentId: string): string {
+    return `${root}\u0000${agentId}`;
+  }
+
+  private saveDefaultAgent(agentId: string): void {
+    if (agentId === MOCK_AGENT_ID) return;
+    this.options.settings?.update({ defaultAgentId: agentId });
+  }
+
+  // ---------- saved defaults: model and mode per agent ----------
+
+  /** The model a new session of `entry` should use: this daemon session's choice in the project, else the saved default. */
+  private desiredModel(entry: PooledBridge): string | undefined {
+    return this.sessionModels.get(this.key(entry.root, entry.agentId)) ?? this.options.settings?.get().models[entry.agentId];
+  }
+
+  /** The mode a new session should use: session choice, else saved default, else the built-in edit-without-asking mode. */
+  private desiredMode(entry: PooledBridge, modes: ModeState | undefined): string | undefined {
+    return (
+      this.sessionModes.get(this.key(entry.root, entry.agentId)) ??
+      this.options.settings?.get().modes[entry.agentId] ??
+      builtInDefaultMode(entry.agentId, modes)
+    );
+  }
+
+  /** Saved defaults + built-in modes, as agent.status.defaults carries them. */
+  defaults(): AgentDefaults {
+    const saved = this.options.settings?.get();
+    const modes: Record<string, string> = {};
+    for (const [agentId, preferred] of Object.entries(BUILT_IN_DEFAULT_MODES)) {
+      if (preferred[0] !== undefined) modes[agentId] = preferred[0];
+    }
+    return {
+      agentId: saved?.defaultAgentId ?? this.startupAgentId,
+      models: { ...(saved?.models ?? {}) },
+      modes: { ...modes, ...(saved?.modes ?? {}) },
+    };
+  }
+
+  /**
+   * Once per agent session (new bridge, reset, resumed chat): applies the
+   * desired model and mode when the agent offers them and they differ.
+   * Prompts wait while it runs (entry.configuring). Later changes the agent
+   * makes itself (e.g. leaving plan mode) are not fought.
+   */
+  private configure(entry: PooledBridge): void {
+    const { state, sessionId, models, modes } = entry.status;
+    if (state !== "idle" || entry.configuring !== undefined) return;
+    const session = sessionId ?? "";
+    if (entry.configuredSession === session) return;
+    entry.configuredSession = session;
+    const model = this.desiredModel(entry);
+    const mode = this.desiredMode(entry, modes);
+    const setModel = model !== undefined && models !== undefined && models.currentModelId !== model && models.available.some((m) => m.id === model);
+    const setMode = mode !== undefined && modes !== undefined && modes.currentModeId !== mode && modes.available.some((m) => m.id === mode);
+    if (!setModel && !setMode) return;
+    const run = (async () => {
+      // Out of the bridge's status emit.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      if (setModel) {
+        await entry.bridge.setModel(model).catch((err: unknown) => this.options.debug(`${entry.agentId}: model ${model} not applied: ${String(err)}`));
+      }
+      if (setMode) {
+        await entry.bridge.setMode(mode).catch((err: unknown) => this.options.debug(`${entry.agentId}: mode ${mode} not applied: ${String(err)}`));
+      }
+    })();
+    entry.configuring = run.finally(() => {
+      entry.configuring = undefined;
+      if (entry === this.entry) this.pumpQueue();
+      this.broadcastWarmChange();
+    });
+  }
+
+  /** model.set: applied to the current agent, remembered for this project and saved as the agent's default model. */
+  setModel(modelId: string, socket?: WebSocket): void {
+    const entry = this.entry;
+    if (entry === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", NO_PROJECT_MESSAGE);
+      return;
+    }
+    // Not gated on idle: both real bridges forward a mid-turn switch to the
+    // agent, which applies it from the next model request (the Claude SDK's
+    // query.setModel; claude-agent-acp's session/set_config_option does the
+    // same through its own query). The bridge re-emits agent.status with the
+    // new models.currentModelId once the agent accepted it.
+    void entry.bridge.setModel(modelId).then(
+      () => {
+        this.sessionModels.set(this.key(entry.root, entry.agentId), modelId);
+        this.saveDefaults({ models: { [entry.agentId]: modelId } }, entry.agentId);
+      },
+      (err: unknown) => {
+        if (socket !== undefined) this.error(socket, "internal", `model change failed: ${(err as Error).message}`);
+      },
+    );
+  }
+
+  /** mode.set: like model.set, for the permission mode. */
+  setMode(modeId: string, socket?: WebSocket): void {
+    const entry = this.entry;
+    if (entry === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", NO_PROJECT_MESSAGE);
+      return;
+    }
+    void entry.bridge.setMode(modeId).then(
+      () => {
+        this.sessionModes.set(this.key(entry.root, entry.agentId), modeId);
+        this.saveDefaults({ modes: { [entry.agentId]: modeId } }, entry.agentId);
+      },
+      (err: unknown) => {
+        if (socket !== undefined) this.error(socket, "internal", `mode change failed: ${(err as Error).message}`);
+      },
+    );
+  }
+
+  private saveDefaults(patch: { models?: Record<string, string>; modes?: Record<string, string> }, agentId: string): void {
+    const settings = this.options.settings;
+    if (settings === undefined || agentId === MOCK_AGENT_ID) return;
+    const before = JSON.stringify(settings.get());
+    settings.update(patch);
+    if (JSON.stringify(settings.get()) !== before) this.broadcastStatus();
+  }
+
+  /**
+   * defaults.set (Settings → Agents): saves the defaults, drops this
+   * session's per-project choices for the agents it names (the saved default
+   * wins again) and applies them to those agents' live bridges in the open
+   * project (current and warm) that are idle.
+   */
+  setDefaults(message: Extract<ClientMessage, { type: "defaults.set" }>, socket?: WebSocket): void {
+    const settings = this.options.settings;
+    if (settings === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", "saved defaults are not available");
+      return;
+    }
+    if (message.agentId !== undefined) {
+      const check = this.options.agents?.check(message.agentId) ?? { ok: false as const, code: "bad_message" as const, message: `unknown agent: ${message.agentId}` };
+      if (!check.ok) {
+        if (socket !== undefined) this.error(socket, check.code, check.message);
+        return;
+      }
+    }
+    settings.update({
+      ...(message.agentId !== undefined ? { defaultAgentId: message.agentId } : {}),
+      ...(message.models !== undefined ? { models: message.models } : {}),
+      ...(message.modes !== undefined ? { modes: message.modes } : {}),
+    });
+    const touched = new Set([...Object.keys(message.models ?? {}), ...Object.keys(message.modes ?? {})]);
+    for (const key of [...this.sessionModels.keys()]) if (touched.has(key.split("\u0000")[1] ?? "")) this.sessionModels.delete(key);
+    for (const key of [...this.sessionModes.keys()]) if (touched.has(key.split("\u0000")[1] ?? "")) this.sessionModes.delete(key);
+    const root = this.open?.store.root;
+    for (const entry of this.pool.list()) {
+      if (entry.root !== root || !touched.has(entry.agentId)) continue;
+      entry.configuredSession = undefined;
+      this.configure(entry);
+    }
+    this.broadcastStatus();
+  }
+
+  // ---------- pre-warming (speculative agent start) ----------
+
+  private prewarmEnabled(): boolean {
+    return this.options.prewarm !== false && this.options.agents !== undefined && (this.options.warmTtlMs ?? 0) > 0;
+  }
+
+  /** Installed agents by id, from the catalog's last probe. */
+  private installedAgents(): Set<string> {
+    const choices = this.options.agents?.choices(this.currentAgentId).available ?? [];
+    return new Set(choices.filter((a) => a.installed).map((a) => a.id));
+  }
+
+  /** Agents the project's chats used, most recent chat first (excluding the current agent). */
+  private usedAgents(projectId: string): string[] {
+    const chats = this.options.chats;
+    if (chats === undefined) return [];
+    const out: string[] = [];
+    for (const chat of chats.list(projectId)) {
+      const header = chats.get(projectId, chat.id);
+      for (const id of [chat.agentId, ...Object.keys(header?.sessions ?? {})]) {
+        if (id !== this.currentAgentId && !out.includes(id)) out.push(id);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * agent.prewarm: starts the agents (default: every installed agent but the
+   * current one, those this project used first) in the background for the
+   * open project, one at a time, after the current agent is up; never changes
+   * the current agent. Live ones are only touched (their idle TTL restarts).
+   * A failed one stays cold with its error and is not retried for
+   * prewarmRetryMs.
+   */
+  prewarm(agentIds?: readonly string[], why = "viewer"): void {
+    const open = this.open;
+    if (!this.prewarmEnabled() || open === null) return;
+    const installed = this.installedAgents();
+    const root = open.store.root;
+    const ids = agentIds ?? [...new Set([...this.usedAgents(open.info.id), ...installed])];
+    const retryMs = this.options.prewarmRetryMs ?? DEFAULT_PREWARM_RETRY_MS;
+    for (const agentId of ids) {
+      if (agentId === this.currentAgentId || !installed.has(agentId)) continue;
+      if (agentId === MOCK_AGENT_ID) continue;
+      const failure = this.prewarmFailures.get(this.key(root, agentId));
+      if (failure !== undefined && Date.now() - failure.at < retryMs) continue;
+      const live = this.pool.find(root, agentId);
+      if (live !== undefined) {
+        if (!live.inUse) this.pool.prewarm(root, agentId);
+        continue;
+      }
+      if (!this.prewarmQueue.includes(agentId)) {
+        this.options.debug(`pre-warm ${agentId} queued (${why})`);
+        this.prewarmQueue.push(agentId);
+      }
+    }
+    void this.runPrewarmQueue();
+  }
+
+  private async runPrewarmQueue(): Promise<void> {
+    if (this.prewarmRunning) return;
+    this.prewarmRunning = true;
+    try {
+      while (this.prewarmQueue.length > 0) {
+        // Lowest priority: the current agent starts first.
+        await this.currentSettled();
+        const agentId = this.prewarmQueue.shift();
+        const open = this.open;
+        if (agentId === undefined || open === null) break;
+        if (agentId === this.currentAgentId) continue;
+        await this.prewarmOne(open.store.root, agentId);
+      }
+    } finally {
+      this.prewarmRunning = false;
+    }
+  }
+
+  /** Resolves once the current agent is not starting / configuring (at most ~60 s). */
+  private async currentSettled(): Promise<void> {
+    for (let i = 0; i < 1200; i += 1) {
+      const entry = this.entry;
+      if (entry === undefined || (entry.status.state !== "starting" && entry.starting === undefined && entry.configuring === undefined)) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, 50).unref?.());
+    }
+  }
+
+  private async prewarmOne(root: string, agentId: string): Promise<void> {
+    let got: { entry: PooledBridge; fresh: boolean } | undefined;
+    try {
+      got = this.pool.prewarm(root, agentId);
+    } catch (err) {
+      this.recordPrewarmFailure(root, agentId, (err as Error).message);
+      return;
+    }
+    if (got === undefined) {
+      this.options.debug(`pre-warm ${agentId}: pool full`);
+      return;
+    }
+    if (!got.fresh) return;
+    const { entry } = got;
+    const t0 = Date.now();
+    this.broadcastWarmChange();
+    let failure: string | undefined;
+    try {
+      await this.bindSession(entry, this.activeChatId);
+      await this.pool.start(entry);
+    } catch (err) {
+      failure = err instanceof Error ? err.message : String(err);
+    }
+    // Taken by agent.set meanwhile: its outcome is the current agent's.
+    if (entry.inUse) return;
+    // Evicted meanwhile (pool cap, project closed): not a failure of the agent.
+    if (this.pool.find(root, agentId) !== entry) return;
+    const state = entry.status.state;
+    if (state === "error" || state === "stopped" || failure !== undefined) {
+      this.recordPrewarmFailure(root, agentId, entry.status.error ?? failure ?? `${agentId} did not start`);
+      await this.pool.discard(entry, "pre-warm failed");
+      this.broadcastWarmChange();
+      return;
+    }
+    this.options.info(`pre-warmed ${agentId} in ${Date.now() - t0} ms`);
+    this.broadcastWarmChange();
+  }
+
+  private recordPrewarmFailure(root: string, agentId: string, error: string): void {
+    this.options.info(`pre-warming ${agentId} failed: ${error}`);
+    this.prewarmFailures.set(this.key(root, agentId), { error, at: Date.now() });
+  }
+
+  /** After a project opened and its agent is idle: pre-warm the agents it used before (max 2), after a short delay. */
+  private maybeAutoPrewarm(): void {
+    const pending = this.autoPrewarm;
+    const open = this.open;
+    if (pending === undefined || pending.timer !== undefined || open === null || pending.projectId !== open.info.id) return;
+    if (this.agentState() !== "idle") return;
+    const delay = this.options.autoPrewarmDelayMs ?? DEFAULT_AUTO_PREWARM_DELAY_MS;
+    if (delay < 0 || !this.prewarmEnabled()) {
+      this.autoPrewarm = undefined;
+      return;
+    }
+    pending.timer = setTimeout(() => {
+      if (this.autoPrewarm !== pending) return;
+      this.autoPrewarm = undefined;
+      if (this.open?.info.id !== pending.projectId) return;
+      const installed = this.installedAgents();
+      const ids = this.usedAgents(pending.projectId).filter((id) => installed.has(id)).slice(0, AUTO_PREWARM_MAX);
+      if (ids.length > 0) this.prewarm(ids, "project used them");
+    }, delay);
+    pending.timer.unref?.();
+  }
+
+  private cancelAutoPrewarm(): void {
+    if (this.autoPrewarm?.timer !== undefined) clearTimeout(this.autoPrewarm.timer);
+    this.autoPrewarm = undefined;
+  }
+
+  /** Warm state of `agentId` for the open project. */
+  private warmOf(agentId: string): { warm: WarmState; warmError?: string } {
+    const root = this.open?.store.root;
+    if (root === undefined) return { warm: "cold" };
+    const entry = this.pool.find(root, agentId);
+    if (entry !== undefined) {
+      const state = entry.status.state;
+      if ((state === "idle" || state === "busy") && entry.configuring === undefined) return { warm: "ready" };
+      if (state === "starting" || entry.starting !== undefined || entry.configuring !== undefined) return { warm: "starting" };
+    }
+    const failure = this.prewarmFailures.get(this.key(root, agentId));
+    return failure !== undefined ? { warm: "cold", warmError: failure.error } : { warm: "cold" };
   }
 
   agentState(): "starting" | "idle" | "busy" | "error" | "stopped" {
@@ -374,14 +777,24 @@ export class SessionHub {
     );
   }
 
-  agentStatusMessage(): ServerMessage {
+  agentStatusMessage(): Extract<ServerMessage, { type: "agent.status" }> {
     const { state, agent, sessionId, modes, models, error } = this.entry?.status ?? this.detachedStatus;
     const choices = this.options.agents?.choices(this.currentAgentId);
+    const hasProject = this.open !== null;
     const agents = choices === undefined ? undefined : {
       ...choices,
       available: choices.available.map((choice) => {
         const images = this.imagesSupported(choice.id);
-        return images !== undefined ? { ...choice, images } : choice;
+        const other = choice.id !== this.currentAgentId;
+        const knownModels = other ? this.knownModels.get(choice.id) : undefined;
+        const knownModes = other ? this.knownModes.get(choice.id) : undefined;
+        return {
+          ...choice,
+          ...(images !== undefined ? { images } : {}),
+          ...(choice.installed && hasProject ? this.warmOf(choice.id) : {}),
+          ...(knownModels !== undefined ? { models: knownModels } : {}),
+          ...(knownModes !== undefined ? { modes: knownModes } : {}),
+        };
       }),
     };
     return {
@@ -393,7 +806,30 @@ export class SessionHub {
       ...(models !== undefined ? { models } : {}),
       ...(agents !== undefined ? { agents } : {}),
       ...(error !== undefined && state === "error" ? { error } : {}),
+      ...(agents !== undefined ? { defaults: this.defaults() } : {}),
     };
+  }
+
+  /** What makes a pre-warm change worth a broadcast (warm states, errors, other agents' model lists). */
+  private warmSignature(message: Extract<ServerMessage, { type: "agent.status" }>): string {
+    return JSON.stringify(
+      (message.agents?.available ?? []).map((a) => [a.id, a.warm, a.warmError, a.models?.currentModelId, a.models?.available.length, a.modes?.currentModeId]),
+    );
+  }
+
+  private broadcastStatus(): void {
+    const message = this.agentStatusMessage();
+    this.lastWarmSignature = this.warmSignature(message);
+    this.broadcast(message);
+  }
+
+  /** Re-sends agent.status when another agent's warm state changed (the current agent's state is unchanged). */
+  private broadcastWarmChange(): void {
+    const message = this.agentStatusMessage();
+    const signature = this.warmSignature(message);
+    if (signature === this.lastWarmSignature) return;
+    this.lastWarmSignature = signature;
+    this.broadcast(message);
   }
 
   // ---------- turns ----------
@@ -407,6 +843,10 @@ export class SessionHub {
   }
 
   async cancelTurn(turnId: string, socket?: WebSocket): Promise<void> {
+    if (this.queued?.turnId === turnId) {
+      this.dropQueued("cancelled");
+      return;
+    }
     if (this.activeTurn !== turnId || this.entry === undefined) {
       if (socket !== undefined) this.error(socket, "no_turn", `unknown turn: ${turnId}`);
       return;
@@ -415,12 +855,21 @@ export class SessionHub {
   }
 
   async cancelActive(_why: string): Promise<void> {
+    if (this.queued !== undefined) {
+      this.dropQueued("cancelled");
+      return;
+    }
     if (this.activeTurn === undefined) return;
     const recording = this.turns.get(this.activeTurn);
     await (recording?.entry.bridge ?? this.entry?.bridge)?.cancel(this.activeTurn);
   }
 
-  /** prompt (§2.2 rule 3): builds the context pack, sends it, records the turn into the active chat. */
+  /**
+   * prompt (§2.2 rule 3): builds the context pack, sends it, records the turn
+   * into the active chat. While the current agent is starting (or applying its
+   * saved model / mode) the prompt is queued — one at a time — and sent once
+   * the agent is idle (turn.started{queued:true} now, turn.started again then).
+   */
   startTurn(socket: WebSocket, message: Extract<ClientMessage, { type: "prompt" }>): void {
     const open = this.open;
     const entry = this.entry;
@@ -429,8 +878,13 @@ export class SessionHub {
       return;
     }
     const state = this.agentState();
+    const waiting = entry !== undefined && (state === "starting" || entry.configuring !== undefined);
+    if (waiting && this.activeTurn !== undefined) {
+      this.error(socket, "busy", `a prompt is already waiting for ${this.agentName(this.currentAgentId)} to start`, { turnId: message.turnId });
+      return;
+    }
     // "error" is allowed: both real bridges restart the agent on the next prompt.
-    if (entry === undefined || (state !== "idle" && state !== "error")) {
+    if (entry === undefined || (!waiting && state !== "idle" && state !== "error")) {
       this.error(socket, "busy", `agent is ${state}, not idle`, { turnId: message.turnId });
       return;
     }
@@ -448,19 +902,21 @@ export class SessionHub {
     const pack = buildContextPack(index, message.nodeId, open.store.root, message.text);
     const resolvePath = open.store.resolvePath?.bind(open.store);
     // Images first: the text block (ending with the user's question) stays last (CONTRACTS §3.3).
-    const blocks = [...images.blocks, ...buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath)];
-    let handle;
-    try {
-      handle = entry.bridge.prompt(message.turnId, blocks as ContentBlock[]);
-    } catch (err) {
-      if (err instanceof BusyError) {
-        this.error(socket, "busy", err.message, { turnId: message.turnId });
+    const blocks = [...images.blocks, ...buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath)] as ContentBlock[];
+    if (!waiting) {
+      let handle;
+      try {
+        handle = entry.bridge.prompt(message.turnId, blocks);
+      } catch (err) {
+        if (err instanceof BusyError) {
+          this.error(socket, "busy", err.message, { turnId: message.turnId });
+          return;
+        }
+        this.error(socket, "internal", (err as Error).message, { turnId: message.turnId });
         return;
       }
-      this.error(socket, "internal", (err as Error).message, { turnId: message.turnId });
-      return;
+      void handle.done.catch(() => {});
     }
-    void handle.done.catch(() => {});
     const chatId = this.ensureChatForTurn(message.text, entry);
     this.markTurnActive(message.turnId);
     this.turns.set(message.turnId, {
@@ -480,14 +936,65 @@ export class SessionHub {
       startedAtMs: Date.now(),
       finalized: false,
     });
-    this.send(socket, {
+    const started: Extract<ServerMessage, { type: "turn.started" }> = {
       type: "turn.started",
       turnId: message.turnId,
       nodeId: message.nodeId,
       contextPack: pack,
       text: message.text,
       ...(images.meta.length > 0 ? { attachments: images.meta } : {}),
-    });
+    };
+    if (waiting) {
+      this.queued = { turnId: message.turnId, entry, blocks, socket, started };
+      this.options.debug(`prompt ${message.turnId} queued until ${entry.agentId} is ready`);
+      this.send(socket, { ...started, queued: true });
+      return;
+    }
+    this.send(socket, started);
+  }
+
+  /** Sends the queued prompt once its agent is idle; fails it when the agent could not start. */
+  private pumpQueue(): void {
+    const queued = this.queued;
+    if (queued === undefined) return;
+    const { entry } = queued;
+    if (entry !== this.entry) {
+      this.dropQueued("cancelled");
+      return;
+    }
+    const state = entry.status.state;
+    if (state === "starting" || state === "busy" || entry.configuring !== undefined) return;
+    if (state === "error" || state === "stopped") {
+      const reason = entry.status.error;
+      this.dropQueued("error", `${this.agentName(entry.agentId)} did not start${reason !== undefined ? `: ${reason}` : ""}`);
+      return;
+    }
+    this.queued = undefined;
+    let handle;
+    try {
+      handle = entry.bridge.prompt(queued.turnId, queued.blocks);
+    } catch (err) {
+      this.queued = queued;
+      this.dropQueued("error", (err as Error).message);
+      return;
+    }
+    void handle.done.catch(() => {});
+    const recording = this.turns.get(queued.turnId);
+    if (recording !== undefined) recording.startedAtMs = Date.now();
+    this.options.debug(`queued prompt ${queued.turnId} sent to ${entry.agentId}`);
+    this.send(queued.socket, queued.started);
+  }
+
+  /** Ends the queued turn without it reaching the agent (cancel, switch, failed start). */
+  private dropQueued(stopReason: StopReason, error?: string): void {
+    const queued = this.queued;
+    if (queued === undefined) return;
+    this.queued = undefined;
+    if (this.activeTurn === queued.turnId) this.activeTurn = undefined;
+    const recording = this.turns.get(queued.turnId);
+    this.turns.delete(queued.turnId);
+    if (recording !== undefined) this.finalizeTurn(recording, stopReason, error);
+    else this.broadcast({ type: "turn.finished", turnId: queued.turnId, stopReason, ...(error !== undefined ? { error } : {}) });
   }
 
   /**
@@ -547,6 +1054,10 @@ export class SessionHub {
    * background (its own finish then only records usage). Keeps switches fast.
    */
   private detachActiveTurn(): void {
+    if (this.queued !== undefined) {
+      this.dropQueued("cancelled");
+      return;
+    }
     const turnId = this.activeTurn;
     if (turnId === undefined) return;
     this.activeTurn = undefined;
@@ -714,6 +1225,8 @@ export class SessionHub {
   /** Daemon shutdown: store the active turn, close the store, stop every bridge. */
   async shutdown(): Promise<void> {
     this.detachActiveTurn();
+    this.prewarmQueue = [];
+    this.cancelAutoPrewarm();
     this.close();
     this.open?.store.close();
     await this.pool.stopAll();
@@ -729,8 +1242,17 @@ export class SessionHub {
   private onBridgeEvent(entry: PooledBridge, event: BridgeEvent): void {
     const current = entry === this.entry;
     if (event.type === "status") {
-      // A parked or retired bridge's state is not the agent's state.
-      if (current) this.broadcast(this.agentStatusMessage());
+      if (entry.status.models !== undefined) this.knownModels.set(entry.agentId, entry.status.models);
+      if (entry.status.modes !== undefined) this.knownModes.set(entry.agentId, entry.status.modes);
+      if (entry.status.state === "idle") this.configure(entry);
+      // A parked or retired bridge's state is not the agent's state; only its warm state is shown.
+      if (!current) {
+        this.broadcastWarmChange();
+        return;
+      }
+      this.broadcastStatus();
+      this.maybeAutoPrewarm();
+      if (this.queued !== undefined) setImmediate(() => this.pumpQueue());
       return;
     }
     if (event.type === "stream") {
@@ -914,34 +1436,23 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
       return;
     }
     case "mode.set": {
-      const bridge = hub.bridge;
-      if (bridge === undefined) {
-        hub.error(socket, "bad_message", NO_PROJECT_MESSAGE);
-        return;
-      }
-      void bridge.setMode(message.modeId).catch((err: unknown) => {
-        hub.error(socket, "internal", `mode change failed: ${(err as Error).message}`);
-      });
+      hub.setMode(message.modeId, socket);
       return;
     }
     case "model.set": {
-      // Not gated on idle: both real bridges forward a mid-turn switch to the
-      // agent, which applies it from the next model request (the Claude SDK's
-      // query.setModel; claude-agent-acp's session/set_config_option does the
-      // same through its own query). The bridge re-emits agent.status with the
-      // new models.currentModelId once the agent accepted it.
-      const bridge = hub.bridge;
-      if (bridge === undefined) {
-        hub.error(socket, "bad_message", NO_PROJECT_MESSAGE);
-        return;
-      }
-      void bridge.setModel(message.modelId).catch((err: unknown) => {
-        hub.error(socket, "internal", `model change failed: ${(err as Error).message}`);
-      });
+      hub.setModel(message.modelId, socket);
       return;
     }
     case "agent.set": {
       void hub.switchAgent(message.agentId, socket);
+      return;
+    }
+    case "agent.prewarm": {
+      hub.prewarm(message.agentIds);
+      return;
+    }
+    case "defaults.set": {
+      hub.setDefaults(message, socket);
       return;
     }
     case "architecture.save": {
