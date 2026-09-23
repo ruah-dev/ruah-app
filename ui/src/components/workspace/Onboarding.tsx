@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, AtSign, FolderOpen, FolderPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Phantom, RuahMark } from "@/components/brand/RuahLogo";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 
 function MiniFolder() {
   return (
@@ -54,7 +54,7 @@ function MiniAsk() {
         Where are invoices validated?
       </span>
       <span className="flex items-center gap-1.5">
-        <RuahMark size={12} />
+        <Phantom expression="agent" size={12} still />
         <span className="block h-1.5 w-36 rounded bg-surface-3" />
       </span>
       <span className="block h-1.5 w-28 rounded bg-surface-3" />
@@ -62,21 +62,24 @@ function MiniAsk() {
   );
 }
 
-const steps: { title: string; body: ReactNode; art: ReactNode }[] = [
+const steps: { title: string; body: ReactNode; art: ReactNode; ghost: PhantomExpression }[] = [
   {
     title: "Open or create a project",
     body: "Open a repo folder — Ruah scans it into a map (architecture.json) the first time. Or start an empty project and draw it yourself.",
     art: <MiniFolder />,
+    ghost: "idle",
   },
   {
     title: "How the map works",
     body: "Every box is a service, module or file of your repo, grouped by layer. Double-click an element to open its level; the sidebar lists every level and workflow. Changes you make on the canvas are saved to architecture.json.",
     art: <MiniMap />,
+    ghost: "thinking",
   },
   {
     title: "Ask the agent about an element",
     body: "Select an element and ask. Its path, files and links travel with your message, and each conversation is kept as a chat of the project. ⌘K jumps between projects and chats; ⌘. switches agent or model.",
     art: <MiniAsk />,
+    ghost: "agent",
   },
 ];
 
@@ -111,12 +114,18 @@ export function OnboardingCard({
         <X className="size-3.5" />
       </button>
       <div className="flex gap-5 p-5 max-sm:flex-col">
-        <div className="grid h-28 w-52 shrink-0 place-items-center rounded-xl bg-background ring-1 ring-hairline max-sm:w-full">
+        <div className="relative grid h-28 w-52 shrink-0 place-items-center rounded-xl bg-background ring-1 ring-hairline max-sm:w-full">
           {current.art}
+          <Phantom
+            key={step}
+            expression={current.ghost}
+            eyes={step === 0 ? "sparkle" : undefined}
+            size="sm"
+            className="absolute right-2 bottom-2"
+          />
         </div>
         <div className="min-w-0 flex-1 pe-6">
           <p className="eyebrow flex items-center gap-2">
-            <Phantom size={16} glow={false} float={false} expression={step === 2 ? "agent" : "idle"} />
             Getting started · {step + 1} of {steps.length}
           </p>
           <h2 className="heading mt-2 text-[17px] text-foreground">{current.title}</h2>

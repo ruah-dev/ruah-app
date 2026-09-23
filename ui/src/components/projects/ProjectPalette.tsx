@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AgentMark } from "@/components/agent/ComposerControls";
+import { Phantom } from "@/components/brand/Phantom";
 import { KindBadge, ProjectTile } from "./ProjectBits";
 import { useProjectActions } from "./useProjectActions";
 import { useRecentChats } from "./useRecentChats";
@@ -96,7 +97,8 @@ export function ProjectPalette() {
             className="h-12 text-body"
           />
           <CommandList className="max-h-[min(64vh,520px)] px-1.5 pb-1.5">
-            <CommandEmpty className="py-8 text-center text-ui-sm text-muted-foreground">
+            <CommandEmpty className="flex flex-col items-center gap-2 py-8 text-center text-ui-sm text-muted-foreground">
+              <Phantom expression="thinking" size="sm" />
               Nothing matches.
             </CommandEmpty>
             {projects.length ? (

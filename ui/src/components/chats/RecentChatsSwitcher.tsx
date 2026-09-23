@@ -12,6 +12,7 @@ import { relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { AgentMark } from "@/components/agent/ComposerControls";
+import { Phantom } from "@/components/brand/Phantom";
 import { ProjectTile } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import { useRecentChats } from "@/components/projects/useRecentChats";
@@ -207,7 +208,10 @@ export function RecentChatsSwitcher() {
           </span>
         </div>
         {rows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-ui-sm text-muted-foreground">No chats yet.</p>
+          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <Phantom expression="idle" size="sm" />
+            <p className="text-ui-sm text-muted-foreground">No chats yet.</p>
+          </div>
         ) : (
           <ul role="listbox" aria-label="Recent chats" className="max-h-[min(56vh,480px)] overflow-y-auto p-1.5">
             {rows.map((r, i) => {

@@ -25,7 +25,7 @@ import { useProjectActions } from "@/components/projects/useProjectActions";
 import { relativeTime } from "@/lib/time";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Phantom } from "@/components/brand/RuahLogo";
+import { Phantom } from "@/components/brand/Phantom";
 
 function Section({
   title,
@@ -78,7 +78,7 @@ function RecentChats() {
     >
       {chats.length === 0 ? (
         <div className="flex items-center gap-4 py-2">
-          <Phantom expression="agent" size={44} glow={false} />
+          <Phantom expression="agent" size={44} />
           <Quiet>
             No chats in this project yet. Select an element on the map and ask the agent about it —
             or{" "}
@@ -148,7 +148,15 @@ function RescanButton() {
           disabled={disabled}
           className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
-          {state.kind === "done" ? <Check className="size-3.5 text-ok" /> : <RefreshCw className={`size-3.5 ${state.kind === "busy" ? "animate-spin" : ""}`} />}
+          {state.kind === "done" ? (
+            <Phantom expression="success" size={14} />
+          ) : state.kind === "busy" ? (
+            <Phantom expression="loading" size={14} />
+          ) : state.kind === "error" ? (
+            <Phantom expression="error" size={14} />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
           {state.kind === "busy" ? "Rescanning…" : state.kind === "done" ? state.text : state.kind === "error" ? "Rescan failed" : "Rescan"}
         </button>
       </TooltipTrigger>

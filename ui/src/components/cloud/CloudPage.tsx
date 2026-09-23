@@ -2,8 +2,9 @@
 // with a link from each resource to the architecture element it runs. "Show on map" adds a
 // derived, read-only Cloud level to the Map.
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Cloud, Loader2, Map as MapIcon, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, Loader2, Map as MapIcon, RefreshCw, Search } from "lucide-react";
 import type { CloudResource, IntegrationInfo } from "@/lib/contracts";
+import { Phantom } from "@/components/brand/Phantom";
 import {
   CLOUD_DIAGRAM_ID,
   loadCloud,
@@ -271,10 +272,19 @@ export function CloudPage() {
           empty={
             <div className="flex h-full min-h-60 flex-col items-center justify-center gap-2 px-8 text-center">
               {s.cloud.status === "loading" ? (
-                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                <>
+                  <Phantom expression="loading" size="md" label="Loading resources" />
+                  <p className="text-ui-sm text-muted-foreground">Reading what's deployed…</p>
+                </>
               ) : (
                 <>
-                  <Cloud className="size-5 text-faint" />
+                  <Phantom
+                    expression={
+                      s.cloud.status === "error" && all.length === 0 ? "error" : all.length ? "thinking" : "idle"
+                    }
+                    size="md"
+                    className="mb-1"
+                  />
                   <p className="heading text-[16px] text-foreground">
                     {all.length ? "Nothing matches the filter" : "No resources yet"}
                   </p>

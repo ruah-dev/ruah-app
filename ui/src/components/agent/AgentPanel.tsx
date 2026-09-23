@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { ImagePlus, MessageSquarePlus, RotateCcw } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
-import { Phantom } from "@/components/brand/RuahLogo";
+import { Phantom } from "@/components/brand/Phantom";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
 import { contextPathOf } from "@/lib/architecture";

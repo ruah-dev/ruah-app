@@ -9,6 +9,7 @@ import { prefetchChat, renameChat } from "@/lib/daemon";
 import { relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { AgentMark } from "@/components/agent/ComposerControls";
+import { Phantom } from "@/components/brand/Phantom";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import {
   Command,
@@ -124,7 +125,10 @@ export function ChatSwitcher({ className, compact = false }: { className?: strin
         >
           <CommandInput placeholder={`Search ${daemon.chats.length} chats…`} className="h-10 text-ui" />
           <CommandList className="max-h-[min(52vh,380px)] p-1">
-            <CommandEmpty className="py-6 text-center text-ui-sm text-muted-foreground">No chat matches.</CommandEmpty>
+            <CommandEmpty className="flex flex-col items-center gap-2 py-6 text-center text-ui-sm text-muted-foreground">
+              <Phantom expression="thinking" size="sm" />
+              No chat matches.
+            </CommandEmpty>
             <CommandGroup>
               <CommandItem
                 value={`New chat${SEP}new`}

@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from "react";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { WorkbenchProvider } from "@/lib/workbench";
 import { applyPalette, applyTheme, readPalette, readTheme, useColorScheme } from "@/lib/theme";
-import { Phantom } from "@/components/brand/RuahLogo";
+import { Phantom, PhantomCompanion } from "@/components/brand/Phantom";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -24,7 +24,7 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex max-w-md flex-col items-center text-center">
-        <Phantom size={64} expression="idle" />
+        <PhantomCompanion size="lg" />
         <p className="eyebrow mt-6">404</p>
         <h1 className="heading mt-2 text-[24px] text-foreground">Page not found</h1>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -53,7 +53,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="flex max-w-md flex-col items-center text-center">
-        <Phantom size={64} expression="error" float={false} />
+        <Phantom size="lg" expression="error" />
         <h1 className="heading mt-6 text-[22px] text-foreground">
           This page didn&apos;t load
         </h1>

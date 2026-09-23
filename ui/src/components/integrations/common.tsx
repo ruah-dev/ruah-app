@@ -18,6 +18,7 @@ import type { IntegrationInfo } from "@/lib/contracts";
 import type { Remote, StatusTone } from "@/lib/integrations";
 import { cn } from "@/lib/utils";
 import { RuahMark } from "@/components/brand/RuahLogo";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 
 // Third-party services get the quiet metadata palette (slate / amber / warm), never a vendor's
 // own brand colour; ruah itself carries the spirit mark.
@@ -125,15 +126,34 @@ export function integrationStatus(status: IntegrationInfo["status"]) {
   return INTEGRATION_STATUS[status] ?? { label: status, tone: "idle" as StatusTone };
 }
 
-/** Quiet status chip: dot + label on a faint fill. */
+const INTEGRATION_GHOST: Record<IntegrationInfo["status"], PhantomExpression> = {
+  connected: "success",
+  not_connected: "idle",
+  cli_missing: "warning",
+  error: "error",
+};
+
+/** A 14 px ghost for a status pill, in place of the dot. */
+export function PillGhost({ expression }: { expression: PhantomExpression }) {
+  return <Phantom expression={expression} size={14} className="-ms-0.5" />;
+}
+
+export function integrationGhost(status: IntegrationInfo["status"]) {
+  return <PillGhost expression={INTEGRATION_GHOST[status] ?? "idle"} />;
+}
+
+/** Quiet status chip: dot (or a small ghost) + label on a faint fill. */
 export function Pill({
   tone,
   children,
   className,
+  icon,
 }: {
   tone: StatusTone;
   children: ReactNode;
   className?: string;
+  /** Replaces the dot. */
+  icon?: ReactNode;
 }) {
   return (
     <span
@@ -146,7 +166,7 @@ export function Pill({
         className,
       )}
     >
-      <StatusDot tone={tone} />
+      {icon ?? <StatusDot tone={tone} />}
       <span className="truncate">{children}</span>
     </span>
   );

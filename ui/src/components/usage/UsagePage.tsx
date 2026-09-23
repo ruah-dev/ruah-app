@@ -3,7 +3,8 @@
 // a model / time breakdown table. t3code's environments, Effect atoms and RPC are replaced by the
 // daemon's /api/usage endpoints (src/lib/usage.ts).
 import { useMemo, useState } from "react";
-import { BarChart3, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Phantom } from "@/components/brand/Phantom";
 import {
   bucketOf,
   bucketsFor,
@@ -56,10 +57,10 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({ title, body, failed = false }: { title: string; body: string; failed?: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-24 text-center">
-      <BarChart3 className="size-5 text-faint" />
+      <Phantom expression={failed ? "error" : "idle"} size="md" className="mb-1" />
       <p className="heading text-[16px] text-foreground">{title}</p>
       <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">{body}</p>
     </div>
@@ -212,6 +213,7 @@ export function UsagePage() {
               <UsageLimitsSection providers={limits.data.providers} colors={limitColors} now={limitsNow} />
             ) : (
               <EmptyState
+                failed={limits.status === "error"}
                 title="No limits reported yet"
                 body={
                   limits.status === "error"
@@ -224,6 +226,7 @@ export function UsagePage() {
             <UsageSkeleton />
           ) : summary.status !== "ok" || !model ? (
             <EmptyState
+              failed={summary.status === "error"}
               title="No usage recorded yet"
               body={
                 summary.status === "error"

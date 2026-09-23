@@ -1,7 +1,7 @@
-// The Ruah brand mark, wordmark and mascot, ported from the ruah website
-// (ruah-website/src/components/brand/logo.tsx and phantom.tsx) without next/link or framer-motion.
+// The Ruah brand mark and wordmark, ported from the ruah website
+// (ruah-website/src/components/brand/logo.tsx) without next/link.
 // The spirit body is ruah-400 teal with two warm-100 eyes; the wordmark is lowercase "ruah" in Jura.
-import type { CSSProperties } from "react";
+// The mascot with expressions (Phantom) lives in ./Phantom.tsx.
 import { cn } from "@/lib/utils";
 
 export const RUAH_BODY_PATH =
@@ -10,20 +10,31 @@ export const RUAH_BODY_PATH =
 const EYES = [237, 363] as const;
 const EYE_Y = 355.2;
 
-/** The spirit mark alone. `size` is in px. */
-export function RuahMark({ className, size = 24 }: { className?: string | undefined; size?: number }) {
+/** The spirit mark alone. `size` is in px. `blinkOnHover`: the eyes blink while hovered
+ * (a small easter egg on the sidebar logo; off under reduced motion / high contrast). */
+export function RuahMark({
+  className,
+  size = 24,
+  blinkOnHover = false,
+}: {
+  className?: string | undefined;
+  size?: number;
+  blinkOnHover?: boolean;
+}) {
   return (
     <svg
       viewBox="0 0 600 600"
       width={size}
       height={size}
       aria-hidden="true"
-      className={cn("shrink-0", className)}
+      className={cn("shrink-0", blinkOnHover && "phantom-hoverblink", className)}
     >
       <path d={RUAH_BODY_PATH} className="fill-ruah-400" />
-      {EYES.map((cx) => (
-        <ellipse key={cx} cx={cx} cy={EYE_Y} rx={24.4} ry={31.5} className="fill-warm-100" />
-      ))}
+      <g className="phantom-eyes">
+        {EYES.map((cx) => (
+          <ellipse key={cx} cx={cx} cy={EYE_Y} rx={24.4} ry={31.5} className="fill-warm-100" />
+        ))}
+      </g>
     </svg>
   );
 }
@@ -38,100 +49,21 @@ const sizes = {
 export function RuahLogo({
   size = "md",
   showText = true,
+  blinkOnHover = false,
   className,
 }: {
   size?: keyof typeof sizes;
   showText?: boolean;
+  blinkOnHover?: boolean;
   className?: string | undefined;
 }) {
   const s = sizes[size];
   return (
     <span className={cn("flex items-center", s.gap, className)}>
-      <RuahMark size={s.icon} />
+      <RuahMark size={s.icon} blinkOnHover={blinkOnHover} />
       {showText ? (
         <span className={cn("font-brand font-medium tracking-wide text-foreground", s.text)}>ruah</span>
       ) : null}
     </span>
-  );
-}
-
-/*
- * Phantom — the mascot. Expressions map to the semantic palette:
- *   idle teal · thinking / agent lavender · success sage · loading / warning amber · error coral.
- */
-export type PhantomExpression = "idle" | "thinking" | "agent" | "success" | "loading" | "warning" | "error";
-type EyeShape = "round" | "arc" | "line" | "squint" | "cross";
-
-const EXPRESSIONS: Record<PhantomExpression, { body: string; glow: string; eye: EyeShape }> = {
-  idle: { body: "fill-ruah-400", glow: "bg-ruah-400/15", eye: "round" },
-  thinking: { body: "fill-lavender-400", glow: "bg-lavender-400/15", eye: "arc" },
-  agent: { body: "fill-lavender-400", glow: "bg-lavender-400/15", eye: "round" },
-  success: { body: "fill-sage-400", glow: "bg-sage-400/15", eye: "arc" },
-  loading: { body: "fill-amber-400", glow: "bg-amber-400/15", eye: "squint" },
-  warning: { body: "fill-amber-400", glow: "bg-amber-400/15", eye: "line" },
-  error: { body: "fill-coral-400", glow: "bg-coral-400/15", eye: "cross" },
-};
-
-function Eye({ cx, shape }: { cx: number; shape: EyeShape }) {
-  const cy = EYE_Y;
-  const stroke = { className: "stroke-warm-100", strokeWidth: 8, strokeLinecap: "round" as const, fill: "none" };
-  switch (shape) {
-    case "round":
-      return <ellipse cx={cx} cy={cy} rx={24.4} ry={31.5} className="fill-warm-100" />;
-    case "arc":
-      return <path d={`M ${cx - 24} ${cy + 4} Q ${cx} ${cy - 26} ${cx + 24} ${cy + 4}`} {...stroke} />;
-    case "line":
-      return <line x1={cx - 20} y1={cy} x2={cx + 20} y2={cy} {...stroke} />;
-    case "squint":
-      return <line x1={cx - 22} y1={cy + 6} x2={cx + 22} y2={cy - 6} {...stroke} />;
-    case "cross":
-      return (
-        <g {...stroke} strokeWidth={7}>
-          <line x1={cx - 16} y1={cy - 16} x2={cx + 16} y2={cy + 16} />
-          <line x1={cx - 16} y1={cy + 16} x2={cx + 16} y2={cy - 16} />
-        </g>
-      );
-  }
-}
-
-export function Phantom({
-  expression = "idle",
-  size = 72,
-  float = true,
-  glow = true,
-  className,
-  style,
-  label = "Ruah mascot",
-}: {
-  expression?: PhantomExpression;
-  size?: number;
-  float?: boolean;
-  glow?: boolean;
-  className?: string | undefined;
-  style?: CSSProperties;
-  label?: string;
-}) {
-  const e = EXPRESSIONS[expression];
-  return (
-    <div
-      role="img"
-      aria-label={label}
-      className={cn("relative inline-block shrink-0", className)}
-      style={{ width: size, height: size, ...style }}
-    >
-      {glow ? <div aria-hidden className={cn("absolute inset-0 -m-3 rounded-full blur-2xl", e.glow)} /> : null}
-      <svg
-        viewBox="0 0 600 600"
-        width={size}
-        height={size}
-        aria-hidden="true"
-        className={cn("relative", float && "animate-[phantom-float_6s_ease-in-out_infinite]")}
-      >
-        <path d={RUAH_BODY_PATH} className={e.body} />
-        {EYES.map((cx) => (
-          <Eye key={cx} cx={cx} shape={e.eye} />
-        ))}
-      </svg>
-    </div>
   );
 }

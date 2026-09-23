@@ -49,6 +49,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RuahLogo, RuahMark } from "@/components/brand/RuahLogo";
+import { Phantom } from "@/components/brand/Phantom";
+import { agentExpressionLabel, useAgentExpression } from "@/components/brand/agentExpression";
 import { AgentSidebarSection, MapSidebarSection } from "./SidebarSections";
 import { ProjectsSection } from "./ProjectsSection";
 import { RecentChatsSwitcher } from "@/components/chats/RecentChatsSwitcher";
@@ -305,7 +307,15 @@ function StatusLine({ collapsed }: { collapsed: boolean }) {
             ? "Connecting…"
             : "Reconnecting…"
           : [agentName, model].filter(Boolean).join(" · ") || "Agent";
-  const dot = <span className={cn("size-1.5 shrink-0 rounded-full", agentDotClass(daemon))} />;
+  const expression = useAgentExpression(daemon);
+  const dot = (
+    <Phantom
+      expression={expression}
+      tone={daemon.source === "sample" ? "muted" : undefined}
+      size="xs"
+      label={agentExpressionLabel[expression]}
+    />
+  );
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   return (
     <Tooltip>
@@ -318,7 +328,7 @@ function StatusLine({ collapsed }: { collapsed: boolean }) {
             if (!requestModelPicker()) wb.setLauncherOpen(false);
           }}
           className={cn(
-            "flex h-7 min-w-0 items-center gap-2 rounded-md text-label text-muted-foreground transition-colors enabled:hover:bg-accent enabled:hover:text-foreground",
+            "flex h-7 min-w-0 items-center gap-1.5 rounded-md text-label text-muted-foreground transition-colors enabled:hover:bg-accent enabled:hover:text-foreground",
             collapsed ? "w-8 justify-center" : "px-2",
           )}
         >
@@ -391,7 +401,7 @@ export function AppSidebar({
           </Tooltip>
         ) : (
           <>
-            <RuahLogo size="sm" className="ps-0.5" />
+            <RuahLogo size="sm" blinkOnHover className="ps-0.5" />
             <span className="flex-1" />
             {mobile ? null : (
               <Tooltip>
@@ -530,7 +540,8 @@ function SearchDialog() {
     <CommandDialog open={wb.searchOpen} onOpenChange={wb.setSearchOpen}>
       <CommandInput placeholder="Search elements, paths, workflows, pages…" className="text-body" />
       <CommandList className="max-h-[min(60vh,420px)]">
-        <CommandEmpty className="py-6 text-center text-[13px] text-muted-foreground">
+        <CommandEmpty className="flex flex-col items-center gap-2 py-6 text-center text-[13px] text-muted-foreground">
+          <Phantom expression="thinking" size="sm" />
           Nothing matches.
         </CommandEmpty>
         <CommandGroup heading="Elements">
@@ -614,7 +625,7 @@ function SwitchingContent({ name }: { name: string }) {
         </div>
         <div className="absolute inset-0 grid place-items-center">
           <p className="flex items-center gap-2 rounded-full border border-hairline bg-popover px-3.5 py-1.5 text-ui-sm text-muted-foreground shadow-elevated">
-            <Loader2 className="size-3.5 animate-spin" />
+            <Phantom expression="loading" size="xs" />
             Opening {name}…
           </p>
         </div>

@@ -21,6 +21,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { VirtualList } from "@/components/common/VirtualList";
 import { RuahLogo } from "@/components/brand/RuahLogo";
+import { PhantomCompanion } from "@/components/brand/Phantom";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
 import { KindBadge, ProjectTile } from "@/components/projects/ProjectBits";
 import { pinnedShortcut } from "@/components/projects/ProjectPalette";
@@ -235,6 +236,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
       </header>
 
       <main className="mx-auto flex w-full max-w-[60rem] flex-1 flex-col px-8 pt-[max(2rem,8vh)] pb-10 max-md:px-4 max-md:pt-4">
+        <div className="flex items-center justify-between gap-8">
         <div className="max-w-2xl">
           <p className="eyebrow">Architecture workspace</p>
           <h1 className="heading mt-3 text-[28px] text-foreground max-md:text-[24px]">
@@ -243,6 +245,8 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           <p className="mt-3 text-body text-muted-foreground">
             Services down to files, workflows, cloud and issues — with a coding agent on every element.
           </p>
+        </div>
+          <PhantomCompanion size="lg" className="me-6 shrink-0 max-md:hidden" />
         </div>
 
         <div className="mt-12 grid grid-cols-[17rem_minmax(0,1fr)] gap-10 max-md:mt-6 max-md:grid-cols-1 max-md:gap-6">

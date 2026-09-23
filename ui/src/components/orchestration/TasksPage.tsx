@@ -41,6 +41,7 @@ import {
   CopyCommand,
   Notice,
   Pill,
+  PillGhost,
   RemoteNotice,
   primaryButton,
   quietButton,
@@ -48,7 +49,7 @@ import {
 import type { StatusTone } from "@/lib/integrations";
 import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
 import { cn } from "@/lib/utils";
-import { Phantom } from "@/components/brand/RuahLogo";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 
 const STATUS: Record<string, { label: string; tone: StatusTone; order: number }> = {
   "in-progress": { label: "Running", tone: "warn", order: 0 },
@@ -57,6 +58,13 @@ const STATUS: Record<string, { label: string; tone: StatusTone; order: number }>
   failed: { label: "Failed", tone: "bad", order: 3 },
   merged: { label: "Merged", tone: "idle", order: 4 },
   cancelled: { label: "Cancelled", tone: "idle", order: 5 },
+};
+/** Task rows carry a small ghost for the states that matter: running, done, failed. */
+const TASK_GHOST: Record<string, PhantomExpression> = {
+  "in-progress": "thinking",
+  done: "success",
+  merged: "success",
+  failed: "error",
 };
 const statusOf = (s: string) => STATUS[s] ?? { label: s, tone: "idle" as StatusTone, order: 9 };
 
@@ -106,7 +114,7 @@ function TaskRow({
         ) : null}
       </div>
       <div role="cell">
-        <Pill tone={st.tone} className={task.status === "in-progress" ? "[&>span:first-child]:animate-pulse" : ""}>
+        <Pill tone={st.tone} icon={TASK_GHOST[task.status] ? <PillGhost expression={TASK_GHOST[task.status]!} /> : undefined}>
           {st.label}
         </Pill>
       </div>
@@ -290,7 +298,7 @@ export function TasksPage() {
           <NotInitialized hint={notInit.hint} />
         ) : !status ? (
           <div className="grid h-40 place-items-center">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <Phantom expression="loading" size="md" label="Loading tasks" />
           </div>
         ) : (
           <div className="flex flex-col gap-8 pb-10">
@@ -352,7 +360,7 @@ export function TasksPage() {
                   ))
                 ) : (
                   <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                    <ListChecks className="size-5 text-faint" />
+                    <Phantom expression={tasks.length ? "success" : "idle"} size="md" className="mb-1" />
                     <p className="heading text-[16px] text-foreground">
                       {tasks.length ? "No open tasks" : "No tasks yet"}
                     </p>

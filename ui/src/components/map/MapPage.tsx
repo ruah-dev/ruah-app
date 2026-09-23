@@ -57,7 +57,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { Phantom } from "@/components/brand/RuahLogo";
+import { Phantom, PhantomCompanion } from "@/components/brand/Phantom";
 
 export const iconButton =
   "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
@@ -355,7 +355,7 @@ function EmptyMap() {
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
       <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
-        <Phantom expression="idle" size={52} />
+        <PhantomCompanion size="lg" expression={scanning ? "loading" : "tracking"} />
         <div className="space-y-1.5">
           <p className="heading text-[16px] text-foreground">An empty map</p>
           <p className="text-ui-sm leading-relaxed text-muted-foreground">
@@ -371,7 +371,7 @@ function EmptyMap() {
             disabled={scanning || !ws.editable}
             className="flex h-8 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-3 text-ui-sm text-foreground transition-colors hover:bg-surface-3 disabled:opacity-50"
           >
-            {scanning ? <Loader2 className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}
+            {scanning ? <Phantom expression="loading" size={14} /> : <ScanSearch className="size-3.5" />}
             {scanning ? "Scanning…" : "Scan repo"}
           </button>
           <button
@@ -402,7 +402,7 @@ function LevelNotice({ diagram }: { diagram: Diagram }) {
   if (entry.status === "loading" && !entry.previous) {
     return (
       <span className="control-glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> Reading {diagram.title} from disk…
+        <Phantom expression="loading" size="xs" /> Reading {diagram.title} from disk…
       </span>
     );
   }
@@ -418,7 +418,7 @@ function LevelNotice({ diagram }: { diagram: Diagram }) {
       Live from disk{exp.level === "file" ? " · symbols" : " · imports"}
       {t.children ? ` · showing ${exp.architecture.nodes.length} of ${exp.total.children}` : ""}
       {t.edges ? ` · strongest ${exp.architecture.edges.length} of ${exp.total.edges} links` : ""}
-      {entry.status === "loading" ? <Loader2 className="size-3 animate-spin" /> : null}
+      {entry.status === "loading" ? <Phantom expression="loading" size={13} label="Loading" /> : null}
     </span>
   );
 }
@@ -486,7 +486,7 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
       {ws.daemon.source === null ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" /> Connecting to the daemon…
+            <Phantom expression="loading" size="sm" /> Connecting to the daemon…
           </p>
         </div>
       ) : null}

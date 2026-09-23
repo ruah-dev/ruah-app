@@ -1,7 +1,8 @@
 // Chats: recent conversations across ALL projects (GET /api/chats/recent), grouped by project.
 // Opening a chat of another project switches the project first, then opens the chat.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MessageSquarePlus, MessagesSquare, RefreshCw, Search } from "lucide-react";
+import { MessageSquarePlus, RefreshCw, Search } from "lucide-react";
+import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 import type { RecentChat } from "@/lib/contracts";
 import { fetchRecentChats, prefetchChat, prefetchProject } from "@/lib/daemon";
 import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
@@ -143,11 +144,12 @@ export function ChatsPage() {
 
         {!connected ? (
           <EmptyState
+            expression="warning"
             title="No daemon connected"
             body="Chats are stored by the Ruah daemon. Start the Ruah app (or ruah app serve) to see them."
           />
         ) : error ? (
-          <EmptyState title="Couldn't load chats" body={error} />
+          <EmptyState expression="error" title="Couldn't load chats" body={error} />
         ) : chats === null ? (
           <div className="space-y-2 pt-1">
             {Array.from({ length: 7 }, (_, i) => (
@@ -156,6 +158,7 @@ export function ChatsPage() {
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
+            expression={query ? "thinking" : "idle"}
             title={query ? "No chat matches" : "No chats yet"}
             body={
               query
@@ -232,12 +235,18 @@ export function ChatsPage() {
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({
+  title,
+  body,
+  expression,
+}: {
+  title: string;
+  body: string;
+  expression: PhantomExpression;
+}) {
   return (
     <div className="mx-auto flex max-w-sm flex-col items-center gap-3 py-16 text-center">
-      <span className="grid size-10 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
-        <MessagesSquare className="size-4.5" />
-      </span>
+      <Phantom expression={expression} size="md" />
       <p className="text-title font-medium">{title}</p>
       <p className="text-ui-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>

@@ -8,6 +8,7 @@ import { ancestry, indexArchitecture, kindFor, parseDiagramId } from "@/lib/arch
 import { asExpanded, requestExpansion, requestPeek, type ExpansionState } from "@/lib/expand";
 import { styleFor } from "./kinds";
 import { VirtualList } from "@/components/common/VirtualList";
+import { Phantom } from "@/components/brand/Phantom";
 import { cn } from "@/lib/utils";
 import type { Architecture } from "@/lib/contracts";
 
@@ -189,7 +190,7 @@ export function OutlineTree({
                   className="grid size-5 shrink-0 place-items-center rounded text-faint hover:text-foreground disabled:invisible"
                 >
                   {loading ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Phantom expression="loading" size={13} label={`Loading ${n.name}`} />
                   ) : (
                     <ChevronRight className={cn("size-3 transition-transform", isOpen && r.hasKids && "rotate-90")} />
                   )}

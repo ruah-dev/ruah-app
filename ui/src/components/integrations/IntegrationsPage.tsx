@@ -19,11 +19,13 @@ import {
   Pill,
   ProviderMark,
   RemoteNotice,
+  integrationGhost,
   integrationStatus,
   quietButton,
   solidButton,
 } from "./common";
 import { JiraConnectDialog } from "./JiraConnectDialog";
+import { Phantom } from "@/components/brand/Phantom";
 import { cn } from "@/lib/utils";
 
 const FAMILIES: { id: IntegrationInfo["family"]; title: string; description: string }[] = [
@@ -102,7 +104,11 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="text-[13.5px] font-medium text-foreground">{info.name}</p>
-            {placeholder ? null : <Pill tone={st.tone}>{st.label}</Pill>}
+            {placeholder ? null : (
+          <Pill tone={st.tone} icon={integrationGhost(info.status)}>
+            {st.label}
+          </Pill>
+        )}
           </div>
           <p
             className={cn(
@@ -254,6 +260,17 @@ export function IntegrationsPage() {
             </p>
           </div>
           <RemoteNotice remote={remote} what="Integrations" />
+          {list && list.length > 0 && connectedCount === 0 ? (
+            <div className="flex items-center gap-4 rounded-xl border border-hairline bg-surface-1 px-4 py-3.5">
+              <Phantom expression="idle" size="md" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-[13px] font-medium text-foreground">Nothing connected yet</p>
+                <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+                  Pick a service below. Each one tells you the single command it needs.
+                </p>
+              </div>
+            </div>
+          ) : null}
           {grouped.map((f) => (
             <section key={f.id} className="flex flex-col gap-3">
               <div>

@@ -11,6 +11,7 @@ import { absoluteTime, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { VirtualList } from "@/components/common/VirtualList";
 import { AgentMark } from "@/components/agent/ComposerControls";
+import { Phantom } from "@/components/brand/Phantom";
 import { CollapsibleSection } from "@/components/shell/CollapsibleSection";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import {
@@ -123,7 +124,8 @@ export function ChatsSection({ onNavigate }: { onNavigate?: (() => void) | undef
     <>
       <CollapsibleSection id="chats" label="Chats" count={chats.length} action={newButton}>
         {chats.length === 0 ? (
-          <div className="px-2 pt-0.5 pb-1">
+          <div className="flex items-start gap-2 px-2 pt-0.5 pb-1">
+            <Phantom expression="idle" size="xs" className="mt-px" />
             <p className="text-label leading-relaxed text-faint">
               No chats yet. Select an element and ask about it — each conversation is kept here.
             </p>
