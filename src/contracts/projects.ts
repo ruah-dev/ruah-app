@@ -23,7 +23,11 @@ export const ProjectsListSchema = z.object({
 });
 export type ProjectsList = z.infer<typeof ProjectsListSchema>;
 
-export const OpenProjectBodySchema = z.object({ path: z.string().min(1) });
+export const OpenProjectBodySchema = z.object({
+  path: z.string().min(1),
+  /** Open the project on this chat (one step: switch project + chat.open). Unknown ids are ignored. */
+  chatId: z.string().min(1).max(64).optional(),
+});
 export const CreateProjectBodySchema = z.object({
   parentDir: z.string().min(1),
   name: z.string().min(1),

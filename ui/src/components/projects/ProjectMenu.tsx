@@ -109,7 +109,7 @@ export function ProjectMenu({ dotClass }: { dotClass: string }) {
         </DropdownMenuItem>
         <DropdownMenuItem className={itemClass} disabled={!actions.connected} onSelect={actions.newProject}>
           <FolderPlus className="text-muted-foreground" /> New project…
-          <kbd className="kbd ms-auto">⌘N</kbd>
+          <kbd className="kbd ms-auto">⇧⌘N</kbd>
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-hairline" />
         <DropdownMenuItem className={itemClass} onSelect={() => wb.setLauncherOpen(true)}>

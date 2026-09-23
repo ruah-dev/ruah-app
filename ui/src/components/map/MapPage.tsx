@@ -44,6 +44,7 @@ import { PropertiesPanel } from "@/components/editor/PropertiesPanel";
 import { InspectorPanel } from "@/components/explorer/InspectorPanel";
 import { kindStyles, styleFor } from "@/components/explorer/kinds";
 import { NewSessionButton } from "@/components/agent/AgentPanel";
+import { ChatSwitcher } from "@/components/chats/ChatSwitcher";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -661,6 +662,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-hairline px-3">
         <Segmented value={view} options={options} onChange={wb.setPanelView} />
+        {view === "agent" ? <ChatSwitcher compact className="min-w-0 shrink" /> : null}
         <span className="flex-1" />
         {view === "agent" ? <NewSessionButton daemon={ws.daemon} /> : null}
         {onClose && !mobile ? (

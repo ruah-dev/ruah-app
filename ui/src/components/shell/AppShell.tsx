@@ -50,6 +50,34 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { RuahLogo, RuahMark } from "@/components/brand/RuahLogo";
 import { AgentSidebarSection, MapSidebarSection } from "./SidebarSections";
+import { ProjectsSection } from "./ProjectsSection";
+import { RecentChatsSwitcher } from "@/components/chats/RecentChatsSwitcher";
+import { useRecordChatVisits } from "@/lib/mru";
+import { neighborChat } from "@/lib/switching";
+import { reportSwitchPainted, switchPending } from "@/lib/switch-timing";
+import { sameRoot, type DaemonState } from "@/lib/daemon";
+
+/** Reports when a pending project / chat switch shows on screen (see lib/switch-timing.ts). */
+function useSwitchPaintProbe(daemon: DaemonState) {
+  useEffect(() => {
+    const pending = switchPending();
+    if (!pending) return;
+    if (pending.kind === "project") {
+      const sw = daemon.projectSwitch;
+      const isTarget = (id: string | undefined, root: string | null | undefined) =>
+        id === pending.target || (!!root && sameRoot(root, pending.target));
+      if (sw?.preview && isTarget(sw.projectId, sw.root) && daemon.architecture)
+        reportSwitchPainted("project", pending.target, "preview");
+      if (!sw && daemon.project && isTarget(daemon.project.id, daemon.project.root) && daemon.architecture) {
+        reportSwitchPainted("project", pending.target, "preview");
+        reportSwitchPainted("project", pending.target, "live");
+      }
+    } else if (daemon.activeChatId === pending.target) {
+      if (daemon.turns.length > 0 || !daemon.chatLoading) reportSwitchPainted("chat", pending.target, "preview");
+      if (!daemon.chatLoading) reportSwitchPainted("chat", pending.target, "live");
+    }
+  }, [daemon]);
+}
 import { NavBadge } from "@/components/orchestration/navBadges";
 
 export { RuahMark };
@@ -97,8 +125,9 @@ function isActive(pathname: string, to: string) {
 }
 
 /**
- * Global shortcuts: "/" search, G then a letter to switch pages, ⌘B sidebar, ⌘K / ⌘P project
- * palette, ⌘O open folder, ⌘N new project, ⌘1…⌘9 pinned projects, ⌘. agent · model picker.
+ * Global shortcuts: "/" search, G then a letter to switch pages, ⌘B sidebar, ⌘K / ⌘P project +
+ * chat switcher, ⌘J recent chats (RecentChatsSwitcher), ⌘[ / ⌘] previous / next chat, ⌘O open
+ * folder, ⌘N new chat (⇧⌘N new project), ⌘1…⌘9 pinned projects, ⌘. agent · model picker.
  */
 function useShellKeys() {
   const router = useRouter();
@@ -119,6 +148,11 @@ function useShellKeys() {
         (/input|textarea|select/i.test(target.tagName) || target.isContentEditable);
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      if (mod && !e.altKey && e.shiftKey && k === "n") {
+        e.preventDefault();
+        actions.newProject();
+        return;
+      }
       if (mod && !e.altKey && !e.shiftKey) {
         if (k === "b") {
           e.preventDefault();
@@ -136,8 +170,19 @@ function useShellKeys() {
           return;
         }
         if (k === "n") {
+          // ⌘N: a new chat while a project is open (the start screen: a new project).
           e.preventDefault();
-          actions.newProject();
+          if (daemon.projectsSupported && daemon.project && !wb.launcherOpen) actions.startChat();
+          else actions.newProject();
+          return;
+        }
+        if (e.key === "[" || e.key === "]") {
+          // ⌘[ / ⌘]: previous / next chat of this project (list order), where a chat is shown.
+          const path = router.state.location.pathname;
+          if (path !== "/agent" && path !== "/map") return;
+          const next = neighborChat(daemon.chats, daemon.activeChatId, e.key === "]" ? 1 : -1);
+          e.preventDefault();
+          if (next) void actions.showChat({ id: next.id, projectId: next.projectId });
           return;
         }
         if (e.key === ".") {
@@ -303,14 +348,17 @@ export function AppSidebar({
   const pathname = usePathname();
   const nav = useNavItems();
   const current = useCurrentProjectLabel();
-  const page = daemon.projectSwitch
+  // A previewed switch (target painted from cache) keeps the sidebar sections up.
+  const settled = !daemon.projectSwitch || !!daemon.projectSwitch.preview;
+  const page = !settled
     ? null
     : pathname === "/map"
       ? "map"
       : pathname === "/agent"
         ? "agent"
         : null;
-  const chats = daemon.projectsSupported && !!daemon.project && !daemon.projectSwitch;
+  const chats = daemon.projectsSupported && !!daemon.project && settled;
+  const projects = daemon.projectsSupported && daemon.recentProjects.length > 0;
 
   return (
     <aside
@@ -429,8 +477,9 @@ export function AppSidebar({
         )}
       </nav>
 
-      {!collapsed && (chats || page) ? (
+      {!collapsed && (chats || page || projects) ? (
         <div className="min-h-0 w-full flex-1 space-y-2 overflow-y-auto border-t border-hairline px-2 pt-2 pb-3">
+          {projects ? <ProjectsSection onNavigate={onNavigate} /> : null}
           {chats ? <ChatsSection onNavigate={onNavigate} /> : null}
           {page === "map" ? (
             <MapSidebarSection onNavigate={onNavigate} />
@@ -585,6 +634,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   useShellKeys();
+  useRecordChatVisits(daemon);
+  useSwitchPaintProbe(daemon);
 
   // An open project replaces the (first-run / on-demand) start screen.
   const switching = daemon.projectSwitch;
@@ -599,6 +650,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <>
       <SearchDialog />
       <ProjectPalette />
+      <RecentChatsSwitcher />
       <OpenFolderDialog />
       <NewProjectDialog />
     </>
@@ -614,7 +666,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const content = switching ? <SwitchingContent name={switching.name} /> : children;
+  // A cached target renders the real page at once; only a first visit shows the skeleton.
+  const content = switching && !switching.preview ? <SwitchingContent name={switching.name} /> : children;
 
   if (isMobile) {
     const project = { id: daemon.project?.id ?? daemon.root ?? "sample", name: daemon.project?.name ?? daemon.architecture?.name ?? "Ruah" };

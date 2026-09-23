@@ -1,5 +1,6 @@
 // src/serve/projects-http.ts — CONTRACTS §5.3 endpoints: GET /api/projects,
-// POST /api/projects/{open,create,pin,forget}, GET /api/chats/recent. Every
+// POST /api/projects/{open,create,pin,forget}, GET /api/chats/recent, plus the
+// switching helpers GET /api/projects/preview and GET /api/chats/history. Every
 // POST passes the same Origin check as /ws (403 otherwise; CSRF defence for a
 // localhost daemon). Bodies are JSON, at most 64 KiB.
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -74,7 +75,7 @@ export function handleProjectsRequest(
 ): boolean {
   const { pathname } = url;
   const isProjects = pathname === "/api/projects" || pathname.startsWith("/api/projects/");
-  const isChats = pathname === "/api/chats/recent";
+  const isChats = pathname === "/api/chats/recent" || pathname === "/api/chats/history";
   if (!isProjects && !isChats) return false;
   if (service === undefined) {
     sendJson(res, 503, { error: "projects are not available" });
@@ -86,10 +87,25 @@ export function handleProjectsRequest(
       sendJson(res, 200, service.list());
       return true;
     }
+    if (pathname === "/api/projects/preview") {
+      const preview = service.preview(url.searchParams.get("id") ?? "");
+      if (preview === undefined) sendJson(res, 404, { error: "unknown project" });
+      else sendJson(res, 200, preview);
+      return true;
+    }
+    if (pathname === "/api/chats/history") {
+      const projectId = url.searchParams.get("projectId") ?? "";
+      const chatId = url.searchParams.get("chatId") ?? "";
+      const turns = service.chatHistory(projectId, chatId);
+      if (turns === undefined) sendJson(res, 404, { error: "unknown chat" });
+      else sendJson(res, 200, { projectId, chatId, turns });
+      return true;
+    }
     if (isChats) {
       const raw = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
       const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 500) : 50;
-      sendJson(res, 200, { chats: service.recentChats(limit) });
+      const projectId = url.searchParams.get("projectId") ?? undefined;
+      sendJson(res, 200, { chats: service.recentChats(limit, projectId) });
       return true;
     }
     sendJson(res, 404, { error: "not found" });
@@ -108,7 +124,7 @@ export function handleProjectsRequest(
     switch (pathname) {
       case "/api/projects/open": {
         const body = await parseBody(req, OpenProjectBodySchema);
-        const result = await service.open(body.path);
+        const result = await service.open(body.path, body.chatId !== undefined ? { chatId: body.chatId } : {});
         sendJson(res, 200, result.project);
         return;
       }

@@ -27,6 +27,8 @@ import type {
 } from "./contracts";
 import sampleArchitectureJson from "@/data/sample-architecture.json";
 import { sampleFiles } from "@/data/sample-files";
+import { lruSet } from "./switching";
+import { markSwitchCached, markSwitchStart } from "./switch-timing";
 
 export const CLIENT_ID = "architects-canvas/0.1.0";
 const FIRST_ATTEMPT_TIMEOUT_MS = 2500;
@@ -102,6 +104,11 @@ export interface ProjectSwitch {
   name: string;
   /** Open this chat once the new project's chat list arrives (Chats page, cross-project). */
   chatId?: string;
+  /** Target project id, when known up front (recent projects, chats). */
+  projectId?: string;
+  /** The target is painted from the viewer cache while the daemon swaps (no skeleton);
+   * editing and prompts wait until the daemon confirms. */
+  preview?: boolean;
 }
 
 export interface DaemonState {
@@ -350,9 +357,72 @@ const SWITCH_TIMEOUT_MS = 30_000;
 let pendingModel: { agentId: string; modelId: string } | null = null;
 /** Chat to open once the (new) project's chat list arrives. */
 let pendingChatOpen: string | null = null;
-/** Last known turns per chat, so switching back to a chat is instant (history replaces it). */
+/** Last known turns per chat, so switching back to a chat is instant (history replaces it).
+ * Chat ids are uuids, so one map serves every project (LRU-capped). */
 const turnCache = new Map<string, Turn[]>();
+const TURN_CACHE_MAX = 60;
 let switchTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** What the viewer needs to paint a project before the daemon has switched to it. */
+export interface ProjectSnapshot {
+  project: ProjectInfo;
+  architecture: Architecture | null;
+  revision: number;
+  path: string | null;
+  chats: ChatInfo[];
+  activeChatId: string | null;
+  /** Epoch ms the snapshot was taken (prefetches refresh older ones). */
+  at: number;
+}
+
+/** The last few projects (current one excluded), newest last. */
+const projectCache = new Map<string, ProjectSnapshot>();
+export const PROJECT_CACHE_MAX = 4;
+const PREFETCH_FRESH_MS = 15_000;
+const inflight = new Map<string, Promise<unknown>>();
+
+function cacheTurns(chatId: string, turns: Turn[]) {
+  lruSet(turnCache, chatId, turns, TURN_CACHE_MAX);
+}
+
+/** Keeps what is on screen for the current project, so coming back to it paints at once. */
+function snapshotCurrent() {
+  const project = state.project;
+  if (!project || state.projectSwitch?.preview) return;
+  if (state.activeChatId) cacheTurns(state.activeChatId, state.turns.filter((t) => t.stopReason));
+  lruSet(
+    projectCache,
+    project.id,
+    {
+      project,
+      architecture: serverArchitecture ?? state.architecture,
+      revision: state.revision,
+      path: state.path,
+      chats: state.chats,
+      activeChatId: state.activeChatId,
+      at: Date.now(),
+    },
+    PROJECT_CACHE_MAX,
+  );
+}
+
+/** The project `chats` / `activeChatId` belong to: the previewed target during a cached switch
+ * (state.project still names the project being left), else the current project. */
+export function chatsProjectId(s: DaemonState = state): string | null {
+  if (s.projectSwitch?.preview && s.projectSwitch.projectId) return s.projectSwitch.projectId;
+  return s.project?.id ?? null;
+}
+
+export function cachedProject(idOrRoot: string): ProjectSnapshot | undefined {
+  const byId = projectCache.get(idOrRoot);
+  if (byId) return byId;
+  for (const snap of projectCache.values()) if (sameRoot(snap.project.root, idOrRoot)) return snap;
+  return undefined;
+}
+
+export function hasCachedTurns(chatId: string): boolean {
+  return turnCache.has(chatId);
+}
 
 function loadModelCache() {
   try {
@@ -436,7 +506,19 @@ function handleProject(project: ProjectInfo | null) {
   const prevId = state.project?.id ?? null;
   const nextId = project?.id ?? null;
   const patch: Partial<DaemonState> = { projectsSupported: true, project, source: "daemon" };
-  if (nextId !== prevId) {
+  const previewing =
+    !!state.projectSwitch?.preview && !!nextId && state.projectSwitch.projectId === nextId;
+  if (nextId !== prevId && prevId !== null && !state.projectSwitch?.preview) snapshotCurrent();
+  if (nextId !== prevId && previewing) {
+    // The target is already on screen from the cache: keep it until the daemon's frames land.
+    serverArchitecture = null;
+    draft = null;
+    needsResend = false;
+    savesInFlight = 0;
+    if (saveTimer !== undefined) clearTimeout(saveTimer);
+    saveTimer = undefined;
+    Object.assign(patch, { lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
+  } else if (nextId !== prevId) {
     // Another project: drop everything that belonged to the previous one.
     serverArchitecture = null;
     draft = null;
@@ -444,7 +526,6 @@ function handleProject(project: ProjectInfo | null) {
     savesInFlight = 0;
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimer = undefined;
-    turnCache.clear();
     Object.assign(patch, {
       architecture: null,
       revision: 0,
@@ -458,26 +539,32 @@ function handleProject(project: ProjectInfo | null) {
       activeChatId: null,
       chatLoading: false,
     } satisfies Partial<DaemonState>);
-    if (project) {
-      patch.recentProjects = sortProjects([
-        project,
-        ...state.recentProjects.filter((p) => p.id !== project.id),
-      ]);
-    }
+  }
+  if (nextId !== prevId && project) {
+    patch.recentProjects = sortProjects([
+      project,
+      ...state.recentProjects.filter((p) => p.id !== project.id),
+    ]);
   }
   if (project === null) {
     patch.projectSwitch = null;
     clearSwitchTimer();
   } else if (state.projectSwitch && nextId !== prevId) {
-    // Adopt the daemon's canonical root (realpath) for the pending switch.
-    patch.projectSwitch = { ...state.projectSwitch, root: project.root, name: project.name };
+    // Adopt the daemon's canonical root (realpath) for the pending switch; a preview of another
+    // project (a newer click won the race) no longer applies.
+    const { preview: _preview, projectId: _projectId, ...rest } = state.projectSwitch;
+    patch.projectSwitch = previewing
+      ? { ...state.projectSwitch, root: project.root, name: project.name }
+      : { ...rest, root: project.root, name: project.name };
   }
   set(patch);
   void refreshProjects();
 }
 
 function handleChats(projectId: string, chats: ChatInfo[], activeChatId: string | null) {
-  if (state.project && projectId !== state.project.id) return; // stale frame from before a switch
+  // While a previewed switch runs, only the target's frames count (the old project may still talk).
+  const target = state.projectSwitch?.preview ? state.projectSwitch.projectId : undefined;
+  if (target !== undefined ? projectId !== target : state.project && projectId !== state.project.id) return; // stale frame
   const sorted = [...chats].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   const prev = state.activeChatId;
   const patch: Partial<DaemonState> = { chats: sorted, activeChatId };
@@ -487,7 +574,7 @@ function handleChats(projectId: string, chats: ChatInfo[], activeChatId: string 
       patch.chatLoading = false;
     } else if (prev !== null) {
       // Switched elsewhere (another tab): show what we know until chat.history arrives.
-      turnCache.set(prev, state.turns.filter((t) => t.stopReason));
+      cacheTurns(prev, state.turns.filter((t) => t.stopReason));
       patch.turns = turnCache.get(activeChatId) ?? [];
     }
     // prev === null: the first prompt of a new chat created it; keep the live turns.
@@ -505,7 +592,7 @@ function handleChats(projectId: string, chats: ChatInfo[], activeChatId: string 
 function handleHistory(chatId: string, records: TurnRecord[]) {
   const idle = state.agent?.state !== "busy";
   const hist = records.map((r) => recordToTurn(r, idle));
-  turnCache.set(chatId, hist);
+  cacheTurns(chatId, hist);
   if (chatId !== state.activeChatId) return;
   const byId = new Map(state.turns.map((t) => [t.id, t]));
   // Prefer the live copy of a turn that is still streaming.
@@ -533,6 +620,8 @@ function editsPending() {
 function handle(msg: ServerMessage) {
   switch (msg.type) {
     case "architecture": {
+      // A previewed switch shows the target already: frames of the project being left are stale.
+      if (state.projectSwitch?.preview && !sameRoot(state.projectSwitch.root, msg.root)) return;
       serverArchitecture = msg.architecture;
       if (needsResend && draft) {
         needsResend = false;
@@ -769,6 +858,7 @@ export function sendPrompt(nodeId: string, text: string, attachments: Attachment
   };
   const ok =
     state.source === "daemon" &&
+    !state.projectSwitch &&
     send({
       type: "prompt",
       turnId: turn.id,
@@ -781,8 +871,9 @@ export function sendPrompt(nodeId: string, text: string, attachments: Attachment
   if (!ok) {
     delete turn.waitingFor;
     turn.stopReason = "error";
-    turn.error =
-      "No archmap daemon connected. Start one with `archmap serve <repo>` to talk to the agent.";
+    turn.error = state.projectSwitch
+      ? `Still opening ${state.projectSwitch.name} — send it again in a moment.`
+      : "No archmap daemon connected. Start one with `archmap serve <repo>` to talk to the agent.";
   }
   set({ turns: [...state.turns, turn] });
   return turn.id;
@@ -940,7 +1031,7 @@ export function resetSession() {
 
 function stashActiveTurns() {
   if (state.activeChatId)
-    turnCache.set(
+    cacheTurns(
       state.activeChatId,
       state.turns.filter((t) => t.stopReason),
     );
@@ -955,9 +1046,18 @@ export function newChat(): boolean {
 
 export function openChat(chatId: string): boolean {
   if (chatId === state.activeChatId) return true;
+  if (state.projectSwitch) {
+    // The daemon is still swapping projects: open it once the new chat list is in.
+    pendingChatOpen = chatId;
+    stashActiveTurns();
+    set({ activeChatId: chatId, turns: turnCache.get(chatId) ?? [], chatLoading: !turnCache.has(chatId) });
+    return true;
+  }
   if (!send({ type: "chat.open", chatId })) return false;
+  markSwitchStart("chat", chatId, turnCache.has(chatId));
   stashActiveTurns();
-  set({ activeChatId: chatId, turns: turnCache.get(chatId) ?? [], chatLoading: true });
+  const cached = turnCache.get(chatId);
+  set({ activeChatId: chatId, turns: cached ?? [], chatLoading: true });
   return true;
 }
 
@@ -971,6 +1071,7 @@ export function renameChat(chatId: string, title: string): boolean {
 export function deleteChat(chatId: string): boolean {
   if (!send({ type: "chat.delete", chatId })) return false;
   turnCache.delete(chatId);
+  for (const snap of projectCache.values()) snap.chats = snap.chats.filter((c) => c.id !== chatId);
   const active = state.activeChatId === chatId;
   set({
     chats: state.chats.filter((c) => c.id !== chatId),
@@ -1008,9 +1109,9 @@ export async function refreshProjects(): Promise<void> {
   }
 }
 
-function beginSwitch(root: string, name: string) {
+function beginSwitch(root: string, name: string, extra: Partial<ProjectSwitch> = {}, patch: Partial<DaemonState> = {}) {
   clearSwitchTimer();
-  set({ projectSwitch: { root, name } });
+  set({ ...patch, projectSwitch: { root, name, ...extra } });
   switchTimer = setTimeout(() => {
     switchTimer = undefined;
     if (state.projectSwitch) set({ projectSwitch: null });
@@ -1027,7 +1128,7 @@ function failSwitch() {
  * shows a skeleton (state.projectSwitch) until the daemon sends the new architecture. */
 export async function openProject(
   path: string,
-  opts: { name?: string; chatId?: string } = {},
+  opts: { name?: string; chatId?: string; projectId?: string } = {},
 ): Promise<ProjectInfo> {
   const target = path.trim();
   if (!target) throw new Error("Choose a folder first");
@@ -1036,9 +1137,46 @@ export async function openProject(
     return state.project;
   }
   pendingChatOpen = opts.chatId ?? null;
-  beginSwitch(target, opts.name ?? basename(target));
+  const snap = cachedProject(opts.projectId ?? target) ?? cachedProject(target);
+  markSwitchStart("project", snap?.project.id ?? opts.projectId ?? target, false);
+  // Pending edits of the project being left go out first (the daemon still has it open).
+  if (saveTimer !== undefined) {
+    clearTimeout(saveTimer);
+    flushSave();
+  }
+  if (snap?.architecture) {
+    // Paint the target from the cache now; the daemon's frames replace it in a few ms.
+    snapshotCurrent();
+    serverArchitecture = null;
+    draft = null;
+    const chatId = opts.chatId ?? snap.activeChatId;
+    stashActiveTurns();
+    markSwitchCached();
+    beginSwitch(
+      snap.project.root,
+      snap.project.name,
+      { projectId: snap.project.id, preview: true, ...(opts.chatId ? { chatId: opts.chatId } : {}) },
+      {
+        architecture: snap.architecture,
+        revision: snap.revision,
+        root: snap.project.root,
+        path: snap.path,
+        archError: null,
+        lastError: null,
+        chats: snap.chats,
+        activeChatId: chatId,
+        turns: chatId ? (turnCache.get(chatId) ?? []) : [],
+        chatLoading: !!chatId && !turnCache.has(chatId),
+      },
+    );
+  } else {
+    beginSwitch(target, opts.name ?? snap?.project.name ?? basename(target), opts.projectId ? { projectId: opts.projectId } : {});
+  }
   try {
-    const info = await api<ProjectInfo>("/api/projects/open", { path: target });
+    const info = await api<ProjectInfo>("/api/projects/open", {
+      path: target,
+      ...(opts.chatId ? { chatId: opts.chatId } : {}),
+    });
     if (state.projectSwitch && state.project?.id !== info.id)
       set({ projectSwitch: { ...state.projectSwitch, root: info.root, name: info.name } });
     return info;
@@ -1096,18 +1234,86 @@ export async function forgetProject(id: string): Promise<void> {
   }
 }
 
-export async function fetchRecentChats(limit = 200): Promise<RecentChat[]> {
-  const res = await api<RecentChatsResponse>(`/api/chats/recent?limit=${limit}`);
+export async function fetchRecentChats(limit = 200, projectId?: string): Promise<RecentChat[]> {
+  const q = projectId ? `&projectId=${encodeURIComponent(projectId)}` : "";
+  const res = await api<RecentChatsResponse>(`/api/chats/recent?limit=${limit}${q}`);
   return res.chats ?? [];
 }
 
-/** Open a chat from any project: switches project first when needed. */
-export async function openChatAnywhere(chat: RecentChat): Promise<void> {
+/** Open a chat from any project: switches project first when needed (one request). */
+export async function openChatAnywhere(
+  chat: Pick<RecentChat, "id" | "projectId" | "projectRoot" | "projectName">,
+): Promise<void> {
   if (state.project?.id === chat.projectId) {
     openChat(chat.id);
     return;
   }
-  await openProject(chat.projectRoot, { name: chat.projectName, chatId: chat.id });
+  await openProject(chat.projectRoot, { name: chat.projectName, chatId: chat.id, projectId: chat.projectId });
+}
+
+function once<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const running = inflight.get(key) as Promise<T> | undefined;
+  if (running) return running;
+  const p = run().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+interface PreviewResponse {
+  project: ProjectInfo;
+  architecture: Architecture | null;
+  chats: ChatInfo[];
+  activeChatId: string | null;
+  activeTurns: TurnRecord[];
+}
+
+/** Hover prefetch: another project's map + chats (+ its active chat) into the viewer cache,
+ * so switching to it paints at once. Cheap to call repeatedly (deduped, 15 s fresh). */
+export function prefetchProject(projectId: string): Promise<void> {
+  if (!state.httpOrigin || state.source !== "daemon" || state.project?.id === projectId) return Promise.resolve();
+  const have = projectCache.get(projectId);
+  if (have && Date.now() - have.at < PREFETCH_FRESH_MS) return Promise.resolve();
+  return once(`p:${projectId}`, async () => {
+    try {
+      const res = await api<PreviewResponse>(`/api/projects/preview?id=${encodeURIComponent(projectId)}`);
+      if (state.project?.id === projectId) return;
+      if (res.activeChatId && !turnCache.has(res.activeChatId))
+        cacheTurns(res.activeChatId, res.activeTurns.map((r) => recordToTurn(r, true)));
+      lruSet(
+        projectCache,
+        projectId,
+        {
+          project: res.project,
+          // A prefetch without a map keeps the one seen last (systems are only mapped while open).
+          architecture: res.architecture ?? have?.architecture ?? null,
+          revision: have?.revision ?? 0,
+          path: have?.path ?? null,
+          chats: [...res.chats].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+          activeChatId: res.activeChatId,
+          at: Date.now(),
+        },
+        PROJECT_CACHE_MAX,
+      );
+    } catch {
+      /* older daemon or unknown project: the switch just shows the skeleton */
+    }
+  });
+}
+
+/** Hover prefetch of one chat's turns (any project). */
+export function prefetchChat(projectId: string, chatId: string): Promise<void> {
+  if (!state.httpOrigin || state.source !== "daemon" || turnCache.has(chatId) || chatId === state.activeChatId)
+    return Promise.resolve();
+  return once(`c:${chatId}`, async () => {
+    try {
+      const res = await api<{ turns: TurnRecord[] }>(
+        `/api/chats/history?projectId=${encodeURIComponent(projectId)}&chatId=${encodeURIComponent(chatId)}`,
+      );
+      if (!turnCache.has(chatId)) cacheTurns(chatId, res.turns.map((r) => recordToTurn(r, true)));
+    } catch {
+      /* older daemon: chat.open still works */
+    }
+  });
 }
 
 /** Rescan the served repo (§2.3). */
@@ -1127,7 +1333,7 @@ export function dismissError() {
 // editing (L7): optimistic local draft + debounced architecture.save
 
 export function canEdit(s: DaemonState = state) {
-  return s.source === "daemon" && s.connection === "open" && s.architecture !== null;
+  return s.source === "daemon" && s.connection === "open" && s.architecture !== null && !s.projectSwitch;
 }
 
 function flushSave() {
@@ -1291,6 +1497,8 @@ export const daemonActions = {
   renameChat,
   deleteChat,
   openChatAnywhere,
+  prefetchProject,
+  prefetchChat,
   openProject,
   createProject,
   pinProject,
