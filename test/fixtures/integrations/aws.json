@@ -1,0 +1,85 @@
+{
+  "ec2": {
+    "Reservations": [
+      {
+        "OwnerId": "123456789012",
+        "Instances": [
+          {
+            "InstanceId": "i-0abc", "State": { "Name": "running" }, "InstanceType": "t3.small",
+            "PublicIpAddress": "198.51.100.7",
+            "Tags": [{ "Key": "Name", "Value": "invoices-api" }, { "Key": "ruah:node", "Value": "api" }]
+          },
+          { "InstanceId": "i-0def", "State": { "Name": "stopped" } }
+        ]
+      }
+    ]
+  },
+  "ecsClusters": {
+    "clusters": [
+      { "clusterArn": "arn:aws:ecs:eu-central-1:123456789012:cluster/prod", "clusterName": "prod", "status": "ACTIVE", "tags": [{ "key": "team", "value": "core" }] }
+    ]
+  },
+  "ecsServices": {
+    "services": [
+      {
+        "serviceArn": "arn:aws:ecs:eu-central-1:123456789012:service/prod/web-app", "serviceName": "web-app",
+        "clusterArn": "arn:aws:ecs:eu-central-1:123456789012:cluster/prod", "status": "ACTIVE"
+      }
+    ]
+  },
+  "lambda": {
+    "Functions": [
+      {
+        "FunctionName": "resize-image", "FunctionArn": "arn:aws:lambda:eu-central-1:123456789012:function:resize-image", "Runtime": "nodejs22.x",
+        "Environment": { "Variables": { "API_KEY": "should-not-appear" } }
+      }
+    ]
+  },
+  "rds": {
+    "DBInstances": [
+      {
+        "DBInstanceIdentifier": "postgres", "DBInstanceArn": "arn:aws:rds:eu-central-1:123456789012:db:postgres",
+        "Engine": "postgres", "DBInstanceStatus": "available", "TagList": [{ "Key": "env", "Value": "prod" }]
+      }
+    ]
+  },
+  "elasticache": {
+    "CacheClusters": [
+      { "CacheClusterId": "sessions-001", "ReplicationGroupId": "sessions", "ARN": "arn:aws:elasticache:eu-central-1:123456789012:cluster:sessions-001", "Engine": "redis", "CacheClusterStatus": "available" }
+    ]
+  },
+  "s3": {
+    "Buckets": [{ "Name": "acme-uploads", "CreationDate": "2025-01-01T00:00:00Z", "BucketRegion": "eu-central-1" }],
+    "Owner": { "ID": "owner" }
+  },
+  "sqs": {
+    "QueueUrls": ["https://sqs.eu-central-1.amazonaws.com/123456789012/events-bus"]
+  },
+  "sns": {
+    "Topics": [{ "TopicArn": "arn:aws:sns:eu-central-1:123456789012:invoice-created" }]
+  },
+  "apigateway": {
+    "items": [{ "id": "abc123", "name": "api-gateway", "tags": { "ruah-node": "gateway" } }]
+  },
+  "apigatewayv2": {
+    "Items": [{ "ApiId": "xyz789", "Name": "ws-api", "ProtocolType": "WEBSOCKET", "Tags": {} }]
+  },
+  "elbv2": {
+    "LoadBalancers": [
+      {
+        "LoadBalancerArn": "arn:aws:elasticloadbalancing:eu-central-1:123456789012:loadbalancer/app/edge/50dc6c495c0c9188",
+        "LoadBalancerName": "edge", "Type": "application", "State": { "Code": "active" }
+      }
+    ]
+  },
+  "cloudfront": {
+    "DistributionList": {
+      "Items": [
+        { "Id": "E2ABC", "ARN": "arn:aws:cloudfront::123456789012:distribution/E2ABC", "Status": "Deployed", "DomainName": "d111.cloudfront.net", "Aliases": { "Quantity": 1, "Items": ["cdn.example.com"] } }
+      ]
+    }
+  },
+  "route53": {
+    "HostedZones": [{ "Id": "/hostedzone/Z123", "Name": "example.com.", "Config": { "PrivateZone": false } }]
+  }
+}
