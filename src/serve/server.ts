@@ -21,6 +21,7 @@ import type { AttachmentStore } from "../projects/attachment-store.js";
 import { handleAttachmentsRequest } from "./attachments-http.js";
 import { handleMapOpsRequest } from "./map-ops-http.js";
 import type { MapOpsService } from "./map-ops.js";
+import type { TerminalGateway } from "../terminal/gateway.js";
 
 export interface ServeOptions {
   host: string;
@@ -38,6 +39,8 @@ export interface ServeOptions {
   attachments?: AttachmentStore;
   /** CONTRACTS §1.7 /api/arch + /api/arch/ops (token-authenticated map ops for `ruah app mcp`); 503 when absent. */
   mapOps?: MapOpsService;
+  /** CONTRACTS §7 GET /api/terminal/token + /ws/terminal; the token endpoint answers 503 when absent. */
+  terminal?: TerminalGateway;
 }
 
 export interface RunningServer {
@@ -84,6 +87,10 @@ export function startServer(
       return;
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;
+    if (options.terminal !== undefined ? options.terminal.handleHttp(req, res, url) : pathname === "/api/terminal/token") {
+      if (options.terminal === undefined) sendJson(res, 503, { error: "the terminal is not available" });
+      return;
+    }
     // Agents' map tools (stdio MCP server): loopback + capability token, no browsers.
     if (handleMapOpsRequest(req, res, url, options.mapOps)) return;
     if (
@@ -173,6 +180,7 @@ export function startServer(
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    if (options.terminal?.handleUpgrade(req, socket, head, url) === true) return;
     if (url.pathname !== "/ws") {
       socket.destroy();
       return;
@@ -198,6 +206,7 @@ export function startServer(
         close: () =>
           new Promise<void>((resolveClose) => {
             for (const client of wss.clients) client.terminate();
+            options.terminal?.close();
             server.close(() => resolveClose());
           }),
       });

@@ -44,6 +44,8 @@ serve options:
   --mock                   run the scripted mock agent instead of Claude Code
   --allow-origin <glob>    extra allowed websocket origin (repeatable)
   --no-links               omit resource_link blocks from prompts
+  --allow-remote-terminal  allow the integrated terminal when --host is not a loopback
+                           address (anyone who can reach the port and the viewer gets a shell)
   --open                   open the viewer URL in the default browser
 
 scan options:
@@ -82,6 +84,7 @@ async function serve(argv: readonly string[]): Promise<number> {
       "allow-origin": { type: "string", multiple: true, default: [] },
       links: { type: "boolean", default: true },
       open: { type: "boolean", default: false },
+      "allow-remote-terminal": { type: "boolean", default: false },
     },
     strict: false,
   });
@@ -106,6 +109,7 @@ async function serve(argv: readonly string[]): Promise<number> {
       ),
       links: values.links !== false,
       open: values.open === true,
+      allowRemoteTerminal: values["allow-remote-terminal"] === true,
     },
     pkg.version,
   );
