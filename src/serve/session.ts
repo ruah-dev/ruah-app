@@ -407,7 +407,8 @@ export class SessionHub {
       return;
     }
     const pack = buildContextPack(index, message.nodeId, open.store.root, message.text);
-    const blocks = buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links);
+    const resolvePath = open.store.resolvePath?.bind(open.store);
+    const blocks = buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath);
     let handle;
     try {
       handle = entry.bridge.prompt(message.turnId, blocks as ContentBlock[]);

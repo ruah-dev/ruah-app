@@ -10,6 +10,8 @@ export interface BridgeOptions {
   preset: AcpPreset;
   clientVersion: string;           // sent as clientInfo.version
   onStderr?: (chunk: string) => void;
+  /** Extra working directories (multi-repo systems: every repo root). Claude SDK only; ACP has cwd only. */
+  additionalDirectories?: string[];
 }
 
 export type BridgeEvent =

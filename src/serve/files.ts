@@ -83,8 +83,15 @@ function looksBinary(buf: Buffer): boolean {
     fail(400, "path traversal is not allowed");
     return;
   }
-  const abs = path.resolve(store.root, normalized);
-  const rootAbs = path.resolve(store.root);
+  // Systems resolve "<repoId>/<rel>" into that repo; the checks below then
+  // keep the file inside that repo's root.
+  const resolved = store.resolvePath !== undefined ? store.resolvePath(normalized) : { abs: path.resolve(store.root, normalized), root: store.root };
+  if (resolved === null) {
+    fail(404, "unknown repo in path");
+    return;
+  }
+  const abs = path.resolve(resolved.abs);
+  const rootAbs = path.resolve(resolved.root);
   if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) {
     fail(400, "path escapes the repo root");
     return;

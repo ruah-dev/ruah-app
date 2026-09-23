@@ -524,6 +524,7 @@ function extractPlanEntriesFromTodoInput(input: Record<string, unknown>): PlanEn
 
 export class ClaudeSdkBridge implements AcpBridge {
   private readonly root: string;
+  private readonly additionalDirectories: readonly string[];
   private readonly env: Record<string, string | undefined>;
   private readonly onStderr: ((chunk: string) => void) | undefined;
   private readonly queryImpl: typeof sdkQuery;
@@ -553,6 +554,7 @@ export class ClaudeSdkBridge implements AcpBridge {
 
   constructor(options: BridgeOptions, deps: ClaudeSdkBridgeDeps = {}) {
     this.root = resolve(options.root);
+    this.additionalDirectories = (options.additionalDirectories ?? []).map((dir) => resolve(dir));
     this.env = makeClaudeEnvironment(options.preset.env);
     const envModel = this.env.ANTHROPIC_MODEL?.trim();
     this.modelId = envModel !== undefined && envModel.length > 0 ? envModel : undefined;
@@ -793,6 +795,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     const executable = this.env.CLAUDE_CODE_EXECUTABLE;
     const options: ClaudeQueryOptions = {
       cwd: this.root,
+      ...(this.additionalDirectories.length > 0 ? { additionalDirectories: [...this.additionalDirectories] } : {}),
       ...(executable !== undefined && executable.length > 0
         ? { pathToClaudeCodeExecutable: resolveClaudeSdkExecutablePath(executable, this.env) }
         : {}),

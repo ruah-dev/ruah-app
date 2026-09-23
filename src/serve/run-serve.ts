@@ -17,6 +17,7 @@ import { ProjectsStore } from "../projects/projects-store.js";
 import { ChatStore } from "../projects/chat-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
+import { makeOpenSystemProject } from "../system/open.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -107,7 +108,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     host: hub,
     version,
     info,
-    ...(hooks.openSystemProject !== undefined ? { openSystemProject: hooks.openSystemProject } : {}),
+    // Multi-repo systems (src/system/open.ts) unless a caller injects its own hook.
+    openSystemProject: hooks.openSystemProject ?? makeOpenSystemProject(version),
   });
   if (flags.repo !== undefined) {
     try {

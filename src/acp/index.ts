@@ -3,6 +3,7 @@
 // Kiro CLI, OpenCode (and Claude through claude-agent-acp, CLI-only) are ACP agents
 // spawned from presets.ts. --mock uses the scripted MockBridge. AgentCatalog is
 // what the SessionHub uses to switch agents at runtime (agent.set).
+import { systemRootsFor } from "../system/roots.js";
 import type { AgentChoiceState, ErrorCode } from "../contracts/ws.js";
 import type { AcpBridge, BridgeOptions } from "./bridge.js";
 import { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
@@ -93,7 +94,9 @@ export class AgentCatalog {
    * catalog's root). Throws for an unknown or missing agent.
    */
   create(agentId: string, root?: string): AcpBridge {
-    const base: BaseOptions = root !== undefined ? { ...this.base, root } : this.base;
+    const extra = root !== undefined ? systemRootsFor(root) : [];
+    const rooted: BaseOptions = root !== undefined ? { ...this.base, root } : this.base;
+    const base: BaseOptions = extra.length > 0 ? { ...rooted, additionalDirectories: extra } : rooted;
     if (agentId === MOCK_AGENT_ID && this.options.mock === true) {
       return new MockBridge({ ...base, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
     }

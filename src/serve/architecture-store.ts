@@ -25,6 +25,12 @@ export interface ArchitectureStore {
   load(): Promise<void>; // read + validate + layout + notify(reason "initial"/"changed")
   save(architecture: Architecture): Promise<void>; // validate + atomic write + notify(reason "saved")
   close(): void;
+  /**
+   * Multi-repo systems: maps a system path ("<repoId>/<rel>") to the real file
+   * and the repo root it must stay inside. Absent for single repos (paths are
+   * relative to `root`).
+   */
+  resolvePath?(rel: string): { abs: string; root: string } | null;
   onChange(listener: (event: StoreEvent) => void): () => void;
   onError(listener: (error: StoreError) => void): () => void;
 }
@@ -55,7 +61,12 @@ function atomicWrite(filePath: string, data: string): void {
   fs.renameSync(tmp, filePath);
 }
 
-export function createArchitectureStore(archPath: string, options: { watch?: boolean } = {}): ArchitectureStore {
+export interface ArchitectureStoreOptions {
+  watch?: boolean;
+  resolvePath?: (rel: string) => { abs: string; root: string } | null;
+}
+
+export function createArchitectureStore(archPath: string, options: ArchitectureStoreOptions = {}): ArchitectureStore {
   const archPathAbs = path.resolve(archPath);
   const root = path.dirname(archPathAbs);
   const watchers = new Set<(event: StoreEvent) => void>();
@@ -90,6 +101,7 @@ export function createArchitectureStore(archPath: string, options: { watch?: boo
   }
 
   const store: ArchitectureStore = {
+    ...(options.resolvePath !== undefined ? { resolvePath: options.resolvePath } : {}),
     path: archPathAbs,
     root,
     get revision() {
