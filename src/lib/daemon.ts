@@ -8,6 +8,7 @@ import type {
   Architecture,
   ClientMessage,
   ModeState,
+  ModelState,
   PermissionOption,
   ServerMessage,
   StopReason,
@@ -32,6 +33,7 @@ export interface AgentStatus {
   agent?: { name: string; version: string };
   sessionId?: string;
   modes?: ModeState;
+  models?: ModelState;
   error?: string;
 }
 
@@ -322,6 +324,7 @@ function handle(msg: ServerMessage) {
             ? { sessionId: (msg.sessionId ?? prev?.sessionId)! }
             : {}),
           ...((msg.modes ?? prev?.modes) ? { modes: (msg.modes ?? prev?.modes)! } : {}),
+          ...((msg.models ?? prev?.models) ? { models: (msg.models ?? prev?.models)! } : {}),
           ...(msg.error !== undefined ? { error: msg.error } : {}),
         },
       });
@@ -482,6 +485,19 @@ export function setAgentMode(modeId: string) {
   send({ type: "mode.set", modeId });
 }
 
+/** Ask the daemon to switch models. Optimistic: the picker shows the choice right away; the
+ * next agent.status (with models) is authoritative. */
+export function sendModel(modelId: string): boolean {
+  if (!send({ type: "model.set", modelId })) return false;
+  const models = state.agent?.models;
+  if (state.agent && models && models.currentModelId !== modelId) {
+    set({ agent: { ...state.agent, models: { ...models, currentModelId: modelId } } });
+  }
+  return true;
+}
+
+export const setModel = sendModel;
+
 export function resetSession() {
   if (send({ type: "session.reset" })) set({ turns: state.turns.filter((t) => !t.stopReason) });
 }
@@ -587,6 +603,7 @@ export const daemonActions = {
   answerPermission,
   setFocus,
   setAgentMode,
+  setModel,
   resetSession,
   editArchitecture,
   fetchFile,

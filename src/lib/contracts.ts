@@ -68,6 +68,7 @@ export type ClientMessage =
   | { type: "cancel"; turnId: string }
   | { type: "session.reset" } // Phase 3: new ACP session (drops agent memory)
   | { type: "mode.set"; modeId: string } // Phase 3: session/set_mode
+  | { type: "model.set"; modelId: string } // switch the agent's model (one of agent.status.models.available)
   | { type: "architecture.save"; architecture: Architecture }; // Phase 3: daemon validates + writes the file
 
 // ---------- daemon -> viewer ----------
@@ -87,6 +88,7 @@ export type ServerMessage =
       agent?: { name: string; version: string };
       sessionId?: string;
       modes?: ModeState;
+      models?: ModelState; // absent when the agent does not offer a model choice
       error?: string;
     }
   | { type: "turn.started"; turnId: string; nodeId: string; contextPack: string; text: string }
@@ -121,6 +123,12 @@ export type StopReason =
 
 export interface ModeState {
   currentModeId: string; // Claude adapter: "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions"
+  available: { id: string; name: string; description?: string }[];
+}
+
+/** Same shape as ModeState: the models the agent offers and the active one. */
+export interface ModelState {
+  currentModelId: string;
   available: { id: string; name: string; description?: string }[];
 }
 
