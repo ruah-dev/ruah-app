@@ -50,10 +50,38 @@ Keep adding entries as work lands.
   Rejected: SQLite (native dependency + locking across daemons for a few thousand rows/month); pre-aggregated counters (lose per-turn detail, need migrations when buckets change); reading Claude's own transcripts (Claude-only, private format).
   Cost: O(n) read per request (fine at ~1 KB/day of turns; rotate/compact if it ever grows to many MB); multi-model turns are attributed to the primary model; limits are not persisted (re-read on the first request after restart).
 
+## Projects, runtime switching and chats (CONTRACTS §5, 2026-09-23)
+- **Launcher state as an explicit "no project" state (null object at the edges).** `SessionHub` with `open = null`; `archmap serve` without `<repo>`.
+  Why: the app opens on a start screen instead of a blocking native folder picker; health, projects and usage work without a repo, and everything that needs a project answers one clear `409 {error:"no project open"}` (WS: `error{bad_message}`).
+  Rejected: keeping "serve needs a repo" and restarting the daemon per project (seconds per switch, drops every socket and warm agent).
+  Cost: every project-dependent endpoint/message has a null check.
+- **Hot-swappable project context (swap the unit, not the process).** `SessionHub.setProject()` in `src/serve/session.ts`: one object holds store + watcher + listeners; a switch detaches the active turn, closes the old store, parks the old bridge, attaches the new store and broadcasts `project → architecture → chats (+history) → agent.status`. Agent startup is not on the switch path (background start, the UI sees `starting → idle`).
+  Why: measured 1–9 ms per switch server-side (~2 ms HTTP round trip) against a 300 ms target.
+  Rejected: one daemon per project behind a proxy (port juggling, N agent processes); awaiting the agent's own cancel before switching (up to 15 s).
+  Cost: a switch reports the running turn as `cancelled` at once (the bridge's own cancel finishes later and is only used for usage accounting).
+- **Warm pool / keep-alive cache for agent processes.** `BridgePool` (`src/serve/bridge-pool.ts`), keyed by (project root, agent id): the bridge the hub lets go (agent.set, project switch) stays alive 5 min (`RUAH_WARM_TTL_MS`), at most 2 live bridges, least-recently released evicted first; the pool keeps each bridge's merged last status so a re-acquired agent is described instantly.
+  Why: agent CLIs take 1–5 s to start (Claude SDK init, ACP initialize + session/new); switching back to the previous agent/project is the common case and is now instant with its session intact.
+  Rejected: stopping on every switch (the old behaviour; kept as TTL 0 for tests/embedders); an unbounded pool (each Claude CLI is a few hundred MB of RAM).
+  Cost: up to one extra idle agent process for 5 minutes; a parked agent keeps its session, so the hub re-binds sessions to chats on re-acquire (`bindSession`).
+- **Chat = header + append-only turn records, rewritten atomically.** `ChatStore` (`src/projects/chat-store.ts`): `~/.ruah/projects/<projectId>/chats/<chatId>.jsonl`, line 1 = `ChatInfo` (+ internal `sessions` per agent, `autoTitle`), then one `TurnRecord` per finished/cancelled turn; headers cached per project, turns read only for `chat.history`. Stream events are compacted on record (text chunks merged, tool calls upserted in place — what the viewer would redraw anyway).
+  Why: human-readable, greppable, one file per chat (delete = unlink), the viewer redraws a turn from exactly the events it streamed; atomic temp+rename keeps the previous version on a crash.
+  Rejected: SQLite (same reasons as usage); append-only with header-update lines (readers must fold; rename/title updates grow the file); storing raw per-token events (10–100× larger).
+  Cost: each finished turn rewrites the chat file (fine at KB–MB sizes); two daemons writing the same chat concurrently would last-writer-win.
+- **Conversation resume keyed per (chat, agent).** chat header `sessions[agentId]`; `AcpBridge.useSession(id | undefined)`: Claude SDK `resume` (falls back to a fresh session when the transcript is gone), ACP `session/load` when `agentCapabilities.loadSession` (history replay dropped; uses the SDK's TS-private `attachSession` for update routing), else a new session.
+  Why: reopening a chat continues the same agent conversation; switching agents inside a chat keeps one session per agent instead of mixing them.
+  Cost: ACP agents without `loadSession` start fresh (the viewer still shows stored history); `attachSession` is SDK-internal and may change on upgrade (guarded, falls back to a new session).
+- **Recent list with write-temp-then-rename.** `ProjectsStore` (`src/projects/projects-store.ts`): `~/.ruah/projects.json`, pinned first then most recent, capped at 50 unpinned; a corrupt file reads as empty and is replaced on the next change; each opened project also gets `projects/<id>/project.json` so chat listings survive "forget".
+- **Seam for work in flight elsewhere (injected hook).** `ProjectServiceDeps.openSystemProject` (default `openSystemProjectNotWired` → 501) for folders with `ruah.system.json`; `ServeHooks` in `run-serve.ts` is where the lead wires `src/system/*`.
+  Why: projects and multi-repo are built in parallel; the seam lets both land without importing each other. Cost: one indirection.
+- **Serialized opens (single-flight queue).** `ProjectService.serialize`: open/create run one at a time so two clicks cannot interleave store swaps.
+
 ## Security
-- **Origin check on state-changing localhost endpoints (CSRF defence).** `POST /api/rescan` and the `/ws` upgrade accept only loopback origins or `--allow-origin` globs.
+- **Origin check on state-changing localhost endpoints (CSRF defence).** `POST /api/rescan`, every `POST /api/projects/*` and the `/ws` upgrade accept only loopback origins or `--allow-origin` globs (checked before the body is read).
   Why: any website open in the same browser can send requests to `127.0.0.1:4177`; without the check it could trigger actions.
   Rejected: auth tokens (friction for a local tool). Cost: cross-origin viewers (Lovable preview) need `--allow-origin`.
+- **Narrow desktop bridge (contextIsolation + IPC allow-list).** `electron/preload.cjs` exposes only `window.ruah = { version, pickFolder, revealInFinder }`; `main.cjs` validates arguments (`revealInFinder` only takes absolute paths). The renderer never gets Node or `ipcRenderer`.
+  Rejected: `nodeIntegration` / exposing `ipcRenderer` (any XSS in the viewer would own the machine).
+- **No shell for subprocesses built from user input.** `git init` on create runs via `execFile("git", ["init","-q"], {cwd})`; the folder name is validated (no separators, not `.`/`..`, no control characters).
 - **Least privilege for agents by default.** No `--force` / `--always-approve` / `--trust-all-tools` launch flags; bypass only as an explicit mode.
 
 ## Context engineering (AI-specific)
