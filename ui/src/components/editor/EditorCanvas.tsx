@@ -365,7 +365,7 @@ export function EditorCanvas({
                   isSelected
                     ? "border-primary bg-surface-2 ring-3 ring-primary/20"
                     : "border-hairline hover:border-surface-4 hover:bg-surface-2",
-                  dimmed ? "opacity-35" : "opacity-100",
+                  dimmed ? "opacity-60" : "opacity-100",
                 )}
                 onPointerDown={(e) => {
                   e.stopPropagation();

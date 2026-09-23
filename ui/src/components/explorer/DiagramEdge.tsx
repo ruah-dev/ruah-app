@@ -40,7 +40,7 @@ export function DiagramEdge({ edge, from, to, state }: Props) {
 
   const isActive = state === "active";
   const stroke = isActive ? "var(--edge-active)" : "var(--edge)";
-  const opacity = state === "dimmed" ? 0.2 : isActive ? 1 : 0.9;
+  const opacity = state === "dimmed" ? 0.4 : isActive ? 1 : 0.9;
   const mx = (sx + ex) / 2;
   const my = (sy + ey) / 2;
 
