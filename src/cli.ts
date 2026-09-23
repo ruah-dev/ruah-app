@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { existsSync, realpathSync, statSync } from "node:fs";

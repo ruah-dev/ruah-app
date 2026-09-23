@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "desktop": "electron .",
-    "build": "tsup src/cli.ts --format esm --target node22 --clean",
+    "build": "tsup src/cli.ts --format esm --target node22 --clean && chmod +x dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "ui:build": "cd ui && bun run build && cd .. && rm -rf viewer && cp -R ui/.output/public viewer",
