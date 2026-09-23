@@ -13,6 +13,9 @@ const PREFERRED_PORT = Number.parseInt(process.env.RUAH_PORT ?? "4177", 10);
 let PORT = PREFERRED_PORT;
 let BASE = `http://127.0.0.1:${PORT}`;
 const ROOT = path.join(__dirname, "..");
+// Ruah brand mark (from ruah-website public/brand/ruah-icon.svg, on the macOS
+// 1024 icon grid); icon.icns is there for packaging.
+const APP_ICON = path.join(__dirname, "assets", "icon.png");
 // ARCHMAP_AGENT picks the initial agent: "claude" (Claude Agent SDK, default),
 // "cursor", "grok", "kiro", "opencode", "acp" (Claude through the ACP adapter) or "mock"
 // (scripted, no agent). The viewer can switch agents at runtime.
@@ -147,6 +150,7 @@ async function main() {
     width: 1440,
     height: 900,
     title: "Ruah",
+    icon: APP_ICON, // Windows/Linux window + taskbar; macOS uses the Dock icon below
     backgroundColor: "#26282b",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -158,8 +162,16 @@ async function main() {
 }
 
 app.setName("Ruah");
+app.setAboutPanelOptions({
+  applicationName: "Ruah",
+  applicationVersion: require(path.join(ROOT, "package.json")).version,
+  iconPath: APP_ICON,
+});
 
 app.whenReady().then(() => {
+  // The Ruah mark instead of Electron's default icon (dev runs use the stock
+  // Electron.app bundle, so set it at runtime; packaged builds use icon.icns).
+  if (process.platform === "darwin" && app.dock) app.dock.setIcon(APP_ICON);
   main().catch((err) => {
     process.stderr.write(`[archmap] ${err?.message ?? err}\n`);
     if (daemon) daemon.kill();
