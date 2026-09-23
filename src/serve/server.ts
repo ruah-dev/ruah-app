@@ -10,6 +10,8 @@ import { serveContext } from "./context-endpoint.js";
 import { attachSession, NO_PROJECT_MESSAGE, type SessionHub } from "./session.js";
 import { handleUsageRequest } from "../usage/http.js";
 import type { UsageApi } from "../usage/index.js";
+import { handleIntegrationsRequest } from "../integrations/http.js";
+import type { IntegrationsApi } from "../integrations/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
 import { handleProjectsRequest, sendJson } from "./projects-http.js";
 import type { ProjectService } from "../projects/service.js";
@@ -24,6 +26,8 @@ export interface ServeOptions {
   usage?: UsageApi;
   /** CONTRACTS §5.3 /api/projects/* and /api/chats/recent; answered 503 when absent. */
   projects?: ProjectService;
+  /** /api/integrations, /api/cloud/*, /api/work/*, /api/ruah/* (§6); answered 503 when absent. */
+  integrations?: IntegrationsApi;
 }
 
 export interface RunningServer {
@@ -71,6 +75,8 @@ export function startServer(
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
+    // Integrations resolve the current project themselves (409 when none is open).
+    if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
 
     // Everything below needs an open project.
     const needsProject =

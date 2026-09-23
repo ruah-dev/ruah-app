@@ -1,0 +1,43 @@
+{
+  "droplets": [
+    {
+      "id": 101, "name": "invoices-api", "status": "active",
+      "region": { "slug": "fra1", "name": "Frankfurt 1" },
+      "tags": ["prod", "ruah:node:api"],
+      "networks": { "v4": [{ "ip_address": "203.0.113.10", "type": "public" }] }
+    },
+    { "id": 102, "name": "worker-1", "status": "off", "region": { "slug": "ams3" }, "tags": [] },
+    { "name": "no-id" }
+  ],
+  "apps": [
+    {
+      "id": "a1b2c3", "spec": { "name": "web-app", "region": "fra" }, "region": { "slug": "fra" },
+      "active_deployment": { "phase": "ACTIVE" }, "live_url": "https://web-app.ondigitalocean.app"
+    },
+    { "id": "d4e5f6", "spec": { "name": "Billing_Jobs" }, "in_progress_deployment": { "phase": "BUILDING" } }
+  ],
+  "databases": [
+    {
+      "id": "db-1", "name": "postgres", "engine": "pg", "version": "16", "region": "fra1", "status": "online",
+      "tags": ["tier=data"], "connection": { "uri": "postgresql://doadmin:SECRETPASSWORD@host:25060/defaultdb", "password": "SECRETPASSWORD" }
+    },
+    { "id": "db-2", "name": "sessions", "engine": "valkey", "region": "fra1", "status": "creating" },
+    { "id": "db-3", "name": "events", "engine": "kafka", "region": "fra1", "status": "online" }
+  ],
+  "kubernetes": [
+    { "id": "k8s-1", "name": "prod-cluster", "region": "fra1", "status": { "state": "running" }, "tags": ["k8s", "ruah-node=api"] }
+  ],
+  "loadBalancers": [
+    { "id": "lb-1", "name": "edge-lb", "region": { "slug": "fra1" }, "status": "active", "tag": "web" }
+  ],
+  "domains": [{ "name": "example.com", "ttl": 1800, "zone_file": "$ORIGIN example.com." }],
+  "volumes": [{ "id": "vol-1", "name": "uploads", "region": { "slug": "fra1" }, "size_gigabytes": 10, "tags": [] }],
+  "cdns": [
+    { "id": "cdn-1", "origin": "assets-bucket.fra1.digitaloceanspaces.com", "endpoint": "assets-bucket.fra1.cdn.digitaloceanspaces.com", "ttl": 3600 },
+    { "id": "cdn-2", "origin": "assets-bucket.fra1.digitaloceanspaces.com", "ttl": 3600 }
+  ],
+  "functions": [
+    { "uuid": "fn-ns-1", "label": "hooks", "region": "fra1", "namespace": "fn-abc", "api_host": "https://faas-fra1.doserverless.co", "key": "SUPERSECRETKEY" }
+  ],
+  "registry": { "name": "acme", "region": "fra1", "storage_usage_bytes": 0 }
+}

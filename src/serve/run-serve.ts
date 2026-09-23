@@ -16,6 +16,7 @@ import { probeClaudePlanUsage } from "../usage/claude-probe.js";
 import { ProjectsStore } from "../projects/projects-store.js";
 import { ChatStore } from "../projects/chat-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
+import { IntegrationsService } from "../integrations/index.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -125,6 +126,14 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     logger: (line: string) => debug(line),
     usage,
     projects,
+    // Follows the hub's current project; null in the launcher state (endpoints answer 409).
+    integrations: new IntegrationsService({
+      home: ruahHome(),
+      project: () => {
+        const current = hub.store;
+        return current === null ? null : { root: current.root, architecture: current.current() };
+      },
+    }),
   });
 
   const startupMs = Date.now() - t0;
