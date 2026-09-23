@@ -1,8 +1,9 @@
 // src/integrations/keychain.ts — secrets that Ruah itself must keep (the Jira
 // API token) go to the macOS Keychain via /usr/bin/security, service "ruah",
-// account "<integrationId>:<site>". Never to files, never to logs: the secret
-// only travels as an execFile argument, and every error message is built here
-// without the arguments and scrubbed of the secret.
+// account "<integrationId>:<site>". Never to files, never to logs, never in a
+// process argument list (other processes of the user can read argv): writes
+// run `security -i` and send the command on stdin. Every error message is
+// built here without the arguments and scrubbed of the secret.
 import { redact, CliError, type Runner, defaultRunner } from "./exec.js";
 
 export const KEYCHAIN_SERVICE = "ruah";
@@ -38,10 +39,10 @@ export class Keychain implements SecretStore {
     if (this.platform !== "darwin") throw new KeychainError("secure token storage needs the macOS Keychain (not available on this platform)");
   }
 
-  private async exec(op: string, args: string[], secret?: string): Promise<{ code: number; stdout: string }> {
+  private async exec(op: string, args: string[], secret?: string, input?: string): Promise<{ code: number; stdout: string; stderr: string }> {
     try {
-      const result = await this.run(SECURITY_BIN, args, { timeoutMs: 10_000 });
-      return { code: result.code, stdout: result.stdout };
+      const result = await this.run(SECURITY_BIN, args, { timeoutMs: 10_000, ...(input !== undefined ? { input } : {}) });
+      return { code: result.code, stdout: result.stdout, stderr: result.stderr };
     } catch (err) {
       const reason = err instanceof CliError ? err.message : "could not run security";
       throw new KeychainError(redact(`keychain ${op} failed: ${reason}`, [secret]));
@@ -60,8 +61,13 @@ export class Keychain implements SecretStore {
   async set(account: string, secret: string): Promise<void> {
     this.ensureMac();
     if (secret.length === 0) throw new KeychainError("refusing to store an empty secret");
-    const { code } = await this.exec("write", ["add-generic-password", "-U", "-s", this.service, "-a", account, "-w", secret], secret);
-    if (code !== 0) throw new KeychainError(`keychain write failed (security exit ${code})`);
+    // `security -i` reads commands from stdin; double quotes delimit arguments,
+    // so refuse characters that would break out of them.
+    if (/["\\\r\n]/.test(secret) || /["\\\r\n]/.test(account)) throw new KeychainError("the token or account contains unsupported characters");
+    const command = `add-generic-password -U -s "${this.service}" -a "${account}" -w "${secret}"\n`;
+    const { code, stdout, stderr } = await this.exec("write", ["-i"], secret, command);
+    // In interactive mode the exit code is 0 even when a command fails; errors are printed.
+    if (code !== 0 || /error|SecKeychain/i.test(`${stdout}\n${stderr}`)) throw new KeychainError(redact(`keychain write failed (security exit ${code})`, [secret]));
   }
 
   async delete(account: string): Promise<boolean> {

@@ -549,6 +549,7 @@ export interface CloudResource {
   tags?: Record<string, string>;
   consoleUrl?: string;
   linkedNodeId?: string;         // architecture element it runs (tag ruah:node, name match, or manual)
+  linkSource?: "tag" | "name" | "manual"; // how linkedNodeId was decided (viewer shows auto vs manual)
 }
 export interface WorkItem {
   id: string;                    // "PLAT-123", "owner/repo#42"

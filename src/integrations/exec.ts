@@ -15,6 +15,8 @@ export interface RunOptions {
   cwd?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
+  /** Written to the child's stdin, then closed (secrets go here, never in args). */
+  input?: string;
 }
 
 export interface RunResult {
@@ -75,7 +77,7 @@ export function resolveBin(name: string, env: NodeJS.ProcessEnv = process.env): 
 export const defaultRunner: Runner = (file, args, options = {}) =>
   new Promise((resolve, reject) => {
     const label = path.basename(file);
-    execFile(
+    const child = execFile(
       file,
       [...args],
       {
@@ -108,6 +110,10 @@ export const defaultRunner: Runner = (file, args, options = {}) =>
         reject(new CliError(`${label} failed to run`, "failed"));
       },
     );
+    if (options.input !== undefined) {
+      child.stdin?.on("error", () => {}); // the exit callback reports failures
+      child.stdin?.end(options.input);
+    }
   });
 
 // ---- redaction ---------------------------------------------------------------

@@ -29,6 +29,7 @@ export interface ArchNode {
   parent?: string; // id of the containing node. Absent = top level. Enables drill-down.
   x?: number; // canvas units (px at zoom 1). Daemon fills both when missing; viewer never lays out.
   y?: number;
+  repo?: string; // multi-repo systems: id of the owning repo in ruah.system.json
 }
 
 export interface ArchEdge {
@@ -36,6 +37,8 @@ export interface ArchEdge {
   to: string; // node id
   label?: string; // <= 40 chars, rendered on the edge
   kind?: "sync" | "async" | "event" | "data" | (string & {});
+  source?: "scan" | "suggested" | "manual" | (string & {}); // provenance; absent = manual
+  evidence?: string[]; // "path:line" strings backing a scanned or suggested edge
 }
 
 export interface Workflow {

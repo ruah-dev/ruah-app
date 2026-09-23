@@ -43,19 +43,31 @@ export function matchNodeByName(name: string, nodes: readonly ArchNode[]): strin
   return unique(nodes.filter((n) => normalizeName(n.id) === wanted || normalizeName(n.name) === wanted).map((n) => n.id));
 }
 
+export type LinkSource = "tag" | "name" | "manual";
+
+/** The element a resource runs, and how that was decided (shown as auto/manual in the viewer). */
+export function linkResourceWithSource(
+  resource: CloudResource,
+  nodes: readonly ArchNode[],
+  manualLinks: Readonly<Record<string, string | null>>,
+): { nodeId: string; source: LinkSource } | undefined {
+  const ids = new Set(nodes.map((n) => n.id));
+  if (Object.prototype.hasOwnProperty.call(manualLinks, resource.id)) {
+    const manual = manualLinks[resource.id];
+    return manual !== null && manual !== undefined && ids.has(manual) ? { nodeId: manual, source: "manual" } : undefined;
+  }
+  const tagged = nodeIdFromTags(resource.tags);
+  if (tagged !== undefined && ids.has(tagged)) return { nodeId: tagged, source: "tag" };
+  const named = matchNodeByName(resource.name, nodes);
+  return named !== undefined ? { nodeId: named, source: "name" } : undefined;
+}
+
 export function linkResource(
   resource: CloudResource,
   nodes: readonly ArchNode[],
   manualLinks: Readonly<Record<string, string | null>>,
 ): string | undefined {
-  const ids = new Set(nodes.map((n) => n.id));
-  if (Object.prototype.hasOwnProperty.call(manualLinks, resource.id)) {
-    const manual = manualLinks[resource.id];
-    return manual !== null && manual !== undefined && ids.has(manual) ? manual : undefined;
-  }
-  const tagged = nodeIdFromTags(resource.tags);
-  if (tagged !== undefined && ids.has(tagged)) return tagged;
-  return matchNodeByName(resource.name, nodes);
+  return linkResourceWithSource(resource, nodes, manualLinks)?.nodeId;
 }
 
 /** Returns copies with `linkedNodeId` set (or removed) for the given architecture. */
@@ -65,8 +77,8 @@ export function linkResources(
   manualLinks: Readonly<Record<string, string | null>>,
 ): CloudResource[] {
   return resources.map((resource) => {
-    const { linkedNodeId: _previous, ...rest } = resource;
-    const linked = linkResource(rest, nodes, manualLinks);
-    return linked !== undefined ? { ...rest, linkedNodeId: linked } : rest;
+    const { linkedNodeId: _previous, linkSource: _previousSource, ...rest } = resource;
+    const linked = linkResourceWithSource(rest, nodes, manualLinks);
+    return linked !== undefined ? { ...rest, linkedNodeId: linked.nodeId, linkSource: linked.source } : rest;
   });
 }

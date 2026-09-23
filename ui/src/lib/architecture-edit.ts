@@ -6,7 +6,9 @@ import type { Architecture, ArchEdge, ArchNode } from "./contracts";
 import type { DiagramNode, NodeKind } from "@/data/graphs";
 import { ORIGIN, isFlowType, parseDiagramId, typeFor } from "./architecture";
 
-const ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+// Same rule as the daemon (src/contracts/validate.ts): multi-repo systems
+// namespace ids as "<repoId>:<nodeId>".
+const ID_PATTERN = /^(?:[a-z0-9][a-z0-9-]{0,62}:)?[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export function slugId(base: string, taken: Set<string>): string {
   const slug =
@@ -160,7 +162,8 @@ export function addEdge(
   if (ref.mode === "architecture") {
     if (arch.edges.some((e) => e.from === from && e.to === to && e.label === undefined))
       return null;
-    return { ...arch, edges: [...arch.edges, { from, to, kind: "sync" }] };
+    // Drawn by hand: re-scans replace only source "scan" edges, so this one survives.
+    return { ...arch, edges: [...arch.edges, { from, to, kind: "sync", source: "manual" }] };
   }
   const wf = arch.workflows.find((w) => w.id === ref.workflowId);
   if (!wf) return null;
@@ -183,7 +186,8 @@ export function patchEdge(
   if (idx === -1) return null;
   const edges = arch.edges.map((e, i): ArchEdge => {
     if (i !== idx) return e;
-    let next: ArchEdge = { ...e };
+    // An edited scan edge becomes the user's: re-scans would otherwise overwrite the edit.
+    let next: ArchEdge = { ...e, ...(e.source === "scan" ? { source: "manual" } : {}) };
     if ("label" in patch) next = setOpt(next, "label", patch.label?.slice(0, 40));
     if (patch.animated !== undefined) {
       const flowing = next.kind === "async" || next.kind === "event";

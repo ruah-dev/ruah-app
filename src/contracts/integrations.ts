@@ -36,6 +36,7 @@ export const CloudResourceSchema = z.object({
   tags: z.record(z.string()).optional(),
   consoleUrl: z.string().optional(),
   linkedNodeId: z.string().optional(),
+  linkSource: z.enum(["tag", "name", "manual"]).optional(), // how linkedNodeId was decided
 });
 
 export const WorkItemSchema = z.object({

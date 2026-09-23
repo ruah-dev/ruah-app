@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MockBridge, type MockBridgeOptions } from "../src/acp/mock-bridge.js";
-import { cliMessage, CliError, defaultRunner, redact, type RunResult, type Runner } from "../src/integrations/exec.js";
+import { type RunOptions, cliMessage, CliError, defaultRunner, redact, type RunResult, type Runner } from "../src/integrations/exec.js";
 import type { IntegrationsApi } from "../src/integrations/index.js";
 import { Keychain, KeychainError } from "../src/integrations/keychain.js";
 import { createArchitectureStore } from "../src/serve/architecture-store.js";
@@ -21,23 +21,42 @@ const FAKE_AWS_KEY = ["AK", "IA", "IOSFODNN7EXAMPLE"].join("");
 const FAKE_GH_TOKEN = ["gh", "p_", "a".repeat(36)].join("");
 const FAKE_DO_TOKEN = ["dop", "_v1_", "0123456789abcdef".repeat(4)].join("");
 
-function recordingRunner(result: RunResult | ((args: readonly string[]) => RunResult)): Runner & { calls: { file: string; args: string[] }[] } {
+type Recording = Runner & { calls: { file: string; args: string[] }[]; inputs: (string | undefined)[] };
+
+function recordingRunner(result: RunResult | ((args: readonly string[]) => RunResult)): Recording {
   const calls: { file: string; args: string[] }[] = [];
-  const runner = ((file: string, args: readonly string[]) => {
+  const inputs: (string | undefined)[] = [];
+  const runner = ((file: string, args: readonly string[], options?: RunOptions) => {
     calls.push({ file, args: [...args] });
+    inputs.push(options?.input);
     return Promise.resolve(typeof result === "function" ? result(args) : result);
-  }) as Runner & { calls: { file: string; args: string[] }[] };
+  }) as Recording;
   runner.calls = calls;
+  runner.inputs = inputs;
   return runner;
 }
 
 describe("Keychain wrapper", () => {
-  test("set: /usr/bin/security add-generic-password -U -s ruah -a <account> -w <token> as an args array", async () => {
+  test("set: `security -i` with the command on stdin, so the token is never in argv", async () => {
     const runner = recordingRunner({ code: 0, stdout: "", stderr: "" });
     await new Keychain({ runner, platform: "darwin" }).set("jira:acme.atlassian.net", TOKEN);
-    expect(runner.calls).toEqual([
-      { file: "/usr/bin/security", args: ["add-generic-password", "-U", "-s", "ruah", "-a", "jira:acme.atlassian.net", "-w", TOKEN] },
-    ]);
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]?.file).toBe("/usr/bin/security");
+    expect(runner.calls[0]?.args).toEqual(["-i"]);
+    expect(runner.calls[0]?.args.join(" ")).not.toContain(TOKEN);
+    expect(runner.inputs[0]).toBe(`add-generic-password -U -s "ruah" -a "jira:acme.atlassian.net" -w "${TOKEN}"\n`);
+  });
+
+  test("set: a failure printed by `security -i` (exit 0) is an error and never carries the token", async () => {
+    const runner = recordingRunner({ code: 0, stdout: "", stderr: `security: SecKeychainItemCreateFromContent: error -w ${TOKEN}` });
+    await expect(new Keychain({ runner, platform: "darwin" }).set("jira:x", TOKEN)).rejects.toThrow(/keychain write failed/);
+    await expect(new Keychain({ runner, platform: "darwin" }).set("jira:x", TOKEN)).rejects.not.toThrow(TOKEN);
+  });
+
+  test("set: refuses quotes/newlines that could break out of the stdin command", async () => {
+    const runner = recordingRunner({ code: 0, stdout: "", stderr: "" });
+    await expect(new Keychain({ runner, platform: "darwin" }).set("jira:x", 'a"b')).rejects.toThrow(/unsupported characters/);
+    expect(runner.calls).toHaveLength(0);
   });
 
   test("get: find-generic-password -w, trailing newline trimmed; exit 44 → null", async () => {
