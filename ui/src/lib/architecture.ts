@@ -232,6 +232,7 @@ function toDiagramNode(node: ArchNode, index: ArchIndex, x: number, y: number): 
     ...(node.layer !== undefined ? { layer: node.layer } : {}),
     ...(node.parent !== undefined ? { parent: node.parent } : {}),
     ...(node.files !== undefined ? { filePaths: node.files } : {}),
+    ...(node.origin === "agent" ? { origin: "agent" } : {}),
   };
 }
 

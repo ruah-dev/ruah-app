@@ -30,6 +30,7 @@ export interface ArchNode {
   x?: number; // canvas units (px at zoom 1). Daemon fills both when missing; viewer never lays out.
   y?: number;
   repo?: string; // multi-repo systems: id of the owning repo in ruah.system.json
+  origin?: "scan" | "user" | "agent" | (string & {}); // §1.7: "agent" = drawn by a coding agent (marked until kept)
 }
 
 export interface ArchEdge {
@@ -37,7 +38,7 @@ export interface ArchEdge {
   to: string; // node id
   label?: string; // <= 40 chars, rendered on the edge
   kind?: "sync" | "async" | "event" | "data" | (string & {});
-  source?: "scan" | "suggested" | "manual" | (string & {}); // provenance; absent = manual
+  source?: "scan" | "suggested" | "manual" | "agent" | (string & {}); // provenance; absent = manual
   evidence?: string[]; // "path:line" strings backing a scanned or suggested edge
 }
 
@@ -84,7 +85,9 @@ export type ClientMessage =
   | { type: "chat.new" }
   | { type: "chat.open"; chatId: string }
   | { type: "chat.rename"; chatId: string; title: string }
-  | { type: "chat.delete"; chatId: string };
+  | { type: "chat.delete"; chatId: string }
+  // §1.7: undo the map changes an agent made in a turn
+  | { type: "arch.undo"; turnId: string };
 
 // ---------- daemon -> viewer ----------
 export type ServerMessage =
@@ -95,6 +98,8 @@ export type ServerMessage =
       root: string;
       path: string;
       architecture: Architecture;
+      by?: MapActor; // §1.7: who saved it (reason "saved")
+      changes?: MapChange[]; // §1.7: what an agent op / undo changed
     } // root = absolute repo dir on the daemon host
   | { type: "architecture.error"; path: string; message: string } // file invalid; previous revision stays live
   | {
@@ -278,9 +283,40 @@ export interface TurnRecord {
   contextPack: string;
   attachments?: AttachmentMeta[];
   events: StreamEvent[];
+  mapChanges?: MapChange[]; // §1.7: map edits the agent made in this turn
   stopReason?: StopReason;
   startedAt: string;
   finishedAt?: string;
+}
+
+// §1.7 map edits by agents
+export interface MapActor {
+  kind: "agent" | "user" | "scan" | (string & {});
+  agentId?: string;
+  turnId?: string;
+  undo?: boolean;
+}
+
+export interface MapChange {
+  action:
+    | "add"
+    | "update"
+    | "remove"
+    | "connect"
+    | "disconnect"
+    | "move"
+    | "add_workflow"
+    | "update_workflow"
+    | "remove_workflow"
+    | (string & {});
+  target: "element" | "link" | "workflow" | (string & {});
+  id: string; // element id, workflow id, or "<from>-><to>"
+  name: string; // display text
+  level?: string | null; // parent id of the element (links: of `from`); null = top level
+  fields?: string[];
+  from?: string;
+  to?: string;
+  label?: string;
 }
 
 /** GET /api/projects */

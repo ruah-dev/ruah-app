@@ -24,6 +24,8 @@ import type {
   ToolCallView,
   TurnRecord,
 } from "./contracts";
+import type { MapChange } from "./contracts";
+import { noteArchitectureUpdate } from "./map-activity";
 import sampleArchitectureJson from "@/data/sample-architecture.json";
 import { sampleFiles } from "@/data/sample-files";
 
@@ -79,6 +81,10 @@ export interface Turn {
   /** Images sent with the prompt (§5.6). */
   attachments?: AttachmentMeta[];
   events: StreamEvent[];
+  /** §1.7: map edits the agent made in this turn (ruah_* tools). */
+  mapChanges?: MapChange[];
+  /** The user undid this turn's map changes. */
+  mapUndone?: boolean;
   permission: PermissionRequest | null;
   resolved: PermissionRecord[];
   stopReason?: StopReason;
@@ -393,6 +399,7 @@ function recordToTurn(r: TurnRecord, idle: boolean): Turn {
     contextPack: r.contextPack,
     ...(r.attachments?.length ? { attachments: r.attachments } : {}),
     events: r.events,
+    ...(r.mapChanges?.length ? { mapChanges: r.mapChanges } : {}),
     permission: null,
     resolved: [],
     startedAt,
@@ -507,6 +514,10 @@ function editsPending() {
 function handle(msg: ServerMessage) {
   switch (msg.type) {
     case "architecture": {
+      // §1.7: animate agent edits / undos (before the new revision renders), and attach the
+      // changes to their chat turn.
+      noteArchitectureUpdate(serverArchitecture, msg.architecture, msg.by, msg.changes);
+      noteTurnMapChanges(msg.by, msg.changes);
       serverArchitecture = msg.architecture;
       if (needsResend && draft) {
         needsResend = false;
@@ -703,6 +714,17 @@ function handle(msg: ServerMessage) {
   }
 }
 
+function noteTurnMapChanges(by: Extract<ServerMessage, { type: "architecture" }>["by"], changes: MapChange[] | undefined) {
+  const turnId = by?.turnId;
+  if (!turnId) return;
+  if (by.undo) {
+    updateTurn(turnId, (t) => ({ ...t, mapUndone: true }));
+    return;
+  }
+  if (by.kind === "agent" && changes?.length)
+    updateTurn(turnId, (t) => ({ ...t, mapChanges: [...(t.mapChanges ?? []), ...changes] }));
+}
+
 // ---------------------------------------------------------------------------
 // actions
 
@@ -767,6 +789,11 @@ export function answerPermission(requestId: string, answer: string | "cancel") {
         : t,
     ),
   });
+}
+
+/** §1.7: put back what the agent changed on the map in this turn (daemon keeps a snapshot). */
+export function undoMapChanges(turnId: string): boolean {
+  return send({ type: "arch.undo", turnId });
 }
 
 export function setFocus(nodeId: string | null) {
@@ -1191,4 +1218,6 @@ export const daemonActions = {
   refreshProjects,
   fetchRecentChats,
   rescan,
+  // §1.7
+  undoMapChanges,
 };

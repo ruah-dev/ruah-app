@@ -15,6 +15,7 @@ import { Phantom } from "@/components/brand/RuahLogo";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { MapActivityToasts } from "@/components/map/MapActivityToasts";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -150,6 +151,7 @@ function RootComponent() {
               {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
               <Outlet />
             </AppShell>
+            <MapActivityToasts />
           </WorkbenchProvider>
         </WorkspaceProvider>
         <Toaster position="bottom-right" theme={scheme} closeButton />

@@ -9,6 +9,7 @@ import { Markdown } from "./Markdown";
 import { PermissionCard } from "./PermissionCard";
 import { RowDisclosure, ToolCallRow } from "./ToolCallRow";
 import { TurnAttachments } from "./Attachments";
+import { TurnMapChanges } from "./TurnMapChanges";
 
 type Segment =
   | { k: "text"; text: string }
@@ -262,6 +263,7 @@ export function TurnView({
             }
           }
         })}
+        <TurnMapChanges turn={turn} running={running} />
         {turn.permission ? (
           <PermissionCard request={turn.permission} onOpenPath={onOpenPath} keyboard={keyboard} />
         ) : null}

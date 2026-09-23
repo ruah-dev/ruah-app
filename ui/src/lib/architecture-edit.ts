@@ -68,10 +68,28 @@ export function patchNode(
     if ("tech" in patch) next = setOpt(next, "tech", patch.tech);
     if ("path" in patch)
       next = setOpt(next, "path", patch.path?.trim().replace(/^\.\//, "").replace(/\/+$/, ""));
+    // §1.7: editing an agent-made element (not just moving it) adopts it — the AI marker goes.
+    const edited = Object.keys(patch).some((k) => k !== "x" && k !== "y");
+    if (edited && next.origin === "agent" && JSON.stringify({ ...next, x: 0, y: 0 }) !== JSON.stringify({ ...n, x: 0, y: 0 }))
+      next.origin = "user";
     return next;
   });
   const updated = next.nodes.find((n) => n.id === nodeId);
   return JSON.stringify(updated) === JSON.stringify(current) ? null : next;
+}
+
+/** "Keep" on an agent-made element (§1.7): it becomes the user's (origin "user"), the marker goes. */
+export function keepAgentElement(arch: Architecture, nodeId: string): Architecture | null {
+  const current = arch.nodes.find((n) => n.id === nodeId);
+  if (!current || current.origin !== "agent") return null;
+  return {
+    ...arch,
+    nodes: arch.nodes.map((n) => (n.id === nodeId ? { ...n, origin: "user" } : n)),
+    // Its agent-made links are adopted with it.
+    edges: arch.edges.map((e) =>
+      e.source === "agent" && (e.from === nodeId || e.to === nodeId) ? { ...e, source: "manual" } : e,
+    ),
+  };
 }
 
 /** Add a node on a diagram. Architecture level: child of that level. Workflow: appended step. */

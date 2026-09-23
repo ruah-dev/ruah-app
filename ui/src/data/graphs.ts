@@ -90,6 +90,8 @@ export type DiagramNode = {
   /** Symbol elements (file level): kind and line range in `path`. */
   symbol?: { kind: string; line: number; endLine: number; exported: boolean; detail?: string };
   test?: boolean;
+  /** architecture.json `origin` (§1.7): "agent" = drawn by a coding agent, marked until kept. */
+  origin?: string;
 };
 
 export type DiagramEdge = {
