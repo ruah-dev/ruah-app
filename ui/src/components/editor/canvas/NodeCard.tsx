@@ -8,6 +8,9 @@ import type { DiagramNode } from "@/data/graphs";
 import { NODE_H, NODE_W, styleFor } from "@/components/explorer/kinds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { daemonActions } from "@/lib/daemon";
+import { keepAgentElement } from "@/lib/architecture-edit";
+import { useMapFlash } from "@/lib/map-activity";
 import type { Lod } from "./geometry";
 import { isGroupNodeId } from "./view-model";
 
@@ -93,6 +96,19 @@ function Toolbar({ node, editable, linking, h }: { node: DiagramNode; editable: 
         <Sparkles className="size-3.5" />
       </Button>
       {h.copyContext ? <CopyContextButton node={node} onCopy={h.copyContext} /> : null}
+      {node.origin === "agent" && !node.ephemeral ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 text-[11px] text-ai hover:bg-ai/12 hover:text-ai"
+          aria-label="Keep this agent-made element"
+          title="An agent drew this. Keep it (removes the AI marker)."
+          onClick={() => daemonActions.editArchitecture((a) => keepAgentElement(a, node.id))}
+        >
+          <Check className="size-3.5" />
+          Keep
+        </Button>
+      ) : null}
       {editable ? (
         <>
           <Button
@@ -165,7 +181,22 @@ function InsideChip({ node, h, compact }: { node: DiagramNode; h: NodeHandlers; 
   );
 }
 
+/** §1.7: lavender dot on elements an agent drew, until the user keeps or edits them. */
+function AiMark({ compact }: { compact?: boolean }) {
+  return (
+    <span
+      aria-label="Added by an agent"
+      title="Added by an agent — select it and Keep to accept"
+      className={cn(
+        "pointer-events-auto absolute rounded-full bg-ai ring-2 ring-card",
+        compact ? "-top-1 -left-1 size-2.5" : "top-1.5 right-1.5 size-2",
+      )}
+    />
+  );
+}
+
 function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, h }: Props) {
+  const flash = useMapFlash(node.id);
   const style = styleFor(node);
   const Icon = style.icon;
   const group = isGroupNodeId(node.id);
@@ -183,6 +214,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
   const common = {
     "data-node": true,
     "data-id": node.id,
+    ...(flash ? { "data-flash": flash } : {}),
     style: { left: node.x, top: node.y, width: w, height: hgt },
     onPointerDown: (e: ReactPointerEvent) => h.pointerDown(e, node),
     onClick: (e: ReactMouseEvent) => h.click(e, node),
@@ -241,6 +273,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
           </span>
         ) : null}
         {node.drill || group ? <InsideChip node={node} h={h} compact /> : null}
+        {node.origin === "agent" ? <AiMark compact /> : null}
         {selected ? <Toolbar node={node} editable={editable} linking={linking} h={h} /> : null}
       </div>
     );
@@ -290,6 +323,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         </span>
       ) : null}
       {node.drill || group ? <InsideChip node={node} h={h} compact={false} /> : null}
+      {node.origin === "agent" ? <AiMark /> : null}
       {selected ? (
         <>
           <Toolbar node={node} editable={editable} linking={linking} h={h} />

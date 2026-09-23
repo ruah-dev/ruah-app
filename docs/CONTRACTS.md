@@ -202,6 +202,84 @@ export interface Expansion {
 - **Prompts and context** accept expanded ids: `prompt.nodeId` and `GET /api/context/:nodeId` resolve them through the expander. The pack then shows the element with its parent, its siblings' edges and its file; a symbol's description carries its line range (`Exported component Header, lines 19–23 of src/App.tsx.`). Unknown ids still answer `unknown_node` / 404.
 - **Pin to map** (viewer): copies an expanded folder level into `architecture.json` through the ordinary `architecture.save` (stored ids, `source: "scan"` edges); after that the level is stored and no longer expanded.
 
+### 1.7 Map edits by coding agents (the `ruah_*` tools, 2026-09-23)
+
+Agents read and edit the **open project's** architecture while they work ("draw the architecture for feature X", "add the payments service and connect it to postgres"). Every change goes through the daemon's store — validated (§1.2), written atomically, broadcast — so the viewer updates live.
+
+**Provenance (additive, optional):**
+
+```ts
+interface ArchNode { /* … */ origin?: "scan" | "user" | "agent" | (string & {}) } // absent = scanned or hand-written
+interface ArchEdge { /* … */ source?: "scan" | "suggested" | "manual" | "agent" | (string & {}) }
+```
+
+- The tools write `origin: "agent"` on new elements and `source: "agent"` on new links. Re-scans (repo and system merges) keep `agent` / `manual` / `suggested` links whose ends exist, keep elements with `origin` `agent` or `user` even when their `path` does not exist (yet), and keep an existing non-`scan` `origin` on an element the scan also produces.
+- The viewer marks `origin: "agent"` elements with a lavender dot until the user presses **Keep** or edits the element (not just moves it): it then becomes `origin: "user"` and its agent links `source: "manual"`.
+
+**Tools** (MCP server `ruah`; names as the model sees them: `ruah_…`, in Claude `mcp__ruah__ruah_…`). Elements are referenced by id or by their exact (case-insensitive) name when unique.
+
+| Tool | Arguments | Effect |
+| --- | --- | --- |
+| `ruah_get_architecture` | `level?` (element id; `""` = top level; absent = all) | text summary: elements `id · name · type · layer · parent · path` (+ "N inside", "agent-made"), links, workflows |
+| `ruah_get_element` | `id` | JSON: all fields, parent, children, incoming / outgoing links, workflows |
+| `ruah_find_elements` | `query`, `type?`, `limit?` | elements matching every word (id, name, path, tech, description, files) |
+| `ruah_add_element` | `name`, `type`, `id?`, `layer?`, `parent?`, `path?`, `tech?`, `description?` (≤ 400), `notes?`, `files?` (≤ 20) | id defaults to a slug of the name (namespaced `<repo>:` under a system repo parent, which also sets `repo`); a new layer is appended to `layers`; placed next to the first element it links to on its level, else below the level |
+| `ruah_update_element` | `id`, patch fields (`null` clears; `parent: null` = top level) | the id never changes |
+| `ruah_remove_element` | `id`, `recursive?` | removes its links and workflow steps (workflows left with < 2 steps go); refused when it has children unless `recursive` |
+| `ruah_connect` / `ruah_disconnect` | `from`, `to`, `label?` (≤ 40), `kind?` | connect is idempotent (same from/to/label: updates `kind`); disconnect without `label` removes every from→to link |
+| `ruah_add_workflow` / `ruah_update_workflow` | `name`, `steps` (≥ 2), `id?`, `description?` | |
+| `ruah_apply` | `ops: ArchOp[]` (≤ 200) | several of the above, all or nothing: one save, one broadcast |
+
+```ts
+type ArchOp =
+  | { op: "add_element"; id?; name; type; layer?; parent?; path?; tech?; description?; notes?; files?; x?; y? }
+  | { op: "update_element"; id; patch: { name?; type?; layer?|null; parent?|null; path?|null; tech?|null; description?|null; notes?|null; files?|null; x?; y? } }
+  | { op: "remove_element"; id; recursive? }
+  | { op: "connect"; from; to; label?; kind? } | { op: "disconnect"; from; to; label? }
+  | { op: "add_workflow"; id?; name; description?; steps } | { op: "update_workflow"; id; name?; description?|null; steps? }
+  | { op: "remove_workflow"; id } | { op: "set_layout_hint"; id; x; y };
+```
+
+A failing op or a result that fails §1.2 aborts the whole call; the tool answers `isError: true` with a message meant for the agent (`op 2 of 3 (connect): unknown to element "Nope" — did you mean …; nothing was changed`). Warnings about the changed elements (e.g. a `path` that does not exist yet) are appended to a successful result.
+
+**Transports.**
+- Claude Agent SDK: in-process (`createSdkMcpServer`), allowed without a permission prompt; the system prompt gets the tools hint appended.
+- ACP agents: `session/new` and `session/load` carry `mcpServers: [{ name: "ruah", command: <node>, args: [<cli>, "mcp", "--daemon", "http://127.0.0.1:<port>"], env: [{ name: "RUAH_MCP_TOKEN", value: <token> }] }]`. `archmap mcp --daemon <url> [--token <t>]` is a stdio MCP server (JSON-RPC 2.0, protocol `2025-06-18`, also `2025-03-26` / `2024-11-05`) with the same tools. The bridge answers the agent's permission requests for `ruah_*` tools with allow-once.
+- Both add one sentence to the context pack's instruction paragraph (§3.1): `You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.` (not for the mock agent; `RUAH_MAP_TOOLS=0` turns the tools off).
+
+**HTTP (local IPC for `archmap mcp`, not for browsers).**
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/arch` | `{ revision, architecture }` of the open project |
+| `POST /api/arch/ops` | `{ ops: ArchOp[] }` (1–200) → `{ ok: true, revision, results: { op, id?, message }[], changes: MapChange[], warnings: string[] }` |
+
+Both require: a loopback peer (else 403), **no** `Origin` header (403), and the per-bridge capability token in `x-ruah-token` or `Authorization: Bearer` (missing / unknown → 401). A token belongs to one *(agent, project root)*: when another project is open → 409. Bad body → 400; op or validation failure → 422 `{ error }`; body > 1 MiB → 413.
+
+**Broadcast and chat (additive to §2 / §5).**
+
+```ts
+interface MapActor { kind: "agent" | "user" | "scan" | (string & {}); agentId?: string; turnId?: string; undo?: boolean }
+interface MapChange {
+  action: "add" | "update" | "remove" | "connect" | "disconnect" | "move" | "add_workflow" | "update_workflow" | "remove_workflow" | (string & {});
+  target: "element" | "link" | "workflow" | (string & {});
+  id: string;            // element id, workflow id, or "<from>-><to>"
+  name: string;          // display text ("Stripe", "data → Stripe", workflow name)
+  level?: string | null; // parent of the element (links: of `from`); null = top level
+  fields?: string[]; from?: string; to?: string; label?: string;
+}
+// daemon → viewer, architecture{reason:"saved"} gains:
+//   by?: MapActor           agent op: { kind:"agent", agentId, turnId? }; viewer save: { kind:"user" };
+//                           rescan: { kind:"scan" }; undo: { kind:"user", turnId, undo:true }
+//   changes?: MapChange[]   agent ops and undos
+// TurnRecord (§5.1) gains mapChanges?: MapChange[]   (the turn's agent ops, in order)
+// viewer → daemon: { type: "arch.undo", turnId }
+```
+
+`arch.undo` restores what that turn's ops changed, from a snapshot the daemon took before the turn's first op (memory only, last 30 turns): every element, link and workflow that differs between before and after the turn goes back to its before state, unless it changed again since (the later edit wins); links and steps left dangling are dropped. The result is broadcast as `architecture{by:{kind:"user", turnId, undo:true}, changes}`. Nothing to undo (restart, already undone, everything changed since) → `error{bad_message, "undo failed: …"}`.
+
+The store no longer re-broadcasts its own write when the file watcher sees it: one save is one revision.
+
 ---
 
 ## 2. Viewer ↔ daemon WebSocket protocol
@@ -341,6 +419,7 @@ export type ErrorCode =
 | `GET /api/attachments/:id` | the stored image | §5.6; `id` must match `^[a-f0-9]{64}\.(png\|jpg\|gif\|webp)$` (400 otherwise), 404 unknown |
 | `GET /api/export/drawio` | the open project as an uncompressed draw.io file (`<mxfile>`): page "Overview" (top level, title block, legend), one page per element with children (named by breadcrumb, e.g. `api / routes`), one page "Workflow: <name>" per workflow, page "Specifications" (tables of every element, link and workflow) | `Content-Type: application/vnd.jgraph.mxfile; charset=utf-8`, `Content-Disposition: attachment; filename="<name>.drawio"`; 409 without a project. Elements and links are UserObjects whose properties carry the specs (`ruahId, type, layer, parent, repo, path, tech, files, description, notes, links, cloud, issues`; links: `from, to, kind, source, evidence`); drillable elements `link` to their page (`data:page/id,<pageId>`). Linked cloud resources and issues (§6) are included read-only when the integrations answer within 8 s, otherwise the export notes it on the Specifications page. Deterministic. CLI: `archmap export drawio <repo> [--out <file>]` (local files only: `.ruah/links.json`, cached `cloud.json`) |
 | `GET /api/usage/summary?range=24h\|7d\|30d` | `{ range, totals: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: number\|null, turns }, series: { t, agentId, model, inputTokens, outputTokens, costUsd\|null }[], byModel: { agentId, model, turns, inputTokens, outputTokens, costUsd\|null }[] }` | per-turn usage recorded by the daemon in `~/.ruah/usage.jsonl` (all repos); `t` = ISO bucket start (hourly for 24h, daily otherwise); `costUsd` only when the agent reports it |
+| `GET /api/arch`, `POST /api/arch/ops` | map ops for `archmap mcp` (§1.7) | loopback + capability token only; no Origin allowed |
 | `GET /api/usage/limits` | `{ providers: { agentId, name, status: "available"\|"unavailable"\|"unknown", windows: { id, label, kind: "session"\|"weekly"\|"other", usedPercent: number\|null, resetsAt: string\|null }[], note? }[] }` | Claude: SDK `get_usage` + streamed `rate_limit_event` (port of t3code `claudeUsageLimits.ts`); other agents `unknown` unless their ACP usage updates say otherwise |
 
 ### 2.4 Example: one complete turn

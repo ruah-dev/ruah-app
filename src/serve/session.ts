@@ -38,6 +38,7 @@ import { appendStreamEvent, type ChatStore } from "../projects/chat-store.js";
 import type { AttachmentStore } from "../projects/attachment-store.js";
 import type { SettingsStore } from "../projects/settings-store.js";
 import { BUILT_IN_DEFAULT_MODES, builtInDefaultMode } from "../acp/default-modes.js";
+import type { MapChange } from "../contracts/map.js";
 
 const MAX_FRAME_BYTES = 1_048_576;
 /** How long a running turn survives with no viewer connected (page reloads reconnect well within it). */
@@ -97,6 +98,8 @@ export interface SessionHubOptions {
   autoPrewarmDelayMs?: number;
   /** How long a failed pre-warm is not retried (default 5 min). */
   prewarmRetryMs?: number;
+  /** Agents edit the map through the ruah_* tools (CONTRACTS §1.7): context-pack hint + per-turn undo. */
+  mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
 }
 
 /** A prompt that arrived while the current agent was starting: sent once it is idle. */
@@ -286,6 +289,8 @@ export class SessionHub {
           root: store.root,
           path: store.path,
           architecture: event.architecture,
+          ...(event.by !== undefined ? { by: event.by } : {}),
+          ...(event.changes !== undefined ? { changes: event.changes } : {}),
         });
       }),
       store.onError((error) => {
@@ -902,7 +907,9 @@ export class SessionHub {
     const { index, node } = scope;
     const images = this.loadAttachments(socket, message, open.info.id);
     if (images === undefined) return;
-    const pack = buildContextPack(index, message.nodeId, open.store.root, message.text);
+    const pack = buildContextPack(index, message.nodeId, open.store.root, message.text, {
+      mapTools: this.options.mapOps !== undefined && this.currentAgentId !== MOCK_AGENT_ID,
+    });
     const resolvePath = open.store.resolvePath?.bind(open.store);
     // Images first: the text block (ending with the user's question) stays last (CONTRACTS §3.3).
     const blocks = [...images.blocks, ...buildPromptBlocks(pack, node.files ?? [], open.store.root, this.options.links, resolvePath)] as ContentBlock[];
@@ -1099,6 +1106,31 @@ export class SessionHub {
     } catch (err) {
       this.options.info(`storing turn ${record.turnId} failed: ${(err as Error).message}`);
     }
+  }
+
+  // ---------- map edits by agents (CONTRACTS §1.7) ----------
+
+  /** Adds map changes an agent made to the running turn's record (stored with the chat). */
+  recordMapChanges(turnId: string, changes: MapChange[]): void {
+    const recording = this.turns.get(turnId);
+    if (recording === undefined || recording.finalized || changes.length === 0) return;
+    recording.record.mapChanges = [...(recording.record.mapChanges ?? []), ...changes];
+  }
+
+  /** arch.undo: restores what the turn's map ops changed; the result is broadcast as `architecture`. */
+  undoMapTurn(turnId: string, socket?: WebSocket): void {
+    const mapOps = this.options.mapOps;
+    if (mapOps === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", "map undo is not available");
+      return;
+    }
+    if (this.open === null) {
+      if (socket !== undefined) this.error(socket, "bad_message", NO_PROJECT_MESSAGE);
+      return;
+    }
+    mapOps.undoTurn(turnId).catch((err: unknown) => {
+      if (socket !== undefined) this.error(socket, "bad_message", `undo failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
 
   // ---------- chats (CONTRACTS §5.2) ----------
@@ -1468,7 +1500,7 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
         hub.error(socket, "save_rejected", `save failed: ${NO_PROJECT_MESSAGE}`);
         return;
       }
-      store.save(message.architecture).catch((err: Error) => hub.error(socket, "save_rejected", `save failed: ${err.message}`));
+      store.save(message.architecture, { by: { kind: "user" } }).catch((err: Error) => hub.error(socket, "save_rejected", `save failed: ${err.message}`));
       return;
     }
     case "chat.new": {
@@ -1485,6 +1517,10 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     }
     case "chat.delete": {
       hub.deleteChat(message.chatId, socket);
+      return;
+    }
+    case "arch.undo": {
+      hub.undoMapTurn(message.turnId, socket);
       return;
     }
   }

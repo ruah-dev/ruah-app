@@ -38,7 +38,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
 import type { AgentState, ModeState, ModelState, PermissionOption, StopReason } from "../contracts/ws.js";
-import type { AcpBridge, BridgeEvent, BridgeOptions, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
+import type { AcpBridge, BridgeEvent, BridgeOptions, RateLimitSample, StdioMcpServerSpec, TurnHandle, TurnUsage } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import {
   applyModeChange,
@@ -495,7 +495,12 @@ export class AcpProcessBridge implements AcpBridge {
         this.options.onStderr?.(`archmap: session/load ${load} failed (${errorMessage(err)}); starting a new session\n`);
       }
     }
-    session ??= await this.raceExit(rt, rt.conn.agent.buildSession(this.root).start());
+    if (session === undefined) {
+      const builder = rt.conn.agent.buildSession(this.root);
+      const mcp = await this.mapToolsServer();
+      if (mcp !== undefined) builder.withMcpServer(mcp);
+      session = await this.raceExit(rt, builder.start());
+    }
     rt.session = session;
     this.sessionId = session.sessionId;
     this.sessionCostUsd = undefined;
@@ -512,10 +517,23 @@ export class AcpProcessBridge implements AcpBridge {
    * and is dropped.
    */
   private async loadSession(rt: Runtime, sessionId: string): Promise<ActiveSession> {
-    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: [] }));
+    const mcp = await this.mapToolsServer();
+    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: mcp !== undefined ? [mcp] : [] }));
     const agent = rt.conn.agent as unknown as { attachSession?: (response: NewSessionResponse) => ActiveSession };
     if (typeof agent.attachSession !== "function") throw new Error("the ACP SDK cannot attach a loaded session");
     return agent.attachSession.call(rt.conn.agent, { ...(response ?? {}), sessionId } as NewSessionResponse);
+  }
+
+  /** The ruah_* map tools as a stdio MCP server for session/new and session/load (CONTRACTS §1.7). */
+  private async mapToolsServer(): Promise<StdioMcpServerSpec | undefined> {
+    const tools = this.options.mapTools;
+    if (tools === undefined) return undefined;
+    try {
+      return await tools.stdio();
+    } catch (err) {
+      this.options.onStderr?.(`archmap: map tools unavailable (${errorMessage(err)})\n`);
+      return undefined;
+    }
   }
 
   private readModes(response: NewSessionResponse): void {
@@ -760,6 +778,10 @@ export class AcpProcessBridge implements AcpBridge {
     if (rt !== this.runtime || turn === undefined || turn.finished || turn.cancelRequested || params.sessionId !== this.sessionId) {
       return Promise.resolve({ outcome: { outcome: "cancelled" } });
     }
+    // The ruah_* map tools (CONTRACTS §1.7) run without asking the user, as with Claude: they only
+    // touch architecture.json through the daemon and a turn's map changes can be undone.
+    const mapAllow = this.mapToolPermission(params);
+    if (mapAllow !== undefined) return Promise.resolve({ outcome: { outcome: "selected", optionId: mapAllow } });
     this.permCounter += 1;
     const requestId = `perm_${this.permCounter}`;
     const toolCall = turn.normalizer.permissionView(params.toolCall);
@@ -787,6 +809,19 @@ export class AcpProcessBridge implements AcpBridge {
       signal.addEventListener("abort", onAbort, { once: true });
       this.emit({ type: "permission", turnId: turn.turnId, requestId, toolCall, options });
     });
+  }
+
+  /**
+   * The allow-once option when the request is for one of our map tools. Agents name MCP tools
+   * after the server ("ruah-ruah_apply: …" in Cursor, "mcp__ruah__ruah_apply" in Claude's adapter).
+   */
+  private mapToolPermission(params: RequestPermissionRequest): string | undefined {
+    const tools = this.options.mapTools;
+    if (tools === undefined) return undefined;
+    const title = params.toolCall.title ?? "";
+    const match = /(?:^|\b)(?:mcp__)?ruah(?:__|[-_:.\s]+)(ruah_[a-z_]+)\b/.exec(title);
+    if (match === null || !tools.allowedTools.includes(`mcp__ruah__${match[1]}`)) return undefined;
+    return params.options.find((o) => o.kind === "allow_once")?.optionId ?? params.options.find((o) => o.kind === "allow_always")?.optionId;
   }
 
   // ---------- events ----------

@@ -695,3 +695,52 @@ html[data-theme="contrast"] .grain::after {
     transform: translateY(-2px) rotate(-1.2deg);
   }
 }
+
+/* §1.7 live map edits by agents (src/lib/map-activity.ts): new elements scale/fade in, changed
+   ones glow lavender (the AI accent), removed ones fade out as a ghost. Reduced motion: no
+   movement, a static lavender outline while the flash lasts. */
+@keyframes map-agent-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes map-agent-glow {
+  0%,
+  45% {
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, var(--ai) 60%, transparent),
+      0 0 26px 2px color-mix(in oklab, var(--ai) 40%, transparent);
+  }
+  100% {
+    box-shadow: var(--elev-card);
+  }
+}
+@keyframes map-agent-out {
+  to {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+}
+[data-node][data-flash="added"] {
+  animation:
+    map-agent-in 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both,
+    map-agent-glow 2.3s ease-out;
+}
+[data-node][data-flash="changed"] {
+  animation: map-agent-glow 2.3s ease-out;
+}
+[data-map-ghost] {
+  pointer-events: none;
+  animation: map-agent-out 440ms ease-in forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-node][data-flash] {
+    outline: 2px solid var(--ai);
+    outline-offset: 2px;
+  }
+}

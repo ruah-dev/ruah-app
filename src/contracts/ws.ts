@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Architecture } from "./architecture.js";
 import { ArchitectureSchema } from "./architecture.js";
+import { MapActorSchema, MapChangeSchema } from "./map.js";
 
 // CONTRACTS.md §2.1 — field for field. Open unions use z.string() with the
 // known literals documented; receivers ignore unknown type/kind values.
@@ -164,6 +165,7 @@ export const TurnRecordSchema = z.object({
   contextPack: z.string(),
   attachments: z.array(AttachmentMetaSchema).optional(),
   events: z.array(StreamEventSchema),
+  mapChanges: z.array(MapChangeSchema).optional(), // §1.7: architecture edits the agent made in this turn
   stopReason: StopReasonSchema.optional(),
   startedAt: z.string(),
   finishedAt: z.string().optional(),
@@ -206,6 +208,8 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("chat.open"), chatId: z.string() }),
   z.object({ type: z.literal("chat.rename"), chatId: z.string(), title: z.string() }),
   z.object({ type: z.literal("chat.delete"), chatId: z.string() }),
+  // §1.7: restore the elements an agent's turn changed (in-memory snapshot, this daemon's life)
+  z.object({ type: z.literal("arch.undo"), turnId: z.string() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -218,6 +222,8 @@ export const ServerMessageSchema = z.union([
     root: z.string(),
     path: z.string(),
     architecture: ArchitectureSchema,
+    by: MapActorSchema.optional(), // §1.7: who saved it (reason "saved"); absent = unknown / file edit
+    changes: z.array(MapChangeSchema).optional(), // §1.7: what an agent op or an undo changed
   }),
   z.object({ type: z.literal("architecture.error"), path: z.string(), message: z.string() }),
   z.object({

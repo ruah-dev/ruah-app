@@ -12,6 +12,28 @@ export interface BridgeOptions {
   onStderr?: (chunk: string) => void;
   /** Extra working directories (multi-repo systems: every repo root). Claude SDK only; ACP has cwd only. */
   additionalDirectories?: string[];
+  /** Ruah map tools (ruah_* MCP server, CONTRACTS §1.7) for this agent's sessions. */
+  mapTools?: AgentMapTools;
+}
+
+/** A stdio MCP server for ACP session/new `mcpServers` (ACP McpServerStdio). */
+export interface StdioMcpServerSpec {
+  name: string;
+  command: string;
+  args: string[];
+  env: { name: string; value: string }[];
+}
+
+/** How a bridge offers the ruah_* map tools to its agent (src/serve/map-ops.ts builds it). */
+export interface AgentMapTools {
+  /** Appended to the system prompt where the agent has one (Claude Agent SDK). */
+  instructions: string;
+  /** Claude Agent SDK: a fresh in-process MCP server config (createSdkMcpServer) — one per query(). */
+  sdkServer(): unknown;
+  /** Fully qualified tool names the Claude Agent SDK's canUseTool allows without asking (they only touch architecture.json, undoable per turn). */
+  allowedTools: string[];
+  /** ACP: the stdio MCP server to pass in session/new; undefined while the daemon URL is unknown. */
+  stdio(): Promise<StdioMcpServerSpec | undefined>;
 }
 
 export type BridgeEvent =

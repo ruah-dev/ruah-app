@@ -16,6 +16,7 @@ export const ArchNodeSchema = z.object({
   layer: z.string().optional(),
   parent: z.string().optional(),
   repo: z.string().optional(), // system architectures only: id of the owning repo in ruah.system.json
+  origin: z.string().optional(), // who made the element, known: scan | user | agent; absent = scan or hand-written (§1.7)
   x: z.number().optional(),
   y: z.number().optional(),
 });
@@ -24,7 +25,7 @@ export const ArchEdgeSchema = z.object({
   to: z.string(),
   label: z.string().optional(), // <= 40 chars
   kind: z.string().optional(), // known: sync | async | event | data
-  source: z.string().optional(), // provenance, known: scan | suggested | manual; absent = manual
+  source: z.string().optional(), // provenance, known: scan | suggested | manual | agent; absent = manual
   evidence: z.array(z.string()).optional(), // "path:line" strings backing the edge
 });
 export const WorkflowSchema = z.object({
@@ -46,6 +47,8 @@ export const ArchitectureSchema = z.object({
 export type NodeType = string;
 export type ArchNode = z.infer<typeof ArchNodeSchema>;
 export type ArchEdge = z.infer<typeof ArchEdgeSchema>;
-export type EdgeSource = "scan" | "suggested" | "manual";
+export type EdgeSource = "scan" | "suggested" | "manual" | "agent";
+/** ArchNode.origin (§1.7): "agent" = drawn by a coding agent through the map tools, kept by re-scans. */
+export type NodeOrigin = "scan" | "user" | "agent";
 export type Workflow = z.infer<typeof WorkflowSchema>;
 export type Architecture = z.infer<typeof ArchitectureSchema>;

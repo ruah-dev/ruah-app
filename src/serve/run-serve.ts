@@ -20,6 +20,7 @@ import { SettingsStore } from "../projects/settings-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
+import { MapOpsService } from "./map-ops.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -78,7 +79,13 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     if (process.env.ARCHMAP_DEBUG === "1") process.stderr.write(`${line}\n`);
   };
   const initialRoot = flags.repo !== undefined ? path.resolve(flags.repo) : (process.env.HOME ?? homedir());
-  const catalog = new AgentCatalog({ root: initialRoot, clientVersion: version, onStderr: debug }, { mock: flags.mock });
+  let hubRef: SessionHub | undefined;
+  // Agents edit the open project's map through the ruah_* tools (CONTRACTS §1.7); RUAH_MAP_TOOLS=0 turns them off.
+  const mapOps = process.env.RUAH_MAP_TOOLS === "0" ? undefined : new MapOpsService(() => hubRef, { version });
+  const catalog = new AgentCatalog(
+    { root: initialRoot, clientVersion: version, onStderr: debug },
+    { mock: flags.mock, ...(mapOps !== undefined ? { mapTools: (agentId: string, root: string) => mapOps.toolsFor({ agentId, root }) } : {}) },
+  );
   const home = ruahHome();
   const settings = new SettingsStore(home, { onError: (line) => process.stderr.write(`${line}\n`) });
   // --agent wins; else the saved default agent when it is installed; else Claude Code.
@@ -97,7 +104,6 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   }
   // Usage log in $RUAH_HOME (~/.ruah); the Claude limits probe is a CLI start
   // without a model turn — RUAH_CLAUDE_USAGE_PROBE=0 turns it off.
-  let hubRef: SessionHub | undefined;
   const limits = new UsageLimitsService({
     agents: () => catalog.choices(hubRef?.agentId() ?? agentId).available.map(({ id, name, installed }) => ({ id, name, installed })),
     currentAgentId: () => hubRef?.agentId() ?? agentId,
@@ -122,6 +128,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     chats,
     attachments,
     settings,
+    ...(mapOps !== undefined ? { mapOps } : {}),
     warmTtlMs: warmTtlMs(),
     maxLiveBridges: maxLiveAgents(),
     // The scripted mock must not start real agent CLIs behind the user's back.
@@ -154,6 +161,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     logger: (line: string) => debug(line),
     usage,
     projects,
+    ...(mapOps !== undefined ? { mapOps } : {}),
     // Follows the hub's current project; null in the launcher state (endpoints answer 409).
     integrations: new IntegrationsService({
       home: ruahHome(),
@@ -164,6 +172,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     }),
   });
 
+  mapOps?.setDaemonUrl(running.url);
   const startupMs = Date.now() - t0;
   const project = hub.project();
   info(`viewer ${running.url}  project ${project !== null ? project.name : "(none: launcher)"}  agent ${agentId} ${hub.agentState()} (${startupMs} ms)`);
