@@ -6,12 +6,15 @@ import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
   CircleHelp,
+  Cloud,
   LayoutDashboard,
+  ListChecks,
   Map as MapIcon,
   Menu,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Plug,
   Search,
   Settings,
   Wind,
@@ -37,12 +40,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { AgentSidebarSection, MapSidebarSection } from "./SidebarSections";
+import { NavBadge } from "@/components/orchestration/navBadges";
 
 export const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, key: "d" },
   { to: "/map", label: "Map", icon: MapIcon, key: "m" },
   { to: "/agent", label: "Agent", icon: MessageSquare, key: "a" },
+  { to: "/tasks", label: "Tasks", icon: ListChecks, key: "t" },
+  { to: "/cloud", label: "Cloud", icon: Cloud, key: "c" },
   { to: "/usage", label: "Usage", icon: BarChart3, key: "u" },
+  { to: "/integrations", label: "Integrations", icon: Plug, key: "i" },
   { to: "/settings", label: "Settings", icon: Settings, key: "s" },
 ] as const;
 
@@ -130,7 +137,7 @@ function NavItem({
       aria-label={item.label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group/nav flex h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors",
+        "group/nav relative flex h-8 items-center gap-2.5 rounded-md text-[13px] transition-colors",
         collapsed ? "w-8 justify-center" : "px-2",
         active
           ? "bg-accent text-foreground"
@@ -138,12 +145,15 @@ function NavItem({
       )}
     >
       <Icon className="size-4 shrink-0" strokeWidth={active ? 2.1 : 1.8} />
-      {collapsed ? null : (
+      {collapsed ? (
+        <NavBadge path={item.to} collapsed />
+      ) : (
         <>
           <span className="truncate">{item.label}</span>
           <kbd className="ms-auto font-sans text-[10.5px] tracking-wider text-muted-foreground/0 transition-colors group-hover/nav:text-muted-foreground/60">
             G {item.key.toUpperCase()}
           </kbd>
+          <NavBadge path={item.to} collapsed={false} />
         </>
       )}
     </Link>

@@ -3,6 +3,7 @@
 // rows separated by hairlines, the control on the right.
 import { useEffect, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { CLIENT_ID, setAgent, setAgentMode, setModel } from "@/lib/daemon";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
@@ -163,6 +164,20 @@ export function SettingsPage() {
               ))}
             </Group>
           ) : null}
+
+          <Group
+            title="Integrations"
+            description="Cloud providers, issue trackers and ruah orchestration."
+          >
+            <Row label="Connected services" hint="DigitalOcean, AWS, Jira, GitHub, ruah">
+              <Link
+                to="/integrations"
+                className="flex h-7 items-center rounded-md bg-foreground/[0.06] px-2.5 text-[12.5px] text-foreground hover:bg-foreground/10"
+              >
+                Manage
+              </Link>
+            </Row>
+          </Group>
 
           <Group title="Appearance">
             <Row label="Theme">

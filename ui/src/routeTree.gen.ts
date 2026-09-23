@@ -11,8 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AgentRouteImport } from './routes/agent'
+import { Route as CloudRouteImport } from './routes/cloud'
+import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as UsageRouteImport } from './routes/usage'
 
 const IndexRoute = IndexRouteImport.update({
@@ -25,6 +28,16 @@ const AgentRoute = AgentRouteImport.update({
   path: '/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CloudRoute = CloudRouteImport.update({
+  id: '/cloud',
+  path: '/cloud',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntegrationsRoute = IntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MapRoute = MapRouteImport.update({
   id: '/map',
   path: '/map',
@@ -33,6 +46,11 @@ const MapRoute = MapRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TasksRoute = TasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UsageRoute = UsageRouteImport.update({
@@ -44,38 +62,75 @@ const UsageRoute = UsageRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/cloud': typeof CloudRoute
+  '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
+  '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/cloud': typeof CloudRoute
+  '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
+  '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/agent': typeof AgentRoute
+  '/cloud': typeof CloudRoute
+  '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
+  '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/agent' | '/map' | '/settings' | '/usage'
+  fullPaths:
+    | '/'
+    | '/agent'
+    | '/cloud'
+    | '/integrations'
+    | '/map'
+    | '/settings'
+    | '/tasks'
+    | '/usage'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/agent' | '/map' | '/settings' | '/usage'
-  id: '__root__' | '/' | '/agent' | '/map' | '/settings' | '/usage'
+  to:
+    | '/'
+    | '/agent'
+    | '/cloud'
+    | '/integrations'
+    | '/map'
+    | '/settings'
+    | '/tasks'
+    | '/usage'
+  id:
+    | '__root__'
+    | '/'
+    | '/agent'
+    | '/cloud'
+    | '/integrations'
+    | '/map'
+    | '/settings'
+    | '/tasks'
+    | '/usage'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentRoute: typeof AgentRoute
+  CloudRoute: typeof CloudRoute
+  IntegrationsRoute: typeof IntegrationsRoute
   MapRoute: typeof MapRoute
   SettingsRoute: typeof SettingsRoute
+  TasksRoute: typeof TasksRoute
   UsageRoute: typeof UsageRoute
 }
 
@@ -95,6 +150,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cloud': {
+      id: '/cloud'
+      path: '/cloud'
+      fullPath: '/cloud'
+      preLoaderRoute: typeof CloudRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/integrations': {
+      id: '/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof IntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/map': {
       id: '/map'
       path: '/map'
@@ -107,6 +176,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tasks': {
+      id: '/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/usage': {
@@ -122,8 +198,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentRoute: AgentRoute,
+  CloudRoute: CloudRoute,
+  IntegrationsRoute: IntegrationsRoute,
   MapRoute: MapRoute,
   SettingsRoute: SettingsRoute,
+  TasksRoute: TasksRoute,
   UsageRoute: UsageRoute,
 }
 export const routeTree = rootRouteImport
