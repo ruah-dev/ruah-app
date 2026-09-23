@@ -80,6 +80,8 @@ export interface SessionHubOptions {
   agents?: AgentSwitcher;
   /** Receives every finished turn and streamed rate-limit reading (usage log + limits). */
   usage?: UsageSink;
+  /** Runs ruah-verify after agent turns (optional). */
+  engines?: { afterTurn(nodeId: string | undefined): void };
   /** Enables chats (CONTRACTS §5): turns are recorded into the active chat. */
   chats?: ChatStore;
   /** ProjectInfo for the store passed to the constructor (default: derived from store.root). */
@@ -1332,8 +1334,10 @@ export class SessionHub {
     const recording = this.turns.get(event.turnId);
     this.turns.delete(event.turnId);
     this.recordUsage(entry, event, recording);
-    if (recording !== undefined) this.finalizeTurn(recording, event.stopReason, event.error);
-    else if (current) this.broadcast({ type: "turn.finished", turnId: event.turnId, stopReason: event.stopReason });
+    if (recording !== undefined) {
+      this.options.engines?.afterTurn(recording.record.nodeId);
+      this.finalizeTurn(recording, event.stopReason, event.error);
+    } else if (current) this.broadcast({ type: "turn.finished", turnId: event.turnId, stopReason: event.stopReason });
   }
 
   private recordUsage(entry: PooledBridge, event: Extract<BridgeEvent, { type: "turn_finished" }>, recording: RecordingTurn | undefined): void {
@@ -1349,6 +1353,7 @@ export class SessionHub {
         stopReason: event.stopReason,
         usage: event.usage,
         elapsedMs: recording !== undefined ? Date.now() - recording.startedAtMs : 0,
+        ...(recording?.record.nodeId !== undefined ? { nodeId: recording.record.nodeId } : {}),
       });
     } catch (err) {
       this.options.debug(`usage record failed: ${(err as Error).message}`);
