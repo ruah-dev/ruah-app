@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { WorkbenchProvider } from "@/lib/workbench";
 import { applyPalette, applyTheme, readPalette, readTheme, useColorScheme } from "@/lib/theme";
@@ -19,6 +19,9 @@ import { MapActivityToasts } from "@/components/map/MapActivityToasts";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { installStaleBuildRecovery, isStaleChunkError, reloadForNewBuild } from "../lib/stale-build";
+
+installStaleBuildRecovery();
 
 function NotFoundComponent() {
   return (
@@ -46,9 +49,27 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const stale = isStaleChunkError(error);
+  const [reloading, setReloading] = useState(false);
   useEffect(() => {
+    // Ruah was rebuilt while this window was open: load the new build instead of failing.
+    if (stale && reloadForNewBuild()) {
+      setReloading(true);
+      return;
+    }
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+  }, [error, stale]);
+
+  if (reloading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="flex flex-col items-center text-center">
+          <Phantom size="lg" expression="loading" />
+          <p className="mt-6 text-sm text-muted-foreground">Ruah was updated — reloading…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -58,11 +79,25 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           This page didn&apos;t load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+          {stale
+            ? "Ruah was rebuilt while this window was open and this page's code is gone. Reload to load the new version."
+            : "Something went wrong on our end. You can try refreshing or head back home."}
         </p>
+        <details className="mt-4 w-full max-w-md text-left">
+          <summary className="cursor-pointer text-center text-meta text-muted-foreground hover:text-foreground">
+            Details
+          </summary>
+          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-hairline bg-surface-1 p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-words text-muted-foreground select-text">
+            {error.stack ?? error.message}
+          </pre>
+        </details>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (stale) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
