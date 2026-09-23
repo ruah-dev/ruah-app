@@ -102,25 +102,25 @@
     ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 
   /* neutral scale (chroma 0): background < panels < controls < active */
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.93 0 0);
-  --surface-1: oklch(0.168 0 0);
-  --surface-2: oklch(0.2 0 0);
-  --surface-3: oklch(0.24 0 0);
+  --background: oklch(0.205 0 0);
+  --foreground: oklch(0.94 0 0);
+  --surface-1: oklch(0.23 0 0);
+  --surface-2: oklch(0.26 0 0);
+  --surface-3: oklch(0.3 0 0);
   --hairline: oklch(1 0 0 / 0.075);
 
-  --card: oklch(0.168 0 0);
+  --card: oklch(0.23 0 0);
   --card-foreground: var(--foreground);
-  --popover: oklch(0.19 0 0);
+  --popover: oklch(0.25 0 0);
   --popover-foreground: var(--foreground);
 
   /* the one accent */
   --primary: oklch(0.66 0.16 262);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.2 0 0);
+  --secondary: oklch(0.26 0 0);
   --secondary-foreground: var(--foreground);
-  --muted: oklch(0.2 0 0);
-  --muted-foreground: oklch(0.62 0 0);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.68 0 0);
   --accent: oklch(1 0 0 / 0.055);
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.64 0.19 25);
@@ -131,13 +131,13 @@
   --ring: oklch(0.66 0.16 262 / 0.6);
 
   /* chat */
-  --message: oklch(0.225 0 0);
-  --composer: oklch(0.19 0 0);
+  --message: oklch(0.285 0 0);
+  --composer: oklch(0.25 0 0);
 
   /* canvas */
-  --canvas: oklch(0.145 0 0);
-  --grid: oklch(0.34 0 0);
-  --edge: oklch(0.42 0 0);
+  --canvas: oklch(0.205 0 0);
+  --grid: oklch(0.38 0 0);
+  --edge: oklch(0.48 0 0);
   --edge-active: oklch(0.7 0.14 262);
 
   /* element kinds: muted hues so the diagram stays calm */

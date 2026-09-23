@@ -1,4 +1,5 @@
-// Theme preference (Settings → Appearance). Dark is the default; "system" follows the OS.
+// Theme preference (Settings → Appearance). Light is the default (the user found dark too
+// dark, 2026-09-23); "system" follows the OS.
 import { useEffect, useState } from "react";
 
 export type ThemePref = "system" | "dark" | "light";
@@ -7,9 +8,9 @@ const KEY = "ruah.theme";
 export function readTheme(): ThemePref {
   try {
     const v = window.localStorage.getItem(KEY);
-    return v === "light" || v === "system" || v === "dark" ? v : "dark";
+    return v === "light" || v === "system" || v === "dark" ? v : "light";
   } catch {
-    return "dark";
+    return "light";
   }
 }
 
@@ -28,7 +29,7 @@ export function applyTheme(pref: ThemePref) {
 
 /** Applies the stored theme on mount and keeps "system" in sync with the OS. */
 export function useTheme() {
-  const [pref, setPref] = useState<ThemePref>("dark");
+  const [pref, setPref] = useState<ThemePref>("light");
   useEffect(() => {
     const stored = readTheme();
     setPref(stored);

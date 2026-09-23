@@ -90,8 +90,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Ruah maps a codebase from services down to files, with workflows and a coding agent on every element.",
       },
       { name: "application-name", content: "Ruah" },
-      { name: "theme-color", content: "#0a0a0a" },
-      { name: "color-scheme", content: "dark" },
+      { name: "theme-color", content: "#fcfcfc" },
+      { name: "color-scheme", content: "light dark" },
       { property: "og:site_name", content: "Ruah" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -110,10 +110,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+const THEME_BOOT = `try{var p=localStorage.getItem("ruah.theme")||"light";var m=p==="system"?(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(m);r.style.colorScheme=m}catch(e){}`;
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="light" suppressHydrationWarning>
       <head>
+        {/* Apply the saved theme before first paint (no flash of the wrong theme). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
         <HeadContent />
       </head>
       <body>

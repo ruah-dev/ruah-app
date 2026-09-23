@@ -147,7 +147,7 @@ async function main() {
     width: 1440,
     height: 900,
     title: "Ruah",
-    backgroundColor: "#12181d",
+    backgroundColor: "#fcfcfc",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
