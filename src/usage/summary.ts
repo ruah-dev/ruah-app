@@ -52,6 +52,7 @@ export class UsageAggregator {
   private readonly totals = emptyAcc();
   private readonly series = new Map<string, Acc>();
   private readonly byModel = new Map<string, Acc>();
+  private readonly byNode = new Map<string, Acc>();
 
   constructor(readonly range: UsageRange, now: number) {
     this.to = now;
@@ -70,9 +71,14 @@ export class UsageAggregator {
     let row = this.byModel.get(modelKey);
     if (row === undefined) this.byModel.set(modelKey, (row = emptyAcc()));
     add(row, record);
+    if (record.nodeId !== undefined && record.nodeId.length > 0) {
+      let nodeRow = this.byNode.get(record.nodeId);
+      if (nodeRow === undefined) this.byNode.set(record.nodeId, (nodeRow = emptyAcc()));
+      add(nodeRow, record);
+    }
   }
 
-  result(): UsageSummary {
+  result(workflows?: Array<{ id: string; steps: string[] }>): UsageSummary {
     const series = [...this.series].map(([key, acc]) => {
       const [t = "0", agentId = "", model = ""] = key.split(KEY_SEP);
       return { t: Number(t), agentId, model, acc };
@@ -89,6 +95,45 @@ export class UsageAggregator {
         a.agentId.localeCompare(b.agentId) ||
         a.model.localeCompare(b.model),
     );
+    const byNode = [...this.byNode].map(([nodeId, acc]) => ({ nodeId, acc }));
+    byNode.sort(
+      (a, b) =>
+        (b.acc.costUsd ?? 0) - (a.acc.costUsd ?? 0) ||
+        b.acc.inputTokens + b.acc.outputTokens - (a.acc.inputTokens + a.acc.outputTokens),
+    );
+
+    const byWorkflowAcc = new Map<string, Acc>();
+    if (workflows !== undefined) {
+      for (const wf of workflows) {
+        let turns = 0;
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let cacheReadTokens = 0;
+        let cacheWriteTokens = 0;
+        let costUsd: number | null = null;
+        for (const step of wf.steps) {
+          const nodeAcc = this.byNode.get(step);
+          if (!nodeAcc) continue;
+          turns += nodeAcc.turns;
+          inputTokens += nodeAcc.inputTokens;
+          outputTokens += nodeAcc.outputTokens;
+          cacheReadTokens += nodeAcc.cacheReadTokens;
+          cacheWriteTokens += nodeAcc.cacheWriteTokens;
+          if (nodeAcc.costUsd !== null) costUsd = (costUsd ?? 0) + nodeAcc.costUsd;
+        }
+        if (turns > 0) {
+          byWorkflowAcc.set(wf.id, {
+            turns,
+            inputTokens,
+            outputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+            costUsd,
+          });
+        }
+      }
+    }
+
     const t = this.totals;
     return {
       range: this.range,
@@ -116,13 +161,32 @@ export class UsageAggregator {
         outputTokens: acc.outputTokens,
         costUsd: cost(acc.costUsd),
       })),
+      byNode: byNode.map(({ nodeId, acc }) => ({
+        nodeId,
+        turns: acc.turns,
+        inputTokens: acc.inputTokens,
+        outputTokens: acc.outputTokens,
+        costUsd: cost(acc.costUsd),
+      })),
+      byWorkflow: [...byWorkflowAcc].map(([workflowId, acc]) => ({
+        workflowId,
+        turns: acc.turns,
+        inputTokens: acc.inputTokens,
+        outputTokens: acc.outputTokens,
+        costUsd: cost(acc.costUsd),
+      })),
     };
   }
 }
 
 /** Summary of `records` over the `range` ending at `now`. */
-export async function summarizeUsage(records: AsyncIterable<UsageRecord> | Iterable<UsageRecord>, range: UsageRange, now: number = Date.now()): Promise<UsageSummary> {
+export async function summarizeUsage(
+  records: AsyncIterable<UsageRecord> | Iterable<UsageRecord>,
+  range: UsageRange,
+  now: number = Date.now(),
+  workflows?: Array<{ id: string; steps: string[] }>,
+): Promise<UsageSummary> {
   const aggregator = new UsageAggregator(range, now);
   for await (const record of records) aggregator.add(record);
-  return aggregator.result();
+  return aggregator.result(workflows);
 }

@@ -177,6 +177,8 @@ describe("summarizeUsage", () => {
       totals: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, turns: 0 },
       series: [],
       byModel: [],
+      byNode: [],
+      byWorkflow: [],
     });
   });
 });

@@ -38,6 +38,20 @@ export interface UsageSummary {
   totals: UsageTotals;
   series: UsageSeriesPoint[];
   byModel: UsageByModel[];
+  byNode?: Array<{
+    nodeId: string;
+    turns: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number | null;
+  }>;
+  byWorkflow?: Array<{
+    workflowId: string;
+    turns: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number | null;
+  }>;
 }
 
 export interface UsageLimitWindow {

@@ -31,6 +31,8 @@ export interface UsageRecord {
   /** Who produced costUsd: always the agent today (Claude reports an API-equivalent estimate even on a subscription). */
   costSource: "agent" | null;
   durationMs: number;
+  /** Architecture element the turn was scoped to, when known. */
+  nodeId?: string;
 }
 
 export function ruahHome(env: NodeJS.ProcessEnv = process.env): string {
@@ -72,6 +74,7 @@ export function parseUsageLine(line: string): UsageRecord | undefined {
     costUsd: isCount(r.costUsd) ? r.costUsd : null,
     costSource: r.costSource === "agent" ? "agent" : null,
     durationMs: isCount(r.durationMs) ? r.durationMs : 0,
+    ...(typeof r.nodeId === "string" && r.nodeId.length > 0 ? { nodeId: r.nodeId } : {}),
   };
 }
 

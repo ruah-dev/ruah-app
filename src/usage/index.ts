@@ -23,6 +23,8 @@ export interface FinishedTurn {
   usage: TurnUsage | undefined;
   /** Wall time from prompt to turn_finished, used when the agent reports no duration. */
   elapsedMs: number;
+  /** Architecture element the turn was scoped to, when known. */
+  nodeId?: string;
 }
 
 /** What the SessionHub needs (tests pass fakes). */
@@ -55,6 +57,7 @@ export function usageRecord(turn: FinishedTurn, finishedAt: Date): UsageRecord {
     costUsd,
     costSource: costUsd !== null ? "agent" : null,
     durationMs: Math.max(0, Math.round(usage?.durationMs ?? turn.elapsedMs)),
+    ...(turn.nodeId !== undefined && turn.nodeId.length > 0 ? { nodeId: turn.nodeId } : {}),
   };
 }
 
@@ -62,7 +65,12 @@ export class UsageService implements UsageSink, UsageApi {
   constructor(
     readonly log: UsageLog,
     readonly limitsService: UsageLimitsService,
-    private readonly options: { now?: () => number; onError?: (line: string) => void } = {},
+    private readonly options: {
+      now?: () => number;
+      onError?: (line: string) => void;
+      /** Architecture workflows for byWorkflow cost rollups. */
+      workflows?: () => Array<{ id: string; steps: string[] }> | undefined;
+    } = {},
   ) {}
 
   recordTurn(turn: FinishedTurn): void {
@@ -77,7 +85,12 @@ export class UsageService implements UsageSink, UsageApi {
   }
 
   summary(range: UsageRange): Promise<UsageSummary> {
-    return summarizeUsage(this.log.records(), range, this.options.now?.() ?? Date.now());
+    return summarizeUsage(
+      this.log.records(),
+      range,
+      this.options.now?.() ?? Date.now(),
+      this.options.workflows?.(),
+    );
   }
 
   limits(): Promise<UsageLimits> {
