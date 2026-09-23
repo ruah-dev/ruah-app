@@ -5,3 +5,4 @@ viewer/
 .vitest/
 ui/node_modules
 ui/.output
+.claude/worktrees/
