@@ -22,6 +22,19 @@ file, builds deterministic context packs, and drives the agent over
 ## Commands
 
 ```sh
+# desktop app: pick any repo (scanned on first open), real Claude agent
+pnpm build && pnpm desktop                 # folder picker
+pnpm desktop /path/to/repo                 # or pass the repo
+ARCHMAP_AGENT=acp pnpm desktop /path/to/repo   # claude (default) | acp | mock
+
+# CLI
+node dist/cli.js scan /path/to/repo        # writes <repo>/architecture.json
+node dist/cli.js serve /path/to/repo [--agent claude|acp] [--mock]
+```
+
+Development:
+
+```sh
 pnpm install
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest run
