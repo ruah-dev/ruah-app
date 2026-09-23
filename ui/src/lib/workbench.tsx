@@ -7,6 +7,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -67,10 +68,24 @@ type Ctx = {
   setMobileNavOpen: (v: boolean) => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean | ((v: boolean) => boolean)) => void;
+  /** First-run flow on the start screen (dismissible, re-openable from Help / Settings). */
   onboardingOpen: boolean;
   setOnboardingOpen: (v: boolean) => void;
   finishOnboarding: () => void;
   resetOnboarding: () => void;
+
+  // §5 launcher + project switching
+  /** Start screen shown over an open project (the daemon's launcher state shows it anyway). */
+  launcherOpen: boolean;
+  setLauncherOpen: (v: boolean) => void;
+  /** ⌘K / ⌘P project + chat palette. */
+  paletteOpen: boolean;
+  setPaletteOpen: (v: boolean) => void;
+  /** Browser fallback for "Open folder…" (no desktop bridge): a path field. */
+  openFolderOpen: boolean;
+  setOpenFolderOpen: (v: boolean) => void;
+  newProjectOpen: boolean;
+  setNewProjectOpen: (v: boolean) => void;
 
   contextPathFor: (node: DiagramNode) => string;
   openDiagram: (diagramId: string, paneId?: string) => void;
@@ -121,11 +136,42 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [openFolderOpen, setOpenFolderOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsedState(readFlag(SIDEBAR_KEY));
-    if (!readFlag(ONBOARDING_KEY)) setOnboardingOpen(true);
+    if (!readFlag(ONBOARDING_KEY)) {
+      // First run: the start screen carries the introduction.
+      setOnboardingOpen(true);
+      setLauncherOpen(true);
+    }
   }, []);
+
+  // Project changed: reset what the user was looking at. A new, empty project starts in Edit
+  // mode so the element palette is right there.
+  const projectKey = ws.daemon.project?.id ?? ws.daemon.root ?? ws.daemon.source ?? null;
+  const lastProjectKey = useRef<string | null>(null);
+  const emptyCheckPending = useRef(false);
+  useEffect(() => {
+    if (projectKey === lastProjectKey.current) return;
+    const first = lastProjectKey.current === null;
+    lastProjectKey.current = projectKey;
+    if (!first) {
+      setSelectedNodeId(null);
+      setSelectedEdge(null);
+      setEditModeState(false);
+      setFocusTurnId(null);
+    }
+    emptyCheckPending.current = true;
+  }, [projectKey]);
+  useEffect(() => {
+    if (!emptyCheckPending.current || ws.daemon.projectSwitch || !ws.daemon.architecture) return;
+    emptyCheckPending.current = false;
+    if (ws.daemon.architecture.nodes.length === 0 && ws.editable) setEditModeState(true);
+  }, [ws.daemon.architecture, ws.daemon.projectSwitch, ws.editable]);
 
   const setSidebarCollapsed = useCallback((v: boolean | ((v: boolean) => boolean)) => {
     setSidebarCollapsedState((prev) => {
@@ -246,7 +292,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       resetOnboarding: () => {
         writeFlag(ONBOARDING_KEY, false);
         setOnboardingOpen(true);
+        setLauncherOpen(true);
       },
+      launcherOpen,
+      setLauncherOpen,
+      paletteOpen,
+      setPaletteOpen,
+      openFolderOpen,
+      setOpenFolderOpen,
+      newProjectOpen,
+      setNewProjectOpen,
       contextPathFor: (node) =>
         contextPathOf({
           name: node.label,
@@ -324,6 +379,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     sidebarCollapsed,
     setSidebarCollapsed,
     onboardingOpen,
+    launcherOpen,
+    paletteOpen,
+    openFolderOpen,
+    newProjectOpen,
     goToMap,
     router,
   ]);

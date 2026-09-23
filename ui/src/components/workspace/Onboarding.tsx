@@ -1,139 +1,180 @@
-import { useEffect, useState } from "react";
-import {
-  ArrowRight,
-  Columns2,
-  FolderPlus,
-  Layers,
-  MousePointerClick,
-  Sparkles,
-  Workflow,
-} from "lucide-react";
+// First-run introduction, shown as a card on the start screen: three short steps, dismissible,
+// re-openable from Help (sidebar) or Settings → Getting started.
+import { useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, AtSign, FolderOpen, FolderPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-const KEY = "ruah.onboarded.v1";
-
-const steps = [
-  {
-    title: "Welcome to Ruah",
-    body: "Ruah draws your repo from its architecture.json: an overview, a level for every element you can open, and every workflow. Pick one in the sidebar.",
-    points: [
-      { icon: Layers, text: "Architecture levels, from services down to files" },
-      { icon: Workflow, text: "Workflows: how work moves, step by step" },
-    ],
-  },
-  {
-    title: "Ask about any element",
-    body: "Select an element and ask the agent on the right. Its path, files, links and workflows travel with your message.",
-    points: [
-      { icon: MousePointerClick, text: "The selection becomes the chat's @context" },
-      { icon: Sparkles, text: "Pick the agent, model and permission mode in the composer" },
-    ],
-  },
-  {
-    title: "Edit when you need to",
-    body: "Switch to Edit to add elements from the tray, connect them and rename them in place. Split the canvas to compare views; ⌘K switches projects.",
-    points: [
-      { icon: Columns2, text: "Up to three canvases side by side" },
-      { icon: FolderPlus, text: "Edits are saved to the repo's architecture.json" },
-    ],
-  },
-];
-
-export function Onboarding({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-}) {
-  const [step, setStep] = useState(0);
-  const current = steps[step]!;
-
-  const finish = () => {
-    try {
-      window.localStorage.setItem(KEY, "1");
-    } catch {
-      /* noop */
-    }
-    setStep(0);
-    onOpenChange(false);
-  };
-
+function MiniFolder() {
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : finish())}>
-      <DialogContent className="w-[92vw] max-w-md gap-0 rounded-2xl border-hairline bg-popover p-0">
-        <div className="px-6 pt-6">
-          <p className="text-[12px] text-muted-foreground">
-            {step + 1} of {steps.length}
-          </p>
-          <DialogTitle className="mt-1 text-[17px] font-semibold tracking-tight">
-            {current.title}
-          </DialogTitle>
-        </div>
-
-        <div className="space-y-4 px-6 pt-3 pb-5">
-          <p className="text-[13px] leading-relaxed text-muted-foreground">{current.body}</p>
-          <ul className="space-y-2">
-            {current.points.map((p) => (
-              <li key={p.text} className="flex items-center gap-2.5 text-[13px] text-foreground/90">
-                <p.icon className="size-4 shrink-0 text-primary" />
-                {p.text}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="flex items-center gap-2 px-6 pb-5">
-          <div className="flex items-center gap-1">
-            {steps.map((s, i) => (
-              <span
-                key={s.title}
-                className={cn("h-1 w-4 rounded-full", i === step ? "bg-foreground/70" : "bg-surface-3")}
-              />
-            ))}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={finish}
-            className="ml-auto h-8 px-2.5 text-[13px] text-muted-foreground hover:text-foreground"
-          >
-            Skip
-          </Button>
-          {step > 0 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setStep((s) => s - 1)}
-              className="h-8 rounded-lg border-0 bg-surface-3 px-3 text-[13px] shadow-none hover:bg-surface-3/70"
-            >
-              Back
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            onClick={() => (step === steps.length - 1 ? finish() : setStep((s) => s + 1))}
-            className="h-8 gap-1.5 rounded-lg px-3.5 text-[13px]"
-          >
-            {step === steps.length - 1 ? "Get started" : "Next"}
-            <ArrowRight className="size-3.5" />
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <div className="flex items-center gap-3">
+      <span className="grid size-10 place-items-center rounded-xl bg-surface-3 text-muted-foreground">
+        <FolderOpen className="size-4.5" />
+      </span>
+      <ArrowRight className="size-3.5 text-muted-foreground/60" />
+      <div className="grid grid-cols-3 gap-1.5">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              "h-3.5 w-7 rounded-[4px] shadow-[inset_0_0_0_1px_var(--color-hairline)]",
+              i === 1 ? "bg-primary/25" : "bg-surface-3",
+            )}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
-export function useOnboarding() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    try {
-      if (!window.localStorage.getItem(KEY)) setOpen(true);
-    } catch {
-      /* noop */
-    }
-  }, []);
-  return { open, setOpen };
+function MiniMap() {
+  return (
+    <div className="relative h-16 w-44">
+      <span className="absolute top-1 left-0 h-6 w-14 rounded-md bg-surface-3 shadow-[inset_0_0_0_1px_var(--color-hairline)]" />
+      <span className="absolute top-1 left-[4.5rem] h-14 w-[6.5rem] rounded-lg shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+        <span className="absolute top-1.5 left-1.5 text-[8px] text-muted-foreground">api</span>
+        <span className="absolute top-5 left-2 h-3.5 w-10 rounded-[4px] bg-primary/25" />
+        <span className="absolute top-5 left-14 h-3.5 w-8 rounded-[4px] bg-surface-3" />
+        <span className="absolute top-10 left-2 h-2.5 w-16 rounded-[3px] bg-surface-3/70" />
+      </span>
+      <span className="absolute top-4 left-14 h-px w-4 bg-edge" />
+    </div>
+  );
+}
+
+function MiniAsk() {
+  return (
+    <div className="w-48 space-y-1.5">
+      <span className="flex h-5 w-fit items-center gap-1 rounded-md bg-surface-3/80 px-1.5 font-mono text-[9.5px] text-foreground/80">
+        <AtSign className="size-2.5" />
+        services/api
+      </span>
+      <span className="ms-auto block w-fit rounded-xl bg-message px-2.5 py-1 text-[10px] text-foreground/85">
+        Where are invoices validated?
+      </span>
+      <span className="block h-1.5 w-40 rounded bg-surface-3" />
+      <span className="block h-1.5 w-28 rounded bg-surface-3" />
+    </div>
+  );
+}
+
+const steps: { title: string; body: ReactNode; art: ReactNode }[] = [
+  {
+    title: "Open or create a project",
+    body: "Open a repo folder — Ruah scans it into a map (architecture.json) the first time. Or start an empty project and draw it yourself.",
+    art: <MiniFolder />,
+  },
+  {
+    title: "How the map works",
+    body: "Every box is a service, module or file of your repo, grouped by layer. Double-click an element to open its level; the sidebar lists every level and workflow. Changes you make on the canvas are saved to architecture.json.",
+    art: <MiniMap />,
+  },
+  {
+    title: "Ask the agent about an element",
+    body: "Select an element and ask. Its path, files and links travel with your message, and each conversation is kept as a chat of the project. ⌘K jumps between projects and chats; ⌘. switches agent or model.",
+    art: <MiniAsk />,
+  },
+];
+
+export function OnboardingCard({
+  onDismiss,
+  onOpenFolder,
+  onNewProject,
+  className,
+}: {
+  onDismiss: () => void;
+  onOpenFolder?: (() => void) | undefined;
+  onNewProject?: (() => void) | undefined;
+  className?: string;
+}) {
+  const [step, setStep] = useState(0);
+  const current = steps[step]!;
+  const last = step === steps.length - 1;
+  return (
+    <section
+      aria-label="Getting started"
+      className={cn(
+        "relative overflow-hidden rounded-2xl bg-surface-1 shadow-[inset_0_0_0_1px_var(--color-hairline)]",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        aria-label="Dismiss getting started"
+        onClick={onDismiss}
+        className="absolute top-3 right-3 grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <X className="size-3.5" />
+      </button>
+      <div className="flex gap-5 p-5 max-sm:flex-col">
+        <div className="grid h-24 w-52 shrink-0 place-items-center rounded-xl bg-background/60 shadow-[inset_0_0_0_1px_var(--color-hairline)] max-sm:w-full">
+          {current.art}
+        </div>
+        <div className="min-w-0 flex-1 pe-6">
+          <p className="text-label text-muted-foreground">
+            Getting started · {step + 1} of {steps.length}
+          </p>
+          <h2 className="mt-1 text-title font-semibold tracking-tight">{current.title}</h2>
+          <p className="mt-1.5 text-ui-sm leading-relaxed text-muted-foreground">{current.body}</p>
+          {step === 0 && (onOpenFolder || onNewProject) ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {onOpenFolder ? (
+                <Button size="sm" variant="secondary" className="h-7 gap-1.5 rounded-lg bg-surface-3 text-ui-sm shadow-none hover:bg-surface-3/70" onClick={onOpenFolder}>
+                  <FolderOpen className="size-3.5" /> Open folder…
+                </Button>
+              ) : null}
+              {onNewProject ? (
+                <Button size="sm" variant="secondary" className="h-7 gap-1.5 rounded-lg bg-surface-3 text-ui-sm shadow-none hover:bg-surface-3/70" onClick={onNewProject}>
+                  <FolderPlus className="size-3.5" /> New project…
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 border-t border-hairline px-5 py-2.5">
+        <div className="flex items-center gap-1" aria-hidden>
+          {steps.map((s, i) => (
+            <button
+              key={s.title}
+              type="button"
+              tabIndex={-1}
+              onClick={() => setStep(i)}
+              className={cn(
+                "h-1 rounded-full transition-all",
+                i === step ? "w-5 bg-foreground/70" : "w-2.5 bg-surface-3 hover:bg-foreground/30",
+              )}
+            />
+          ))}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDismiss}
+          className="ms-auto h-7 px-2.5 text-ui-sm text-muted-foreground hover:text-foreground"
+        >
+          Skip
+        </Button>
+        {step > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Previous step"
+            onClick={() => setStep((s) => s - 1)}
+            className="h-7 px-2 text-ui-sm"
+          >
+            <ArrowLeft className="size-3.5" />
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          onClick={() => (last ? onDismiss() : setStep((s) => s + 1))}
+          className="h-7 gap-1.5 rounded-lg px-3 text-ui-sm"
+        >
+          {last ? "Done" : "Next"}
+          {last ? null : <ArrowRight className="size-3.5" />}
+        </Button>
+      </div>
+    </section>
+  );
 }

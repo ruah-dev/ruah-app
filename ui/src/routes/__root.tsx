@@ -13,6 +13,7 @@ import { WorkbenchProvider } from "@/lib/workbench";
 import { applyTheme, readTheme } from "@/lib/theme";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -138,6 +139,7 @@ function RootComponent() {
             </AppShell>
           </WorkbenchProvider>
         </WorkspaceProvider>
+        <Toaster position="bottom-right" theme="dark" closeButton />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -24,10 +24,25 @@ export function AgentPage() {
   const wb = useWorkbench();
   const [picking, setPicking] = useState(false);
   const node = wb.selectedNode;
+  const chat = daemon.chats.find((c) => c.id === daemon.activeChatId);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Agent">
+      <PageHeader
+        title={
+          chat ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="text-muted-foreground">Agent</span>
+              <span className="text-muted-foreground/50">/</span>
+              <span className="truncate">{chat.title || "Untitled chat"}</span>
+            </span>
+          ) : daemon.projectsSupported && daemon.turns.length === 0 ? (
+            "New chat"
+          ) : (
+            "Agent"
+          )
+        }
+      >
         <NewSessionButton daemon={daemon} />
         <Link
           to="/map"

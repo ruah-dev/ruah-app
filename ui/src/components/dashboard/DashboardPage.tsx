@@ -20,6 +20,8 @@ import { AgentMark } from "@/components/agent/ComposerControls";
 import { kindStyles } from "@/components/explorer/kinds";
 import { PageHeader } from "@/components/shell/AppShell";
 import { turnStatus, toneDot } from "@/components/shell/SidebarSections";
+import { useProjectActions } from "@/components/projects/useProjectActions";
+import { relativeTime } from "@/lib/time";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,60 @@ function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: 
         {value}
       </span>
     </div>
+  );
+}
+
+/** The current project's chats (§5), newest first. */
+function RecentChats() {
+  const { daemon } = useWorkspace();
+  const actions = useProjectActions();
+  const chats = daemon.chats.slice(0, 5);
+  const agentName = (id: string) =>
+    daemon.agent?.agents?.available.find((a) => a.id === id)?.name ?? id;
+  return (
+    <Section
+      title="Recent chats"
+      action={
+        <Link to="/chats" className="text-[12px] text-muted-foreground hover:text-foreground">
+          All chats
+        </Link>
+      }
+    >
+      {chats.length === 0 ? (
+        <Quiet>
+          No chats in this project yet. Select an element on the map and ask the agent about it —
+          or{" "}
+          <button type="button" onClick={actions.startChat} className="text-foreground underline-offset-2 hover:underline">
+            start a chat
+          </button>
+          .
+        </Quiet>
+      ) : (
+        <ul className="-mx-2">
+          {chats.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onClick={() => void actions.showChat(c)}
+                className="flex h-10 w-full min-w-0 items-center gap-3 rounded-md px-2 text-left transition-colors hover:bg-accent"
+              >
+                <AgentMark name={agentName(c.agentId)} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-ui text-foreground">{c.title || "Untitled chat"}</span>
+                  <span className="block truncate text-meta text-muted-foreground">
+                    {c.turnCount} {c.turnCount === 1 ? "turn" : "turns"}
+                    {c.model ? ` · ${c.model}` : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-label text-muted-foreground tabular-nums">
+                  {relativeTime(c.updatedAt)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
@@ -278,6 +334,9 @@ export function DashboardPage() {
               )}
             </Section>
 
+            {daemon.projectsSupported ? (
+              <RecentChats />
+            ) : (
             <Section
               title="Recent agent turns"
               action={
@@ -321,6 +380,7 @@ export function DashboardPage() {
                 </ul>
               )}
             </Section>
+            )}
           </div>
 
           <div className="border-t border-hairline pt-8">
