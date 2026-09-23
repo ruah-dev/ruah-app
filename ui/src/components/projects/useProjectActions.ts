@@ -36,7 +36,7 @@ export function useProjectActions() {
   }, [wb]);
 
   const open = useCallback(
-    async (path: string, name?: string) => {
+    async (path: string, name?: string, projectId?: string) => {
       if (!connected) {
         toast.error("No Ruah daemon connected", {
           description: "Start the Ruah app (or `archmap serve`) to open projects.",
@@ -45,7 +45,7 @@ export function useProjectActions() {
       }
       closeOverlays();
       try {
-        await openProject(path, name ? { name } : {});
+        await openProject(path, { ...(name ? { name } : {}), ...(projectId ? { projectId } : {}) });
         return true;
       } catch (err) {
         toast.error(`Couldn't open ${name ?? basename(path)}`, { description: message(err) });
@@ -55,7 +55,7 @@ export function useProjectActions() {
     [connected, closeOverlays],
   );
 
-  const openRecent = useCallback((p: ProjectInfo) => open(p.root, p.name), [open]);
+  const openRecent = useCallback((p: ProjectInfo) => open(p.root, p.name, p.id), [open]);
 
   /** Desktop: native folder picker. Browser: the path dialog. */
   const pickFolder = useCallback(async () => {
@@ -97,6 +97,7 @@ export function useProjectActions() {
   const revealChat = useCallback(() => {
     const pathname = router.state.location.pathname;
     if (pathname === "/map") {
+      // setPanelView also shows the side panel when it was hidden.
       wb.setPanelView("agent");
       wb.setSheetOpen(true);
     } else if (pathname !== "/agent") void router.navigate({ to: "/agent" });
@@ -109,7 +110,9 @@ export function useProjectActions() {
 
   /** Open a chat (from any project) and show it. */
   const showChat = useCallback(
-    async (chat: RecentChat | { id: string; projectId: string }) => {
+    async (
+      chat: Pick<RecentChat, "id" | "projectId" | "projectRoot" | "projectName"> | { id: string; projectId: string },
+    ) => {
       closeOverlays();
       revealChat();
       try {
