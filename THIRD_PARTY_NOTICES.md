@@ -5,8 +5,21 @@ https://github.com/pingdotgg/t3code
 Copyright (c) 2026 T3 Tools Inc.
 Licensed under the MIT License, reproduced below.
 
-(The following files currently adapt t3code logic; this list grows as the
-bridge is implemented: none yet.)
+Files adapted from T3 Code (commit eff44be43), each marked with a header
+comment naming its source:
+
+| archmap file | T3 Code source |
+| --- | --- |
+| `src/acp/claude-sdk-bridge.ts` | `apps/server/src/provider/Layers/ClaudeAdapter.ts` |
+| `src/acp/claude-executable.ts` | `apps/server/src/provider/Drivers/ClaudeExecutable.ts` |
+| `src/acp/claude-home.ts` | `apps/server/src/provider/Drivers/ClaudeHome.ts` |
+| `src/acp/claude-skill-dispatch.ts` | `apps/server/src/provider/Drivers/ClaudeSkillDispatch.ts` |
+| `src/acp/acp-bridge.ts` | `apps/server/src/provider/acp/AcpSessionRuntime.ts`, `apps/server/src/provider/Layers/CursorAdapter.ts`, `apps/server/src/provider/acp/AcpAdapterSupport.ts` |
+| `src/acp/acp-normalize.ts` | `apps/server/src/provider/acp/AcpRuntimeModel.ts` |
+| `src/acp/acp-process.ts` | `apps/server/src/provider/acp/AcpSessionRuntime.ts` |
+| `src/acp/presets.ts` | `apps/server/src/provider/acp/CursorAcpSupport.ts`, `apps/server/src/provider/acp/GrokAcpSupport.ts` |
+| `src/usage/claude-limits.ts` | `apps/server/src/provider/Layers/claudeUsageLimits.ts`, `apps/server/src/provider/providerUsageLimits.ts` |
+| `src/usage/claude-probe.ts` | `apps/server/src/provider/Layers/ClaudeProvider.ts` (capabilities probe) |
 
 ## MIT License (T3 Code)
 

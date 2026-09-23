@@ -1,16 +1,111 @@
-// src/acp/index.ts — bridge factory for the serve command. WP-A's real bridge
-// (acp-bridge.ts / agent-process.ts) does not exist on this branch yet, so the
-// factory throws until it lands. Tests and --mock use MockBridge directly.
+// src/acp/index.ts — bridge factory for the serve command. Claude Code runs on
+// the Claude Agent SDK (the engine t3code uses); Cursor Agent, Grok Build,
+// Kiro CLI, OpenCode (and Claude through claude-agent-acp, CLI-only) are ACP agents
+// spawned from presets.ts. --mock uses the scripted MockBridge. AgentCatalog is
+// what the SessionHub uses to switch agents at runtime (agent.set).
+import type { AgentChoiceState, ErrorCode } from "../contracts/ws.js";
 import type { AcpBridge, BridgeOptions } from "./bridge.js";
 import { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
+import { ClaudeSdkBridge } from "./claude-sdk-bridge.js";
+import { AcpProcessBridge } from "./acp-bridge.js";
+import { AGENTS, agentDefinition, claudeCode, type AgentId } from "./presets.js";
 
 export type { AcpBridge, BridgeOptions, BridgeEvent, TurnHandle } from "./bridge.js";
 export { BusyError } from "./bridge.js";
 export { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
+export type { AgentId } from "./presets.js";
 
-export function createBridge(opts: BridgeOptions & { mock?: boolean }): AcpBridge {
-  if (opts.mock === true) {
-    return new MockBridge({ ...opts, chunkDelayMs: 40 });
+/** Values of `serve --agent`. "acp" is the historical alias of "claude-acp". */
+export const AGENT_PROVIDERS = ["claude", "cursor", "grok", "kiro", "opencode", "claude-acp", "acp"] as const;
+export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
+
+export function isAgentProvider(value: string): value is AgentProvider {
+  return (AGENT_PROVIDERS as readonly string[]).includes(value);
+}
+
+export function agentIdOf(provider: AgentProvider): AgentId {
+  return provider === "acp" ? "claude-acp" : provider;
+}
+
+export const MOCK_AGENT_ID = "mock";
+
+type BaseOptions = Omit<BridgeOptions, "preset">;
+
+export type AgentCheck = { ok: true } | { ok: false; code: ErrorCode; message: string };
+
+/** The agents the viewer can pick from, and how to build a bridge for one. */
+export class AgentCatalog {
+  private installed = new Map<string, boolean>();
+
+  constructor(
+    private readonly base: BaseOptions,
+    private readonly options: { mock?: boolean; env?: NodeJS.ProcessEnv } = {},
+  ) {
+    this.refresh();
   }
-  throw new Error("real bridge not available: WP-A's ACP bridge is not implemented yet");
+
+  /** Re-probes which agent CLIs are installed. */
+  refresh(): void {
+    const env = this.options.env ?? process.env;
+    this.installed = new Map(AGENTS.map((agent) => [agent.id, agent.id === "claude" || agent.preset(env) !== undefined]));
+  }
+
+  choices(currentAgentId: string): AgentChoiceState {
+    const available: AgentChoiceState["available"] = [];
+    const add = (id: string): void => {
+      if (available.some((entry) => entry.id === id)) return;
+      if (id === MOCK_AGENT_ID) {
+        available.push({ id, name: "Mock agent", installed: true, description: "Scripted demo agent (no model calls)" });
+        return;
+      }
+      const agent = agentDefinition(id);
+      if (agent === undefined) return;
+      const installed = this.installed.get(agent.id) ?? false;
+      available.push({
+        id: agent.id,
+        name: agent.name,
+        installed,
+        description: agent.description,
+        ...(!installed && agent.installHint !== undefined ? { installHint: agent.installHint } : {}),
+      });
+    };
+    if (this.options.mock === true) add(MOCK_AGENT_ID);
+    for (const agent of AGENTS) if (agent.listed) add(agent.id);
+    // A CLI-only agent (claude-acp) still shows while it is the current one.
+    add(currentAgentId);
+    return { currentAgentId, available };
+  }
+
+  /** Whether `agentId` can be started now (re-probes installation). */
+  check(agentId: string): AgentCheck {
+    this.refresh();
+    if (agentId === MOCK_AGENT_ID && this.options.mock === true) return { ok: true };
+    const agent = agentDefinition(agentId);
+    if (agent === undefined) return { ok: false, code: "bad_message", message: `unknown agent: ${agentId}` };
+    if (this.installed.get(agent.id) !== true) {
+      return { ok: false, code: "agent_spawn_failed", message: `${agent.name} is not installed${agent.installHint !== undefined ? ` — ${agent.installHint}` : ""}` };
+    }
+    return { ok: true };
+  }
+
+  /** A new, not yet started bridge. Throws for an unknown or missing agent. */
+  create(agentId: string): AcpBridge {
+    if (agentId === MOCK_AGENT_ID && this.options.mock === true) {
+      return new MockBridge({ ...this.base, preset: { command: "none", args: [] }, chunkDelayMs: 40 });
+    }
+    const agent = agentDefinition(agentId);
+    if (agent === undefined) throw new Error(`unknown agent: ${agentId}`);
+    if (agent.id === "claude") {
+      const env = claudeCode().env;
+      return new ClaudeSdkBridge({ ...this.base, preset: { command: "none", args: [], ...(env !== undefined ? { env } : {}) } });
+    }
+    const preset = agent.preset(this.options.env ?? process.env);
+    if (preset === undefined) throw new Error(`${agent.name} is not installed${agent.installHint !== undefined ? ` — ${agent.installHint}` : ""}`);
+    return new AcpProcessBridge({ ...this.base, preset });
+  }
+}
+
+export function createBridge(opts: BaseOptions & { mock?: boolean; agent?: AgentProvider }): AcpBridge {
+  const catalog = new AgentCatalog(opts, { mock: opts.mock === true });
+  return catalog.create(opts.mock === true ? MOCK_AGENT_ID : agentIdOf(opts.agent ?? "claude"));
 }

@@ -107,3 +107,16 @@ test("second prompt while busy throws BusyError", async () => {
   expect(() => bridge.prompt("t2", blocks("a.ts"))).toThrow(/turn is already active/);
   await bridge.cancel("t1");
 });
+
+test("model picker: static list, setModel switches and re-emits models", async () => {
+  const bridge = new MockBridge({ root: "/repo", preset: { command: "none", args: [] }, clientVersion: "0" });
+  const events: BridgeEvent[] = [];
+  bridge.on((e) => events.push(e));
+  await bridge.start();
+  const started = events.at(-1);
+  expect(started).toMatchObject({ type: "status", state: "idle", models: { currentModelId: "default" } });
+  expect(started?.type === "status" && started.models?.available.map((m) => m.id)).toEqual(["default", "opus", "sonnet", "haiku"]);
+  await bridge.setModel("haiku");
+  expect(events.at(-1)).toMatchObject({ type: "status", state: "idle", models: { currentModelId: "haiku" } });
+  await expect(bridge.setModel("gpt-9")).rejects.toThrow(/unknown model/);
+});

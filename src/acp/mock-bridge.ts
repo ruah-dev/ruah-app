@@ -6,11 +6,12 @@
 // options (allow / allow_always / reject), then diff + completed (or failed)
 // tool_result, two more chunks, end_turn. cancel() finishes with stopReason
 // "cancelled" within 100 ms. The turn's file comes from the blocks'
-// resource_link names.
+// resource_link names. The model picker is static (default/opus/sonnet/haiku)
+// and setModel() only records the choice.
 import type { AcpBridge, BridgeEvent, BridgeOptions, TurnHandle } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import type { AgentState, StopReason, StreamEvent, ToolCallView } from "../contracts/ws.js";
+import type { AgentState, ModelState, StopReason, StreamEvent, ToolCallView } from "../contracts/ws.js";
 
 export interface MockBridgeOptions extends BridgeOptions {
   chunkDelayMs?: number;
@@ -18,6 +19,12 @@ export interface MockBridgeOptions extends BridgeOptions {
 
 const MOCK_AGENT = { name: "archmap-mock", version: "0.1.0" } as const;
 const SESSION_ID = "mock-session-0000-0000-0000-000000000000";
+const MOCK_MODELS: ModelState["available"] = [
+  { id: "default", name: "Default (recommended)", description: "Use the default model" },
+  { id: "opus", name: "Opus", description: "Most capable for complex work" },
+  { id: "sonnet", name: "Sonnet", description: "Balanced speed and capability" },
+  { id: "haiku", name: "Haiku", description: "Fastest for quick answers" },
+];
 
 interface ScriptedTurn {
   turnId: string;
@@ -44,6 +51,7 @@ export class MockBridge implements AcpBridge {
   private pendingPermission: PendingPermission | undefined;
   private finishActive: ((stopReason: StopReason) => void) | undefined;
   private readonly delay: number;
+  private modelId = "default";
 
   constructor(options: MockBridgeOptions) {
     this.delay = options.chunkDelayMs ?? 40;
@@ -51,7 +59,7 @@ export class MockBridge implements AcpBridge {
 
   async start(): Promise<void> {
     this.state = "idle";
-    this.emit({ type: "status", state: "idle", agent: { ...MOCK_AGENT }, sessionId: SESSION_ID });
+    this.emit({ type: "status", state: "idle", agent: { ...MOCK_AGENT }, sessionId: SESSION_ID, models: this.models() });
   }
 
   status(): AgentState {
@@ -231,6 +239,12 @@ export class MockBridge implements AcpBridge {
     // The mock accepts any mode.
   }
 
+  async setModel(modelId: string): Promise<void> {
+    if (!MOCK_MODELS.some((model) => model.id === modelId)) throw new Error(`unknown model: ${modelId}`);
+    this.modelId = modelId;
+    this.emit({ type: "status", state: this.state, sessionId: SESSION_ID, models: this.models() });
+  }
+
   async reset(): Promise<void> {
     // The mock keeps its scripted behaviour.
   }
@@ -243,6 +257,10 @@ export class MockBridge implements AcpBridge {
   on(listener: (event: BridgeEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  private models(): ModelState {
+    return { currentModelId: this.modelId, available: MOCK_MODELS.map((model) => ({ ...model })) };
   }
 
   private emit(event: BridgeEvent): void {
