@@ -14,6 +14,7 @@ import { handleIntegrationsRequest } from "../integrations/http.js";
 import type { IntegrationsApi } from "../integrations/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
 import { handleProjectsRequest, sendJson } from "./projects-http.js";
+import { handleExportRequest } from "../export/http.js";
 import type { ProjectService } from "../projects/service.js";
 
 export interface ServeOptions {
@@ -77,6 +78,8 @@ export function startServer(
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
+    // GET /api/export/drawio (409 when no project is open).
+    if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
 
     // Everything below needs an open project.
     const needsProject =

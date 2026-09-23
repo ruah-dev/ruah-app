@@ -16,6 +16,9 @@ Usage:
     init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
     add <dir> <id>=<path>                                      add a repo
     scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
+  archmap export drawio <repo> [--out <file>]
+                                   write the architecture as a draw.io file (pages per
+                                   drill level + workflow + Specifications; --out - = stdout)
   archmap mcp <repo>               stdio MCP server
   archmap --version                print version
   archmap help                     this text
@@ -154,6 +157,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "system": {
       const { runSystem } = await import("./system/run-system.js");
       return await runSystem(rest, pkg.version);
+    }
+    case "export": {
+      const { runExport } = await import("./export/run-export.js");
+      return await runExport(rest, pkg.version);
     }
     case "mcp": {
       parseArgs({ args: rest, strict: false });
