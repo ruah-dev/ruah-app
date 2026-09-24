@@ -25,6 +25,9 @@ import { MapOpsService } from "./map-ops.js";
 import { DEFAULT_IDLE_MS, DEFAULT_SCROLLBACK_BYTES, TerminalManager } from "../terminal/manager.js";
 import { TerminalGateway } from "../terminal/gateway.js";
 import { originAllowed } from "./server.js";
+import { ActivityLog } from "../activity/log.js";
+import { ActivityService, DEFAULT_MAX_BACKGROUND_TURNS } from "./activity.js";
+import { computeResume } from "../resume/resume.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -128,6 +131,17 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     },
   });
   const chats = new ChatStore(home, { onError });
+  const projectsStore = new ProjectsStore(home, { onError });
+  // CONTRACTS §13: the cross-project activity feed ($RUAH_HOME/activity.jsonl + unread markers in state.json).
+  const activityLog = new ActivityLog(home, { onError });
+  const activity = new ActivityService({
+    log: activityLog,
+    state: chats.state,
+    lookup: (id) => projectsStore.lookup(id),
+    projectIds: () => projectsStore.list().map((p) => p.id),
+    features: () => settings.features(),
+    maxBackgroundTurns: envInt("RUAH_MAX_BACKGROUND_TURNS", DEFAULT_MAX_BACKGROUND_TURNS, 0),
+  });
   const attachments = new AttachmentStore(home);
   const engines = new EnginesService({
     root: () => hubRef?.project()?.root ?? null,
@@ -149,6 +163,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     chats,
     attachments,
     settings,
+    activity,
     ...(mapOps !== undefined ? { mapOps } : {}),
     warmTtlMs: warmTtlMs(),
     maxLiveBridges: maxLiveAgents(),
@@ -157,7 +172,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   });
   hubRef = hub;
   const projects = new ProjectService({
-    projects: new ProjectsStore(home, { onError }),
+    projects: projectsStore,
     chats,
     host: hub,
     version,
@@ -202,6 +217,18 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     projects,
     terminal,
     engines,
+    activity: {
+      activity,
+      state: chats.state,
+      markRead: (projectId, chatId) => hub.markRead(projectId, chatId),
+      resume: async (id) => {
+        const current = hub.project();
+        const target = current !== null && current.id === id ? current : (projectsStore.get(id) ?? projectsStore.lookup(id));
+        if (target === undefined) return undefined;
+        const live = activity.liveCounts().get(id) ?? { running: 0, waitingPermission: 0 };
+        return computeResume(target, { home, chats, log: activityLog, projects: projectsStore }, live);
+      },
+    },
     ...(mapOps !== undefined ? { mapOps } : {}),
     // Follows the hub's current project; null in the launcher state (endpoints answer 409).
     integrations: new IntegrationsService({

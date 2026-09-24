@@ -16,6 +16,7 @@ import type { AgentChoiceState, AgentState, ProjectInfo, ServerMessage, StopReas
 import { createArchitectureStore, type ArchitectureStore } from "../src/serve/architecture-store.js";
 import { attachSession, SessionHub, type AgentSwitcher, type ProjectRuntime } from "../src/serve/session.js";
 import { ChatStore } from "../src/projects/chat-store.js";
+import { SettingsStore } from "../src/projects/settings-store.js";
 import { projectIdFor } from "../src/projects/fs-util.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -206,9 +207,14 @@ function project(name: string): Project {
   };
 }
 
-function setup(opts: { warmTtlMs?: number; maxLiveBridges?: number } = {}) {
+function setup(opts: { warmTtlMs?: number; maxLiveBridges?: number; backgroundAgents?: boolean } = {}) {
   const home = tempDir("ruah-home-");
   const chats = new ChatStore(home);
+  let settings: SettingsStore | undefined;
+  if (opts.backgroundAgents !== undefined) {
+    settings = new SettingsStore(home);
+    settings.updateFeatures({ backgroundAgents: opts.backgroundAgents });
+  }
   const switcher = new FakeSwitcher();
   const hub = new SessionHub(null, null, {
     version: "0.0.0-test",
@@ -221,6 +227,7 @@ function setup(opts: { warmTtlMs?: number; maxLiveBridges?: number } = {}) {
     warmTtlMs: opts.warmTtlMs ?? 60_000,
     maxLiveBridges: opts.maxLiveBridges ?? 2,
     autoPrewarmDelayMs: -1,
+    ...(settings !== undefined ? { settings } : {}),
   });
   cleanups.push(() => hub.shutdown());
   const socket = new FakeSocket();
@@ -251,8 +258,9 @@ describe("launcher state", () => {
 });
 
 describe("project switching", () => {
+  // backgroundAgents: false (settings.json, §13.6) keeps the pre-§13 behaviour: the switch cancels the turn.
   it("swaps the store, stores the active turn as cancelled and broadcasts project, architecture, chats, status — fast", async () => {
-    const { hub, chats, switcher, socket } = setup();
+    const { hub, chats, switcher, socket } = setup({ backgroundAgents: false });
     const a = project("repo-a");
     const b = project("repo-b");
     hub.setProject(a.runtime());

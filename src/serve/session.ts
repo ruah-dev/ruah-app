@@ -9,6 +9,16 @@
 // is a swap; a prompt sent while the current agent starts waits in a one-slot
 // queue. Saved defaults (settings.json: agent, model and mode per agent) are
 // applied to every new agent session.
+//
+// Background agents (CONTRACTS §13.1): switching projects no longer cancels
+// a running (or queued) turn. Its bridge stays pinned in the pool, its events
+// are still recorded into its chat, and the activity feed (activity.ts)
+// reports it to every viewer. Opening that project again re-attaches: the
+// same agent becomes current, the turn's chat becomes active, chat.history
+// carries the turn so far (`running: true`) and a pending permission request
+// is sent again. At most maxBackgroundTurns run outside the open project;
+// beyond that (or with settings.json backgroundAgents: false) a switch
+// cancels as before.
 import { createHash } from "node:crypto";
 import type { WebSocket } from "ws";
 import type {
@@ -17,14 +27,20 @@ import type {
   AttachmentMeta,
   ClientMessage,
   ErrorCode,
+  AgentState,
+  AppFeatures,
   ModeState,
   ModelState,
+  PermissionOption,
   ProjectInfo,
   ServerMessage,
   StopReason,
+  ToolCallView,
   TurnRecord,
   WarmState,
 } from "../contracts/ws.js";
+import { DEFAULT_MAX_BACKGROUND_TURNS, editedFiles, type ActivityContext, type ActivityService } from "./activity.js";
+import { DEFAULT_FEATURES } from "../projects/settings-store.js";
 import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
@@ -102,9 +118,13 @@ export interface SessionHubOptions {
   prewarmRetryMs?: number;
   /** Agents edit the map through the ruah_* tools (CONTRACTS §1.7): context-pack hint + per-turn undo. */
   mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
+  /** §13.2 activity feed: events, live counts, unread markers, snapshot after hello. */
+  activity?: ActivityService;
+  /** §13.1 turns allowed to keep running outside the open project (default 3; at most maxLiveBridges - 1). */
+  maxBackgroundTurns?: number;
 }
 
-/** A prompt that arrived while the current agent was starting: sent once it is idle. */
+/** A prompt that arrived while its agent was starting: sent once it is idle (one per bridge). */
 interface QueuedTurn {
   turnId: string;
   entry: PooledBridge;
@@ -112,6 +132,7 @@ interface QueuedTurn {
   socket: WebSocket;
   started: Extract<ServerMessage, { type: "turn.started" }>;
 }
+
 
 interface OpenProject extends ProjectRuntime {
   unsubscribe: (() => void)[];
@@ -121,13 +142,17 @@ interface OpenProject extends ProjectRuntime {
 interface RecordingTurn {
   entry: PooledBridge;
   projectId: string;
+  projectName: string;
   root: string;
   chatId: string | null;
   record: TurnRecord;
   startedAtMs: number;
   /** Persisted and announced already (detached by a switch); the bridge's own finish only records usage. */
   finalized: boolean;
+  /** Permission requests waiting for an answer (re-sent when the viewer re-attaches, §13.1). */
+  pending: Map<string, { toolCall: ToolCallView; options: PermissionOption[] }>;
 }
+
 
 /** ProjectInfo for a store opened without the projects service (tests, legacy callers). */
 export function projectInfoForStore(store: ArchitectureStore): ProjectInfo {
@@ -170,7 +195,11 @@ export class SessionHub {
   private prewarmQueue: string[] = [];
   private prewarmRunning = false;
   private autoPrewarm: { projectId: string; timer: NodeJS.Timeout | undefined } | undefined;
-  private queued: QueuedTurn | undefined;
+  /** Prompts waiting for their agent to be idle, per bridge (the current one's, and background ones). */
+  private readonly queue = new Map<PooledBridge, QueuedTurn>();
+  /** Last state seen per bridge (agent.error is reported on the change to "error"). */
+  private readonly lastStates = new WeakMap<PooledBridge, AgentState>();
+  private readonly maxLive: number;
   /** Warm-state fingerprint of the last broadcast agent.status (re-broadcast when it changes). */
   private lastWarmSignature = "";
 
@@ -181,6 +210,7 @@ export class SessionHub {
   ) {
     this.currentAgentId = options.agentId ?? "unknown";
     this.startupAgentId = this.currentAgentId;
+    this.maxLive = Math.max(1, options.maxLiveBridges ?? DEFAULT_MAX_LIVE_BRIDGES);
     this.pool = new BridgePool({
       create: (agentId, root) => {
         if (options.agents === undefined) throw new Error("agent switching is not available");
@@ -188,9 +218,10 @@ export class SessionHub {
       },
       onEvent: (entry, event) => this.onBridgeEvent(entry, event),
       ttlMs: options.warmTtlMs ?? 0,
-      maxLive: Math.max(1, options.maxLiveBridges ?? DEFAULT_MAX_LIVE_BRIDGES),
+      maxLive: this.maxLive,
       debug: options.debug,
     });
+    options.activity?.attach((message) => this.broadcast(message));
     if (store !== null) {
       const info = options.project ?? projectInfoForStore(store);
       this.open = this.attachProject({ info, store });
@@ -238,19 +269,23 @@ export class SessionHub {
   // ---------- projects (CONTRACTS §5) ----------
 
   /**
-   * Swaps the open project (null = launcher state): records and cancels the
-   * active turn, closes the old store and its watcher, parks the old bridge
-   * in the warm pool, then broadcasts project, architecture, chats (+ the
-   * active chat's history) and agent.status. The new project's agent starts in
-   * the background (agent.status starting → idle); a warm one is reused.
+   * Swaps the open project (null = launcher state): the active turn keeps
+   * running in the background (§13.1; else it is recorded and cancelled),
+   * closes the old store and its watcher, parks the old bridge in the warm
+   * pool, then broadcasts project, architecture, chats (+ the active chat's
+   * history) and agent.status. The new project's agent starts in the
+   * background (agent.status starting → idle); a warm one is reused. A
+   * project with a background turn is re-attached: its agent becomes current
+   * and the turn's chat active.
    */
   setProject(next: ProjectRuntime | null): void {
-    this.detachActiveTurn();
+    this.parkActiveTurn();
     const previous = this.open;
     if (previous !== null) {
       for (const unsubscribe of previous.unsubscribe) unsubscribe();
       previous.store.close();
       this.lastChat.set(previous.info.id, this.activeChatId);
+      this.options.activity?.markViewed(previous.info.id);
     }
     const previousEntry = this.entry;
     this.entry = undefined;
@@ -258,7 +293,15 @@ export class SessionHub {
       void this.pool.release(previousEntry).catch((err: unknown) => this.options.debug(`bridge release failed: ${String(err)}`));
     }
     this.open = next !== null ? this.attachProject(next) : null;
-    this.activeChatId = next !== null ? this.initialChat(next.info.id) : null;
+    const resumed = next !== null ? this.backgroundTurns().find((r) => r.projectId === next.info.id) : undefined;
+    if (resumed !== undefined) {
+      // Re-attach (§13.1): the agent running the turn is current again, on the turn's chat.
+      this.currentAgentId = resumed.entry.agentId;
+      this.activeChatId = resumed.chatId;
+      if (next !== null && resumed.chatId !== null) this.options.chats?.setActiveChat(next.info.id, resumed.chatId);
+    } else {
+      this.activeChatId = next !== null ? this.initialChat(next.info.id) : null;
+    }
     this.detachedStatus = { state: "stopped" };
     this.prewarmQueue = [];
     this.cancelAutoPrewarm();
@@ -272,11 +315,139 @@ export class SessionHub {
     this.broadcastChats();
     this.broadcastHistory();
     if (next !== null) this.activateBridge();
+    if (resumed !== undefined && this.entry === resumed.entry) {
+      this.activeTurn = resumed.record.turnId;
+      this.options.debug(`turn ${resumed.record.turnId} re-attached`);
+      for (const message of this.pendingPermissionMessages()) this.broadcast(message);
+    }
     this.broadcastStatus();
     if (next !== null) {
+      if (this.sockets.size > 0) this.options.activity?.markRead(next.info.id, this.activeChatId);
       this.autoPrewarm = { projectId: next.info.id, timer: undefined };
       this.maybeAutoPrewarm();
     }
+  }
+
+  // ---------- background turns (§13.1) ----------
+
+  features(): AppFeatures {
+    return this.options.settings?.features() ?? this.options.activity?.features() ?? DEFAULT_FEATURES;
+  }
+
+  /** How many turns may run outside the open project (0 = background agents off). */
+  maxBackgroundTurns(): number {
+    if (!this.features().backgroundAgents) return 0;
+    const wanted = this.options.maxBackgroundTurns ?? this.options.activity?.maxBackgroundTurns() ?? DEFAULT_MAX_BACKGROUND_TURNS;
+    return Math.max(0, Math.min(wanted, this.maxLive - 1));
+  }
+
+  /** Turns running or queued on a bridge that is not the current one (not finalized). */
+  backgroundTurns(): RecordingTurn[] {
+    return [...this.turns.values()].filter((r) => !r.finalized && r.entry !== this.entry);
+  }
+
+  /** Whether any turn runs or waits (current or background). */
+  hasRunningTurns(): boolean {
+    return [...this.turns.values()].some((r) => !r.finalized) || this.queue.size > 0;
+  }
+
+  /**
+   * Leaving the project with a turn running (or queued): it goes on in the
+   * background when allowed and under the limit, else it is detached
+   * (stored and announced as cancelled) like before.
+   */
+  private parkActiveTurn(): void {
+    const turnId = this.activeTurn;
+    const recording = turnId !== undefined ? this.turns.get(turnId) : undefined;
+    if (turnId === undefined || recording === undefined || recording.finalized || this.open === null) {
+      this.detachActiveTurn();
+      return;
+    }
+    const max = this.maxBackgroundTurns();
+    if (max === 0) {
+      this.detachActiveTurn();
+      return;
+    }
+    if (this.backgroundTurns().length >= max) {
+      this.options.info(`${max} turn(s) already run in the background; cancelling ${turnId}`);
+      this.detachActiveTurn(`cancelled: ${max} turn${max === 1 ? "" : "s"} already run in other projects (background limit)`);
+      return;
+    }
+    this.activeTurn = undefined;
+    this.options.debug(`turn ${turnId} continues in the background (${recording.projectId})`);
+  }
+
+  /** Whether the user is not looking at the turn: another project or chat is open, or no viewer is connected. */
+  private isBackground(recording: RecordingTurn): boolean {
+    return recording.projectId !== this.open?.info.id || recording.chatId !== this.activeChatId || this.sockets.size === 0;
+  }
+
+  private activityContext(recording: RecordingTurn): ActivityContext {
+    return {
+      projectId: recording.projectId,
+      projectName: recording.projectName,
+      projectRoot: recording.root,
+      chatId: recording.chatId,
+      turnId: recording.record.turnId,
+      agentId: recording.entry.agentId,
+      prompt: recording.record.text,
+    };
+  }
+
+  /** permission.request frames for the open project's running turns that wait for an answer. */
+  private pendingPermissionMessages(): ServerMessage[] {
+    const out: ServerMessage[] = [];
+    for (const recording of this.turns.values()) {
+      if (recording.finalized || recording.entry !== this.entry || recording.projectId !== this.open?.info.id) continue;
+      for (const [requestId, request] of recording.pending) {
+        out.push({ type: "permission.request", turnId: recording.record.turnId, requestId, toolCall: request.toolCall, options: request.options });
+      }
+    }
+    return out;
+  }
+
+  /** permission.response: routed to the bridge whose turn asked (any project), else the current bridge. */
+  answerPermission(requestId: string, answer: { optionId: string } | { cancelled: true }): boolean {
+    for (const recording of this.turns.values()) {
+      if (!recording.finalized && recording.pending.has(requestId)) return recording.entry.bridge.answerPermission(requestId, answer);
+    }
+    return this.entry?.bridge.answerPermission(requestId, answer) ?? false;
+  }
+
+  // ---------- activity, focus, view state, feature flags (§13) ----------
+
+  /** focus.set: remembered as the project's last focused element (resume). */
+  setFocus(nodeId: string | null): void {
+    const open = this.open;
+    if (open === null || nodeId === null) return;
+    this.options.chats?.state.setFocus(open.info.id, nodeId);
+  }
+
+  /** view.save: the viewer's opaque view state for a project (≤ 16 KB). */
+  saveView(projectId: string, view: unknown, socket?: WebSocket): void {
+    const state = this.options.chats?.state;
+    if (state === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", "view state is not available");
+      return;
+    }
+    const problem = state.setView(projectId, view);
+    if (problem !== undefined && socket !== undefined) this.error(socket, "bad_message", `view.save: ${problem}`);
+  }
+
+  /** activity.read: clears unread markers. */
+  markRead(projectId: string, chatId?: string): void {
+    this.options.activity?.markRead(projectId, chatId);
+  }
+
+  /** settings.set: feature flags in settings.json; every viewer gets a new activity.snapshot. */
+  setFeatures(patch: Partial<AppFeatures>, socket?: WebSocket): void {
+    const settings = this.options.settings;
+    if (settings === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", "settings are not available");
+      return;
+    }
+    settings.updateFeatures(patch);
+    this.options.activity?.broadcastSnapshot();
   }
 
   private attachProject(runtime: ProjectRuntime): OpenProject {
@@ -501,7 +672,7 @@ export class SessionHub {
     })();
     entry.configuring = run.finally(() => {
       entry.configuring = undefined;
-      if (entry === this.entry) this.pumpQueue();
+      this.pumpQueue(entry);
       this.broadcastWarmChange();
     });
   }
@@ -852,26 +1023,36 @@ export class SessionHub {
     this.activeTurn = turnId;
   }
 
-  async cancelTurn(turnId: string, socket?: WebSocket): Promise<void> {
-    if (this.queued?.turnId === turnId) {
-      this.dropQueued("cancelled");
-      return;
-    }
-    if (this.activeTurn !== turnId || this.entry === undefined) {
-      if (socket !== undefined) this.error(socket, "no_turn", `unknown turn: ${turnId}`);
-      return;
-    }
-    await this.entry.bridge.cancel(turnId);
+  /** The current bridge's queued prompt, if any. */
+  private get queued(): QueuedTurn | undefined {
+    return this.entry !== undefined ? this.queue.get(this.entry) : undefined;
   }
 
-  async cancelActive(_why: string): Promise<void> {
-    if (this.queued !== undefined) {
-      this.dropQueued("cancelled");
+  /** cancel: the open project's turn, or a background turn of any project (e.g. from the activity feed). */
+  async cancelTurn(turnId: string, socket?: WebSocket): Promise<void> {
+    for (const [entry, queued] of this.queue) {
+      if (queued.turnId === turnId) {
+        this.dropQueued(entry, "cancelled");
+        return;
+      }
+    }
+    if (this.activeTurn === turnId && this.entry !== undefined) {
+      await this.entry.bridge.cancel(turnId);
       return;
     }
-    if (this.activeTurn === undefined) return;
-    const recording = this.turns.get(this.activeTurn);
-    await (recording?.entry.bridge ?? this.entry?.bridge)?.cancel(this.activeTurn);
+    const recording = this.turns.get(turnId);
+    if (recording !== undefined && !recording.finalized) {
+      await recording.entry.bridge.cancel(turnId);
+      return;
+    }
+    if (socket !== undefined) this.error(socket, "no_turn", `unknown turn: ${turnId}`);
+  }
+
+  /** §2.2 rule 6 (no viewer left): every queued prompt is dropped and every running turn cancelled. */
+  async cancelActive(_why: string): Promise<void> {
+    for (const entry of [...this.queue.keys()]) this.dropQueued(entry, "cancelled");
+    const running = [...this.turns.values()].filter((r) => !r.finalized);
+    await Promise.all(running.map((r) => r.entry.bridge.cancel(r.record.turnId).catch(() => {})));
   }
 
   /**
@@ -937,9 +1118,12 @@ export class SessionHub {
     }
     const chatId = this.ensureChatForTurn(message.text, entry);
     this.markTurnActive(message.turnId);
-    this.turns.set(message.turnId, {
+    // Pinned in the pool while it runs (§13.1): never evicted, even after a project switch.
+    entry.turnId = message.turnId;
+    const recording: RecordingTurn = {
       entry,
       projectId: open.info.id,
+      projectName: open.info.name,
       root: open.store.root,
       chatId,
       record: {
@@ -953,7 +1137,10 @@ export class SessionHub {
       },
       startedAtMs: Date.now(),
       finalized: false,
-    });
+      pending: new Map(),
+    };
+    this.turns.set(message.turnId, recording);
+    this.options.activity?.turnStarted(this.activityContext(recording), false);
     const started: Extract<ServerMessage, { type: "turn.started" }> = {
       type: "turn.started",
       turnId: message.turnId,
@@ -963,7 +1150,7 @@ export class SessionHub {
       ...(images.meta.length > 0 ? { attachments: images.meta } : {}),
     };
     if (waiting) {
-      this.queued = { turnId: message.turnId, entry, blocks, socket, started };
+      this.queue.set(entry, { turnId: message.turnId, entry, blocks, socket, started });
       this.options.debug(`prompt ${message.turnId} queued until ${entry.agentId} is ready`);
       this.send(socket, { ...started, queued: true });
       return;
@@ -971,48 +1158,50 @@ export class SessionHub {
     this.send(socket, started);
   }
 
-  /** Sends the queued prompt once its agent is idle; fails it when the agent could not start. */
-  private pumpQueue(): void {
-    const queued = this.queued;
+  /**
+   * Sends `entry`'s queued prompt once its agent is idle; fails it when the
+   * agent could not start. A background one (§13.1) is sent too; only the
+   * open project's viewer gets its turn.started.
+   */
+  private pumpQueue(entry: PooledBridge): void {
+    const queued = this.queue.get(entry);
     if (queued === undefined) return;
-    const { entry } = queued;
-    if (entry !== this.entry) {
-      this.dropQueued("cancelled");
-      return;
-    }
     const state = entry.status.state;
     if (state === "starting" || state === "busy" || entry.configuring !== undefined) return;
     if (state === "error" || state === "stopped") {
       const reason = entry.status.error;
-      this.dropQueued("error", `${this.agentName(entry.agentId)} did not start${reason !== undefined ? `: ${reason}` : ""}`);
+      this.dropQueued(entry, "error", `${this.agentName(entry.agentId)} did not start${reason !== undefined ? `: ${reason}` : ""}`);
       return;
     }
-    this.queued = undefined;
+    this.queue.delete(entry);
     let handle;
     try {
       handle = entry.bridge.prompt(queued.turnId, queued.blocks);
     } catch (err) {
-      this.queued = queued;
-      this.dropQueued("error", (err as Error).message);
+      this.queue.set(entry, queued);
+      this.dropQueued(entry, "error", (err as Error).message);
       return;
     }
     void handle.done.catch(() => {});
     const recording = this.turns.get(queued.turnId);
     if (recording !== undefined) recording.startedAtMs = Date.now();
     this.options.debug(`queued prompt ${queued.turnId} sent to ${entry.agentId}`);
-    this.send(queued.socket, queued.started);
+    if (entry === this.entry) this.send(queued.socket, queued.started);
   }
 
-  /** Ends the queued turn without it reaching the agent (cancel, switch, failed start). */
-  private dropQueued(stopReason: StopReason, error?: string): void {
-    const queued = this.queued;
+  /** Ends `entry`'s queued turn without it reaching the agent (cancel, switch, failed start). */
+  private dropQueued(entry: PooledBridge, stopReason: StopReason, error?: string): void {
+    const queued = this.queue.get(entry);
     if (queued === undefined) return;
-    this.queued = undefined;
+    this.queue.delete(entry);
     if (this.activeTurn === queued.turnId) this.activeTurn = undefined;
     const recording = this.turns.get(queued.turnId);
     this.turns.delete(queued.turnId);
     if (recording !== undefined) this.finalizeTurn(recording, stopReason, error);
-    else this.broadcast({ type: "turn.finished", turnId: queued.turnId, stopReason, ...(error !== undefined ? { error } : {}) });
+    else {
+      if (entry.turnId === queued.turnId) void this.pool.turnEnded(entry);
+      this.broadcast({ type: "turn.finished", turnId: queued.turnId, stopReason, ...(error !== undefined ? { error } : {}) });
+    }
   }
 
   /**
@@ -1072,9 +1261,9 @@ export class SessionHub {
    * announced as cancelled now, and its bridge is asked to cancel in the
    * background (its own finish then only records usage). Keeps switches fast.
    */
-  private detachActiveTurn(): void {
-    if (this.queued !== undefined) {
-      this.dropQueued("cancelled");
+  private detachActiveTurn(error?: string): void {
+    if (this.queued !== undefined && this.entry !== undefined) {
+      this.dropQueued(this.entry, "cancelled", error);
       return;
     }
     const turnId = this.activeTurn;
@@ -1085,18 +1274,38 @@ export class SessionHub {
       void this.entry?.bridge.cancel(turnId).catch(() => {});
       return;
     }
-    this.finalizeTurn(recording, "cancelled", undefined);
+    this.finalizeTurn(recording, "cancelled", error);
     void recording.entry.bridge.cancel(turnId).catch((err: unknown) => this.options.debug(`cancel failed: ${String(err)}`));
   }
 
-  /** Persists the turn into its chat and broadcasts turn.finished (once). */
+  /**
+   * Persists the turn into its chat and announces it (once): turn.finished to
+   * the open project's viewers, an activity event to all. Unpins its bridge.
+   */
   private finalizeTurn(recording: RecordingTurn, stopReason: StopReason, error: string | undefined): void {
     if (recording.finalized) return;
     recording.finalized = true;
     const { record } = recording;
     record.stopReason = stopReason;
     record.finishedAt = new Date().toISOString();
-    this.broadcast({ type: "turn.finished", turnId: record.turnId, stopReason, ...(error !== undefined ? { error } : {}) });
+    const background = this.isBackground(recording);
+    if (recording.projectId === this.open?.info.id) {
+      this.broadcast({ type: "turn.finished", turnId: record.turnId, stopReason, ...(error !== undefined ? { error } : {}) });
+    }
+    this.persistTurn(recording);
+    recording.pending.clear();
+    if (recording.entry.turnId === record.turnId) {
+      void this.pool.turnEnded(recording.entry).catch((err: unknown) => this.options.debug(`bridge release failed: ${String(err)}`));
+    }
+    this.options.activity?.turnFinished(
+      this.activityContext(recording),
+      { stopReason, error, files: editedFiles(record), mapChanges: record.mapChanges?.length ?? 0 },
+      background,
+    );
+  }
+
+  private persistTurn(recording: RecordingTurn): void {
+    const { record } = recording;
     const chats = this.options.chats;
     if (chats === undefined || recording.chatId === null) return;
     try {
@@ -1123,6 +1332,7 @@ export class SessionHub {
     const recording = this.turns.get(turnId);
     if (recording === undefined || recording.finalized || changes.length === 0) return;
     recording.record.mapChanges = [...(recording.record.mapChanges ?? []), ...changes];
+    this.options.activity?.mapChanged(this.activityContext(recording), changes.map((c) => c.name || c.id), this.isBackground(recording));
   }
 
   /** arch.undo: restores what the turn's map ops changed; the result is broadcast as `architecture`. */
@@ -1161,6 +1371,7 @@ export class SessionHub {
     if (this.open !== null) {
       this.lastChat.set(this.open.info.id, chatId);
       this.options.chats?.setActiveChat(this.open.info.id, chatId);
+      if (this.sockets.size > 0) this.options.activity?.markRead(this.open.info.id, chatId);
     }
     const entry = this.entry;
     if (entry !== undefined) {
@@ -1193,8 +1404,8 @@ export class SessionHub {
       this.detachActiveTurn();
       this.setActiveChat(chatId);
       this.broadcastChats();
-    }
-    this.broadcast({ type: "chat.history", chatId, turns: ctx.chats.history(ctx.projectId, chatId) });
+    } else if (this.sockets.size > 0) this.options.activity?.markRead(ctx.projectId, chatId);
+    this.broadcast({ type: "chat.history", chatId, turns: this.historyTurns(ctx.projectId, chatId) });
   }
 
   renameChat(chatId: string, title: string, socket?: WebSocket): void {
@@ -1230,7 +1441,22 @@ export class SessionHub {
     const chats = this.options.chats;
     const open = this.open;
     if (chats === undefined || open === null || this.activeChatId === null) return undefined;
-    return { type: "chat.history", chatId: this.activeChatId, turns: chats.history(open.info.id, this.activeChatId) };
+    return { type: "chat.history", chatId: this.activeChatId, turns: this.historyTurns(open.info.id, this.activeChatId) };
+  }
+
+  /**
+   * A chat's stored turns plus the turn still running in it (§13.1: re-attach
+   * after a project switch or a page reload), marked `running: true` and
+   * carrying its events so far; stream frames continue it.
+   */
+  private historyTurns(projectId: string, chatId: string): TurnRecord[] {
+    const turns = this.options.chats?.history(projectId, chatId) ?? [];
+    for (const recording of this.turns.values()) {
+      if (recording.finalized || recording.projectId !== projectId || recording.chatId !== chatId) continue;
+      if (turns.some((t) => t.turnId === recording.record.turnId)) continue;
+      turns.push({ ...recording.record, events: [...recording.record.events], running: true });
+    }
+    return turns;
   }
 
   private broadcastChats(): void {
@@ -1262,6 +1488,12 @@ export class SessionHub {
     if (chats !== undefined) this.send(socket, chats);
     const history = this.historyMessage();
     if (history !== undefined) this.send(socket, history);
+    for (const message of this.pendingPermissionMessages()) this.send(socket, message);
+    const activity = this.options.activity;
+    if (activity !== undefined) {
+      this.send(socket, activity.snapshotMessage());
+      if (this.open !== null) activity.markRead(this.open.info.id, this.activeChatId);
+    }
   }
 
   /** Stops listening (tests). */
@@ -1272,6 +1504,14 @@ export class SessionHub {
   /** Daemon shutdown: store the active turn, close the store, stop every bridge. */
   async shutdown(): Promise<void> {
     this.detachActiveTurn();
+    // Background turns (§13.1) are stored as cancelled too; the pool then stops their agents.
+    for (const entry of [...this.queue.keys()]) this.dropQueued(entry, "cancelled");
+    for (const recording of [...this.turns.values()]) {
+      if (recording.finalized) continue;
+      this.finalizeTurn(recording, "cancelled", "Ruah stopped");
+      void recording.entry.bridge.cancel(recording.record.turnId).catch(() => {});
+    }
+    if (this.open !== null) this.options.activity?.markViewed(this.open.info.id);
     this.prewarmQueue = [];
     this.cancelAutoPrewarm();
     this.close();
@@ -1292,6 +1532,9 @@ export class SessionHub {
       if (entry.status.models !== undefined) this.knownModels.set(entry.agentId, entry.status.models);
       if (entry.status.modes !== undefined) this.knownModes.set(entry.agentId, entry.status.modes);
       if (entry.status.state === "idle") this.configure(entry);
+      this.noteAgentError(entry, current);
+      // A queued prompt (current or background bridge) goes out once its agent is idle.
+      if (this.queue.has(entry)) setImmediate(() => this.pumpQueue(entry));
       // A parked or retired bridge's state is not the agent's state; only its warm state is shown.
       if (!current) {
         this.broadcastWarmChange();
@@ -1299,7 +1542,6 @@ export class SessionHub {
       }
       this.broadcastStatus();
       this.maybeAutoPrewarm();
-      if (this.queued !== undefined) setImmediate(() => this.pumpQueue());
       return;
     }
     if (event.type === "stream") {
@@ -1310,6 +1552,12 @@ export class SessionHub {
       return;
     }
     if (event.type === "permission") {
+      // Kept until answered, so a viewer that re-attaches (§13.1) can still answer it.
+      const recording = this.turns.get(event.turnId);
+      if (recording !== undefined && !recording.finalized) {
+        recording.pending.set(event.requestId, { toolCall: event.toolCall, options: event.options });
+        this.options.activity?.permissionRequested(this.activityContext(recording), event.requestId, event.toolCall.title, this.isBackground(recording));
+      }
       if (!current) return;
       this.broadcast({
         type: "permission.request",
@@ -1321,6 +1569,14 @@ export class SessionHub {
       return;
     }
     if (event.type === "permission_resolved") {
+      const recording = this.turns.get(event.turnId);
+      const request = recording?.pending.get(event.requestId);
+      if (recording !== undefined && request !== undefined) {
+        recording.pending.delete(event.requestId);
+        const option = request.options.find((o) => o.optionId === event.optionId);
+        const answer = event.cancelled === true ? "cancelled" : `"${option?.name ?? event.optionId ?? "answered"}"`;
+        this.options.activity?.permissionAnswered(this.activityContext(recording), event.requestId, `${answer}: ${request.toolCall.title}`, this.isBackground(recording));
+      }
       if (!current) return;
       this.broadcast({
         type: "permission.resolved",
@@ -1341,9 +1597,32 @@ export class SessionHub {
     this.turns.delete(event.turnId);
     this.recordUsage(entry, event, recording);
     if (recording !== undefined) {
-      this.options.engines?.afterTurn(recording.record.nodeId);
+      // ruah-verify runs on the open project: not after a background turn of another one.
+      if (recording.projectId === this.open?.info.id) this.options.engines?.afterTurn(recording.record.nodeId);
       this.finalizeTurn(recording, event.stopReason, event.error);
     } else if (current) this.broadcast({ type: "turn.finished", turnId: event.turnId, stopReason: event.stopReason });
+    // A turn the hub no longer tracks (detached, finalized) still unpins its bridge.
+    if (entry.turnId === event.turnId) void this.pool.turnEnded(entry).catch(() => {});
+  }
+
+  /** agent.error activity (§13.2) when a bridge that runs a turn, or the current one, goes to "error". */
+  private noteAgentError(entry: PooledBridge, current: boolean): void {
+    const state = entry.status.state;
+    const before = this.lastStates.get(entry);
+    this.lastStates.set(entry, state);
+    const activity = this.options.activity;
+    if (activity === undefined || state !== "error" || before === "error" || entry.speculative) return;
+    const recording = entry.turnId !== undefined ? this.turns.get(entry.turnId) : undefined;
+    const message = entry.status.error ?? "the agent stopped";
+    if (recording !== undefined && !recording.finalized) {
+      activity.agentError(this.activityContext(recording), message, this.isBackground(recording));
+    } else if (current && this.open !== null) {
+      activity.agentError(
+        { projectId: this.open.info.id, projectName: this.open.info.name, projectRoot: this.open.info.root, chatId: this.activeChatId, agentId: entry.agentId },
+        message,
+        this.sockets.size === 0,
+      );
+    }
   }
 
   private recordUsage(entry: PooledBridge, event: Extract<BridgeEvent, { type: "turn_finished" }>, recording: RecordingTurn | undefined): void {
@@ -1396,13 +1675,11 @@ export function attachSession(hub: SessionHub, socket: WebSocket): void {
     hub.sockets.delete(socket);
     // §2.2 rule 6: cancel a running turn only when the LAST viewer is gone and
     // none reconnects within the grace period (another tab, or a page reload,
-    // keeps the turn alive).
-    if (hub.activeTurnId() !== undefined && hub.sockets.size === 0) {
-      const turnId = hub.activeTurnId();
+    // keeps the turn alive). Background turns (§13.1) go too: nobody is left
+    // to answer their permission requests or see their notifications.
+    if (hub.hasRunningTurns() && hub.sockets.size === 0) {
       setTimeout(() => {
-        if (hub.sockets.size === 0 && turnId !== undefined && hub.activeTurnId() === turnId) {
-          void hub.cancelActive("last viewer disconnected");
-        }
+        if (hub.sockets.size === 0 && hub.hasRunningTurns()) void hub.cancelActive("last viewer disconnected");
       }, DISCONNECT_GRACE_MS).unref();
     }
   });
@@ -1456,6 +1733,7 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     }
     case "focus.set": {
       hub.options.debug(`focus.set ${message.nodeId ?? "(null)"}`);
+      hub.setFocus(message.nodeId);
       return;
     }
     case "prompt": {
@@ -1463,10 +1741,7 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
       return;
     }
     case "permission.response": {
-      const bridge = hub.bridge;
-      const ok = bridge !== undefined && ("cancelled" in message
-        ? bridge.answerPermission(message.requestId, { cancelled: true })
-        : bridge.answerPermission(message.requestId, { optionId: message.optionId }));
+      const ok = hub.answerPermission(message.requestId, "cancelled" in message ? { cancelled: true } : { optionId: message.optionId });
       if (!ok) hub.error(socket, "no_turn", `unknown permission request: ${message.requestId}`);
       return;
     }
@@ -1532,6 +1807,24 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     }
     case "arch.undo": {
       hub.undoMapTurn(message.turnId, socket);
+      return;
+    }
+    case "activity.read": {
+      hub.markRead(message.projectId, message.chatId);
+      return;
+    }
+    case "view.save": {
+      hub.saveView(message.projectId, message.view, socket);
+      return;
+    }
+    case "settings.set": {
+      hub.setFeatures(
+        {
+          ...(message.backgroundAgents !== undefined ? { backgroundAgents: message.backgroundAgents } : {}),
+          ...(message.notifications !== undefined ? { notifications: message.notifications } : {}),
+        },
+        socket,
+      );
       return;
     }
   }
