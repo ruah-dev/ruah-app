@@ -31,6 +31,8 @@ import sampleArchitectureJson from "@/data/sample-architecture.json";
 import { sampleFiles } from "@/data/sample-files";
 import { lruSet } from "./switching";
 import { markSwitchCached, markSwitchStart } from "./switch-timing";
+import { clearUnreadLocally, handleActivityMessage } from "./activity";
+import type { AppFeatures, NotificationTarget, ResumeInfo, ViewState } from "./contracts";
 
 export const CLIENT_ID = "architects-canvas/0.1.0";
 const FIRST_ATTEMPT_TIMEOUT_MS = 2500;
@@ -350,6 +352,8 @@ export function startDaemon() {
   if (started || typeof window === "undefined") return;
   started = true;
   loadModelCache();
+  // §13.3: a click on a desktop notification (the window is already focused) opens its project + chat.
+  window.ruah?.onNotificationClick?.((target) => void openActivityTarget(target));
   connect();
 }
 
@@ -487,8 +491,9 @@ function recordToTurn(r: TurnRecord, idle: boolean): Turn {
   const startedAt = Date.parse(r.startedAt) || Date.now();
   const finishedAt = r.finishedAt ? Date.parse(r.finishedAt) : undefined;
   // A record without a stop reason is either still running (the stream continues) or was
-  // interrupted before the daemon could record the end.
-  const stopReason: StopReason | undefined = r.stopReason ?? (idle ? "cancelled" : undefined);
+  // interrupted before the daemon could record the end. §13: `running` says so explicitly (a
+  // background turn re-attached, or a reload mid-turn).
+  const stopReason: StopReason | undefined = r.running ? undefined : (r.stopReason ?? (idle ? "cancelled" : undefined));
   return {
     id: r.turnId,
     nodeId: r.nodeId ?? null,
@@ -626,6 +631,7 @@ function editsPending() {
 }
 
 function handle(msg: ServerMessage) {
+  if (handleActivityMessage(msg, { currentProjectId: state.project?.id ?? null, activeChatId: state.activeChatId })) return;
   switch (msg.type) {
     case "architecture": {
       // A previewed switch shows the target already: frames of the project being left are stale.
@@ -1528,6 +1534,77 @@ export function useDaemon(): DaemonState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
+// ---------------------------------------------------------------------------
+// §13: activity, resume, view state, feature flags
+
+/** Opens the project (and chat) an activity event or a notification points at. */
+export async function openActivityTarget(target: Pick<NotificationTarget, "projectId"> & Partial<NotificationTarget>): Promise<void> {
+  const chatId = target.chatId ?? undefined;
+  if (state.project?.id === target.projectId) {
+    if (chatId) openChat(chatId);
+    return;
+  }
+  const root = target.projectRoot ?? state.recentProjects.find((p) => p.id === target.projectId)?.root;
+  if (!root) return;
+  try {
+    await openProject(root, { projectId: target.projectId, ...(chatId ? { chatId } : {}) });
+  } catch {
+    /* the folder is gone; the switch UI already reports failures */
+  }
+}
+
+/** Clears unread markers of a chat (or the whole project). */
+export function markActivityRead(projectId: string, chatId?: string): boolean {
+  clearUnreadLocally(projectId, chatId);
+  return send({ type: "activity.read", projectId, ...(chatId ? { chatId } : {}) });
+}
+
+/** GET /api/projects/:id/resume — "where you left off" (§13.4). */
+export function fetchResume(projectId: string): Promise<ResumeInfo> {
+  return api<ResumeInfo>(`/api/projects/${encodeURIComponent(projectId)}/resume`);
+}
+
+/** GET /api/projects/:id/view — the saved view state (§13.5). */
+export async function fetchViewState(projectId: string): Promise<{ view: ViewState | null; updatedAt: string | null }> {
+  return api(`/api/projects/${encodeURIComponent(projectId)}/view`);
+}
+
+export const VIEW_STATE_MAX_BYTES = 16 * 1024;
+const VIEW_SAVE_DEBOUNCE_MS = 400;
+const viewSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingViews = new Map<string, ViewState>();
+
+/** Saves the view state over the socket (debounced per project; HTTP when the socket is down).
+ * Returns false when the state is too large (> 16 KB serialized) and was not saved. */
+export function saveViewState(projectId: string, view: ViewState, opts: { immediate?: boolean } = {}): boolean {
+  let size = 0;
+  try {
+    size = new TextEncoder().encode(JSON.stringify(view)).length;
+  } catch {
+    return false;
+  }
+  if (size > VIEW_STATE_MAX_BYTES) return false;
+  pendingViews.set(projectId, view);
+  const flush = () => {
+    viewSaveTimers.delete(projectId);
+    const latest = pendingViews.get(projectId);
+    pendingViews.delete(projectId);
+    if (!latest) return;
+    if (!send({ type: "view.save", projectId, view: latest }))
+      void api(`/api/projects/${encodeURIComponent(projectId)}/view`, { view: latest }).catch(() => {});
+  };
+  const timer = viewSaveTimers.get(projectId);
+  if (timer !== undefined) clearTimeout(timer);
+  if (opts.immediate) flush();
+  else viewSaveTimers.set(projectId, setTimeout(flush, VIEW_SAVE_DEBOUNCE_MS));
+  return true;
+}
+
+/** Feature flags in ~/.ruah/settings.json (§13.6); every viewer gets a new activity.snapshot. */
+export function setFeatureFlags(patch: Partial<AppFeatures>): boolean {
+  return send({ type: "settings.set", ...patch });
+}
+
 export const daemonActions = {
   sendPrompt,
   cancel,
@@ -1561,4 +1638,11 @@ export const daemonActions = {
   rescan,
   // §1.7
   undoMapChanges,
+  // §13
+  openActivityTarget,
+  markActivityRead,
+  fetchResume,
+  fetchViewState,
+  saveViewState,
+  setFeatureFlags,
 };
