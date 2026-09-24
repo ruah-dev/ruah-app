@@ -15,6 +15,8 @@ import { Phantom } from "@/components/brand/Phantom";
 import type { Lod } from "./geometry";
 import { isGroupNodeId } from "./view-model";
 import { openElementInTerminal } from "@/components/terminal/actions";
+import { VerifyBadgeChip } from "@/components/engines/VerifyBadge";
+import type { VerifyBadge } from "@/lib/engines";
 
 export type NodeHandlers = {
   pointerDown: (e: ReactPointerEvent, node: DiagramNode) => void;
@@ -49,6 +51,9 @@ type Props = {
   /** A running agent turn works on this element: "thinking", or "warning" while it waits on a
    * permission. */
   working?: "thinking" | "warning" | null | undefined;
+  /** Latest verify badge for this node (pass / fail / unverifiable). */
+  verifyBadge?: VerifyBadge | undefined;
+  verifyDetail?: string | undefined;
   h: NodeHandlers;
 };
 
@@ -237,7 +242,7 @@ function AiMark({ compact }: { compact?: boolean }) {
   );
 }
 
-function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, working, h }: Props) {
+function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, working, verifyBadge, verifyDetail, h }: Props) {
   const flash = useMapFlash(node.id);
   const style = styleFor(node);
   const Icon = style.icon;
@@ -282,6 +287,11 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
           </span>
         ) : null}
         {working ? <WorkingGhost face={working} compact /> : null}
+        {verifyBadge ? (
+          <span className="absolute top-1 right-1" style={{ transform: "scale(var(--inv-k, 1))", transformOrigin: "100% 0" }}>
+            <VerifyBadgeChip badge={verifyBadge} detail={verifyDetail} compact />
+          </span>
+        ) : null}
         {selected ? <Toolbar node={node} editable={editable} linking={linking} h={h} /> : null}
       </div>
     );
@@ -318,6 +328,11 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         {node.drill || group ? <InsideChip node={node} h={h} compact /> : null}
         {node.origin === "agent" ? <AiMark compact /> : null}
         {working ? <WorkingGhost face={working} compact /> : null}
+        {verifyBadge ? (
+          <span className="absolute top-1 right-1" style={{ transform: "scale(var(--inv-k, 1))", transformOrigin: "100% 0" }}>
+            <VerifyBadgeChip badge={verifyBadge} detail={verifyDetail} compact />
+          </span>
+        ) : null}
         {selected ? <Toolbar node={node} editable={editable} linking={linking} h={h} /> : null}
       </div>
     );
@@ -369,6 +384,11 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
       {node.drill || group ? <InsideChip node={node} h={h} compact={false} /> : null}
       {node.origin === "agent" ? <AiMark /> : null}
       {working ? <WorkingGhost face={working} compact={false} /> : null}
+      {verifyBadge ? (
+        <span className="absolute top-2 right-2">
+          <VerifyBadgeChip badge={verifyBadge} detail={verifyDetail} />
+        </span>
+      ) : null}
       {selected ? (
         <>
           <Toolbar node={node} editable={editable} linking={linking} h={h} />

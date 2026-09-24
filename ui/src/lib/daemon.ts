@@ -806,6 +806,11 @@ function handle(msg: ServerMessage) {
         finishedAt: Date.now(),
         ...(msg.error !== undefined ? { error: msg.error } : {}),
       }));
+      try {
+        window.dispatchEvent(new CustomEvent("ruah:turn-finished", { detail: { turnId: msg.turnId } }));
+      } catch {
+        // ignore (non-browser)
+      }
       return;
     case "error": {
       if (msg.turnId && state.turns.some((t) => t.id === msg.turnId && !t.stopReason)) {

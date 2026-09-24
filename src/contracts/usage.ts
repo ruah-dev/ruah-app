@@ -36,6 +36,22 @@ export const UsageSummarySchema = z.object({
     outputTokens: Tokens,
     costUsd: Cost,
   })),
+  /** Per architecture element (turns that recorded nodeId). */
+  byNode: z.array(z.object({
+    nodeId: z.string(),
+    turns: Tokens,
+    inputTokens: Tokens,
+    outputTokens: Tokens,
+    costUsd: Cost,
+  })).optional(),
+  /** Per architecture workflow (when the daemon could attribute nodes). */
+  byWorkflow: z.array(z.object({
+    workflowId: z.string(),
+    turns: Tokens,
+    inputTokens: Tokens,
+    outputTokens: Tokens,
+    costUsd: Cost,
+  })).optional(),
 });
 export type UsageSummary = z.infer<typeof UsageSummarySchema>;
 

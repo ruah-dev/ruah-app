@@ -37,6 +37,7 @@ import { buildViewModel, isGroupNodeId, NO_FILTERS, searchNodes, type CanvasFilt
 import { NodeCard, type NodeHandlers, type NodeTone } from "./canvas/NodeCard";
 import { EdgeLayer } from "./canvas/EdgeLayer";
 import { useDaemonSelector, workingNodeOf } from "@/lib/daemon";
+import { useVerifyState } from "@/lib/engines";
 import { Minimap, type MinimapHandle } from "./canvas/Minimap";
 import { FilterMenu, SearchBar, ToolbarButtons, type SearchHit } from "./canvas/CanvasToolbar";
 
@@ -739,6 +740,7 @@ export function EditorCanvas({
   // The element a running agent turn works on gets a small ghost (only that card re-renders).
   const workingId = useDaemonSelector((d) => workingNodeOf(d)?.nodeId ?? null);
   const workingFace = useDaemonSelector((d) => (workingNodeOf(d)?.waiting ? "warning" : "thinking"));
+  const [verifyNodes] = useVerifyState();
   const visibleNodes = useMemo(
     () => (cull ? vm.nodes.filter((n) => n.id === selectedNodeId || intersects(cull, boxes.get(n.id)!)) : vm.nodes),
     [cull, vm.nodes, boxes, selectedNodeId],
@@ -882,6 +884,8 @@ export function EditorCanvas({
               renaming={editingId === node.id}
               linking={linkFrom === node.id}
               working={workingId === node.id ? workingFace : null}
+              verifyBadge={verifyNodes[node.id]?.badge}
+              verifyDetail={verifyNodes[node.id]?.detail}
               h={handlers}
             />
           ))}

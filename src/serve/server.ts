@@ -13,6 +13,8 @@ import { handleUsageRequest } from "../usage/http.js";
 import type { UsageApi } from "../usage/index.js";
 import { handleIntegrationsRequest } from "../integrations/http.js";
 import type { IntegrationsApi } from "../integrations/index.js";
+import { handleEnginesRequest } from "../engines/http.js";
+import type { EnginesService } from "../engines/index.js";
 import { scanRepo, summarize } from "../scan/index.js";
 import { handleProjectsRequest, sendJson } from "./projects-http.js";
 import { handleExportRequest } from "../export/http.js";
@@ -35,6 +37,8 @@ export interface ServeOptions {
   projects?: ProjectService;
   /** /api/integrations, /api/cloud/*, /api/work/*, /api/ruah/* (§6); answered 503 when absent. */
   integrations?: IntegrationsApi;
+  /** /api/engines/* — verify, eval, conv CLI wrappers; answered 503 when absent. */
+  engines?: EnginesService;
   /** CONTRACTS §5.6 /api/attachments; defaults to the hub's store, 503 when neither has one. */
   attachments?: AttachmentStore;
   /** CONTRACTS §1.7 /api/arch + /api/arch/ops (token-authenticated map ops for `ruah app mcp`); 503 when absent. */
@@ -102,6 +106,7 @@ export function startServer(
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
+    if (handleEnginesRequest(req, res, url, options.engines, options.allowOrigins)) return;
     // GET /api/export/drawio (409 when no project is open).
     if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
 

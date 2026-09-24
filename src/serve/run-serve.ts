@@ -19,6 +19,7 @@ import { AttachmentStore } from "../projects/attachment-store.js";
 import { SettingsStore } from "../projects/settings-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
+import { EnginesService } from "../engines/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
 import { MapOpsService } from "./map-ops.js";
 import { DEFAULT_IDLE_MS, DEFAULT_SCROLLBACK_BYTES, TerminalManager } from "../terminal/manager.js";
@@ -119,9 +120,23 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   const onError = (line: string): void => {
     process.stderr.write(`${line}\n`);
   };
-  const usage = new UsageService(new UsageLog(home), limits, { onError });
+  const usage = new UsageService(new UsageLog(home), limits, {
+    onError,
+    workflows: () => {
+      const arch = hubRef?.store?.current();
+      return arch?.workflows.map((w) => ({ id: w.id, steps: w.steps }));
+    },
+  });
   const chats = new ChatStore(home, { onError });
   const attachments = new AttachmentStore(home);
+  const engines = new EnginesService({
+    root: () => hubRef?.project()?.root ?? null,
+    architecture: () => hubRef?.store?.current() ?? null,
+    debug,
+    cli: {
+      workspaceRoot: process.env.RUAH_WORKSPACE?.trim() || undefined,
+    },
+  });
   const hub = new SessionHub(null, null, {
     version,
     links: flags.links,
@@ -130,6 +145,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     agentId,
     agents: catalog,
     usage,
+    engines,
     chats,
     attachments,
     settings,
@@ -185,6 +201,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     usage,
     projects,
     terminal,
+    engines,
     ...(mapOps !== undefined ? { mapOps } : {}),
     // Follows the hub's current project; null in the launcher state (endpoints answer 409).
     integrations: new IntegrationsService({

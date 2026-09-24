@@ -311,6 +311,49 @@ export function UsagePage() {
                 </div>
               </section>
 
+              {(data!.byNode?.length ?? 0) > 0 || (data!.byWorkflow?.length ?? 0) > 0 ? (
+                <section className="grid gap-6 md:grid-cols-2">
+                  {(data!.byNode?.length ?? 0) > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <h2 className="text-[13px] font-medium text-foreground">Cost by element</h2>
+                      <p className="text-[12px] text-muted-foreground">From ~/.ruah/usage.jsonl turns that recorded a nodeId.</p>
+                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                        {data!.byNode!.slice(0, 12).map((row) => (
+                          <li key={row.nodeId} className="flex items-baseline justify-between gap-3 py-2">
+                            <span className="truncate font-mono text-[12px]" title={row.nodeId}>
+                              {row.nodeId}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
+                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {(data!.byWorkflow?.length ?? 0) > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <h2 className="text-[13px] font-medium text-foreground">Cost by workflow</h2>
+                      <p className="text-[12px] text-muted-foreground">Sum of element costs for steps in each architecture workflow.</p>
+                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                        {data!.byWorkflow!.map((row) => (
+                          <li key={row.workflowId} className="flex items-baseline justify-between gap-3 py-2">
+                            <span className="truncate font-mono text-[12px]" title={row.workflowId}>
+                              {row.workflowId}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
+                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
               <section className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-[13px] font-medium text-foreground">Breakdown</h2>
