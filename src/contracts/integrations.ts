@@ -10,11 +10,13 @@ export const CLOUD_RESOURCE_TYPES = [
   "compute", "container", "function", "app", "database", "cache", "queue",
   "storage", "loadbalancer", "gateway", "cdn", "dns", "kubernetes", "other",
 ] as const;
+/** §9: every provider's native states normalized for "is it up right now?". */
+export const CLOUD_HEALTH = ["healthy", "degraded", "down", "deploying", "unknown"] as const;
 
 export const IntegrationAccountSchema = z.object({ id: z.string(), label: z.string() });
 
 export const IntegrationInfoSchema = z.object({
-  id: z.string(), // known: digitalocean | aws | jira | github | ruah
+  id: z.string(), // known: digitalocean | aws | vercel | supabase | kubernetes | netlify | hetzner | jira | github | ruah
   family: z.enum(INTEGRATION_FAMILIES),
   name: z.string(),
   status: z.enum(INTEGRATION_STATUSES),
@@ -27,7 +29,7 @@ export const CloudResourceTypeSchema = z.enum(CLOUD_RESOURCE_TYPES);
 
 export const CloudResourceSchema = z.object({
   id: z.string(), // provider-native id (ARN, DO URN)
-  provider: z.string(), // known: digitalocean | aws
+  provider: z.string(), // known: digitalocean | aws | vercel | supabase | kubernetes | netlify | hetzner
   type: CloudResourceTypeSchema,
   service: z.string(), // "droplet", "apps", "ec2", "lambda", "rds", …
   name: z.string(),
@@ -37,6 +39,15 @@ export const CloudResourceSchema = z.object({
   consoleUrl: z.string().optional(),
   linkedNodeId: z.string().optional(),
   linkSource: z.enum(["tag", "name", "manual"]).optional(), // how linkedNodeId was decided
+  // §9 live status (all optional; absent = the provider has no health notion for it)
+  health: z.enum(CLOUD_HEALTH).optional(),
+  healthDetail: z.string().optional(), // "2/3 ready · 1 CrashLoopBackOff", "latest production deploy failed"
+  observedAt: z.string().optional(), // ISO time of the sync that read this state
+  replicas: z.object({ ready: z.number(), desired: z.number() }).optional(), // workloads
+  pods: z.object({ running: z.number(), pending: z.number(), crashLoop: z.number(), restarts: z.number() }).optional(), // kubernetes workloads
+  url: z.string().optional(), // where it is served (Vercel/Netlify production URL, deployment URL)
+  hosts: z.array(z.string()).optional(), // ingress hosts, custom domains, load balancer addresses
+  createdAt: z.string().optional(), // ISO (deployments)
 });
 
 export const WorkItemSchema = z.object({
@@ -62,6 +73,7 @@ export type IntegrationFamily = (typeof INTEGRATION_FAMILIES)[number];
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
 export type IntegrationInfo = z.infer<typeof IntegrationInfoSchema>;
 export type CloudResourceType = (typeof CLOUD_RESOURCE_TYPES)[number];
+export type CloudHealth = (typeof CLOUD_HEALTH)[number];
 export type CloudResource = z.infer<typeof CloudResourceSchema>;
 export type WorkItem = z.infer<typeof WorkItemSchema>;
 export type ProviderError = z.infer<typeof ProviderErrorSchema>;

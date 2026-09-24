@@ -1,8 +1,9 @@
 // src/integrations/cloud/digitalocean.ts — DigitalOcean via `doctl` and its
 // own login (auth contexts). Read-only: only `list`/`get` subcommands, JSON
 // output, 20 s timeout each. Pure mappers turn doctl JSON into CloudResource.
-import type { CloudResource, CloudResourceType, ConnectBody, IntegrationInfo } from "../../contracts/integrations.js";
+import type { CloudHealth, CloudResource, CloudResourceType, ConnectBody, IntegrationInfo } from "../../contracts/integrations.js";
 import { arr, cliMessage, CliError, IntegrationError, mapLimit, obj, parseJson, resolveBin, str, type Runner } from "../exec.js";
+import { DO_HEALTH, healthFrom, withHealth } from "../health.js";
 import type { CloudIntegration, CloudSyncOutcome } from "../registry.js";
 import type { SettingsStore } from "../store.js";
 
@@ -57,14 +58,29 @@ function each(json: unknown, fn: (item: Record<string, unknown>) => CloudResourc
 
 const regionSlug = (value: unknown): string | undefined => str(obj(value)?.slug) ?? str(value);
 
+const APP_PHASE: Record<string, CloudHealth> = {
+  active: "healthy", superseded: "healthy", error: "down", canceled: "unknown", unknown: "unknown",
+  pending_build: "deploying", building: "deploying", pending_deploy: "deploying", deploying: "deploying",
+};
+
+/** App Platform: a deployment in progress wins ("deploying"); else the active deployment's phase. */
+export function appHealth(active: string | undefined, progress: string | undefined): { health: CloudHealth; detail?: string } | undefined {
+  if (progress !== undefined && APP_PHASE[progress.toLowerCase()] === "deploying") {
+    return { health: "deploying", detail: active !== undefined ? `${progress.toLowerCase()} · previous version live` : progress.toLowerCase() };
+  }
+  if (active === undefined) return progress?.toUpperCase() === "ERROR" ? { health: "down", detail: "first deployment failed" } : undefined;
+  return { health: APP_PHASE[active.toLowerCase()] ?? "unknown" };
+}
+
 export const mapDroplets: Mapper = (json) =>
   each(json, (d) => {
     const id = str(d.id);
     if (id === undefined) return undefined;
-    return resource({
+    const status = str(d.status);
+    return withHealth(resource({
       id: `do:droplet:${id}`, type: "compute", service: "droplet", name: str(d.name),
-      region: regionSlug(d.region), status: str(d.status), tags: doTags(d.tags), consoleUrl: `${CONSOLE}/droplets/${id}`,
-    });
+      region: regionSlug(d.region), status, tags: doTags(d.tags), consoleUrl: `${CONSOLE}/droplets/${id}`,
+    }), healthFrom(status, DO_HEALTH.droplet));
   });
 
 export const mapApps: Mapper = (json) =>
@@ -72,11 +88,16 @@ export const mapApps: Mapper = (json) =>
     const id = str(a.id);
     if (id === undefined) return undefined;
     const spec = obj(a.spec);
-    const phase = str(obj(a.active_deployment)?.phase) ?? str(obj(a.in_progress_deployment)?.phase);
-    return resource({
+    const active = str(obj(a.active_deployment)?.phase);
+    const progress = str(obj(a.in_progress_deployment)?.phase);
+    const out = resource({
       id: `do:app:${id}`, type: "app", service: "apps", name: str(spec?.name),
-      region: regionSlug(a.region) ?? str(spec?.region), status: phase?.toLowerCase(), consoleUrl: `${CONSOLE}/apps/${id}`,
+      region: regionSlug(a.region) ?? str(spec?.region), status: (active ?? progress)?.toLowerCase(), consoleUrl: `${CONSOLE}/apps/${id}`,
     });
+    const live = str(a.live_url);
+    if (live !== undefined) out.url = live;
+    const health = appHealth(active, progress);
+    return withHealth(out, health?.health, health?.detail);
   });
 
 function databaseType(engine: string | undefined): CloudResourceType {
@@ -90,32 +111,35 @@ export const mapDatabases: Mapper = (json) =>
     const id = str(d.id);
     if (id === undefined) return undefined;
     const engine = str(d.engine);
-    return resource({
+    const status = str(d.status);
+    return withHealth(resource({
       id: `do:dbaas:${id}`, type: databaseType(engine), service: engine !== undefined ? `databases/${engine}` : "databases",
-      name: str(d.name), region: str(d.region), status: str(d.status), tags: doTags(d.tags), consoleUrl: `${CONSOLE}/databases/${id}`,
-    });
+      name: str(d.name), region: str(d.region), status, tags: doTags(d.tags), consoleUrl: `${CONSOLE}/databases/${id}`,
+    }), healthFrom(status, DO_HEALTH.database));
   });
 
 export const mapKubernetes: Mapper = (json) =>
   each(json, (k) => {
     const id = str(k.id);
     if (id === undefined) return undefined;
-    return resource({
+    const status = str(obj(k.status)?.state);
+    return withHealth(resource({
       id: `do:kubernetes:${id}`, type: "kubernetes", service: "kubernetes", name: str(k.name),
-      region: str(k.region) ?? str(k.region_slug), status: str(obj(k.status)?.state), tags: doTags(k.tags),
+      region: str(k.region) ?? str(k.region_slug), status, tags: doTags(k.tags),
       consoleUrl: `${CONSOLE}/kubernetes/clusters/${id}`,
-    });
+    }), healthFrom(status, DO_HEALTH.kubernetes), str(obj(k.status)?.message));
   });
 
 export const mapLoadBalancers: Mapper = (json) =>
   each(json, (l) => {
     const id = str(l.id);
     if (id === undefined) return undefined;
-    return resource({
+    const status = str(l.status);
+    return withHealth(resource({
       id: `do:loadbalancer:${id}`, type: "loadbalancer", service: "load-balancer", name: str(l.name),
-      region: regionSlug(l.region), status: str(l.status), tags: doTags(l.tags, l.tag),
+      region: regionSlug(l.region), status, tags: doTags(l.tags, l.tag),
       consoleUrl: `${CONSOLE}/networking/load_balancers/${id}`,
-    });
+    }), healthFrom(status, DO_HEALTH.loadbalancer));
   });
 
 export const mapDomains: Mapper = (json) =>

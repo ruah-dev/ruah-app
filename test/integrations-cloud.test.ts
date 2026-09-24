@@ -60,7 +60,7 @@ describe("DigitalOcean mappers", () => {
     expect(r).toHaveLength(2);
     expect(r[0]).toEqual({
       id: "do:droplet:101", provider: "digitalocean", type: "compute", service: "droplet", name: "invoices-api",
-      region: "fra1", status: "active", tags: { prod: "", "ruah:node:api": "" }, consoleUrl: "https://cloud.digitalocean.com/droplets/101",
+      region: "fra1", status: "active", health: "healthy", tags: { prod: "", "ruah:node:api": "" }, consoleUrl: "https://cloud.digitalocean.com/droplets/101",
     });
     expect(JSON.stringify(r)).not.toContain("203.0.113.10");
   });
@@ -191,7 +191,7 @@ describe("AWS mappers", () => {
     const r = awsMod.mapEc2(awsFx.ec2, ctx);
     expect(r[0]).toEqual({
       id: "arn:aws:ec2:eu-central-1:123456789012:instance/i-0abc", provider: "aws", type: "compute", service: "ec2", name: "invoices-api",
-      region: "eu-central-1", status: "running", tags: { Name: "invoices-api", "ruah:node": "api" },
+      region: "eu-central-1", status: "running", health: "healthy", tags: { Name: "invoices-api", "ruah:node": "api" },
       consoleUrl: "https://eu-central-1.console.aws.amazon.com/ec2/home?region=eu-central-1#InstanceDetails:instanceId=i-0abc",
     });
     expect(r[1]?.name).toBe("i-0def");

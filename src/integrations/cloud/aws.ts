@@ -4,6 +4,7 @@
 // services once). Pure mappers turn CLI JSON into CloudResource.
 import type { CloudResource, CloudResourceType, ConnectBody, IntegrationInfo } from "../../contracts/integrations.js";
 import { arr, cliMessage, CliError, IntegrationError, mapLimit, obj, parseJson, resolveBin, str, type Json, type Runner } from "../exec.js";
+import { AWS_HEALTH, healthFrom, workloadHealth, type HealthTable } from "../health.js";
 import type { CloudIntegration, CloudSyncOutcome } from "../registry.js";
 import type { SettingsStore } from "../store.js";
 
@@ -47,12 +48,16 @@ function resource(fields: {
   status?: string | undefined;
   tags?: Record<string, string> | undefined;
   consoleUrl?: string | undefined;
+  /** Maps `status` onto the §9 health. */
+  health?: HealthTable;
 }): CloudResource {
   const out: CloudResource = { id: fields.id, provider: PROVIDER, type: fields.type, service: fields.service, name: fields.name ?? fields.id };
   if (fields.region !== undefined) out.region = fields.region;
   if (fields.status !== undefined) out.status = fields.status;
   if (fields.tags !== undefined) out.tags = fields.tags;
   if (fields.consoleUrl !== undefined) out.consoleUrl = fields.consoleUrl;
+  const health = fields.health !== undefined ? healthFrom(fields.status, fields.health) : undefined;
+  if (health !== undefined) out.health = health;
   return out;
 }
 
@@ -71,7 +76,7 @@ export const mapEc2: Mapper = (json, { region }) => {
       out.push(resource({
         id: owner !== undefined ? `arn:aws:ec2:${region}:${owner}:instance/${id}` : id,
         type: "compute", service: "ec2", name: tags?.Name ?? id, region,
-        status: str(obj(i.State)?.Name), tags,
+        status: str(obj(i.State)?.Name), tags, health: AWS_HEALTH.ec2,
         consoleUrl: `${consoleHome("ec2", region)}#InstanceDetails:instanceId=${id}`,
       }));
     }
@@ -85,7 +90,7 @@ export const mapEcsClusters: Mapper = (json, { region }) =>
     if (arn === undefined) return [];
     const name = str(c.clusterName);
     return [resource({
-      id: arn, type: "container", service: "ecs-cluster", name, region, status: str(c.status)?.toLowerCase(), tags: awsTags(c.tags),
+      id: arn, type: "container", service: "ecs-cluster", name, region, status: str(c.status)?.toLowerCase(), tags: awsTags(c.tags), health: AWS_HEALTH.ecs,
       consoleUrl: `https://${region}.console.aws.amazon.com/ecs/v2/clusters/${name ?? ""}?region=${region}`,
     })];
   });
@@ -96,10 +101,22 @@ export const mapEcsServices: Mapper = (json, { region }) =>
     if (arn === undefined) return [];
     const name = str(s.serviceName);
     const cluster = str(s.clusterArn)?.split("/").pop();
-    return [resource({
+    const out = resource({
       id: arn, type: "container", service: "ecs", name, region, status: str(s.status)?.toLowerCase(), tags: awsTags(s.tags),
       consoleUrl: `https://${region}.console.aws.amazon.com/ecs/v2/clusters/${cluster ?? ""}/services/${name ?? ""}?region=${region}`,
-    })];
+    });
+    // ACTIVE services: running vs desired tasks; a second deployment / IN_PROGRESS rollout = deploying.
+    const running = typeof s.runningCount === "number" ? s.runningCount : undefined;
+    const desired = typeof s.desiredCount === "number" ? s.desiredCount : undefined;
+    if (out.status === "active" && running !== undefined && desired !== undefined) {
+      const deployments = arr(s.deployments).map(obj);
+      const updating = deployments.length > 1 || deployments.some((d) => str(d?.rolloutState) === "IN_PROGRESS");
+      const failed = deployments.some((d) => str(d?.rolloutState) === "FAILED");
+      const w = workloadHealth({ ready: running, desired, updating, stalled: failed });
+      return [{ ...out, replicas: { ready: running, desired }, health: w.health, healthDetail: w.detail.replace("ready", "running") }];
+    }
+    if (out.status !== undefined) out.health = healthFrom(out.status, AWS_HEALTH.ecs) ?? "unknown";
+    return [out];
   });
 
 export const mapLambda: Mapper = (json, { region }) =>
@@ -107,7 +124,8 @@ export const mapLambda: Mapper = (json, { region }) =>
     const name = str(f.FunctionName);
     if (name === undefined) return [];
     return [resource({
-      id: str(f.FunctionArn) ?? name, type: "function", service: "lambda", name, region, status: str(f.State)?.toLowerCase(),
+      // list-functions usually omits State (only GetFunction has it); no State = no health.
+      id: str(f.FunctionArn) ?? name, type: "function", service: "lambda", name, region, status: str(f.State)?.toLowerCase(), health: AWS_HEALTH.lambda,
       consoleUrl: `${consoleHome("lambda", region)}#/functions/${encodeURIComponent(name)}`,
     })];
   });
@@ -118,7 +136,7 @@ export const mapRds: Mapper = (json, { region }) =>
     if (id === undefined) return [];
     return [resource({
       id: str(d.DBInstanceArn) ?? id, type: "database", service: `rds/${str(d.Engine) ?? "db"}`, name: id, region,
-      status: str(d.DBInstanceStatus), tags: awsTags(d.TagList),
+      status: str(d.DBInstanceStatus), tags: awsTags(d.TagList), health: AWS_HEALTH.rds,
       consoleUrl: `${consoleHome("rds", region)}#database:id=${encodeURIComponent(id)}`,
     })];
   });
@@ -130,7 +148,7 @@ export const mapElastiCache: Mapper = (json, { region }) =>
     return [resource({
       id: str(c.ARN) ?? id, type: "cache", service: `elasticache/${str(c.Engine) ?? "cache"}`,
       // Replication-group members are "<group>-001"; the group name is what people call it.
-      name: str(c.ReplicationGroupId) ?? id, region, status: str(c.CacheClusterStatus),
+      name: str(c.ReplicationGroupId) ?? id, region, status: str(c.CacheClusterStatus), health: AWS_HEALTH.elasticache,
       consoleUrl: `${consoleHome("elasticache", region)}#/${str(c.Engine) === "memcached" ? "memcached" : "redis"}/${encodeURIComponent(str(c.ReplicationGroupId) ?? id)}`,
     })];
   });
@@ -192,7 +210,7 @@ export const mapElbv2: Mapper = (json, { region }) =>
     if (arn === undefined) return [];
     return [resource({
       id: arn, type: "loadbalancer", service: `elbv2/${str(l.Type) ?? "application"}`, name: str(l.LoadBalancerName), region,
-      status: str(obj(l.State)?.Code),
+      status: str(obj(l.State)?.Code), health: AWS_HEALTH.elbv2,
       consoleUrl: `${consoleHome("ec2", region)}#LoadBalancer:loadBalancerArn=${encodeURIComponent(arn)}`,
     })];
   });
@@ -205,7 +223,7 @@ export const mapCloudFront: Mapper = (json) =>
     const alias = str(arr(obj(d.Aliases)?.Items)[0]);
     return [resource({
       id: str(d.ARN) ?? id, type: "cdn", service: "cloudfront", name: alias ?? str(d.Comment) ?? str(d.DomainName) ?? id,
-      status: str(d.Status)?.toLowerCase(), consoleUrl: `https://console.aws.amazon.com/cloudfront/v4/home#/distributions/${id}`,
+      status: str(d.Status)?.toLowerCase(), health: AWS_HEALTH.cloudfront, consoleUrl: `https://console.aws.amazon.com/cloudfront/v4/home#/distributions/${id}`,
     })];
   });
 
