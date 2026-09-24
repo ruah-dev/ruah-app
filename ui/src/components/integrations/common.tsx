@@ -8,17 +8,27 @@ import {
   Check,
   CircleDot,
   Cloud,
+  CloudSun,
   Copy,
   Droplet,
+  Feather,
+  Hexagon,
   Plug,
   SquareKanban,
+  SquareTerminal,
+  TrainFront,
+  Triangle,
   type LucideIcon,
 } from "lucide-react";
 import type { IntegrationInfo } from "@/lib/contracts";
-import type { Remote, StatusTone } from "@/lib/integrations";
+import { setupCommands, type Remote, type StatusTone } from "@/lib/integrations";
+import { useTerminal } from "@/lib/terminal";
 import { cn } from "@/lib/utils";
 import { RuahMark } from "@/components/brand/RuahLogo";
 import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import { runCommandInTerminal } from "@/components/terminal/actions";
+
+export { PROVIDER_SETUP_LABEL, providerSetupState, setupCommands, type ProviderSetupState } from "@/lib/integrations";
 
 // Third-party services get the quiet metadata palette (slate / amber / warm), never a vendor's
 // own brand colour; ruah itself carries the spirit mark.
@@ -27,6 +37,12 @@ const PROVIDER_MARK: Record<string, { icon: LucideIcon; className: string }> = {
   aws: { icon: Cloud, className: "bg-warn/15 text-warn" },
   jira: { icon: SquareKanban, className: "bg-info/15 text-info" },
   github: { icon: CircleDot, className: "bg-surface-3 text-foreground/85" },
+  // Cloud batch B (CONTRACTS.md §10): generic shapes, never vendor logos or colours.
+  gcp: { icon: Hexagon, className: "bg-info/15 text-info" },
+  azure: { icon: Triangle, className: "bg-info/15 text-info" },
+  cloudflare: { icon: CloudSun, className: "bg-warn/15 text-warn" },
+  railway: { icon: TrainFront, className: "bg-surface-3 text-foreground/85" },
+  fly: { icon: Feather, className: "bg-ok/15 text-ok" },
 };
 
 export function ProviderMark({ id, className }: { id: string; className?: string }) {
@@ -77,9 +93,23 @@ export function useCopy(): [boolean, (text: string) => void] {
   ];
 }
 
-/** A shell command the user runs themselves, with a copy button. */
-export function CopyCommand({ command, className }: { command: string; className?: string }) {
+/**
+ * A shell command the user runs themselves, with a copy button. `runnable` adds "Run in
+ * terminal" (a new integrated-terminal tab with the command typed, not executed) while the
+ * app's terminal is available; copy always works.
+ */
+export function CopyCommand({
+  command,
+  className,
+  runnable = false,
+}: {
+  command: string;
+  className?: string;
+  runnable?: boolean;
+}) {
   const [copied, copy] = useCopy();
+  const terminal = useTerminal();
+  const canRun = runnable && terminal.connection !== "unavailable";
   return (
     <div
       className={cn(
@@ -100,6 +130,33 @@ export function CopyCommand({ command, className }: { command: string; className
       >
         {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
       </button>
+      {canRun ? (
+        <button
+          type="button"
+          onClick={() => runCommandInTerminal(command)}
+          aria-label={`Run ${command} in terminal`}
+          title="Run in terminal (opens a tab with the command typed; press Enter to run it)"
+          className="grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <SquareTerminal className="size-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Install / log-in commands for a provider, each copyable and runnable in the terminal. */
+export function SetupCommands({ info, className }: { info: IntegrationInfo; className?: string }) {
+  const commands = setupCommands(info);
+  if (!commands.length) return null;
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      {commands.map((c) => (
+        <div key={c.label} className="flex min-w-0 items-center gap-2">
+          <span className="w-12 shrink-0 text-[11.5px] text-muted-foreground">{c.label}</span>
+          <CopyCommand command={c.command} runnable className="max-w-md min-w-0 flex-1" />
+        </div>
+      ))}
     </div>
   );
 }

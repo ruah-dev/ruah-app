@@ -16,11 +16,15 @@ import { PageHeader } from "@/components/shell/AppShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CopyCommand,
+  PROVIDER_SETUP_LABEL,
   Pill,
   ProviderMark,
   RemoteNotice,
+  SetupCommands,
   integrationGhost,
   integrationStatus,
+  providerSetupState,
+  setupCommands,
   quietButton,
   solidButton,
 } from "./common";
@@ -50,6 +54,11 @@ const FAMILIES: { id: IntegrationInfo["family"]; title: string; description: str
 const PLACEHOLDER: IntegrationInfo[] = [
   { id: "digitalocean", family: "cloud", name: "DigitalOcean", status: "not_connected" },
   { id: "aws", family: "cloud", name: "AWS", status: "not_connected" },
+  { id: "gcp", family: "cloud", name: "Google Cloud", status: "not_connected" },
+  { id: "azure", family: "cloud", name: "Azure", status: "not_connected" },
+  { id: "cloudflare", family: "cloud", name: "Cloudflare", status: "not_connected" },
+  { id: "railway", family: "cloud", name: "Railway", status: "not_connected" },
+  { id: "fly", family: "cloud", name: "Fly.io", status: "not_connected" },
   { id: "jira", family: "work", name: "Jira", status: "not_connected" },
   { id: "github", family: "work", name: "GitHub", status: "not_connected" },
   { id: "ruah", family: "orchestration", name: "ruah", status: "not_connected" },
@@ -60,6 +69,11 @@ const ACCOUNT_NOUN: Record<string, string> = {
   digitalocean: "Context",
   jira: "Site",
   github: "Account",
+  gcp: "Project",
+  azure: "Subscription",
+  cloudflare: "Account",
+  railway: "Workspace",
+  fly: "Org",
 };
 
 function currentAccount(info: IntegrationInfo): string | undefined {
@@ -75,7 +89,9 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
   const [error, setError] = useState<string | null>(null);
   const [jiraOpen, setJiraOpen] = useState(false);
   const [account, setAccount] = useState<string | undefined>(() => currentAccount(info));
-  const st = integrationStatus(info.status);
+  // §10 providers report install + login commands, so their pill can say which one is missing.
+  const hasSetup = !!info.installCommand || !!info.loginCommand;
+  const st = hasSetup ? PROVIDER_SETUP_LABEL[providerSetupState(info)] : integrationStatus(info.status);
   const connected = info.status === "connected";
   const isJira = info.id === "jira";
   const isRuah = info.id === "ruah";
@@ -95,7 +111,8 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
   };
 
   const showCommand =
-    !placeholder && !connected && !!info.setupHint && !isJira && info.status !== "error";
+    !placeholder && !connected && !!info.setupHint && !isJira && info.status !== "error" && !hasSetup;
+  const showSetup = !placeholder && hasSetup && setupCommands(info).length > 0;
 
   return (
     <div className="py-3.5">
@@ -199,10 +216,20 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
                 ? "Initialise ruah in this repository:"
                 : "Log in with the provider's CLI in a terminal, then connect:"}
           </p>
-          <CopyCommand command={info.setupHint!} className="max-w-md" />
+          <CopyCommand command={info.setupHint!} runnable className="max-w-md" />
         </div>
       ) : null}
-      {error ? <p className="mt-2 ms-11 text-[12.5px] text-bad">{error}</p> : null}
+      {showSetup ? (
+        <div className="mt-2.5 ms-11 space-y-1.5">
+          <p className="text-[12px] text-muted-foreground">
+            {info.status === "cli_missing"
+              ? "Install the CLI and log in, then check again:"
+              : "Log in with the provider's CLI, then check again:"}
+          </p>
+          <SetupCommands info={info} />
+        </div>
+      ) : null}
+      {error ?<p className="mt-2 ms-11 text-[12.5px] text-bad">{error}</p> : null}
 
       {isJira ? (
         <JiraConnectDialog

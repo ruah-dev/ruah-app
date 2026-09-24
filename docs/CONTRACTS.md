@@ -855,3 +855,138 @@ reads are held back until complete), so JSON strings carry it losslessly.
 `window.ruah.openExternal(url)` opens an `http:`/`https:` URL in the default browser
 (`shell.openExternal`; anything else is refused in the main process). Terminal links use
 it; a plain browser uses `window.open(url, "_blank", "noopener")`.
+
+---
+
+## 10. Cloud providers batch B: GCP, Azure, Cloudflare, Railway, Fly.io (2026-09-24)
+
+Five more **cloud** integrations (§6), each a read-only adapter over the provider's own
+CLI and its own login. Ruah never runs a login, never stores a credential, never calls a
+mutating subcommand, and never copies secrets (env vars, connection strings, admin logins,
+keys) into a `CloudResource`. Adapters live in `src/integrations/cloud/<id>.ts` on a
+shared base (`cloud/cli-kit.ts`) and are standalone library modules: they need only an
+injectable `Runner` (exec.ts: `execFile` with an args array, 20 s timeout, redacted errors)
+and the `SettingsStore` — no daemon, SessionHub or open project. They are registered only
+through `registry.ts` (`cloudBatchB(deps)` / `registerCloudBatchB(registry, deps)`).
+
+### 10.1 Providers
+
+| id | name | CLI (tried in order) | install (Homebrew) | login | accounts |
+| --- | --- | --- | --- | --- | --- |
+| `gcp` | Google Cloud | `gcloud` | `brew install --cask gcloud-cli` | `gcloud auth login` | `"<configuration>/<project>"` per gcloud configuration with a project, plus `"<project>"` for other projects the login sees (`gcloud projects list`, ≤ 50) |
+| `azure` | Azure | `az` | `brew install azure-cli` | `az login` | subscription ids (`az account list`, local); the default one is used when none is picked |
+| `cloudflare` | Cloudflare | `wrangler` | `brew install cloudflare-wrangler` | `wrangler login` | account ids from `wrangler whoami`; passed as `CLOUDFLARE_ACCOUNT_ID` |
+| `railway` | Railway | `railway` | `brew install railway` | `railway login` | workspace ids (`"personal"` for projects without one); none picked = all |
+| `fly` | Fly.io | `flyctl`, `fly` | `brew install flyctl` | `fly auth login` | org slugs (`orgs list --json`); none picked = all orgs |
+
+### 10.2 Read commands and mapping
+
+gcloud calls always carry `--format=json --quiet` (+ `--project`, `--configuration`), az
+calls `-o json --only-show-errors` (+ `--subscription`), wrangler runs from a neutral cwd.
+
+| provider | command (all read-only) | → `type` / `service` | status |
+| --- | --- | --- | --- |
+| gcp | `run services list` | `container` / `cloud-run` | `ready` (latest created revision is the ready one), `deploying · <revision>`, `failed`; `url` = service URL |
+| gcp | `container clusters list` | `kubernetes` / `gke`, `gke-autopilot` | `running · 3 nodes` |
+| gcp | `sql instances list` | `database` / `cloud-sql/<engine>` | `running`, `stopped` (RUNNABLE + activation NEVER), else lower-cased state |
+| gcp | `functions list` (gen 1 + 2) | `function` / `cloud-functions[/gen2]` | lower-cased state; `url` = trigger / service URI |
+| gcp | `pubsub topics list` | `queue` / `pubsub` | — |
+| gcp | `storage buckets list` | `storage` / `gcs` | — (region = location, lower-cased) |
+| azure | `group list` | `other` / `resource-group` | provisioning state |
+| azure | `webapp list`, `functionapp list` | `app` / `app-service`, `function` / `functionapp` | `running`, `stopped`; `url` = custom hostname, else `*.azurewebsites.net` |
+| azure | `containerapp list` | `container` / `container-app` | running status; `url` = ingress FQDN |
+| azure | `aks list` | `kubernetes` / `aks` | `running · 5 nodes` (power state + summed pool counts) |
+| azure | `sql server list`, `postgres flexible-server list` | `database` / `azure-sql`, `postgres-flexible` | lower-cased state |
+| azure | `storage account list` | `storage` / `storage-account` | `available` / provisioning state |
+| cloudflare | `d1 list --json` | `database` / `d1` | — |
+| cloudflare | `kv namespace list` (JSON) | `storage` / `kv` | — |
+| cloudflare | `r2 bucket list` (text) | `storage` / `r2` | — |
+| cloudflare | `queues list` (table) | `queue` / `queues` | `active` / `no consumers` |
+| cloudflare | `pages project list --json` + `pages deployment list --project-name <p> --json` (≤ 20) | `app` / `pages` | latest production deployment: `deployed`, `deploying`, `failed`, `canceled`; `url` = custom domain, else `*.pages.dev` |
+| cloudflare | Workers from the project's `wrangler.toml` / `wrangler.json(c)` (root + 3 levels, ≤ 20 files) + `deployments list --name <w> --json` | `function` / `workers` | `deployed`; tags `routes`, `environment`, `deployed-at`; `url` from the first concrete route; undeployed Workers are skipped |
+| railway | `list --json` | `app` / `railway/service`; `database`/`cache` / `railway/<engine>` for DB images or names; legacy plugins | tags `project`, `environments` |
+| railway | `status --json` (cwd = the open project, only if it is `railway link`ed) | one resource per service × environment | latest deployment status lower-cased (`success`, `crashed`, `building`, …); `url` = custom, else service domain; tags `project`, `environment` |
+| fly | `apps list --json [--org]` + per app (≤ 50) `machines list --app <a> --json`, `volumes list --app <a> --json`; `postgres list --json` | `app` / `fly/app`, `database` / `fly/postgres` | `deployed · 2/3 machines started · fra, iad` (machines summarized: started / total, regions by count); `url` = `https://<hostname>` |
+| fly | volumes | `storage` / `fly/volume` | `created · 10 GB`; tag `app` |
+| fly | `mpg list --json` (newer flyctl; unknown command ignored) | `database` / `fly/managed-postgres` | status |
+
+Ids are provider-native where one exists (GCP full resource names `//run.googleapis.com/projects/…`,
+Azure ARM ids) and namespaced otherwise (`cf:d1:<uuid>`, `railway:service:<svc>:<env>`,
+`fly:app:<name>`). Labels / tags become `tags`, so `ruah-node=<id>` links as in §6 (GCP
+label keys cannot contain `:`; use `ruah-node` / `ruah_node`). "API not enabled" (GCP),
+"subscription not registered" (Azure) and an unknown `mpg` command are empty listings, not
+errors. A missing `az containerapp` extension is a per-service error naming
+`az extension add --name containerapp`.
+
+### 10.3 Contract additions (all optional, additive)
+
+```ts
+export interface IntegrationInfo {
+  // … §6.1
+  installCommand?: string;   // exact Homebrew install command of the provider CLI
+  loginCommand?: string;     // exact login command
+}
+export interface CloudResource {
+  // … §6.1
+  url?: string;              // public URL the resource serves (Cloud Run, Pages, Fly app, …)
+}
+// registry.ts: CloudIntegration.sync(options: { account?: string; project?: ProjectContext | null })
+// `project` lets a provider read repo config (Cloudflare Workers, Railway link); the
+// daemon passes the open project, a CLI caller may pass its cwd or nothing.
+```
+
+### 10.4 States (not installed / not logged in) and quietness
+
+| situation | `status` | `detail` | `setupHint` |
+| --- | --- | --- | --- |
+| CLI not on PATH (+ Homebrew dirs) | `cli_missing` | `<cli> is not installed` | `<install> && <login>` |
+| installed, no login | `not_connected` | `not logged in to <cli> — <reason>` | `<login>` |
+| logged in, nothing usable (gcloud without a project) | `not_connected` | `no Google Cloud project selected` | `gcloud config set project PROJECT_ID` |
+| disconnected in Ruah | `not_connected` | `disconnected in Ruah (<cli> login unchanged)` | `Connect to use your <cli> login` |
+| connected | `connected` | `<who> · <account noun> <account>` | — |
+
+`installCommand` and `loginCommand` are always set for these providers. Nothing is
+mandatory and nothing polls: an adapter spawns its CLI only from `info()` (GET
+`/api/integrations`), `connect()` and `sync()`. `enabled()` is false while the CLI is
+missing, while Ruah has it disconnected, and once a login check failed (until `info()`
+sees a login again), so a "sync all" (`POST /api/cloud/sync` without `providers`) never
+spawns an unusable CLI and never reports it as an error. A disconnected provider makes no
+CLI call at all, even in `info()`. When every listing of a sync fails with an auth error,
+the sync reports one `credentials expired or missing — run: <login>` instead of one error
+per service.
+
+The viewer shows these states as **Connected / Not logged in / Not installed /
+Disconnected** with the install and login commands, each copyable and — when the app's
+integrated terminal (§7) is available — "Run in terminal" (a new tab with the command
+typed, not executed). The Cloud page shows a "Connect a provider" list of every cloud
+provider while none is connected.
+
+### 10.5 Live health (for later wiring)
+
+Each adapter exports a pure `healthOf(nativeState)` →
+`"healthy" | "degraded" | "down" | "deploying" | "unknown"` (`HealthState` in
+`cli-kit.ts`). It accepts the provider's native enum values (`RUNNABLE`, `Running`,
+`SUCCESS`, `started`, …) and the adapter's own `status` strings (the part before ` · `).
+Fly's takes a second argument `"app" | "machine" | "volume"` because `created` is a
+volume's normal state but a machine that has not started. The adapters do not set any
+live-health field on `CloudResource` yet; `status` carries the state.
+
+### 10.6 Known gaps
+
+- **Wrangler** cannot list an account's Workers, so only Workers declared in the open
+  project's wrangler config are shown (none when syncing without a project). `r2 bucket
+  list`, `queues list` and `whoami` have no JSON output and are parsed from text; `pages
+  … list` use `--json` and fall back to the table on an older wrangler. The Pages
+  deployment "Status" column is a relative time or a stage word, mapped heuristically.
+- **Railway**: deployment status and domains need the open project folder to be
+  `railway link`ed (`status --json`); other projects show services without status.
+  `list --json` / `status --json` shapes differ across CLI versions; both GraphQL-edge
+  and plain-array shapes are accepted.
+- **Fly.io**: machines and volumes are read per app (≤ 50 apps, 4 at a time); a larger
+  org gets a note in `errors`. JSON key casing varies by flyctl version (`Name` / `name`);
+  both are read.
+- **Azure**: `containerapp` needs the extension on older `az`; SQL databases inside a
+  server and MySQL flexible servers are not listed.
+- **GCP**: Cloud Run jobs, App Engine and Compute Engine VMs are not listed.
+- `/api/integrations` is cached for 15 s (§6), so "Check again" right after a login can
+  show the previous state for a few seconds.

@@ -124,6 +124,16 @@ export function CloudResourceDetails({ node }: { node: DiagramNode }) {
         "—"
       ),
     ],
+    ...(r.url
+      ? ([
+          [
+            "URL",
+            <a href={r.url} target="_blank" rel="noreferrer" className="text-foreground/90 underline-offset-2 hover:underline" title={r.url}>
+              {r.url.replace(/^https?:\/\//, "")}
+            </a>,
+          ],
+        ] as [string, ReactNode][])
+      : []),
     ["ID", <CopyId id={r.id} />],
   ];
 

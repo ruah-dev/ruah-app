@@ -378,6 +378,10 @@ export interface IntegrationInfo {
   detail?: string; // e.g. "doctl context: default", "AWS CLI not installed"
   setupHint?: string; // what the user runs / enters to connect
   accounts?: { id: string; label: string }[]; // aws profiles, doctl contexts, jira sites
+  /** §10: exact Homebrew install command of the provider CLI (gcp, azure, cloudflare, railway, fly). */
+  installCommand?: string;
+  /** §10: exact CLI login command ("gcloud auth login", "az login", …). */
+  loginCommand?: string;
 }
 
 export type CloudResourceType =
@@ -406,6 +410,7 @@ export interface CloudResource {
   status?: string;
   tags?: Record<string, string>;
   consoleUrl?: string;
+  url?: string; // §10: public URL the resource serves (Cloud Run, Pages, Fly app, …)
   linkedNodeId?: string; // architecture element it runs (tag ruah:node, name match, or manual)
   /** Viewer extension (optional, not in §6.1 yet): how linkedNodeId was set. Absent = automatic. */
   linkSource?: "tag" | "name" | "manual";
