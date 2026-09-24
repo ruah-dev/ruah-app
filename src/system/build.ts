@@ -266,6 +266,7 @@ export function buildSystemArchitecture(system: LoadedSystem | string, opts: Bui
         ...(n.layer !== undefined ? { layer: n.layer } : {}),
         parent: n.parent !== undefined ? ns(n.parent) : repo.id,
         repo: repo.id,
+        ...(n.infra !== undefined ? { infra: { ...n.infra, ...(n.infra.source !== undefined ? { source: n.infra.source.map(sp) } : {}) } } : {}),
         ...(n.x !== undefined && n.y !== undefined ? { x: n.x, y: n.y } : {}),
       };
       childNodes.push(child);
@@ -277,6 +278,7 @@ export function buildSystemArchitecture(system: LoadedSystem | string, opts: Bui
         ...(e.label !== undefined ? { label: e.label } : {}),
         ...(e.kind !== undefined ? { kind: e.kind } : {}),
         source: "scan",
+        ...(e.evidence !== undefined && e.evidence.length > 0 ? { evidence: e.evidence.map(sp) } : {}),
       });
     }
     for (const w of arch.workflows) {
@@ -285,6 +287,7 @@ export function buildSystemArchitecture(system: LoadedSystem | string, opts: Bui
         name: w.name,
         ...(w.description !== undefined ? { description: w.description } : {}),
         steps: w.steps.map(ns),
+        ...(w.source !== undefined ? { source: w.source } : {}),
       });
     }
 

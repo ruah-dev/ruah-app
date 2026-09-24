@@ -1,0 +1,11 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+
+- name: Site config
+  ansible.builtin.template:
+    src: api.conf.j2
+    dest: /etc/nginx/conf.d/api.conf
+  notify: reload nginx

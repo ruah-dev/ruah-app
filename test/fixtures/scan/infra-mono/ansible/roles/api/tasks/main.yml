@@ -1,0 +1,8 @@
+---
+- name: Run the API container
+  community.docker.docker_container:
+    name: api
+    image: ghcr.io/acme/api:1.4.0
+    restart_policy: always
+    published_ports:
+      - "127.0.0.1:8080:8080"

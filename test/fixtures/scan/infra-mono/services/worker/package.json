@@ -1,0 +1,12 @@
+{
+  "name": "@acme/worker",
+  "version": "1.4.0",
+  "type": "module",
+  "description": "Background jobs: invoice PDFs, exports to S3, nightly cleanup.",
+  "main": "dist/main.js",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "bullmq": "^5.8.0",
+    "pg": "^8.12.0"
+  }
+}

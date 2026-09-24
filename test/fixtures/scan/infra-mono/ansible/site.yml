@@ -1,0 +1,20 @@
+---
+# Edge VMs in front of the cluster, and the reporting database host.
+- name: Edge proxies
+  hosts: web
+  become: true
+  roles:
+    - nginx
+    - role: api
+      tags: [app]
+
+- name: Reporting database
+  hosts: db
+  become: yes
+  roles:
+    - postgres
+  tasks:
+    - name: Ship the backup config
+      ansible.builtin.template:
+        src: backup.conf.j2
+        dest: /etc/acme/backup.conf

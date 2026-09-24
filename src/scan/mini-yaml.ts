@@ -1,6 +1,7 @@
 // Tiny YAML subset reader for the scanner (no dependency, by design).
 //
-// Enough for pnpm-workspace.yaml and docker-compose files: block mappings,
+// Enough for pnpm-workspace.yaml, docker-compose, Kubernetes / Kustomize /
+// Helm values, Ansible and CI files: block mappings,
 // block sequences (including "- key: value" items), flow sequences/maps on one
 // line, quoted and plain scalars, comments, and block scalars (| and >), whose
 // text is kept verbatim. Anchors are stripped; aliases and merge keys are kept
@@ -185,4 +186,55 @@ export function yamlStrings(v: YamlValue | undefined): string[] {
 export function yamlKeys(v: YamlValue | undefined): string[] {
   if (v === null || v === undefined || typeof v === "string" || Array.isArray(v)) return [];
   return Object.keys(v);
+}
+
+/** Nested lookup: yamlPath(v, "spec", "template", "spec"). */
+export function yamlPath(v: YamlValue | undefined, ...keys: string[]): YamlValue | undefined {
+  let cur = v;
+  for (const k of keys) cur = yamlGet(cur, k);
+  return cur;
+}
+
+/** A scalar as a string (numbers and booleans are plain strings in this subset). */
+export function yamlString(v: YamlValue | undefined): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
+export function yamlList(v: YamlValue | undefined): YamlValue[] {
+  return Array.isArray(v) ? v : [];
+}
+
+export interface YamlDocument {
+  text: string; // the document's lines (separator excluded), joined with "\n"
+  start: number; // 0-based line index of the document's first line in the source
+  end: number; // 0-based line index of its last line (inclusive)
+}
+
+// Splits a multi-document stream (Kubernetes manifests, Helm templates) on
+// `---` / `...` separator lines. Documents holding only blanks and comments are
+// dropped. Line indices refer to the original source, so callers can report
+// `path:line` evidence without a position-aware parser.
+export function splitYamlDocuments(src: string): YamlDocument[] {
+  const lines = src.split(/\r?\n/);
+  const docs: YamlDocument[] = [];
+  let start = 0;
+  const flush = (end: number): void => {
+    if (end < start) return;
+    const body = lines.slice(start, end + 1);
+    if (body.some((l) => l.trim() !== "" && !l.trimStart().startsWith("#"))) docs.push({ text: body.join("\n"), start, end });
+  };
+  for (let i = 0; i < lines.length; i++) {
+    if (/^(---|\.\.\.)(\s|$)/.test(lines[i] ?? "")) {
+      flush(i - 1);
+      start = i + 1;
+    }
+  }
+  flush(lines.length - 1);
+  return docs;
+}
+
+/** First 0-based line index in [start, end] matching `re`, or undefined. */
+export function findLine(lines: readonly string[], re: RegExp, start = 0, end = lines.length - 1): number | undefined {
+  for (let i = Math.max(0, start); i <= Math.min(end, lines.length - 1); i++) if (re.test(lines[i] ?? "")) return i;
+  return undefined;
 }

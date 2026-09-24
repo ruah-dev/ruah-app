@@ -158,8 +158,11 @@ describe("buildSystemArchitecture: fixture polyrepo", () => {
     expect(node(arch, "invoices-api:acme-invoices-api")).toMatchObject({ repo: "invoices-api", path: "invoices-api/src" });
     expect(node(arch, "invoices-api:acme-invoices-api").files?.every((f) => f.startsWith("invoices-api/"))).toBe(true);
     expect(arch.nodes.filter((n) => n.parent === "infra").map((n) => n.id).sort()).toEqual([
-      "infra:db", "infra:infra", "infra:invoices-api", "infra:kafka", "infra:notify-worker", "infra:web",
+      "infra:db", "infra:infra", "infra:invoices-api", "infra:k8s-default", "infra:kafka", "infra:notify-worker", "infra:tf-aws", "infra:web",
     ]);
+    // IaC groups (§11) inside the infra repo: the k8s Deployment and the ECS task run the repo's services.
+    expect(node(arch, "infra:k8s-default.notify-worker")).toMatchObject({ type: "container", parent: "infra:k8s-default", path: "infra/k8s/notify-worker.yaml" });
+    expect(edge(arch, "infra:k8s-default.notify-worker", "infra:notify-worker", "runs").evidence).toEqual(["infra/k8s/notify-worker.yaml:2"]);
     for (const n of arch.nodes) if (n.parent !== undefined) expect(n.id.startsWith(`${n.repo}:`), n.id).toBe(true);
     expect(edge(arch, "invoices-api:acme-invoices-api", "invoices-api:postgres", "sql").source).toBe("scan");
   });

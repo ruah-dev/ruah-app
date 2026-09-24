@@ -1,0 +1,54 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/acme
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the API
+        uses: docker/build-push-action@v6
+        with:
+          context: services/api
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/api:${{ github.sha }}
+      - name: Build and push the worker
+        run: |
+          docker build -t $IMAGE_PREFIX/worker:${{ github.sha }} -f services/worker/Dockerfile services/worker
+          docker push $IMAGE_PREFIX/worker:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: API (Helm)
+        run: helm upgrade --install api deploy/charts/api -n prod -f deploy/charts/api/values-prod.yaml --set image.tag=${{ github.sha }}
+      - name: Worker (Kustomize)
+        run: kubectl apply -k deploy/k8s/overlays/prod
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform -chdir=infra/terraform apply -auto-approve
+      - name: Edge VMs
+        run: ansible-playbook -i ansible/inventory/hosts.ini ansible/site.yml

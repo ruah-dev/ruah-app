@@ -1,0 +1,8 @@
+{
+  "name": "acme-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build"
+  }
+}
