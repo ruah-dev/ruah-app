@@ -240,6 +240,23 @@ describe("evaluateScope", () => {
     expect(s.get("vercel:project:2")?.in).toBe(false);
   });
 
+  test("bucket and CDN endpoints the repo mentions → likely (Spaces, S3, Supabase refs)", () => {
+    const repo = tempDir();
+    write(repo, ".env.example", "CDN=https://shop-assets.fra1.cdn.digitaloceanspaces.com\nBUCKET=https://acme-uploads.s3.eu-west-1.amazonaws.com\nSUPABASE_URL=https://abcdefghijklmnop.supabase.co\n");
+    const s = scopeOf([unit(repo)], [
+      res("do:space:fra1:shop-assets", "digitalocean", { name: "shop-assets", type: "storage", service: "spaces", region: "fra1" }),
+      res("do:cdn:1", "digitalocean", { name: "shop-assets.fra1.digitaloceanspaces.com", type: "cdn", service: "cdn" }),
+      res("arn:aws:s3:::acme-uploads", "aws", { name: "acme-uploads", type: "storage", service: "s3", region: "eu-west-1" }),
+      res("supabase:project:abcdefghijklmnop", "supabase", { name: "db", type: "database" }),
+      res("do:space:fra1:other", "digitalocean", { name: "other", type: "storage", service: "spaces", region: "fra1" }),
+    ]);
+    expect(s.get("do:space:fra1:shop-assets")).toMatchObject({ in: true, confidence: "likely" });
+    expect(s.get("do:cdn:1")).toMatchObject({ in: true, confidence: "likely" });
+    expect(s.get("arn:aws:s3:::acme-uploads")).toMatchObject({ in: true, confidence: "likely" });
+    expect(s.get("supabase:project:abcdefghijklmnop")).toMatchObject({ in: true, confidence: "likely" });
+    expect(s.get("do:space:fra1:other")?.in).toBe(false);
+  });
+
   test("weak name similarity is a suggestion (not in scope); generic names never suggest", () => {
     const repo = join(tempDir(), "liquidmoneystore");
     mkdirSync(repo);
@@ -249,6 +266,12 @@ describe("evaluateScope", () => {
       res("vercel:project:c", "vercel", { name: "web" }),
       res("vercel:project:d", "vercel", { name: "solid-money" }),
     ]);
+    const words = scopeOf([unit(repo, { config: { name: "liquid-money-store", accounts: [], include: [], exclude: [] } })], [
+      res("do:dbaas:x", "digitalocean", { name: "liquid-money-sibiu-postgres" }),
+      res("do:dbaas:y", "digitalocean", { name: "solid-money-postgres" }),
+    ]);
+    expect(words.get("do:dbaas:x")).toEqual({ in: false, confidence: "weak", reasons: ["name shares liquid, money with liquid-money-store"] });
+    expect(words.get("do:dbaas:y")?.confidence).toBeUndefined();
     expect(s.get("vercel:project:a")).toEqual({ in: false, confidence: "weak", reasons: ["name looks like liquidmoneystore"] });
     expect(s.get("vercel:project:b")).toMatchObject({ in: false, confidence: "weak" });
     expect(s.get("vercel:project:c")).toEqual({ in: false, reasons: [] });

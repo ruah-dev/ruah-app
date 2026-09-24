@@ -400,7 +400,9 @@ async function statusCommand(registry: IntegrationRegistry, opts: Parsed, io: Io
   }
   if (scope !== undefined) io.out(scopeLine(snap, scope));
   io.out(`Cloud: ${formatSummary(summary)}\n`);
-  io.out(`${table(sel.providers.map((p) => {
+  // Scoped: providers holding none of the repo's resources are left out.
+  const shown = sel.providers.filter((p) => scope === undefined || snap.failed.includes(p.id) || snap.resources.some((r) => r.provider === p.id));
+  io.out(`${table(shown.map((p) => {
     const own = snap.resources.filter((r) => r.provider === p.id);
     return [`  ${p.name}`, snap.failed.includes(p.id) ? "could not be read" : own.length === 0 ? "no resources" : formatSummary(summarizeHealth(own))];
   }))}\n`);

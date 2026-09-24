@@ -76,12 +76,30 @@ function hostOf(url: string | undefined): string | undefined {
 
 const bareHost = (h: string): string => h.toLowerCase().replace(/^www\./, "");
 
-/** Host names a resource answers on: its URL, hosts, and (DNS zones) its own name. */
+/**
+ * Host names a resource answers on: its URL, its hosts, a host-like name (CDN origins), and the
+ * provider endpoints of buckets (a Space `b` in `fra1` is `b.fra1[.cdn].digitaloceanspaces.com`,
+ * an S3 bucket `b.s3[.<region>].amazonaws.com`, a Supabase project `<ref>.supabase.co`).
+ */
 export function resourceHosts(r: CloudResource): string[] {
   const out = new Set<string>();
   const u = hostOf(r.url);
   if (u !== undefined) out.add(u);
   for (const h of r.hosts ?? []) if (/[a-z]/i.test(h)) out.add(h.toLowerCase());
+  const name = r.name.toLowerCase();
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(name) && r.type !== "dns") out.add(name);
+  const cdn = /^([a-z0-9.-]+)\.([a-z]{3}\d)\.digitaloceanspaces\.com$/.exec(name);
+  if (cdn !== null) out.add(`${cdn[1]}.${cdn[2]}.cdn.digitaloceanspaces.com`);
+  if (r.provider === "digitalocean" && r.service === "spaces" && r.region !== undefined) {
+    out.add(`${name}.${r.region}.digitaloceanspaces.com`);
+    out.add(`${name}.${r.region}.cdn.digitaloceanspaces.com`);
+  }
+  if (r.provider === "aws" && r.service === "s3") {
+    out.add(`${name}.s3.amazonaws.com`);
+    if (r.region !== undefined) out.add(`${name}.s3.${r.region}.amazonaws.com`);
+  }
+  const ref = /^supabase:project:([a-z0-9]+)$/.exec(r.id);
+  if (ref !== null) out.add(`${ref[1]}.supabase.co`);
   return [...out];
 }
 
@@ -116,6 +134,7 @@ function meaningful(name: string): boolean {
 interface UnitContext {
   unit: ScopeUnit;
   names: string[]; // squashed, meaningful
+  rawNames: string[]; // as written, meaningful
   projectIds: Set<string>;
   hosts: Map<string, string>; // bare host → where it was seen
   nodes: readonly ArchNode[];
@@ -133,7 +152,8 @@ function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 function unitContext(unit: ScopeUnit, allNodes: readonly ArchNode[], projectIds: readonly string[], multi: boolean): UnitContext {
   // In a system, a unit owns the nodes of its repo; the system folder owns the rest.
   const nodes = multi ? allNodes.filter((n) => (unit.system === true ? n.repo === undefined : n.repo === unit.repo)) : allNodes;
-  const names = [...new Set([...unit.signals.names, ...(unit.config.name !== undefined ? [unit.config.name] : [])].filter(meaningful).map(squash))];
+  const rawNames = [...new Set([...unit.signals.names, ...(unit.config.name !== undefined ? [unit.config.name] : [])].filter(meaningful))];
+  const names = [...new Set(rawNames.map(squash))];
   const hosts = new Map<string, string>();
   for (const h of unit.signals.hosts) hosts.set(bareHost(h.host), h.file);
   const hintsExact = new Map<string, ArchNode[]>();
@@ -156,7 +176,7 @@ function unitContext(unit: ScopeUnit, allNodes: readonly ArchNode[], projectIds:
       if (ns !== undefined && ns !== "default" && ns !== "") namespaces.set(ns, where);
     }
   }
-  return { unit, names, projectIds: new Set(projectIds), hosts, nodes, hintsExact, hintsNorm, namespaces };
+  return { unit, names, rawNames, projectIds: new Set(projectIds), hosts, nodes, hintsExact, hintsNorm, namespaces };
 }
 
 function tagHits(r: CloudResource, ctx: UnitContext): Hit[] {
@@ -225,11 +245,22 @@ function hostHits(r: CloudResource, ctx: UnitContext): Hit[] {
   return [];
 }
 
+/** Name words that say something: "liquid-money-store" → liquid, money, store. */
+function words(name: string): string[] {
+  return name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !GENERIC_NAMES.has(w) && !/^\d+$/.test(w));
+}
+
 function nameHits(r: CloudResource, ctx: UnitContext): Hit[] {
   if (!meaningful(r.name)) return [];
   const rn = squash(r.name);
   for (const n of ctx.names) {
     if (rn === n || (n.length >= 5 && rn.includes(n)) || (rn.length >= 5 && n.includes(rn))) return [{ confidence: "weak", reason: `name looks like ${n}` }];
+  }
+  // "liquid-money-sibiu-postgres" ~ "liquid-money-store": two or more meaningful words in common.
+  const rw = new Set(words(r.name));
+  for (const raw of ctx.rawNames) {
+    const shared = words(raw).filter((w) => rw.has(w));
+    if (shared.length >= 2) return [{ confidence: "weak", reason: `name shares ${shared.join(", ")} with ${raw}` }];
   }
   return [];
 }
