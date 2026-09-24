@@ -15,15 +15,16 @@ export interface NodeVerifyState {
 export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] {
   const daemon = useDaemon();
   const [nodes, setNodes] = useState<Record<string, NodeVerifyState>>({});
+  const connected = daemon.source === "daemon" && daemon.connection === "open";
   const refresh = useCallback(() => {
-    if (!daemon.connected) return;
+    if (!connected) return;
     void fetch("/api/engines/verify/state")
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { nodes?: Record<string, NodeVerifyState> } | null) => {
         if (body?.nodes) setNodes(body.nodes);
       })
       .catch(() => {});
-  }, [daemon.connected]);
+  }, [connected]);
   useEffect(() => {
     refresh();
     const t = setInterval(refresh, 4000);
@@ -31,13 +32,13 @@ export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] 
   }, [refresh]);
   // Refresh when a turn finishes so badges update without waiting for the poll.
   useEffect(() => {
-    if (!daemon.connected) return;
+    if (!connected) return;
     const onFinished = (): void => {
       window.setTimeout(refresh, 800);
     };
     window.addEventListener("ruah:turn-finished", onFinished);
     return () => window.removeEventListener("ruah:turn-finished", onFinished);
-  }, [daemon.connected, refresh]);
+  }, [connected, refresh]);
   return [nodes, refresh];
 }
 
