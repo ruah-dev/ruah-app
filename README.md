@@ -30,7 +30,12 @@ ruah app .                    # open it on the current repo
 ruah app scan <repo>          # write <repo>/architecture.json
 ruah app serve [<repo>]       # daemon + viewer in the browser (http://127.0.0.1:4177)
 ruah app export drawio <repo> --out map.drawio
-ruah app system init <dir> --repo web=../web --repo api=../api
+ruah app system init <dir> --repo ../web --repo api=../api   # multi-repo system
+ruah app system add gh:owner/name      # clone with gh, add to the system (cwd or --system)
+ruah app system status [--json]        # branch, ahead/behind, dirty, last scan per repo
+ruah app system signals [--json]       # deterministic cross-repo edges (zero tokens)
+ruah app system suggest                # agent proposes edges; --accept/--reject <n|id>
+ruah app system remove|rename|rescan <id> …
 ruah app help
 ```
 

@@ -53,8 +53,48 @@ including accepted suggested edges and hand edits). Each repo keeps its own
 - ACP provider: cwd only (no additional directories in ACP 1.4) — document
   the limitation, fall back to cwd = system folder.
 
-## UI
-- Project switcher shows the system; "+ Add repo" opens a folder picker
-  (Electron) and appends to `ruah.system.json`, then scans that repo.
-- "Suggest connections" lists proposed edges with evidence (file:line) and
-  Accept / Reject.
+## UI (implemented 2026-09-24, CONTRACTS §12.9)
+- Start screen: **New system…** (pick the system folder, add repos from disk
+  or from GitHub, create and open).
+- Project menu of a repo: **Add another repo…** turns it into a system in a
+  folder you pick (the repo keeps its own map; an existing system in that
+  folder gets the repos added). Of a system: **Repos…** and **Suggest
+  connections…**.
+- Repos tab: id, path, branch, ahead/behind, changes, elements, last scan;
+  add (folder picker or GitHub), rename id, rescan, remove (files untouched).
+- Connections tab: the deterministic edges with evidence, then "Suggest
+  connections" on the current agent; proposals with confidence and clickable
+  `file:line` evidence; Accept → `source: "suggested"` edge, Reject → never
+  proposed again.
+- Nothing of this is required: single-repo projects look and work as before.
+
+## Managing systems (2026-09-24, CONTRACTS §12)
+The logic lives in `src/system/*` as a library without daemon dependency;
+the CLI and the daemon both call it, so everything works without the app:
+
+```sh
+ruah app system init ../platform --repo ../billing --repo ../web --name acme
+ruah app system add gh:acme/invoices --system ../platform   # gh repo clone, then add
+ruah app system status ../platform                          # branch, ↑↓, dirty, last scan, nodes
+ruah app system signals ../platform                         # deterministic edges, zero tokens
+ruah app system suggest ../platform                         # Claude, read-only → pending proposals
+ruah app system suggest ../platform --accept 1 --reject 2
+ruah app system rename web frontend --system ../platform
+ruah app system remove invoices --system ../platform        # files untouched
+```
+
+Decisions:
+- **Rename is allowed** and rewrites every stored reference (system file, map
+  ids / paths / evidence, suggestions, work-item links, chats, cloud links);
+  an id that is already an element of the map is refused. See §12.4.
+- **Suggest connections in the app runs on the current agent as a normal
+  turn** (visible in the chat, counted in usage, cancellable); the CLI takes a
+  pluggable agent (`--agent claude`, or `--print-prompt` / `--reply-file` for
+  any other).
+- Review state (`.ruah/suggestions.json`) sits next to `ruah.system.json`
+  and is meant to be committed with it; per-build facts go to
+  `.ruah/system-scan.json`.
+- A rescan of one repo refreshes that repo's own `architecture.json` only
+  when it already has one; otherwise nothing is written into the repo.
+- Repos added while an agent session is live reach Claude's additional
+  directories on its next session.
