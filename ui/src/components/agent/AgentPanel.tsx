@@ -273,6 +273,9 @@ export function AgentPanel({
                 running={i === turns.length - 1 && !t.stopReason}
                 onOpenPath={onOpenPath}
                 keyboard={keyboard}
+                {...(daemon.project?.id && daemon.activeChatId
+                  ? { replay: { projectId: daemon.project.id, chatId: daemon.activeChatId } }
+                  : {})}
               />
             ))}
           </div>

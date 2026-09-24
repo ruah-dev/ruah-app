@@ -12,6 +12,7 @@ import { PermissionCard } from "./PermissionCard";
 import { RowDisclosure, ToolCallRow } from "./ToolCallRow";
 import { TurnAttachments } from "./Attachments";
 import { TurnMapChanges } from "./TurnMapChanges";
+import { ReplayButton } from "@/components/engines/ReplayButton";
 
 type Segment =
   | { k: "text"; text: string }
@@ -180,6 +181,7 @@ export function TurnView({
   running,
   onOpenPath,
   keyboard = true,
+  replay,
 }: {
   turn: Turn;
   /** null = asked without an element as context. */
@@ -188,6 +190,7 @@ export function TurnView({
   onOpenPath?: ((path: string) => void) | undefined;
   /** Whether this instance owns the permission-card keyboard shortcuts. */
   keyboard?: boolean;
+  replay?: { projectId: string; chatId: string };
 }) {
   const segs = segmentsOf(turn);
   const lastIndex = segs.length - 1;
@@ -316,6 +319,11 @@ export function TurnView({
             {stopLabel[turn.stopReason] ?? turn.stopReason}
             {turn.error ? ` · ${turn.error}` : ""}
           </p>
+        ) : null}
+        {replay && turn.stopReason ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <ReplayButton projectId={replay.projectId} chatId={replay.chatId} turnId={turn.id} />
+          </div>
         ) : null}
       </div>
       </div>

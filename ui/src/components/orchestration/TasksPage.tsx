@@ -48,6 +48,7 @@ import {
 } from "@/components/integrations/common";
 import type { StatusTone } from "@/lib/integrations";
 import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
+import { GuardCard } from "@/components/engines/GuardCard";
 import { cn } from "@/lib/utils";
 import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 
@@ -273,6 +274,7 @@ export function TasksPage() {
             {status.currentBranch ? ` · on ${status.currentBranch}` : ""}
           </span>
         ) : null}
+        <GuardCard compact />
         <button
           type="button"
           className={quietButton}
