@@ -1680,3 +1680,147 @@ ruah app activity [--since <duration|ISO>] [--project <repo-or-id>] [--json] [--
   600 ms; otherwise they are omitted (and the text output says so).
   `--offline` never asks. Exit codes: 0 ok, 1 unknown project / folder, 2 bad
   arguments.
+
+## 14. Per-project cloud scope (2026-09-25)
+
+Cloud resources belong to a project. Before this, the Cloud page and `ruah app cloud` listed
+everything the connected accounts could see, so a freelancer opening one client's repo saw
+every other client's Vercel projects. Now every resource carries a **scope** — whether it is
+this project's and why — decided deterministically (no AI, no tokens) from the repo, and the
+project's accounts are the only ones synced for it. Code: `src/integrations/scope/` (a
+standalone library: no daemon, no network, bounded file reads), used by the daemon
+(`IntegrationsService`), the Cloud page (through it), `ruah app cloud` and the draw.io export.
+
+### 14.1 `<repo>/.ruah/cloud.json` (committable, no secrets)
+
+```ts
+interface ScopeFile {
+  version: 1;
+  name?: string;                   // project name matched against project= tags (default: the repo's names, §14.2)
+  accounts?: {                     // the provider accounts this project lives in
+    provider: string;              // a cloud provider id (§9.1, §10.1)
+    account?: string;              // IntegrationInfo.accounts[].id: team slug, doctl / kube / hcloud context,
+                                   // AWS profile, GCP project, Azure subscription, Cloudflare account,
+                                   // Railway workspace, Fly org, Supabase org, Netlify team; absent = the selected one
+    whole?: boolean;               // true: everything in the account is this project's
+  }[];
+  include?: (string | { id: string; provider?: string; name?: string })[]; // added by hand (resource ids)
+  exclude?: (string | { id: string; provider?: string; name?: string })[]; // removed by hand (wins over everything)
+}
+```
+
+- zod-validated (`ScopeFileSchema`, `src/contracts/integrations.ts`). Written pretty (2 spaces,
+  trailing newline) with stable ordering: accounts by provider + account, refs by provider,
+  name, id; duplicates merged; an id in both lists stays excluded only; empty lists omitted;
+  an untouched project gets no file. A ref's `name` is informational (readable diffs).
+- Written **only** by an explicit user action (the POSTs below, `ruah app cloud scope add|
+  remove|reset|accounts add|remove`) and only when the content changes. Reads, syncs, the watch
+  loop and the CLI's list / status / watch / scope never write it.
+- An invalid file (not JSON, schema error, > 1 MiB) is reported (`scope.files[].error`, a warning
+  on the Cloud page, the CLI's `scope` output), treated as empty, and never overwritten: edits
+  answer 409 (`ruah app cloud scope …` exits 1) until the user fixes or deletes it.
+- Multi-repo systems (§12): each repo's own file plus the system folder's file. The scope is the
+  union of the repos' scopes (reasons prefixed `<repoId>: `); the system folder's `exclude` wins
+  over every repo; edits from the app go to the system folder's file; `accounts` are the union.
+
+### 14.2 Evidence (deterministic)
+
+Each match gives a reason (shown on the row) and a confidence:
+
+| Confidence | Evidence |
+| --- | --- |
+| manual | `include` ("added by you"); an account with `whole: true` ("in account X"); `exclude` ("removed by you", beats everything) |
+| proof | link files: `.do/*.yaml` App Platform spec (`name` → the App; `databases[].cluster_name` → the managed database; `domains[].zone` → the DNS domain), `supabase/config.toml` `project_id` and `supabase/.temp/project-ref`, `fly.toml` `app`, `.vercel/project.json` `projectId` (+ `projectName`) and `.vercel/repo.json` projects, `wrangler.toml\|json\|jsonc` (Worker / Pages names incl. `[env.*]`, D1 ids, KV ids, R2 buckets), `.netlify/state.json` `siteId`, `.firebaserc` projects (GCP resources in them), `serverless.yml` `service` (functions and stacks `<service>-*`), `samconfig.toml` `stack_name` (`aws:cloudformation:stack-name` tag); the Railway project the folder is `railway link`ed to (the adapter tags its services `railway-link`) |
+| proof | infrastructure as code (§11): an exact `infra.hints` match (meaningful name) on a node whose Terraform type belongs to the resource's provider (`aws_*` → aws, `digitalocean_*` → digitalocean, …), or a Kubernetes `namespace/name` hint; a Kubernetes namespace the repo's manifests declare (not `default`) |
+| proof | tags / labels on digitalocean, aws, gcp, azure, hetzner, kubernetes: `ruah-project` / `ruah:project` = a project name or its Ruah project id; `project` / `Project` / `app.kubernetes.io/part-of` = a project name (case and separators ignored; DigitalOcean string tags `project:<name>` too); `ruah:node` tags and manual element links (§6) |
+| likely | host names the repo mentions — `.env.example` / `.env.sample` / `.env.template` / `*.example` env files, compose files, `netlify.toml`, `vercel.json` aliases, `CNAME`, `package.json` `homepage`, the App Platform spec, wrangler routes, IaC `settings.hosts` — equal to a resource's URL host / hosts, a CDN origin or bucket endpoint (`<bucket>.<region>[.cdn].digitaloceanspaces.com`, `<bucket>.s3[.<region>].amazonaws.com`, `<ref>.supabase.co`), or under a DNS zone resource; a generic workload name in the repo's manifests / IaC; a normalized IaC name; `supabase/config.toml` `project_id` equal to a project's name; a SAM stack prefix; a bare DigitalOcean tag equal to a project name |
+| weak | the name looks like the project's — equal or containing after dropping case and separators (`liquid-money-store` ~ `liquidmoneystore`), or sharing two meaningful words — against the repo folder, root `package.json` name, git `origin` repo name, the names its link files deploy under, the scope file `name` (and a system's name / repo ids); generic words (`api`, `web`, `admin`, …) never count; a name match to a plain code element (§6 linking) is weak too |
+
+- **In scope = manual include + whole account + proof + likely − exclude.** Weak matches are
+  **suggestions** ("Looks related"), never in scope on their own.
+- Children follow their parent's strongest in-scope evidence ("part of <name>"): Vercel
+  deployments → their project, Supabase functions / branches → their project, Fly volumes →
+  their app. An excluded parent passes nothing on.
+- Decisions: a name link to a code element (`api` ↔ `api`) and `project=` values on Vercel /
+  Supabase / Railway / Fly / Netlify / Cloudflare (provider-internal parents, not user labels)
+  are not proof — every client has an `api`. Link-file domains are proof for their own
+  provider's DNS resource only; for everything else they are hosts (likely).
+- Never read: `.env` and every other real env file, Terraform state / `*.tfvars`, anything
+  under `.git` except `config` (the `origin` repo name; a worktree's `.git` file is followed to
+  its common dir). Secret-typed App Platform env values are skipped. Bounds: directories ≤ 3
+  levels deep (dependency / build output and dot-folders skipped; `.do`, `.vercel`, `.netlify`,
+  `supabase/.temp` are read directly), ≤ 1,500 directories, ≤ 150 files, ≤ 256 KiB each, ≤ 500
+  hosts. The daemon caches a repo's signals for 15 s.
+
+### 14.3 Contract additions (all optional, additive)
+
+```ts
+interface CloudResource {           // §6.1 / §9.2 fields unchanged
+  account?: string;                 // the account it was synced from, when a sync named one
+  scope?: {                         // set on every read for an open project; never stored in the cache
+    in: boolean;
+    confidence?: "manual" | "proof" | "likely" | "weak"; // strongest evidence; absent = none
+    reasons: string[];              // ≤ 6, strongest first; in a system prefixed "<repoId>: "
+    excluded?: boolean;
+  };
+}
+interface CloudScopeSummary {
+  configured: boolean;              // some file lists accounts, includes or excludes
+  accounts: (ScopeAccount & { repo?: string })[];
+  files: { repo?: string; path: string; exists: boolean; error?: string }[];
+  writable: boolean;                // false while the file edits go to is invalid
+}
+CloudSyncResult.scope?: CloudScopeSummary   // GET /api/cloud/resources, POST /api/cloud/sync
+cloud.updated.scope?: CloudScopeSummary     // §9.4 push
+```
+
+Out-of-scope resources lose automatic element links (`linkedNodeId` from tags / names): only
+the project's resources link to its map (a manual link is proof, so it stays unless excluded).
+A viewer that gets resources without `scope` (an older daemon) treats them all as in scope.
+
+### 14.4 Syncing only the project's accounts
+
+When any scope file lists accounts, a project sync-all (`POST /api/cloud/sync` without
+`providers`) and the watch loop cover only the listed providers, and each listed account is
+synced on its own (`syncProviders({ accountLists })`: resources stamped with `account`,
+per-account errors prefixed `<account>: `, a resource seen from two accounts listed once). A
+sync-all also drops what unlisted providers left in the project's cache, so other clients' data
+does not stay in it. Naming a provider still syncs it (its listed accounts, else its selected
+account); an explicit `accounts` in the body wins. No accounts listed = the §9 behaviour for
+syncing; the page and the CLI still show only the scope.
+
+### 14.5 HTTP (same Origin rule as every POST: 403)
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/cloud/scope` | `{ root, scope: CloudScopeSummary, evidence: { repo?, root, files, hosts, names, accountHints, truncated }[], resources: { id, provider, type, service, name, account?, scope }[] /* in scope, suggestions, excluded */, counts: { in, suggestions, excluded, total } }`; no project → 409 |
+| `POST /api/cloud/scope/accounts` | `{ accounts: ScopeAccount[] }` (replaces the list; unknown provider → 400) → `CloudScopeSummary`; pushes `cloud.updated` |
+| `POST /api/cloud/scope/resource` | `{ resourceId, action: "include" \| "exclude" \| "reset" }` (add / accept a suggestion, remove / dismiss, back to the evidence; unknown resource → 404, invalid file → 409) → `{ ok: true, scope }`; pushes `cloud.updated` |
+
+### 14.6 Viewer (Cloud page; AppShell untouched)
+
+- Header: a segmented control **This project (N)** / **All accounts (M)** (only when the daemon
+  sends `scope`) and **Accounts (k)** (the account picker). In project mode the health strip, the
+  Unhealthy filter, the provider filter and the counts use in-scope resources only.
+- Each row: a reason badge (`from .do/app.yaml`, `tag project=…`, `in Terraform`, `added by you`,
+  `looks related`, `removed`); the row menu offers **Add to project**, **Remove from project**
+  and **Back to what the repo says**. The details drawer shows the account and every reason.
+- **Looks related (K)**: suggestions with Add / Dismiss (dismiss = exclude).
+- No proof and no accounts yet: the page asks which accounts the project lives in — a checkbox
+  list per connected provider (its `IntegrationInfo.accounts`, or "Selected account"), each with
+  a **whole account** switch (on by default there) — then saves and syncs. "Browse all accounts
+  instead" switches to All accounts, where any resource is added from its row menu.
+- "Show on map" and an element's "Runs on" section use in-scope resources only; the draw.io
+  export (daemon and CLI) includes in-scope resources only.
+
+### 14.7 CLI (`ruah app cloud`, no daemon)
+
+| Command | Behaviour |
+| --- | --- |
+| `list \| status \| watch [--repo <path>] [--all]` | scoped to the repo (`--repo`, default: the nearest folder at or above the cwd holding `.git` or `ruah.system.json`; none → the whole account as before): only its accounts are read, only its resources shown (`list` adds a WHY column and a `Scope: <repo> — N of M resources · K look related` line); `status` exit codes count in-scope resources only. `--all`: the whole account (resources still carry `scope` when `--repo` is given). JSON: `list` adds `scope: { repo, …CloudScopeSummary, total }`, `status` adds `scope: { repo, inScope, total }`. |
+| `scope [--repo] [--json] [--all]` | the files, accounts, what the repo says (files read, hosts), members with confidence and reasons, suggestions (with ids to add), removed ones; `--json`: `{ repo, scope, evidence, members, suggestions, excluded, counts, providers, errors }`. Reads the scope's accounts (`--all`: every connected account). |
+| `scope add\|remove\|reset <id>…` | include / exclude / back to the evidence in `.ruah/cloud.json` |
+| `scope accounts [list]`, `scope accounts add\|remove <provider> [<account>] [--whole]` | the account list |
+
+Exit codes as §9.6; `scope` edits exit 1 on an invalid file (never overwritten) and 2 on usage
+errors (unknown provider, not inside a repo without `--repo`).

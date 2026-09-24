@@ -46,8 +46,12 @@ ruah app system remove|rename|rescan <id> …
 ruah app resume [<repo-or-id>]  # where you left off (no argument: every recent project)
 ruah app activity --since 24h   # what agents did across projects (no daemon needed)
 ruah app cloud providers      # which cloud CLIs are connected / not logged in / not installed
-ruah app cloud status         # health summary (exit 1 when anything is down; no daemon needed)
-ruah app cloud list | watch   # every resource · live health changes (--provider, --json, --repo)
+ruah app cloud status         # the repo's health summary (exit 1 when its resources are down; no daemon needed)
+ruah app cloud list | watch   # the repo's resources · live health changes (--repo, default: cwd's repo;
+                              #   --all: the whole account; --provider, --json)
+ruah app cloud scope          # the repo's accounts, resources with why they belong, "looks related" (--json)
+ruah app cloud scope add|remove|reset <resource-id>…      # edit .ruah/cloud.json (committable)
+ruah app cloud scope accounts add|remove <provider> [<account>] [--whole]
 ruah app help
 ```
 
