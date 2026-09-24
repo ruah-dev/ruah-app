@@ -52,8 +52,12 @@ class FakeCloud implements CloudIntegration {
   constructor(readonly id: string) {
     this.name = id;
   }
+  installed = true;
   enabled(): boolean {
     return true;
+  }
+  available(): boolean {
+    return this.installed;
   }
   async info() {
     return { id: this.id, family: this.family, name: this.name, status: "connected" as const };
@@ -271,6 +275,23 @@ describe("IntegrationsService: cloud.updated events", () => {
     a.outcome = new Error("not logged in");
     await svc.cloudSync({ providers: ["a"] });
     expect(updates[3]).toMatchObject({ failed: ["a"], errors: [{ provider: "a", message: "not logged in" }] });
+  });
+
+  test("sync-all skips providers whose CLI is not installed (and drops their old errors); naming one still tries it", async () => {
+    const { svc, a, b } = setup();
+    a.outcome = { resources: [res("r1", "a", "healthy")], errors: [] };
+    b.outcome = new Error("netlify not installed — brew install netlify-cli && netlify login");
+    expect((await svc.cloudSync({})).errors).toEqual([{ provider: "b", message: expect.stringContaining("not installed") }]);
+    b.installed = false;
+    const all = await svc.cloudSync({});
+    expect(b.calls).toBe(1);
+    expect(all.errors).toEqual([]);
+    expect(all.resources.map((r) => r.id)).toEqual(["r1"]);
+    const named = await svc.cloudSync({ providers: ["b"] });
+    expect(b.calls).toBe(2);
+    expect(named.errors.map((e) => e.provider)).toEqual(["b"]);
+    // The watch loop's per-provider sync of another provider clears it again.
+    expect((await svc.cloudSync({ providers: ["a"] })).errors).toEqual([]);
   });
 
   test("concurrent syncs of one provider share a single CLI run", async () => {

@@ -38,6 +38,13 @@ export interface CloudIntegration extends Integration {
   sync(options: { account?: string }): Promise<CloudSyncOutcome>;
   /** False when the user disconnected it in Ruah (sync skips it unless named). */
   enabled(): boolean;
+  /** §9, optional: false when the provider's CLI is not installed (sync-all and the watch loop skip it quietly). */
+  available?(): boolean;
+}
+
+/** Providers "Sync all" and the watch loop cover: enabled in Ruah and not known to be missing their CLI. */
+export function syncable(provider: CloudIntegration): boolean {
+  return provider.enabled() && provider.available?.() !== false;
 }
 
 export interface WorkCreateInput {

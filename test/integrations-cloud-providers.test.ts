@@ -385,9 +385,11 @@ describe("Kubernetes", () => {
   });
 
   test("an unreachable cluster fails the whole provider once; a forbidden kind is a per-kind error", async () => {
-    const refused = "The connection to the server 127.0.0.1:61531 was refused - did you specify the right host or port?";
+    const klog = 'E0924 21:42:14.677673   70707 memcache.go:265] "Unhandled Error" err="couldn\'t get current server API group list: dial tcp 127.0.0.1:61531: connect: connection refused"';
+    const refused = `${klog}\n${klog}\nThe connection to the server 127.0.0.1:61531 was refused - did you specify the right host or port?`;
     const down = new k8s.KubernetesIntegration({ runner: kubectl((a) => (a[0] === "get" || a[0] === "version" ? fail(refused) : undefined)), settings: settings(), bin: () => "/fake/kubectl" });
-    await expect(down.sync({})).rejects.toThrow(/was refused/);
+    await expect(down.sync({})).rejects.toThrow(/^The connection to the server 127\.0\.0\.1:61531 was refused/);
+    expect(k8s.stripKlog(klog)).toBe(klog); // nothing else left: keep it
     expect(await down.info()).toMatchObject({ status: "error", detail: expect.stringContaining("cluster unreachable") });
 
     const rbac = new k8s.KubernetesIntegration({

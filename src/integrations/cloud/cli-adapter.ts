@@ -106,6 +106,10 @@ export abstract class CliCloudAdapter implements CloudIntegration {
     return this.deps.settings.get(this.id).disabled !== true;
   }
 
+  available(): boolean {
+    return this.bin() !== undefined;
+  }
+
   protected base(extra: Partial<IntegrationInfo>): IntegrationInfo {
     return { id: this.id, family: this.family, name: this.name, status: "not_connected", ...extra };
   }

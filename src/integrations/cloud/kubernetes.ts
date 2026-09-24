@@ -6,7 +6,7 @@
 // statefulsets, daemonsets, cronjobs) carry ready/desired replicas and a pod
 // summary; pods themselves are never rows (CONTRACTS.md §9).
 import type { CloudResource } from "../../contracts/integrations.js";
-import { arr, IntegrationError, mapLimit, obj, str, type Json } from "../exec.js";
+import { arr, cliMessage, IntegrationError, mapLimit, obj, str, type Json } from "../exec.js";
 import { workloadHealth } from "../health.js";
 import { CliCloudAdapter, cloudResource, type CheckResult, type CliAccount } from "./cli-adapter.js";
 
@@ -24,6 +24,14 @@ export interface PodSummary {
   pending: number;
   crashLoop: number;
   restarts: number;
+}
+
+const KLOG_LINE = /^[EIWF]\d{4} \d{2}:\d{2}:\d{2}\.\d+\s+\d+\s+\S+:\d+\]/;
+
+/** Drops klog-formatted lines; keeps everything when nothing else is left. */
+export function stripKlog(stderr: string): string {
+  const kept = stderr.split("\n").filter((line) => !KLOG_LINE.test(line.trim()));
+  return kept.some((l) => l.trim().length > 0) ? kept.join("\n") : stderr;
 }
 
 const meta = (item: Json): { name: string | undefined; namespace: string; labels: Record<string, string> | undefined } => {
@@ -234,6 +242,13 @@ export class KubernetesIntegration extends CliCloudAdapter {
 
   private contextArgs(context: string | undefined): string[] {
     return context !== undefined ? [`--context=${context}`] : [];
+  }
+
+  /** kubectl logs klog lines ("E0924 22:15:38.08 39648 memcache.go:265] …") before the real message. */
+  protected override async run(bin: string, args: string[]): Promise<string> {
+    const result = await this.deps.runner(bin, args, this.runOptions);
+    if (result.code !== 0) throw new IntegrationError(502, cliMessage({ ...result, stderr: stripKlog(result.stderr) }));
+    return result.stdout;
   }
 
   protected async accounts(bin: string): Promise<CliAccount[]> {

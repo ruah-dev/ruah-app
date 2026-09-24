@@ -31,7 +31,7 @@ import { cloudFingerprint, syncProviders } from "./cloud-sync.js";
 import { defaultRunner, IntegrationError, redact, type Runner } from "./exec.js";
 import { Keychain, type SecretStore } from "./keychain.js";
 import { linkResources } from "./linking.js";
-import { IntegrationRegistry, isCloud, isWork, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
+import { IntegrationRegistry, isCloud, isWork, syncable, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
 import { RuahIntegration, type Launcher } from "./ruah.js";
 import { CloudCacheStore, readLinks, SettingsStore, updateLink } from "./store.js";
 import { GitHubIntegration } from "./work/github.js";
@@ -199,20 +199,23 @@ export class IntegrationsService implements IntegrationsApi {
           if (!isCloud(integration)) throw new IntegrationError(400, `${id} is not a cloud integration`);
           return integration;
         })
-      : this.registry.cloud().filter((c) => c.enabled());
+      : this.registry.cloud().filter(syncable);
     const { resources: fresh, errors, failed } = await syncProviders(providers, {
       accounts: body.accounts,
       now: this.now(),
       syncOne: (provider, account) => this.syncOnce(provider, account),
     });
     const synced = new Set(providers.map((p) => p.id));
+    // Sync-all and the watch loop skip providers without their CLI (or disconnected in Ruah); an old
+    // "not installed" error of theirs goes too, unless this call synced them explicitly.
+    const skipped = new Set(this.registry.cloud().filter((c) => !syncable(c) && !synced.has(c.id)).map((c) => c.id));
     const cache = this.cloudCache.read(project.root);
     const kept = cache.resources.filter((r) => !synced.has(r.provider));
     const resources = linkResources([...kept, ...fresh], this.nodes(project), cache.manualLinks).sort(
       (a, b) => a.provider.localeCompare(b.provider) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
     );
     const syncedAt = this.now().toISOString();
-    const keptErrors = cache.errors.filter((e) => !synced.has(e.provider));
+    const keptErrors = cache.errors.filter((e) => !synced.has(e.provider) && !skipped.has(e.provider));
     this.cloudCache.write(project.root, { ...cache, syncedAt, resources, errors: [...keptErrors, ...errors] });
     const result = { resources, syncedAt, errors: [...keptErrors, ...errors] };
     this.emitCloud(project.root, result, [...synced], failed);
