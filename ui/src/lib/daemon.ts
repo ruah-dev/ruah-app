@@ -228,6 +228,8 @@ let everOpened = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let firstAttemptTimer: ReturnType<typeof setTimeout> | undefined;
 let focusedNodeId: string | null = null;
+/** §9: whether this viewer wants live cloud status (re-sent after every reconnect). */
+let cloudWatching = false;
 
 // Edit/save bookkeeping (L7).
 let serverArchitecture: Architecture | null = null;
@@ -292,6 +294,7 @@ function connect() {
     );
     set({ connection: "open", lastError: null });
     if (focusedNodeId !== null) send({ type: "focus.set", nodeId: focusedNodeId });
+    if (cloudWatching) send({ type: "cloud.watch", on: true });
     void fetch(`${urls.httpOrigin}/api/health`)
       .then((r) => (r.ok ? (r.json() as Promise<{ version?: string }>) : null))
       .then((h) => {
@@ -726,6 +729,14 @@ function handle(msg: ServerMessage) {
     case "chat.history":
       handleHistory(msg.chatId, msg.turns);
       return;
+    case "cloud.updated":
+      // The integrations store (lib/integrations.ts) owns cloud state; it listens for this.
+      try {
+        window.dispatchEvent(new CustomEvent("ruah:cloud-updated", { detail: msg }));
+      } catch {
+        // ignore (non-browser)
+      }
+      return;
     case "turn.started": {
       const waitingFor = msg.queued ? currentAgentName() : undefined;
       if (state.turns.some((t) => t.id === msg.turnId)) {
@@ -943,6 +954,13 @@ export function setFocus(nodeId: string | null) {
   if (nodeId === focusedNodeId) return;
   focusedNodeId = nodeId;
   send({ type: "focus.set", nodeId });
+}
+
+/** §9 watch mode: ask the daemon to keep cloud status fresh while this viewer shows it. */
+export function setCloudWatch(on: boolean) {
+  if (on === cloudWatching) return;
+  cloudWatching = on;
+  send({ type: "cloud.watch", on });
 }
 
 export function setAgentMode(modeId: string) {

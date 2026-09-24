@@ -94,7 +94,9 @@ export type ClientMessage =
   | { type: "chat.rename"; chatId: string; title: string }
   | { type: "chat.delete"; chatId: string }
   // §1.7: undo the map changes an agent made in a turn
-  | { type: "arch.undo"; turnId: string };
+  | { type: "arch.undo"; turnId: string }
+  // §9: on the Cloud page / "Show on map" on → the daemon keeps cloud status fresh while any viewer watches
+  | { type: "cloud.watch"; on: boolean };
 
 // ---------- daemon -> viewer ----------
 export type ServerMessage =
@@ -156,7 +158,17 @@ export type ServerMessage =
   // §5.2 projects + chats
   | { type: "project"; project: ProjectInfo | null } // null = launcher state (no architecture follows)
   | { type: "chats"; projectId: string; chats: ChatInfo[]; activeChatId: string | null }
-  | { type: "chat.history"; chatId: string; turns: TurnRecord[] };
+  | { type: "chat.history"; chatId: string; turns: TurnRecord[] }
+  // §9: after every cloud sync / link change; resources absent = nothing visible changed
+  | {
+      type: "cloud.updated";
+      root: string;
+      syncedAt: string | null;
+      providers: string[];
+      failed: string[];
+      errors: { provider: string; message: string }[];
+      resources?: CloudResource[];
+    };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -398,7 +410,7 @@ export type CloudResourceType =
 
 export interface CloudResource {
   id: string; // provider-native id (ARN, DO URN)
-  provider: "digitalocean" | "aws" | (string & {});
+  provider: "digitalocean" | "aws" | "vercel" | "supabase" | "kubernetes" | "netlify" | "hetzner" | (string & {});
   type: CloudResourceType;
   service: string; // "droplet", "apps", "ec2", "lambda", "rds", …
   name: string;
@@ -409,7 +421,18 @@ export interface CloudResource {
   linkedNodeId?: string; // architecture element it runs (tag ruah:node, name match, or manual)
   /** Viewer extension (optional, not in §6.1 yet): how linkedNodeId was set. Absent = automatic. */
   linkSource?: "tag" | "name" | "manual";
+  // §9 live status (optional; absent = the provider has no health notion for this resource)
+  health?: CloudHealth;
+  healthDetail?: string; // "2/3 ready · 1 crash-looping", "latest production deployment failed"
+  observedAt?: string; // ISO time of the sync that read it
+  replicas?: { ready: number; desired: number };
+  pods?: { running: number; pending: number; crashLoop: number; restarts: number };
+  url?: string; // where it is served
+  hosts?: string[]; // ingress hosts, custom domains, load balancer addresses
+  createdAt?: string; // ISO (deployments)
 }
+
+export type CloudHealth = "healthy" | "degraded" | "down" | "deploying" | "unknown";
 
 /** POST /api/cloud/sync and GET /api/cloud/resources. */
 export interface CloudSyncResult {

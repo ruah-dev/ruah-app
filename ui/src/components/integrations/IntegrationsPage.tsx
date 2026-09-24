@@ -50,6 +50,11 @@ const FAMILIES: { id: IntegrationInfo["family"]; title: string; description: str
 const PLACEHOLDER: IntegrationInfo[] = [
   { id: "digitalocean", family: "cloud", name: "DigitalOcean", status: "not_connected" },
   { id: "aws", family: "cloud", name: "AWS", status: "not_connected" },
+  { id: "vercel", family: "cloud", name: "Vercel", status: "not_connected" },
+  { id: "supabase", family: "cloud", name: "Supabase", status: "not_connected" },
+  { id: "kubernetes", family: "cloud", name: "Kubernetes", status: "not_connected" },
+  { id: "netlify", family: "cloud", name: "Netlify", status: "not_connected" },
+  { id: "hetzner", family: "cloud", name: "Hetzner Cloud", status: "not_connected" },
   { id: "jira", family: "work", name: "Jira", status: "not_connected" },
   { id: "github", family: "work", name: "GitHub", status: "not_connected" },
   { id: "ruah", family: "orchestration", name: "ruah", status: "not_connected" },
@@ -58,6 +63,11 @@ const PLACEHOLDER: IntegrationInfo[] = [
 const ACCOUNT_NOUN: Record<string, string> = {
   aws: "Profile",
   digitalocean: "Context",
+  vercel: "Team",
+  supabase: "Organization",
+  kubernetes: "Context",
+  netlify: "Team",
+  hetzner: "Context",
   jira: "Site",
   github: "Account",
 };

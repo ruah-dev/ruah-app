@@ -1,15 +1,18 @@
 // Cloud resources grouped provider → region → type, one fixed-height row per line so the list
 // can be windowed (only the visible rows are mounted; accounts with thousands of resources stay
-// smooth without a virtualisation dependency).
+// smooth without a virtualisation dependency). The Health column shows the §9 live status
+// (dot + label + ready/desired replicas), falling back to the provider's raw status.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import type { ArchNode, CloudResource } from "@/lib/contracts";
 import {
   CLOUD_TYPE_LABEL,
   CLOUD_TYPE_ORDER,
+  HEALTH_LABEL,
   cloudKind,
+  healthCounts,
+  healthTone,
   providerLabel,
-  resourceTone,
 } from "@/lib/integrations";
 import { kindStyles } from "@/components/explorer/kinds";
 import { ProviderGlyph, StatusDot } from "@/components/integrations/common";
@@ -18,10 +21,10 @@ import { cn } from "@/lib/utils";
 
 const ROW = 40;
 const OVERSCAN = 8;
-const COLS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,1.5fr)_2rem] items-center gap-3";
+const COLS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_2rem] items-center gap-3";
 
 type Row =
-  | { kind: "provider"; key: string; provider: string; count: number }
+  | { kind: "provider"; key: string; provider: string; count: number; down: number; degraded: number }
   | { kind: "region"; key: string; region: string; count: number }
   | { kind: "type"; key: string; type: string; count: number }
   | { kind: "resource"; key: string; resource: CloudResource };
@@ -30,7 +33,8 @@ export function buildRows(resources: CloudResource[]): Row[] {
   const rows: Row[] = [];
   const byProvider = groupBy(resources, (r) => r.provider);
   for (const [provider, pList] of [...byProvider].sort((a, b) => a[0].localeCompare(b[0]))) {
-    rows.push({ kind: "provider", key: `p:${provider}`, provider, count: pList.length });
+    const counts = healthCounts(pList);
+    rows.push({ kind: "provider", key: `p:${provider}`, provider, count: pList.length, down: counts.down, degraded: counts.degraded });
     const byRegion = groupBy(pList, (r) => r.region || "global");
     for (const [region, rList] of [...byRegion].sort((a, b) => a[0].localeCompare(b[0]))) {
       rows.push({ kind: "region", key: `r:${provider}:${region}`, region, count: rList.length });
@@ -87,6 +91,23 @@ function Tags({ tags }: { tags: Record<string, string> | undefined }) {
   );
 }
 
+/** "3/3 ready · 1 restart" minus the replica count the row already shows as "3/3". */
+function healthDetailText(r: CloudResource): string | undefined {
+  const detail = r.healthDetail ?? (r.health && r.status !== r.health ? r.status : undefined);
+  if (!detail) return undefined;
+  return r.replicas ? detail.replace(/^\d+\/\d+ (ready|running)( · )?/, "") || undefined : detail;
+}
+
+function healthTitle(r: CloudResource): string | undefined {
+  const parts = [
+    r.health ? HEALTH_LABEL[r.health] : undefined,
+    r.healthDetail,
+    r.status ? `status: ${r.status}` : undefined,
+    r.observedAt ? `checked ${new Date(r.observedAt).toLocaleTimeString()}` : undefined,
+  ].filter(Boolean);
+  return parts.length ? parts.join("\n") : undefined;
+}
+
 export function ResourceTable({
   resources,
   nodes,
@@ -94,6 +115,8 @@ export function ResourceTable({
   syncing,
   onSyncProvider,
   empty,
+  selectedId,
+  onSelect,
 }: {
   resources: CloudResource[];
   nodes: ArchNode[];
@@ -101,6 +124,9 @@ export function ResourceTable({
   syncing: string | null;
   onSyncProvider: (provider: string) => void;
   empty: ReactNode;
+  /** Resource shown in the page's details drawer. */
+  selectedId?: string | null;
+  onSelect?: (resourceId: string) => void;
 }) {
   const rows = useMemo(() => buildRows(resources), [resources]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -129,7 +155,7 @@ export function ResourceTable({
         role="row"
       >
         <span role="columnheader">Resource</span>
-        <span role="columnheader">Status</span>
+        <span role="columnheader">Health</span>
         <span role="columnheader">Tags</span>
         <span role="columnheader">Runs element</span>
         <span role="columnheader" className="sr-only">
@@ -158,6 +184,8 @@ export function ResourceTable({
                   manualLinks={manualLinks}
                   syncing={syncing}
                   onSyncProvider={onSyncProvider}
+                  selected={row.kind === "resource" && row.resource.id === selectedId}
+                  {...(onSelect ? { onSelect } : {})}
                 />
               </div>
             ))}
@@ -174,12 +202,16 @@ function RowView({
   manualLinks,
   syncing,
   onSyncProvider,
+  selected,
+  onSelect,
 }: {
   row: Row;
   nodes: ArchNode[];
   manualLinks: Record<string, true>;
   syncing: string | null;
   onSyncProvider: (provider: string) => void;
+  selected: boolean;
+  onSelect?: (resourceId: string) => void;
 }) {
   if (row.kind === "provider") {
     const busy = syncing === "all" || !!syncing?.startsWith(`${row.provider}:`);
@@ -188,6 +220,8 @@ function RowView({
         <ProviderGlyph id={row.provider} className="mb-px size-4" />
         <span className="text-[13px] font-medium text-foreground">{providerLabel(row.provider)}</span>
         <span className="text-[12px] text-muted-foreground">{row.count}</span>
+        {row.down ? <span className="text-[12px] text-bad">· {row.down} down</span> : null}
+        {row.degraded ? <span className="text-[12px] text-warn">· {row.degraded} degraded</span> : null}
         <span className="flex-1" />
         <button
           type="button"
@@ -225,23 +259,65 @@ function RowView({
   const r = row.resource;
   const style = kindStyles[cloudKind(r.type)];
   const Icon = style.icon;
-  const tone = resourceTone(r.status);
+  const tone = healthTone(r);
   const manual = r.linkSource === "manual" || !!manualLinks[r.id];
+  const detail = healthDetailText(r);
   return (
     <div
       role="row"
-      className={cn(COLS, "h-full px-5 ps-11 transition-colors hover:bg-foreground/[0.025] max-md:px-3")}
+      aria-selected={selected}
+      className={cn(
+        COLS,
+        "h-full px-5 ps-11 transition-colors hover:bg-foreground/[0.025] max-md:px-3",
+        selected && "bg-accent/60 hover:bg-accent/60",
+      )}
     >
       <span role="cell" className="flex min-w-0 items-center gap-2.5 ps-3">
         <Icon className={cn("size-3.5 shrink-0", style.color)} />
-        <span className="min-w-0 truncate text-[13px] text-foreground" title={r.id}>
-          {r.name}
-        </span>
+        {onSelect ? (
+          <button
+            type="button"
+            onClick={() => onSelect(r.id)}
+            className="min-w-0 truncate text-left text-[13px] text-foreground hover:underline"
+            title={`${r.id} — show details`}
+          >
+            {r.name}
+          </button>
+        ) : (
+          <span className="min-w-0 truncate text-[13px] text-foreground" title={r.id}>
+            {r.name}
+          </span>
+        )}
         <span className="shrink-0 font-mono text-[11px] text-faint">{r.service}</span>
       </span>
-      <span role="cell" className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground">
+      <span
+        role="cell"
+        className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground"
+        title={healthTitle(r)}
+      >
         <StatusDot tone={tone} />
-        <span className="truncate">{r.status ?? "—"}</span>
+        {r.health ? (
+          <>
+            <span
+              className={cn(
+                "shrink-0",
+                r.health === "down" && "text-bad",
+                r.health === "degraded" && "text-warn",
+                r.health === "healthy" && "text-foreground/85",
+              )}
+            >
+              {HEALTH_LABEL[r.health]}
+            </span>
+            {r.replicas ? (
+              <span className="shrink-0 font-mono text-[11px] text-faint">
+                {r.replicas.ready}/{r.replicas.desired}
+              </span>
+            ) : null}
+            {detail ? <span className="min-w-0 truncate text-[12px] text-faint">{detail}</span> : null}
+          </>
+        ) : (
+          <span className="truncate">{r.status ?? "—"}</span>
+        )}
       </span>
       <span role="cell" className="min-w-0">
         <Tags tags={r.tags} />

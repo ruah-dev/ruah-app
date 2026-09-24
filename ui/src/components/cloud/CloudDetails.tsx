@@ -1,15 +1,19 @@
 // Cloud in the Details panel: the resources that run the selected element, and the full view
-// of a resource selected on the derived Cloud level of the Map.
+// of a resource (health, replicas, pods, URL / hosts — §9) selected on the derived Cloud level of
+// the Map or in the Cloud page's drawer.
 import type { ReactNode } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { DiagramNode } from "@/data/graphs";
+import type { CloudResource } from "@/lib/contracts";
 import {
   CLOUD_TYPE_LABEL,
+  HEALTH_LABEL,
   cloudKind,
+  healthTone,
   providerLabel,
   resourceIdOf,
-  resourceTone,
+  timeAgo,
   useEnsure,
 } from "@/lib/integrations";
 import { useWorkspace } from "@/lib/workspace";
@@ -56,7 +60,9 @@ export function ElementCloudSection({ node }: { node: DiagramNode }) {
                 {r.region ? ` · ${r.region}` : ""}
               </span>
               <span className="flex-1" />
-              <StatusDot tone={resourceTone(r.status)} />
+              <span title={r.health ? `${HEALTH_LABEL[r.health]}${r.healthDetail ? ` · ${r.healthDetail}` : ""}` : r.status}>
+                <StatusDot tone={healthTone(r)} />
+              </span>
               {r.consoleUrl ? (
                 <a
                   href={r.consoleUrl}
@@ -93,13 +99,8 @@ function CopyId({ id }: { id: string }) {
 /** Details for a resource node on the Cloud level (ids are "cloud:<resource id>"). */
 export function CloudResourceDetails({ node }: { node: DiagramNode }) {
   const s = useEnsure("cloud");
-  const { architecture } = useWorkspace();
-  const wb = useWorkbench();
   const id = resourceIdOf(node.id);
   const r = s.cloud.status === "ok" ? s.cloud.data.resources.find((x) => x.id === id) : undefined;
-  const style = kindStyles[node.kind];
-  const Icon = style.icon;
-
   if (!r) {
     return (
       <div className="px-5 pt-5 text-[12.5px] text-muted-foreground">
@@ -107,23 +108,89 @@ export function CloudResourceDetails({ node }: { node: DiagramNode }) {
       </div>
     );
   }
-  const tone = resourceTone(r.status);
+  return <CloudResourceView resource={r} />;
+}
+
+const safeHref = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
+
+/** Live status block: health pill + detail, replicas bar, pod counts, when it was checked. */
+function HealthSection({ r }: { r: CloudResource }) {
+  if (!r.health && !r.replicas && !r.pods) return null;
+  const pct = r.replicas && r.replicas.desired > 0 ? Math.min(100, (r.replicas.ready / r.replicas.desired) * 100) : 0;
+  return (
+    <section className="space-y-2">
+      <h3 className="text-[12px] font-medium text-muted-foreground">Live status</h3>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {r.health ? <Pill tone={healthTone(r)}>{HEALTH_LABEL[r.health]}</Pill> : null}
+        {r.healthDetail ? <span className="min-w-0 text-[12.5px] break-words text-foreground/85">{r.healthDetail}</span> : null}
+      </div>
+      {r.replicas ? (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+            <span>Replicas ready</span>
+            <span className="font-mono text-foreground/85">
+              {r.replicas.ready}/{r.replicas.desired}
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]">
+            <div
+              className={cn("h-full rounded-full", pct >= 100 ? "bg-ok" : pct > 0 ? "bg-warn" : "bg-bad")}
+              style={{ width: `${r.replicas.desired > 0 ? Math.max(pct, 2) : 0}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
+      {r.pods ? (
+        <p className="text-[12px] text-muted-foreground">
+          Pods: {r.pods.running} running
+          {r.pods.pending ? ` · ${r.pods.pending} pending` : ""}
+          {r.pods.crashLoop ? <span className="text-bad"> · {r.pods.crashLoop} crash-looping</span> : null}
+          {r.pods.restarts ? ` · ${r.pods.restarts} restart${r.pods.restarts === 1 ? "" : "s"}` : ""}
+        </p>
+      ) : null}
+      {r.observedAt ? (
+        <p className="text-[11.5px] text-faint" title={r.observedAt}>
+          Checked {timeAgo(r.observedAt)}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/** The full view of one resource; `onClose` adds a close button (Cloud page drawer). */
+export function CloudResourceView({ resource: r, onClose }: { resource: CloudResource; onClose?: () => void }) {
+  const s = useEnsure("cloud");
+  const { architecture } = useWorkspace();
+  const wb = useWorkbench();
+  const style = kindStyles[cloudKind(r.type)];
+  const Icon = style.icon;
   const manual = r.linkSource === "manual" || !!s.manualLinks[r.id];
   const linked = r.linkedNodeId ? architecture.nodes.find((n) => n.id === r.linkedNodeId) : undefined;
   const tags = Object.entries(r.tags ?? {});
+  const url = r.url ? safeHref(r.url) : undefined;
 
   const facts: [string, ReactNode][] = [
     ["Provider", providerLabel(r.provider)],
     ["Type", `${CLOUD_TYPE_LABEL[r.type] ?? r.type} · ${r.service}`],
     ["Region", r.region ?? "global"],
-    [
-      "Status",
-      r.status ? (
-        <Pill tone={tone}>{r.status}</Pill>
-      ) : (
-        "—"
-      ),
-    ],
+    ["Status", r.status ? <Pill tone={healthTone({ status: r.status })}>{r.status}</Pill> : "—"],
+    ...(url
+      ? ([
+          [
+            "URL",
+            <a href={url} target="_blank" rel="noreferrer" className="text-foreground/90 underline-offset-2 hover:underline">
+              {url.replace(/^https?:\/\//, "")}
+            </a>,
+          ],
+        ] as [string, ReactNode][])
+      : []),
+    ...(r.hosts?.length
+      ? ([["Hosts", <span className="whitespace-normal break-words font-mono text-[11.5px]">{r.hosts.join(", ")}</span>]] as [
+          string,
+          ReactNode,
+        ][])
+      : []),
+    ...(r.createdAt ? ([["Created", <span title={r.createdAt}>{timeAgo(r.createdAt)}</span>]] as [string, ReactNode][]) : []),
     ["ID", <CopyId id={r.id} />],
   ];
 
@@ -149,7 +216,19 @@ export function CloudResourceDetails({ node }: { node: DiagramNode }) {
             <ExternalLink className="size-3.5" /> Console
           </a>
         ) : null}
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close details"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : null}
       </div>
+
+      <HealthSection r={r} />
 
       <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
         {facts.map(([k, v]) => (

@@ -3,17 +3,21 @@
 // shared lists (integrations, cloud snapshot, ruah status) so the pages, the sidebar badges,
 // the Details panel and the Map's derived Cloud level read one copy. Credentials never pass
 // through here except the Jira token on connect, which is sent once and never stored or echoed.
+// Live cloud status (§9): while the Cloud page is open or "Show on map" is on, the viewer asks
+// the daemon to watch (cloud.watch) and applies its cloud.updated pushes; otherwise nothing polls.
 import { useEffect, useSyncExternalStore } from "react";
 import type {
   Architecture,
   ArchNode,
+  CloudHealth,
   CloudResource,
   CloudResourceType,
   CloudSyncResult,
   IntegrationInfo,
+  ServerMessage,
   WorkItem,
 } from "./contracts";
-import type { DaemonState } from "./daemon";
+import { setCloudWatch, type DaemonState } from "./daemon";
 import type { DiagramEdge, DiagramGroup, DiagramNode, Graph, NodeKind } from "@/data/graphs";
 import { ORIGIN, NODE_W, NODE_H, kindFor, subtitleFor } from "./architecture";
 
@@ -158,6 +162,8 @@ export interface IntegrationsStore {
   /** Resource ids the user linked by hand this session (for the auto/manual badge fallback). */
   manualLinks: Record<string, true>;
   showCloudOnMap: boolean;
+  /** §9: epoch ms of the last cloud.updated push for this project (null = none yet). */
+  cloudPushedAt: number | null;
 }
 
 const ON_MAP_KEY = "ruah.cloud.onMap";
@@ -173,6 +179,7 @@ const INITIAL: IntegrationsStore = {
   workflows: { status: "idle" },
   manualLinks: {},
   showCloudOnMap: false,
+  cloudPushedAt: null,
 };
 
 let store: IntegrationsStore = INITIAL;
@@ -215,9 +222,53 @@ function bind(daemon: Pick<DaemonState, "source" | "httpOrigin" | "root" | "conn
           workflows: { status: "idle" },
           manualLinks: {},
           syncing: null,
+          cloudPushedAt: null,
         }
       : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// live cloud status (§9)
+
+type CloudUpdated = Extract<ServerMessage, { type: "cloud.updated" }>;
+
+/** Applies a cloud.updated push: the full snapshot when it changed, else fresh timestamps / errors. */
+export function applyCloudUpdate(prev: CloudSyncResult | null, u: CloudUpdated): CloudSyncResult {
+  const synced = new Set(u.providers);
+  const base = u.resources ?? prev?.resources ?? [];
+  const resources =
+    u.resources || !u.syncedAt
+      ? base
+      : base.map((r) => (synced.has(r.provider) && !u.failed.includes(r.provider) ? { ...r, observedAt: u.syncedAt! } : r));
+  return { resources, syncedAt: u.syncedAt ?? prev?.syncedAt ?? null, errors: u.errors };
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("ruah:cloud-updated", (ev) => {
+    const u = (ev as CustomEvent<CloudUpdated>).detail;
+    if (!u || store.mode !== "daemon" || (store.projectKey !== null && store.projectKey !== u.root)) return;
+    const prev = store.cloud.status === "ok" ? store.cloud.data : null;
+    // Before the first load a push without resources carries nothing to show: load instead.
+    if (!prev && !u.resources) return void loadCloud();
+    set({ cloud: { status: "ok", data: applyCloudUpdate(prev, u), at: Date.now() }, cloudPushedAt: Date.now() });
+  });
+}
+
+const watchReasons = new Set<"page" | "map">();
+function watchCloud(reason: "page" | "map", on: boolean) {
+  if (on) watchReasons.add(reason);
+  else watchReasons.delete(reason);
+  setCloudWatch(watchReasons.size > 0);
+}
+
+/** Keeps cloud status live while the calling component (the Cloud page) is mounted. */
+export function useCloudWatch(active = true) {
+  useEffect(() => {
+    if (!active) return;
+    watchCloud("page", true);
+    return () => watchCloud("page", false);
+  }, [active]);
 }
 
 function once(key: string, fn: () => Promise<void>): Promise<void> {
@@ -373,6 +424,7 @@ export function setShowCloudOnMap(on: boolean) {
     /* storage unavailable */
   }
   set({ showCloudOnMap: on });
+  watchCloud("map", on);
   if (on && store.cloud.status === "idle") void loadCloud();
 }
 
@@ -451,7 +503,10 @@ export function useIntegrationsBinding(
   }, [source, httpOrigin, root, connection]);
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(ON_MAP_KEY) === "1") set({ showCloudOnMap: true });
+      if (window.localStorage.getItem(ON_MAP_KEY) === "1") {
+        set({ showCloudOnMap: true });
+        watchCloud("map", true);
+      }
     } catch {
       /* storage unavailable */
     }
@@ -593,6 +648,11 @@ export function cloudKind(type: string): NodeKind {
 export const PROVIDER_LABEL: Record<string, string> = {
   digitalocean: "DigitalOcean",
   aws: "AWS",
+  vercel: "Vercel",
+  supabase: "Supabase",
+  kubernetes: "Kubernetes",
+  netlify: "Netlify",
+  hetzner: "Hetzner Cloud",
   jira: "Jira",
   github: "GitHub",
   ruah: "ruah",
@@ -610,6 +670,41 @@ export function resourceTone(status: string | undefined): StatusTone {
     return "warn";
   if (/(active|running|online|available|healthy|ready|deployed|success|in_?service|^ok$|^up$)/.test(s)) return "ok";
   return "idle";
+}
+
+export const HEALTH_LABEL: Record<CloudHealth, string> = {
+  healthy: "Running",
+  degraded: "Degraded",
+  down: "Down",
+  deploying: "Deploying",
+  unknown: "Unknown",
+};
+
+const HEALTH_TONE: Record<CloudHealth, StatusTone> = {
+  healthy: "ok",
+  degraded: "warn",
+  down: "bad",
+  deploying: "idle",
+  unknown: "idle",
+};
+
+/** §9 health when the provider reports one, else the older status-string heuristic. */
+export function healthTone(r: Pick<CloudResource, "health" | "status">): StatusTone {
+  return r.health ? HEALTH_TONE[r.health] : resourceTone(r.status);
+}
+
+export const isUnhealthy = (r: Pick<CloudResource, "health">) => r.health === "down" || r.health === "degraded";
+
+export type HealthCounts = Record<CloudHealth, number> & { total: number };
+
+export function healthCounts(resources: readonly Pick<CloudResource, "health">[]): HealthCounts {
+  const out: HealthCounts = { healthy: 0, degraded: 0, down: 0, deploying: 0, unknown: 0, total: 0 };
+  for (const r of resources) {
+    if (!r.health) continue;
+    out[r.health] += 1;
+    out.total += 1;
+  }
+  return out;
 }
 
 const INNER_GAP = 24; // between columns inside a type group
@@ -655,7 +750,7 @@ export function cloudGraph(arch: Architecture, resources: CloudResource[]): Grap
     list.forEach((r, i) => {
       const nx = cx + Math.floor(i / MAX_ROWS) * (NODE_W + INNER_GAP);
       const ny = cy + (i % MAX_ROWS) * ROW_H;
-      const status = r.status ? r.status.toLowerCase() : "";
+      const status = r.health ? HEALTH_LABEL[r.health].toLowerCase() : r.status ? r.status.toLowerCase() : "";
       nodes.push({
         id: cloudNodeId(r.id),
         label: r.name,
@@ -665,7 +760,16 @@ export function cloudGraph(arch: Architecture, resources: CloudResource[]): Grap
         x: nx,
         y: ny,
         description: `${providerLabel(r.provider)} ${r.service}${r.region ? ` in ${r.region}` : ""}.`,
-        ...(r.status ? { health: [{ label: r.status, tone: toneForHealth(resourceTone(r.status)) }] } : {}),
+        ...(r.health || r.status
+          ? {
+              health: [
+                {
+                  label: r.health ? `${HEALTH_LABEL[r.health]}${r.healthDetail ? ` · ${r.healthDetail}` : ""}` : r.status!,
+                  tone: toneForHealth(healthTone(r)),
+                },
+              ],
+            }
+          : {}),
       });
       if (r.linkedNodeId && archById.has(r.linkedNodeId)) {
         edges.push({ from: cloudNodeId(r.id), to: r.linkedNodeId, label: "runs", kind: "runs" });

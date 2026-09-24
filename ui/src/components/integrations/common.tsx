@@ -10,8 +10,13 @@ import {
   Cloud,
   Copy,
   Droplet,
+  Hexagon,
   Plug,
+  Server,
+  ShipWheel,
   SquareKanban,
+  Triangle,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { IntegrationInfo } from "@/lib/contracts";
@@ -25,6 +30,11 @@ import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 const PROVIDER_MARK: Record<string, { icon: LucideIcon; className: string }> = {
   digitalocean: { icon: Droplet, className: "bg-info/15 text-info" },
   aws: { icon: Cloud, className: "bg-warn/15 text-warn" },
+  vercel: { icon: Triangle, className: "bg-surface-3 text-foreground/85" },
+  supabase: { icon: Zap, className: "bg-info/15 text-info" },
+  kubernetes: { icon: ShipWheel, className: "bg-info/15 text-info" },
+  netlify: { icon: Hexagon, className: "bg-warn/15 text-warn" },
+  hetzner: { icon: Server, className: "bg-surface-3 text-foreground/85" },
   jira: { icon: SquareKanban, className: "bg-info/15 text-info" },
   github: { icon: CircleDot, className: "bg-surface-3 text-foreground/85" },
 };
