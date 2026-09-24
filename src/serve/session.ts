@@ -9,7 +9,7 @@
 // is a swap; a prompt sent while the current agent starts waits in a one-slot
 // queue. Saved defaults (settings.json: agent, model and mode per agent) are
 // applied to every new agent session.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type {
   AgentChoiceState,
@@ -104,6 +104,15 @@ export interface SessionHubOptions {
   mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
 }
 
+/** What a daemon-started turn (runTaskTurn) answered. */
+export interface TaskTurnResult {
+  turnId: string;
+  /** The agent's text, all text chunks joined. */
+  text: string;
+  stopReason: StopReason;
+  error?: string;
+}
+
 /** A prompt that arrived while the current agent was starting: sent once it is idle. */
 interface QueuedTurn {
   turnId: string;
@@ -173,6 +182,8 @@ export class SessionHub {
   private queued: QueuedTurn | undefined;
   /** Warm-state fingerprint of the last broadcast agent.status (re-broadcast when it changes). */
   private lastWarmSignature = "";
+  /** Daemon-started turns (runTaskTurn) waiting for their answer. */
+  private readonly taskWaiters = new Map<string, (result: TaskTurnResult) => void>();
 
   constructor(
     store: ArchitectureStore | null,
@@ -971,6 +982,43 @@ export class SessionHub {
     this.send(socket, started);
   }
 
+  /**
+   * A turn the daemon starts itself on the current agent (CONTRACTS §12.5,
+   * "Suggest connections"): recorded in the active chat and broadcast like a
+   * viewer prompt (turn.started with `text` as the bubble and `prompt` as the
+   * context pack, then stream / turn.finished), counted in usage, and resolved
+   * with the agent's answer text when the turn finishes. Throws (at once, not
+   * as a rejection) when no project is open or the agent is not idle (no
+   * queueing), so a caller can answer "busy" before anything starts.
+   */
+  runTaskTurn(task: { text: string; prompt: string }): Promise<TaskTurnResult> {
+    const open = this.open;
+    const entry = this.entry;
+    if (open === null) throw new Error(NO_PROJECT_MESSAGE);
+    const state = this.agentState();
+    const busy = this.activeTurn !== undefined || this.queued !== undefined;
+    if (entry === undefined || busy || entry.configuring !== undefined || (state !== "idle" && state !== "error")) {
+      throw new Error(`${this.agentName(this.currentAgentId)} is ${busy ? "busy" : state}; try again when it is idle`);
+    }
+    const turnId = `task-${randomUUID()}`;
+    const handle = entry.bridge.prompt(turnId, [{ type: "text", text: task.prompt }]);
+    void handle.done.catch(() => {});
+    const result = new Promise<TaskTurnResult>((resolve) => this.taskWaiters.set(turnId, resolve));
+    const chatId = this.ensureChatForTurn(task.text, entry);
+    this.markTurnActive(turnId);
+    this.turns.set(turnId, {
+      entry,
+      projectId: open.info.id,
+      root: open.store.root,
+      chatId,
+      record: { turnId, text: task.text, contextPack: task.prompt, events: [], startedAt: new Date().toISOString() },
+      startedAtMs: Date.now(),
+      finalized: false,
+    });
+    this.broadcast({ type: "turn.started", turnId, contextPack: task.prompt, text: task.text });
+    return result;
+  }
+
   /** Sends the queued prompt once its agent is idle; fails it when the agent could not start. */
   private pumpQueue(): void {
     const queued = this.queued;
@@ -1344,6 +1392,12 @@ export class SessionHub {
       this.options.engines?.afterTurn(recording.record.nodeId);
       this.finalizeTurn(recording, event.stopReason, event.error);
     } else if (current) this.broadcast({ type: "turn.finished", turnId: event.turnId, stopReason: event.stopReason });
+    const waiter = this.taskWaiters.get(event.turnId);
+    if (waiter !== undefined) {
+      this.taskWaiters.delete(event.turnId);
+      const text = (recording?.record.events ?? []).map((e) => (e.kind === "text" ? e.text : "")).join("");
+      waiter({ turnId: event.turnId, text, stopReason: event.stopReason, ...(event.error !== undefined ? { error: event.error } : {}) });
+    }
   }
 
   private recordUsage(entry: PooledBridge, event: Extract<BridgeEvent, { type: "turn_finished" }>, recording: RecordingTurn | undefined): void {

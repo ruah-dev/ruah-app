@@ -25,6 +25,7 @@ import { MapOpsService } from "./map-ops.js";
 import { DEFAULT_IDLE_MS, DEFAULT_SCROLLBACK_BYTES, TerminalManager } from "../terminal/manager.js";
 import { TerminalGateway } from "../terminal/gateway.js";
 import { originAllowed } from "./server.js";
+import { SystemService } from "./system-http.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -203,6 +204,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     terminal,
     engines,
     ...(mapOps !== undefined ? { mapOps } : {}),
+    // Multi-repo systems management (§12): the library in src/system/* + the open system's store and the current agent.
+    system: new SystemService({ host: hub, projects, version, home, chats }),
     // Follows the hub's current project; null in the launcher state (endpoints answer 409).
     integrations: new IntegrationsService({
       home: ruahHome(),

@@ -230,6 +230,11 @@ export class ChatStore {
     return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, Math.max(0, limit));
   }
 
+  /** Drops the cached headers of a project (its chat files were rewritten on disk, e.g. a system repo rename). */
+  reload(projectId: string): void {
+    this.cache.delete(projectId);
+  }
+
   // ----- internals -----
 
   private now(): string {

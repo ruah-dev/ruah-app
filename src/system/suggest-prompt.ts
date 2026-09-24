@@ -15,6 +15,8 @@ export interface SuggestPromptInput {
   existingEdges: Pick<ArchEdge, "from" | "to" | "label">[];
   repos: { id: string; path: string }[]; // path as the agent can open it (absolute, or relative to its cwd)
   maxSuggestions?: number;
+  /** Edges the user rejected before (CONTRACTS §12.5): listed so the agent does not spend tokens on them. */
+  rejectedEdges?: Pick<ArchEdge, "from" | "to" | "label">[];
 }
 
 function oneLine(s: string | undefined, max: number): string {
@@ -36,6 +38,12 @@ export function buildSuggestPrompt(input: SuggestPromptInput): string {
     input.existingEdges.length > 0
       ? input.existingEdges.map((e) => `- ${e.from} -> ${e.to}${e.label !== undefined ? ` [${e.label}]` : ""}`).join("\n")
       : "- (none)";
+  const rejected =
+    input.rejectedEdges !== undefined && input.rejectedEdges.length > 0
+      ? `\nRejected by the user (never propose these again):\n${input.rejectedEdges
+          .map((e) => `- ${e.from} -> ${e.to}${e.label !== undefined ? ` [${e.label}]` : ""}`)
+          .join("\n")}\n`
+      : "";
   return `You are mapping the architecture of the multi-repo system "${input.systemName}".
 Find runtime connections BETWEEN the services listed below that are not in the known edges yet:
 HTTP/gRPC/WebSocket calls, published/consumed queue topics or events, shared databases or
@@ -60,7 +68,7 @@ ${repos}
 
 Known edges:
 ${edges}
-
+${rejected}
 Answer with a single JSON object and nothing else:
 {"edges":[{"from":"<service id>","to":"<service id>","label":"<= 40 chars, e.g. HTTP or topic name","kind":"sync|async|event|data","confidence":0.8,"evidence":["<repoId>/<path>:<line>"],"reason":"<one sentence>"}]}
 If you find nothing, answer {"edges":[]}.

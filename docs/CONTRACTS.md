@@ -990,3 +990,201 @@ live-health field on `CloudResource` yet; `status` carries the state.
 - **GCP**: Cloud Run jobs, App Engine and Compute Engine VMs are not listed.
 - `/api/integrations` is cached for 15 s (§6), so "Check again" right after a login can
   show the previous state for a few seconds.
+
+## 12. Multi-repo systems management (2026-09-24)
+
+Creating and managing multi-repo systems (§1.5, docs/MULTI-REPO.md) without
+editing JSON. Everything is **optional**: a single-repo project looks and
+works exactly as before, and the system endpoints answer 409 for it.
+
+**Layering.** The logic is a standalone library, `src/system/*` (no daemon
+dependency): `manage.ts` (create / add / remove / rename / rebuild / rescan),
+`status.ts` (git status), `github.ts` (`gh`), `suggestions-store.ts` (review
+state), `suggest-run.ts` (one agent pass, pluggable `RunAgent`). The
+`ruah app system` CLI (§12.7) and the daemon's `/api/system/*` (§12.6) both
+call it. The daemon adds only two things: changes to the open system go
+through its live store (validated, written atomically, broadcast as
+`architecture` reason `saved`; the project stays open, no switch), and
+"Suggest connections" runs on the **current agent** as a normal turn.
+
+### 12.1 Files (all next to `ruah.system.json`)
+| File | Content | Written by |
+| --- | --- | --- |
+| `ruah.system.json` | §1.5 (`{ version: 1, name, repos: [{ id, path }] }`, paths relative) | create / add / remove / rename |
+| `architecture.json` | the system map (§1.5); hand edits and accepted suggestions are merged on every rebuild | rebuild, accept, the viewer, agents |
+| `.ruah/suggestions.json` | `{ version: 1, pending: StoredSuggestion[], rejected: RejectedSuggestion[], lastRun? }` (§12.5); commit it to share review decisions | suggest, accept, reject |
+| `.ruah/system-scan.json` | `{ version: 1, builtAt, repos: { [id]: { scannedAt, source: "architecture.json" \| "scan" \| "missing", type, nodes, warning? } } }`: facts of the last build, for status | every rebuild |
+
+Repo folders are never written by management calls, with one exception: a
+per-repo **rescan** of a repo that already has its own `architecture.json`
+refreshes that file (as `ruah app scan` would, hand edits merged), so the
+system rebuild reuses it. A repo without one is scanned in memory; no file is
+created in it. **Remove never deletes files**: it only takes the repo out of
+`ruah.system.json` (and drops its pending suggestions).
+
+Rules for the system folder: it must not be one of the repos, and a folder
+that holds a single-repo map (`architecture.json` without `ruah.system.json`)
+is refused (the system map would overwrite it). Repo paths must be existing
+folders (realpath) not already in the system; ids match
+`^[a-z0-9][a-z0-9-]{0,62}$`, are unique, and are derived from the folder name
+when omitted (`Billing_Service` → `billing-service`, then `-2`, `-3`, …).
+
+### 12.2 Types
+```ts
+interface GitStatus { branch: string | null /* null = detached */; upstream: string | null;
+  ahead: number; behind: number; dirty: number /* changed + staged + unmerged + untracked */; head: string | null }
+interface RepoStatus { id: string; path: string /* as in the file */; root: string /* absolute */; exists: boolean;
+  git: GitStatus | null /* null = not a git work tree */; gitError?: string;
+  lastScanAt: string | null; scanSource: "architecture.json" | "scan" | "missing" | null;
+  type: string | null /* service, frontend, worker, library, infra, gateway */;
+  nodes: number /* elements of the repo in the system map, below its repo node */; warning?: string }
+interface SystemStatus { name: string; dir: string; file: string; builtAt: string | null; repos: RepoStatus[] }
+interface GithubRepo { nameWithOwner: string; name: string; description: string | null; url: string;
+  isPrivate: boolean; isArchived: boolean; updatedAt: string | null; defaultBranch: string | null }
+interface StoredSuggestion { id: string /* "s-" + sha1(from, to, lower-cased label)[:10], stable across runs */;
+  from: string; to: string; label?: string; kind?: string; confidence: number /* 0..1 */;
+  evidence: string[] /* "<repoId>/<path>:<line>[-<line>]", verified to exist */; reason?: string;
+  proposedAt: string; agentId?: string }
+interface RejectedSuggestion { id: string; from: string; to: string; label?: string; rejectedAt: string }
+interface SuggestionsView { pending: StoredSuggestion[] /* still valid against the current map */;
+  rejected: RejectedSuggestion[]; lastRun: { at: string; agentId?: string; proposed: number; dropped: number; error?: string } | null;
+  running: { startedAt: string; agentId: string } | null }
+```
+Git status is `git -C <root> status --porcelain=v2 --branch` (execFile, args
+array, 15 s timeout); ahead/behind are relative to the upstream (0 without one).
+
+### 12.3 GitHub
+Browsing uses the user's own `gh auth` (Ruah stores no token):
+`gh repo list [<owner>] --json name,nameWithOwner,description,url,isPrivate,isArchived,updatedAt,defaultBranchRef --limit <n>`
+(owner `^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`, empty = the logged-in user).
+Cloning is `gh repo clone <owner/name> <parentDir>/<name>` and **only happens
+on an explicit request** (the Clone button, `repos/add` with `github`, CLI
+`add gh:owner/name`); the repo must match `owner/name` and the target must not
+exist. `gh` missing → 400 with an install hint.
+
+### 12.4 Rename (decision)
+Renaming a repo id is **allowed** and applied, in one call, to everything Ruah
+stores that names the repo's elements: `ruah.system.json`; the system
+`architecture.json` (the repo node, every `<old>:*` id, `parent`, `repo`,
+`path` / `files[]` / `evidence` `<old>/*`, edge ends, workflow ids and steps);
+pending and rejected suggestions (ids recomputed); `.ruah/links.json` (work
+items); `.ruah/system-scan.json`; and, in the daemon and in the CLI through
+`RUAH_HOME`, the system project's chats (`TurnRecord.nodeId`, header
+`lastNodeId`) and cloud links (`~/.ruah/projects/<id>/cloud.json`
+`manualLinks`, `linkedNodeId`). Then the map is rebuilt, so hand edges and
+accepted suggestions keep pointing at the same elements. Refused: an id that
+does not match `^[a-z0-9][a-z0-9-]{0,62}$` (400), one already in the system,
+one that is already an element of the map such as the shared `postgres` node,
+or any rename while "Suggest connections" runs (409). Not rewritten: agent
+session transcripts (the agent's own history; old ids there are plain text)
+and per-viewer UI state kept in the browser.
+
+### 12.5 Connections: deterministic first, agent second
+1. **Deterministic signals** (zero tokens, `src/system/signals.ts`): compose /
+   k8s / terraform that deploy or link other repos, env / config / source URLs
+   and `*_URL` / `*_HOST` values naming another service, queue / topic names
+   published in one repo and consumed in another, internal packages. They are
+   the top-level `source: "scan"` edges of every rebuild, each with
+   `evidence`. `GET /api/system/signals` lists them.
+2. **Suggest connections** (optional): the prompt (`suggest-prompt.ts`) lists
+   the top-level services, the known edges, where each repo lives, and the
+   edges the user rejected before (so no tokens are spent on them); the agent
+   answers JSON only; `parseSuggestions` validates it (listed services only, no
+   self edges, confidence 0..1, evidence `<repoId>/<path>:<line>` of an
+   existing file line, no duplicate of an existing edge). Valid proposals are
+   stored as `pending` (a repeat refreshes the same id; previously rejected
+   ones are dropped). **Accept** → an edge `{ from, to, label?, kind?, source:
+   "suggested", evidence }` saved to the map and kept by every rebuild.
+   **Reject** → remembered in `rejected`, never proposed again (until
+   "unreject").
+   - **Daemon: the current agent, as a normal turn** (`SessionHub.runTaskTurn`):
+     recorded in the active chat (bubble text "Suggest connections between the
+     N repos of <name>", the full prompt as its context pack), broadcast as
+     `turn.started` / `stream` / `turn.finished` to every viewer, counted in
+     usage, permission requests shown as usual. Chosen over a hidden one-shot
+     so the user sees what the agent read and what it cost, and can cancel it
+     like any turn. A busy agent → 409 (no queueing). The turn's answer (all
+     `text` chunks) is parsed when it finishes; a turn that does not end with
+     `end_turn` records `lastRun.error`. The agent's cwd is the system folder
+     with every repo as an additional directory (Claude); ACP agents get the
+     cwd only (docs/MULTI-REPO.md); evidence is verified on the daemon either way.
+   - **CLI: pluggable.** `--agent claude` runs a one-shot, read-only Claude
+     Agent SDK query (tools Read / Grep / Glob / LS only, everything else
+     denied, the user's Claude Code settings and login); `--print-prompt`
+     prints the prompt for any other agent and `--reply-file <file|->` feeds
+     its answer back.
+
+### 12.6 HTTP
+Every endpoint below passes the Origin check of `/ws` (§2.2 rule 10; 403),
+GETs included (they read the machine's repos and `gh`). POST bodies are JSON
+≤ 64 KiB, validated by `src/contracts/system.ts` (400). Errors: 400 invalid,
+404 unknown repo / suggestion / missing folder, 409 conflict or no system open
+(`"no project open"`, `"the open project is not a multi-repo system"`), 422
+invalid `ruah.system.json`, 503 without the service.
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/system` | `SystemStatus` of the open system |
+| `POST /api/system/create` | `{ dir, name?, repos: { path, id? }[], open?: boolean }` → `{ project: ProjectInfo \| null, created, added: string[], dir }`. Writes `<dir>/ruah.system.json` (folder created when missing); when one exists there, the repos not yet in it are added ("Add another repo…" into an existing system). Then opens it as the current project (default; the usual `project` / `architecture` / `chats` broadcasts). Works with any project open, or none. |
+| `POST /api/system/repos/add` | `{ path }` or `{ github: { repo: "owner/name", parentDir? } }`, plus `id?` → `SystemStatus`. `github` clones into `parentDir` (default: the system folder's parent) first. |
+| `POST /api/system/repos/remove` | `{ id }` → `SystemStatus` (files untouched) |
+| `POST /api/system/repos/rename` | `{ id, newId }` → `SystemStatus` (§12.4) |
+| `POST /api/system/repos/rescan` | `{ id }` → `{ status, nodes, edges, ms }` (§12.1) |
+| `POST /api/system/rescan` | `{}` → `{ status, nodes, edges, ms }`: rebuild every repo |
+| `POST /api/rescan` | while a system is open: rebuilds the system (`{ ok, nodes, edges, ms }`) instead of scanning its folder as a repo |
+| `GET /api/system/signals` | `{ edges: ArchEdge[] }`: the deterministic top-level `scan` edges with evidence |
+| `GET /api/system/suggestions` | `SuggestionsView` |
+| `POST /api/system/suggestions/run` | `{ minConfidence?, maxSuggestions? }` → **202** `SuggestionsView` (`running` set). Proposals land when the turn finishes: poll `GET …/suggestions` or watch `turn.finished`. 409 when a run is going, the agent is busy, or the system has fewer than two repos. |
+| `POST /api/system/suggestions/accept` | `{ id }` → `{ edge, suggestions: SuggestionsView }`; the edge is saved through the store (broadcast `architecture`, `by.kind: "user"`) |
+| `POST /api/system/suggestions/reject`, `…/unreject` | `{ id }` → `SuggestionsView` |
+| `GET /api/system/github/repos?owner=&limit=` | `{ repos: GithubRepo[] }` (newest first); no system needed |
+| `POST /api/system/github/clone` | `{ repo: "owner/name", parentDir }` → `{ path }`; no system needed |
+
+Repos added while an agent session is live reach Claude's additional
+directories on its next session (a new chat, a reset, or a restart); the
+file / context / terminal endpoints resolve them at once.
+
+### 12.7 CLI (`ruah app system`, no daemon needed)
+`<system>` = the folder holding `ruah.system.json` (or the file); commands
+without it take `--system <dir>`, default the current directory. Exit codes:
+0 ok, 2 usage / validation / not found / conflict, 1 other failures.
+```
+init <folder> [--repo <path>|<id>=<path>]... [--name <n>] [--force]
+add [<system>] <path | <id>=<path> | gh:owner/name> [--id <id>] [--into <dir>]
+remove <id>
+rename <id> <new-id>
+status [<system>] [--json]          # SystemStatus as JSON, or a table
+signals [<system>] [--json]         # { edges }: deterministic, zero tokens
+scan [<system>] [--out <path>] [--dry-run]
+rescan <id>
+suggest [<system>] [--agent claude] [--model <m>] [--min-confidence <n>] [--json]
+        [--print-prompt | --reply-file <file|->]
+suggest [<system>] --list | --accept <n|id>... | --reject <n|id>... | --unreject <id>... [--json]
+```
+`--accept 1` refers to the position in the list as printed before the call.
+Accepting writes `architecture.json`; a running daemon picks it up through its
+file watcher.
+
+### 12.8 Context pack and ids (addition to §3)
+For an element of a system (it has `repo`, or its id is `<repoId>:…`, stored or
+expanded) the pack gets one line after `path:`:
+`repo: <repoId> at <absolute repo folder> (paths "<repoId>/<path>" are inside it)`,
+so the agent can open system paths whatever the folder layout. Namespaced ids
+work unchanged in `GET /api/context/:id` and `GET /api/expand/:id` (URL-encode
+the `:`), expanded ids (`<repoId>:<node>/<entry>`), diagram ids (`arch:<id>`),
+breadcrumbs, search (elements without a path show their repo), and the draw.io
+export (one page per repo, XML-safe ids).
+
+### 12.9 Viewer
+Self-contained, mounted once (`<SystemDialogs />` from
+`ui/src/components/system/`) and opened with `openSystemDialog()` from
+`ui/src/lib/system.ts`; nothing in the layout depends on it. Entry points: the
+start screen's **New system…**; the project menu's **Add another repo…** for a
+repo project (creates a system with this repo plus the picked ones in a folder
+the user picks; the repo keeps its own map), or **Repos…** / **Suggest
+connections…** for a system project. The manager has two tabs: *Repos*
+(`ReposPanel`: branch, ↑↓, changes, elements, last scan; add from disk or
+GitHub, rename, rescan, remove) and *Connections* (`ConnectionsPanel`:
+detected edges, the agent's proposals with confidence and clickable
+`file:line` evidence, accept / reject, the rejected list). Both panels are
+exported so a later page layout can host them.

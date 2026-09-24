@@ -16,10 +16,23 @@ Usage:
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   ruah app scan <repo> [options]    scan a repo into architecture.json
-  ruah app system <cmd> <dir> ...   multi-repo system (ruah.system.json in <dir>):
-    init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
-    add <dir> <id>=<path>                                      add a repo
-    scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
+  ruah app system <cmd> ...         multi-repo system (ruah.system.json; no daemon needed;
+                                   <system> = its folder, else --system <dir>, else cwd):
+    init <folder> [--repo <path>|<id>=<path>]... [--name <n>] [--force]
+                                            create ruah.system.json
+    add [<system>] <path|<id>=<path>|gh:owner/name> [--id <id>] [--into <dir>]
+                                            add a repo (gh: clones it with \`gh repo clone\`)
+    remove <id>                             take a repo out (its files are untouched)
+    rename <id> <new-id>                    rename a repo id (map, suggestions, links, chats)
+    status [<system>] [--json]              branch, ahead/behind, dirty, last scan, nodes
+    signals [<system>] [--json]             deterministic cross-repo edges (zero tokens)
+    scan [<system>] [--out <path>] [--dry-run]   write <system>/architecture.json
+    rescan <id>                             re-scan one repo and rebuild the system map
+    suggest [<system>] [--agent claude] [--model <m>] [--min-confidence <n>] [--json]
+            [--print-prompt | --reply-file <file>]
+                                            agent pass: proposes cross-repo edges (pending)
+    suggest --list | --accept <n|id> | --reject <n|id> | --unreject <id>
+                                            review proposals (accepted = source "suggested")
   ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)

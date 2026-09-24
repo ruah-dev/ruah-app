@@ -38,7 +38,7 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-async function parseBody<T extends z.ZodTypeAny>(req: IncomingMessage, schema: T): Promise<z.infer<T>> {
+export async function parseBody<T extends z.ZodTypeAny>(req: IncomingMessage, schema: T): Promise<z.infer<T>> {
   const raw = await readBody(req);
   let value: unknown;
   try {
