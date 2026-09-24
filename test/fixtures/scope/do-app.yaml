@@ -1,0 +1,78 @@
+# DigitalOcean App Platform spec, the shape `doctl apps spec get` writes and
+# repos commit as .do/app.yaml (names are fictional).
+name: acme-shop
+region: fra
+features:
+  - buildpack-stack=ubuntu-22
+
+domains:
+  - domain: acmeshop.ro
+    type: PRIMARY
+    zone: acmeshop.ro
+  - domain: www.acmeshop.ro
+    type: ALIAS
+    zone: acmeshop.ro
+  - domain: api.acmeshop.ro
+    type: ALIAS
+    zone: acmeshop.ro
+
+services:
+  - name: api
+    github:
+      repo: acme/acme-shop
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: docker/Dockerfile.api
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: basic-s
+    health_check:
+      http_path: /health
+    envs:
+      - key: APP_URL
+        value: https://acmeshop.ro
+        scope: RUN_TIME
+      - key: DATABASE_URL
+        value: ${db.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      - key: SESSION_SECRET
+        value: EV[1:abc:def]
+        scope: RUN_TIME
+        type: SECRET
+  - name: web
+    github:
+      repo: acme/acme-shop
+      branch: main
+    dockerfile_path: docker/Dockerfile.web
+    http_port: 3000
+
+static_sites:
+  - name: admin
+    github:
+      repo: acme/acme-shop
+      branch: main
+    build_command: pnpm --filter admin build
+    output_dir: apps/admin/dist
+
+databases:
+  - name: db
+    engine: PG
+    production: true
+    cluster_name: acme-shop-postgres
+
+ingress:
+  rules:
+    - match:
+        authority:
+          exact: acmeshop.ro
+        path:
+          prefix: /
+      component:
+        name: web
+        preserve_path_prefix: true
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

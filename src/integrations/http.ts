@@ -10,6 +10,8 @@ import {
   ConnectBodySchema,
   RUAH_TASK_ACTIONS,
   RuahTaskBodySchema,
+  ScopeAccountsBodySchema,
+  ScopeResourceBodySchema,
   WorkCreateBodySchema,
   WorkLinkBodySchema,
   type RuahTaskAction,
@@ -82,6 +84,7 @@ const d = (value: string | undefined): string => {
 const GET_ROUTES: [RegExp, Route][] = [
   [/^\/api\/integrations$/, (_m, _r, _u, api) => api.list()],
   [/^\/api\/cloud\/resources$/, (_m, _r, _u, api) => api.cloudResources()],
+  [/^\/api\/cloud\/scope$/, (_m, _r, _u, api) => api.cloudScope()],
   [
     /^\/api\/work\/items$/,
     (_m, _r, url, api) => {
@@ -104,6 +107,8 @@ const POST_ROUTES: [RegExp, Route][] = [
   [/^\/api\/integrations\/([^/]+)\/disconnect$/, (m, _r, _u, api) => api.disconnect(d(m[1]))],
   [/^\/api\/cloud\/sync$/, async (_m, req, _u, api) => api.cloudSync(await parseBody(req, CloudSyncBodySchema))],
   [/^\/api\/cloud\/link$/, async (_m, req, _u, api) => api.cloudLink(await parseBody(req, CloudLinkBodySchema))],
+  [/^\/api\/cloud\/scope\/accounts$/, async (_m, req, _u, api) => api.cloudScopeAccounts(await parseBody(req, ScopeAccountsBodySchema))],
+  [/^\/api\/cloud\/scope\/resource$/, async (_m, req, _u, api) => api.cloudScopeResource(await parseBody(req, ScopeResourceBodySchema))],
   [/^\/api\/work\/link$/, async (_m, req, _u, api) => api.workLink(await parseBody(req, WorkLinkBodySchema))],
   [/^\/api\/work\/create$/, async (_m, req, _u, api) => api.workCreate(await parseBody(req, WorkCreateBodySchema))],
   [/^\/api\/ruah\/task$/, async (_m, req, _u, api) => api.ruahTask(await parseBody(req, RuahTaskBodySchema))],

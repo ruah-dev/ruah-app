@@ -9,9 +9,13 @@ import type { Architecture } from "../contracts/architecture.js";
 import type {
   CloudLinkBody,
   CloudResource,
+  CloudScopeSummary,
   CloudSyncBody,
   CloudSyncResult,
   ConnectBody,
+  ResourceScope,
+  ScopeAccountsBody,
+  ScopeResourceBody,
   IntegrationInfo,
   ProviderError,
   RuahTaskAction,
@@ -33,6 +37,19 @@ import { Keychain, type SecretStore } from "./keychain.js";
 import { linkResources } from "./linking.js";
 import { IntegrationRegistry, isCloud, isWork, registerCloudBatchB, syncable, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
 import { RuahIntegration, type Launcher } from "./ruah.js";
+import {
+  applyResourceAction,
+  applyScope,
+  loadScopeUnits,
+  ownUnit,
+  ScopeFileError,
+  scopeSummary,
+  SignalsCache,
+  syncAccountPlan,
+  updateScopeFile,
+  withoutScope,
+  type LoadedUnit,
+} from "./scope/index.js";
 import { CloudCacheStore, readLinks, SettingsStore, updateLink } from "./store.js";
 import { GitHubIntegration } from "./work/github.js";
 import { JiraIntegration } from "./work/jira.js";
@@ -52,6 +69,10 @@ export interface IntegrationsApi {
   cloudSync(body: CloudSyncBody): Promise<CloudSyncResult>;
   cloudResources(): Promise<CloudSyncResult>;
   cloudLink(body: CloudLinkBody): Promise<{ ok: true }>;
+  /** §14: the open project's scope — accounts, files, what the repo says, members and suggestions. */
+  cloudScope(): Promise<CloudScopeInfo>;
+  cloudScopeAccounts(body: ScopeAccountsBody): Promise<CloudScopeSummary>;
+  cloudScopeResource(body: ScopeResourceBody): Promise<{ ok: true; scope: ResourceScope }>;
   workItems(query: { nodeId?: string; q?: string; provider?: string }): Promise<{ items: WorkItem[]; errors?: ProviderError[] }>;
   workLink(body: WorkLinkBody): Promise<{ ok: true }>;
   workCreate(body: WorkCreateBody): Promise<WorkItem>;
@@ -88,6 +109,19 @@ export interface CloudUpdate {
   errors: ProviderError[];
   /** The whole snapshot; absent when nothing a viewer shows changed since the last update. */
   resources?: CloudResource[];
+  /** §14: the project's accounts and scope files. */
+  scope?: CloudScopeSummary;
+}
+
+/** §14 GET /api/cloud/scope. */
+export interface CloudScopeInfo {
+  root: string;
+  scope: CloudScopeSummary;
+  /** What each folder of the project says about where it runs (files read, host names, names). */
+  evidence: { repo?: string; root: string; files: string[]; hosts: string[]; names: string[]; accountHints: { provider: string; account: string; file: string }[]; truncated: boolean }[];
+  /** In-scope resources, suggestions (weak) and excluded ones, from the last sync. */
+  resources: Pick<CloudResource, "id" | "provider" | "type" | "service" | "name" | "account" | "scope">[];
+  counts: { in: number; suggestions: number; excluded: number; total: number };
 }
 
 const ITEM_ID_RE = /^[A-Za-z0-9._/#-]{1,300}$/;
@@ -107,6 +141,8 @@ export class IntegrationsService implements IntegrationsApi {
   private readonly inflight = new Map<string, Promise<CloudSyncOutcome>>();
   private readonly cloudListeners = new Set<(update: CloudUpdate) => void>();
   private readonly cloudFingerprints = new Map<string, string>();
+  /** §14: repo signals, re-read at most every 15 s (scope is evaluated on every read and push). */
+  private readonly signals = new SignalsCache();
 
   constructor(private readonly options: IntegrationsOptions) {
     const runner = options.runner ?? defaultRunner;
@@ -194,15 +230,20 @@ export class IntegrationsService implements IntegrationsApi {
   async cloudSync(body: CloudSyncBody): Promise<CloudSyncResult> {
     const project = this.requireProject();
     const wanted = body.providers;
+    // §14: a project whose scope lists accounts syncs only those providers and accounts (sync-all and the
+    // watch loop); naming a provider still syncs it (its scope accounts, else its selected account).
+    const units = this.scopeUnits(project.root);
+    const plan = syncAccountPlan(units);
     const providers = wanted !== undefined
       ? wanted.map((id) => {
           const integration = this.integration(id);
           if (!isCloud(integration)) throw new IntegrationError(400, `${id} is not a cloud integration`);
           return integration;
         })
-      : this.registry.cloud().filter(syncable);
+      : this.registry.cloud().filter((c) => syncable(c) && (plan === null || plan.has(c.id)));
     const { resources: fresh, errors, failed } = await syncProviders(providers, {
       accounts: body.accounts,
+      accountLists: plan,
       now: this.now(),
       project: { root: project.root },
       syncOne: (provider, account, ctx) => this.syncOnce(provider, account, ctx),
@@ -210,18 +251,111 @@ export class IntegrationsService implements IntegrationsApi {
     const synced = new Set(providers.map((p) => p.id));
     // Sync-all and the watch loop skip providers without their CLI (or disconnected in Ruah); an old
     // "not installed" error of theirs goes too, unless this call synced them explicitly.
-    const skipped = new Set(this.registry.cloud().filter((c) => !syncable(c) && !synced.has(c.id)).map((c) => c.id));
+    const skipped = new Set(this.registry.cloud().filter((c) => (!syncable(c) || (plan !== null && !plan.has(c.id))) && !synced.has(c.id)).map((c) => c.id));
     const cache = this.cloudCache.read(project.root);
-    const kept = cache.resources.filter((r) => !synced.has(r.provider));
-    const resources = linkResources([...kept, ...fresh], this.nodes(project), cache.manualLinks).sort(
+    // A sync-all under account scope also drops what other providers left in this project's cache.
+    const kept = cache.resources.filter((r) => !synced.has(r.provider) && (wanted !== undefined || plan === null || plan.has(r.provider)));
+    const resources = linkResources(withoutScope([...kept, ...fresh]), this.nodes(project), cache.manualLinks).sort(
       (a, b) => a.provider.localeCompare(b.provider) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
     );
     const syncedAt = this.now().toISOString();
     const keptErrors = cache.errors.filter((e) => !synced.has(e.provider) && !skipped.has(e.provider));
     this.cloudCache.write(project.root, { ...cache, syncedAt, resources, errors: [...keptErrors, ...errors] });
-    const result = { resources, syncedAt, errors: [...keptErrors, ...errors] };
+    const result = this.scoped(project, units, { resources, syncedAt, errors: [...keptErrors, ...errors] }, cache.manualLinks);
     this.emitCloud(project.root, result, [...synced], failed);
     return result;
+  }
+
+  // ---- §14 per-project scope ----------------------------------------------------
+
+  private scopeUnits(root: string): LoadedUnit[] {
+    return loadScopeUnits(root, { signals: (r, names) => this.signals.get(r, names) });
+  }
+
+  /** A snapshot with every resource's `scope` and the project's scope summary. */
+  private scoped(project: CurrentProject, units: LoadedUnit[], result: CloudSyncResult, manualLinks: Record<string, string | null>): CloudSyncResult {
+    return {
+      ...result,
+      resources: applyScope({ units, resources: result.resources, nodes: this.nodes(project), manualLinks }),
+      scope: scopeSummary(units),
+    };
+  }
+
+  /** Cloud providers the watch loop keeps fresh: syncable ones, only the scope's when it lists accounts. */
+  watchProviders(): string[] {
+    const project = this.options.project();
+    if (project === null) return [];
+    const plan = syncAccountPlan(this.scopeUnits(project.root));
+    return this.registry.cloud().filter((c) => syncable(c) && (plan === null || plan.has(c.id))).map((c) => c.id);
+  }
+
+  async cloudScope(): Promise<CloudScopeInfo> {
+    const project = this.requireProject();
+    const units = this.scopeUnits(project.root);
+    const snapshot = await this.cloudResources();
+    const members = snapshot.resources.filter((r) => r.scope !== undefined && (r.scope.in || r.scope.confidence !== undefined));
+    return {
+      root: project.root,
+      scope: scopeSummary(units),
+      evidence: units.map((u) => ({
+        ...(u.repo !== undefined ? { repo: u.repo } : {}),
+        root: u.root, files: u.signals.files, hosts: u.signals.hosts.map((h) => h.host), names: u.signals.names,
+        accountHints: u.signals.accountHints, truncated: u.signals.truncated,
+      })),
+      resources: members.map((r) => ({
+        id: r.id, provider: r.provider, type: r.type, service: r.service, name: r.name,
+        ...(r.account !== undefined ? { account: r.account } : {}), ...(r.scope !== undefined ? { scope: r.scope } : {}),
+      })),
+      counts: {
+        in: snapshot.resources.filter((r) => r.scope?.in === true).length,
+        suggestions: snapshot.resources.filter((r) => r.scope?.in === false && r.scope.confidence === "weak").length,
+        excluded: snapshot.resources.filter((r) => r.scope?.excluded === true).length,
+        total: snapshot.resources.length,
+      },
+    };
+  }
+
+  private writeScope<T>(fn: () => T): T {
+    try {
+      return fn();
+    } catch (err) {
+      if (err instanceof ScopeFileError) throw new IntegrationError(err.status, err.message);
+      throw err;
+    }
+  }
+
+  async cloudScopeAccounts(body: ScopeAccountsBody): Promise<CloudScopeSummary> {
+    const project = this.requireProject();
+    const cloudIds = new Set(this.registry.cloud().map((c) => c.id));
+    for (const a of body.accounts) if (!cloudIds.has(a.provider)) throw new IntegrationError(400, `unknown cloud provider: ${a.provider}`);
+    const own = ownUnit(this.scopeUnits(project.root));
+    if (own === undefined) throw new IntegrationError(409, "no project open");
+    this.writeScope(() => updateScopeFile(own.root, (c) => ({ ...c, accounts: body.accounts.map((a) => ({ ...a })) })));
+    return this.emitScopeChange(project);
+  }
+
+  async cloudScopeResource(body: ScopeResourceBody): Promise<{ ok: true; scope: ResourceScope }> {
+    const project = this.requireProject();
+    const cache = this.cloudCache.read(project.root);
+    const resource = cache.resources.find((r) => r.id === body.resourceId);
+    if (resource === undefined) throw new IntegrationError(404, "unknown resource (sync first)");
+    const own = ownUnit(this.scopeUnits(project.root));
+    if (own === undefined) throw new IntegrationError(409, "no project open");
+    this.writeScope(() => updateScopeFile(own.root, (c) => applyResourceAction(c, { id: resource.id, provider: resource.provider, name: resource.name }, body.action)));
+    this.emitScopeChange(project);
+    const after = (await this.cloudResources()).resources.find((r) => r.id === resource.id);
+    return { ok: true, scope: after?.scope ?? { in: false, reasons: [] } };
+  }
+
+  /** Re-scopes the cached snapshot after a scope edit and pushes it (like a link change). */
+  private emitScopeChange(project: CurrentProject): CloudScopeSummary {
+    const cache = this.cloudCache.read(project.root);
+    const units = this.scopeUnits(project.root);
+    const result = this.scoped(project, units, {
+      resources: linkResources(cache.resources, this.nodes(project), cache.manualLinks), syncedAt: cache.syncedAt, errors: cache.errors,
+    }, cache.manualLinks);
+    this.emitCloud(project.root, result, [], []);
+    return result.scope ?? scopeSummary(units);
   }
 
   /** Concurrent syncs of the same provider + account (watch loop, Sync button, second tab) share one run. */
@@ -247,6 +381,7 @@ export class IntegrationsService implements IntegrationsApi {
     this.cloudFingerprints.set(root, fingerprint);
     const update: CloudUpdate = {
       root, syncedAt: result.syncedAt, providers, failed, errors: result.errors, ...(changed ? { resources: result.resources } : {}),
+      ...(result.scope !== undefined ? { scope: result.scope } : {}),
     };
     for (const listener of this.cloudListeners) {
       try {
@@ -261,11 +396,11 @@ export class IntegrationsService implements IntegrationsApi {
     const project = this.options.project();
     if (project === null) return { resources: [], syncedAt: null, errors: [] };
     const cache = this.cloudCache.read(project.root);
-    return {
+    return this.scoped(project, this.scopeUnits(project.root), {
       resources: linkResources(cache.resources, this.nodes(project), cache.manualLinks),
       syncedAt: cache.syncedAt,
       errors: cache.errors,
-    };
+    }, cache.manualLinks);
   }
 
   async cloudLink(body: CloudLinkBody): Promise<{ ok: true }> {
@@ -278,7 +413,7 @@ export class IntegrationsService implements IntegrationsApi {
     cache.manualLinks[body.resourceId] = body.nodeId;
     cache.resources = linkResources(cache.resources, this.nodes(project), cache.manualLinks);
     this.cloudCache.write(project.root, cache);
-    this.emitCloud(project.root, { resources: cache.resources, syncedAt: cache.syncedAt, errors: cache.errors }, [], []);
+    this.emitCloud(project.root, this.scoped(project, this.scopeUnits(project.root), { resources: cache.resources, syncedAt: cache.syncedAt, errors: cache.errors }, cache.manualLinks), [], []);
     return { ok: true };
   }
 

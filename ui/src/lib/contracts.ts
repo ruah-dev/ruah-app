@@ -185,6 +185,7 @@ export type ServerMessage =
       failed: string[];
       errors: { provider: string; message: string }[];
       resources?: CloudResource[];
+      scope?: CloudScopeSummary; // §14
     }
   // §13 activity feed: every viewer, whatever project is open
   | { type: "activity"; event: ActivityEvent; project: ProjectActivity }
@@ -579,15 +580,41 @@ export interface CloudResource {
   pods?: { running: number; pending: number; crashLoop: number; restarts: number };
   hosts?: string[]; // ingress hosts, custom domains, load balancer addresses
   createdAt?: string; // ISO (deployments)
+  account?: string; // §14: the account (team / context / profile) it was synced from, when one was named
+  scope?: ResourceScope; // §14: membership in the open project; absent = an older daemon (treat as in scope)
 }
 
 export type CloudHealth = "healthy" | "degraded" | "down" | "deploying" | "unknown";
+
+/** §14: how sure Ruah is that a resource belongs to the open project (strongest first). */
+export type ScopeConfidence = "manual" | "proof" | "likely" | "weak";
+
+export interface ResourceScope {
+  in: boolean;
+  confidence?: ScopeConfidence; // absent = no evidence; "weak" + in:false = a suggestion
+  reasons: string[]; // "from .do/app.yaml (app shop)", "tag project=acme", "added by you"
+  excluded?: boolean; // removed by the user
+}
+
+export interface ScopeAccount {
+  provider: string;
+  account?: string; // absent = the provider's selected / default account
+  whole?: boolean; // everything in the account is the project's
+}
+
+export interface CloudScopeSummary {
+  configured: boolean;
+  accounts: (ScopeAccount & { repo?: string })[];
+  files: { repo?: string; path: string; exists: boolean; error?: string }[];
+  writable: boolean;
+}
 
 /** POST /api/cloud/sync and GET /api/cloud/resources. */
 export interface CloudSyncResult {
   resources: CloudResource[];
   syncedAt: string | null;
   errors: { provider: string; message: string }[];
+  scope?: CloudScopeSummary; // §14
 }
 
 export interface WorkItem {

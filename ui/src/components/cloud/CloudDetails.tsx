@@ -11,6 +11,7 @@ import {
   HEALTH_LABEL,
   cloudKind,
   healthTone,
+  inScope,
   providerLabel,
   resourceIdOf,
   timeAgo,
@@ -27,7 +28,8 @@ import { cn } from "@/lib/utils";
 export function ElementCloudSection({ node }: { node: DiagramNode }) {
   const s = useEnsure("cloud");
   if (s.cloud.status !== "ok") return null;
-  const linked = s.cloud.data.resources.filter((r) => r.linkedNodeId === node.id);
+  // §14: only the project's resources run its elements.
+  const linked = s.cloud.data.resources.filter((r) => r.linkedNodeId === node.id && inScope(r));
   if (!linked.length) return null;
   return (
     <section className="space-y-1.5">
@@ -191,6 +193,20 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
         ][])
       : []),
     ...(r.createdAt ? ([["Created", <span title={r.createdAt}>{timeAgo(r.createdAt)}</span>]] as [string, ReactNode][]) : []),
+    ...(r.account ? ([["Account", r.account]] as [string, ReactNode][]) : []),
+    ...(r.scope
+      ? ([
+          [
+            "Project",
+            <span className="whitespace-normal break-words">
+              {r.scope.in ? "In this project" : r.scope.excluded ? "Removed from this project" : "Not in this project"}
+              {r.scope.reasons.length ? (
+                <span className="block text-[11.5px] text-muted-foreground">{r.scope.reasons.join(" · ")}</span>
+              ) : null}
+            </span>,
+          ],
+        ] as [string, ReactNode][])
+      : []),
     ["ID", <CopyId id={r.id} />],
   ];
 

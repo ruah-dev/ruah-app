@@ -29,6 +29,8 @@ export const RAILWAY_LOGIN = "railway login";
 const ACCOUNT_RE = /^[A-Za-z0-9_-]{1,100}$/;
 const AUTH_RE = /railway login|unauthori[sz]ed|not logged in|login required|invalid (auth|token)|token.*expired/i;
 const PERSONAL = "personal";
+/** §14: tag on the services of the project the open repo is linked to (`railway link`). */
+export const RAILWAY_LINK_TAG = "railway-link";
 
 const resource = (fields: Parameters<typeof cloudResource>[1]): CloudResource => cloudResource(PROVIDER, fields);
 
@@ -172,16 +174,22 @@ export class RailwayIntegration extends CliCloudIntegration {
     }
     if (account !== undefined) projects = projects.filter((p) => workspaceOf(p).id === account);
     // The open repo's linked project (railway link) has deployment status + domains per environment.
+    let linkedId: string | undefined;
     if (project !== null) {
       const linked = obj(await this.runJson(bin, ["status", "--json"], { cwd: project.root }, {}).catch(() => undefined));
       const id = str(linked?.id);
       if (linked !== undefined && id !== undefined) {
+        linkedId = id;
         const i = projects.findIndex((p) => str(p.id) === id);
         if (i >= 0) projects[i] = { ...projects[i], ...linked };
         else if (account === undefined || workspaceOf(linked).id === account) projects.push(linked);
       }
     }
-    return projects.flatMap(mapRailwayProject);
+    // §14: the linked project's services carry `railway-link` (proof that they are this repo's).
+    return projects.flatMap((p) => {
+      const mapped = mapRailwayProject(p);
+      return linkedId !== undefined && str(p.id) === linkedId ? mapped.map((r) => ({ ...r, tags: { ...r.tags, [RAILWAY_LINK_TAG]: "linked" } })) : mapped;
+    });
   }
 }
 

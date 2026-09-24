@@ -17,6 +17,8 @@ export const KNOWN_CLOUD_PROVIDERS = [
 ] as const;
 /** §9: every provider's native states normalized for "is it up right now?". */
 export const CLOUD_HEALTH = ["healthy", "degraded", "down", "deploying", "unknown"] as const;
+/** §14: how sure Ruah is that a resource belongs to the open project (strongest first). */
+export const SCOPE_CONFIDENCE = ["manual", "proof", "likely", "weak"] as const;
 
 export const IntegrationAccountSchema = z.object({ id: z.string(), label: z.string() });
 
@@ -33,6 +35,14 @@ export const IntegrationInfoSchema = z.object({
 });
 
 export const CloudResourceTypeSchema = z.enum(CLOUD_RESOURCE_TYPES);
+
+/** §14: membership of a resource in the open project's cloud scope (attached on every read). */
+export const ResourceScopeSchema = z.object({
+  in: z.boolean(), // counted as this project's (proof, likely, manual include or a whole account; never when excluded)
+  confidence: z.enum(SCOPE_CONFIDENCE).optional(), // strongest evidence; absent = none. "weak" + in:false = a suggestion
+  reasons: z.array(z.string()), // "from .do/app.yaml", "tag project=acme", "in Terraform (digitalocean_app.web)", "added by you"
+  excluded: z.boolean().optional(), // removed by the user (wins over any evidence)
+});
 
 export const CloudResourceSchema = z.object({
   id: z.string(), // provider-native id (ARN, DO URN)
@@ -55,6 +65,8 @@ export const CloudResourceSchema = z.object({
   pods: z.object({ running: z.number(), pending: z.number(), crashLoop: z.number(), restarts: z.number() }).optional(), // kubernetes workloads
   hosts: z.array(z.string()).optional(), // ingress hosts, custom domains, load balancer addresses
   createdAt: z.string().optional(), // ISO (deployments)
+  account: z.string().optional(), // §14: the account (team / context / profile …) it was synced from, when one was named
+  scope: ResourceScopeSchema.optional(), // §14: set on reads for an open project; never stored in the cache
 });
 
 export const WorkItemSchema = z.object({
@@ -70,10 +82,52 @@ export const WorkItemSchema = z.object({
 
 export const ProviderErrorSchema = z.object({ provider: z.string(), message: z.string() });
 
+// ---- §14 per-project cloud scope ----------------------------------------------
+
+/** One provider account that belongs to the project (`.ruah/cloud.json` `accounts[]`). */
+export const ScopeAccountSchema = z.object({
+  provider: z.string().min(1).max(40),
+  account: z.string().min(1).max(200).optional(), // absent = the provider's selected / default account
+  whole: z.boolean().optional(), // true = everything in this account is the project's; default: only what matches the repo
+});
+
+/** A resource the user added to / removed from the project; the name only helps humans reading diffs. */
+export const ScopeResourceRefSchema = z.union([
+  z.string().min(1).max(2048),
+  z.object({ id: z.string().min(1).max(2048), provider: z.string().max(40).optional(), name: z.string().max(300).optional() }),
+]);
+
+/** `<repo>/.ruah/cloud.json` — committable, no secrets, stable formatting. */
+export const ScopeFileSchema = z.object({
+  version: z.literal(1),
+  name: z.string().min(1).max(200).optional(), // project name for `project=<name>` tags (default: repo / package names)
+  accounts: z.array(ScopeAccountSchema).max(200).optional(),
+  include: z.array(ScopeResourceRefSchema).max(5000).optional(),
+  exclude: z.array(ScopeResourceRefSchema).max(5000).optional(),
+});
+
+export const ScopeFileStatusSchema = z.object({
+  repo: z.string().optional(), // system repo id; absent = the project (or system) folder itself
+  path: z.string(), // absolute path of the .ruah/cloud.json
+  exists: z.boolean(),
+  error: z.string().optional(), // invalid file: reported, treated as empty, never overwritten
+});
+
+export const ScopeAccountEntrySchema = ScopeAccountSchema.extend({ repo: z.string().optional() });
+
+/** What the viewer needs besides the per-resource `scope`: accounts and the files they came from. */
+export const CloudScopeSummarySchema = z.object({
+  configured: z.boolean(), // some scope file lists accounts, includes or excludes
+  accounts: z.array(ScopeAccountEntrySchema), // union over the project's files (repo = which system repo listed it)
+  files: z.array(ScopeFileStatusSchema),
+  writable: z.boolean(), // false while the file edits go to is invalid
+});
+
 export const CloudSyncResultSchema = z.object({
   resources: z.array(CloudResourceSchema),
   syncedAt: z.string().nullable(), // null = never synced for this project
   errors: z.array(ProviderErrorSchema),
+  scope: CloudScopeSummarySchema.optional(), // §14: present when a project is open
 });
 
 export type IntegrationFamily = (typeof INTEGRATION_FAMILIES)[number];
@@ -85,6 +139,14 @@ export type CloudResource = z.infer<typeof CloudResourceSchema>;
 export type WorkItem = z.infer<typeof WorkItemSchema>;
 export type ProviderError = z.infer<typeof ProviderErrorSchema>;
 export type CloudSyncResult = z.infer<typeof CloudSyncResultSchema>;
+export type ScopeConfidence = (typeof SCOPE_CONFIDENCE)[number];
+export type ResourceScope = z.infer<typeof ResourceScopeSchema>;
+export type ScopeAccount = z.infer<typeof ScopeAccountSchema>;
+export type ScopeAccountEntry = z.infer<typeof ScopeAccountEntrySchema>;
+export type ScopeResourceRef = z.infer<typeof ScopeResourceRefSchema>;
+export type ScopeFile = z.infer<typeof ScopeFileSchema>;
+export type ScopeFileStatus = z.infer<typeof ScopeFileStatusSchema>;
+export type CloudScopeSummary = z.infer<typeof CloudScopeSummarySchema>;
 
 // ---- request bodies (§6.2) -------------------------------------------------
 
@@ -108,6 +170,12 @@ export const CloudLinkBodySchema = z.object({
   resourceId: z.string().min(1).max(2048),
   nodeId: NodeId.nullable(),
 });
+
+/** §14 POST /api/cloud/scope/accounts: replaces the project's account list. */
+export const ScopeAccountsBodySchema = z.object({ accounts: z.array(ScopeAccountSchema).max(200) });
+export const SCOPE_RESOURCE_ACTIONS = ["include", "exclude", "reset"] as const;
+/** §14 POST /api/cloud/scope/resource: include (add / accept a suggestion), exclude (remove / reject), reset (back to the evidence). */
+export const ScopeResourceBodySchema = z.object({ resourceId: z.string().min(1).max(2048), action: z.enum(SCOPE_RESOURCE_ACTIONS) });
 
 export const WorkLinkBodySchema = z.object({
   provider: z.string().min(1).max(40),
@@ -142,6 +210,9 @@ export const RuahTaskBodySchema = z.object({
 export type ConnectBody = z.infer<typeof ConnectBodySchema>;
 export type CloudSyncBody = z.infer<typeof CloudSyncBodySchema>;
 export type CloudLinkBody = z.infer<typeof CloudLinkBodySchema>;
+export type ScopeAccountsBody = z.infer<typeof ScopeAccountsBodySchema>;
+export type ScopeResourceAction = (typeof SCOPE_RESOURCE_ACTIONS)[number];
+export type ScopeResourceBody = z.infer<typeof ScopeResourceBodySchema>;
 export type WorkLinkBody = z.infer<typeof WorkLinkBodySchema>;
 export type WorkCreateBody = z.infer<typeof WorkCreateBodySchema>;
 export type RuahExecutor = (typeof RUAH_EXECUTORS)[number];

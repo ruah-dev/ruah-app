@@ -25,25 +25,53 @@ function message(err: unknown): string {
 
 export async function syncProviders(
   providers: readonly CloudIntegration[],
-  /** `project`: the repo a provider may read config from (§10: Cloudflare Workers, Railway link); null = none. */
-  options: { accounts?: Readonly<Record<string, string>> | undefined; now: Date; project?: ProjectContext | null; syncOne?: SyncOne },
+  /**
+   * `project`: the repo a provider may read config from (§10: Cloudflare Workers, Railway link); null = none.
+   * `accounts`: one named account per provider. `accountLists` (§14, a project's scope): several accounts
+   * of a provider, each synced on its own (`undefined` = the selected / default account); `accounts` wins.
+   */
+  options: {
+    accounts?: Readonly<Record<string, string>> | undefined;
+    accountLists?: ReadonlyMap<string, readonly (string | undefined)[]> | null | undefined;
+    now: Date;
+    project?: ProjectContext | null;
+    syncOne?: SyncOne;
+  },
 ): Promise<ProvidersSyncResult> {
   const observedAt = options.now.toISOString();
   const syncOne = options.syncOne ?? defaultSyncOne;
   const resources: CloudResource[] = [];
   const errors: ProviderError[] = [];
   const failed: string[] = [];
+  const seen = new Set<string>();
   await Promise.all(
     providers.map(async (provider) => {
-      try {
-        const outcome = await syncOne(provider, options.accounts?.[provider.id], options.project ?? null);
-        for (const r of outcome.resources) resources.push({ ...r, observedAt });
-        for (const e of outcome.errors) errors.push({ provider: provider.id, message: redact(e) });
-        if (outcome.resources.length === 0 && outcome.errors.length > 0) failed.push(provider.id);
-      } catch (err) {
-        errors.push({ provider: provider.id, message: message(err) });
-        failed.push(provider.id);
-      }
+      const named = options.accounts?.[provider.id];
+      const accounts = named !== undefined ? [named] : (options.accountLists?.get(provider.id) ?? [undefined]);
+      const several = accounts.length > 1;
+      let got = 0;
+      let bad = 0;
+      await Promise.all(
+        accounts.map(async (account) => {
+          const label = several ? `${account ?? "default"}: ` : "";
+          try {
+            const outcome = await syncOne(provider, account, options.project ?? null);
+            for (const r of outcome.resources) {
+              // The same resource seen from two accounts (shared team, same cluster) is listed once.
+              if (seen.has(r.id)) continue;
+              seen.add(r.id);
+              resources.push({ ...r, observedAt, ...(account !== undefined ? { account } : {}) });
+            }
+            for (const e of outcome.errors) errors.push({ provider: provider.id, message: `${label}${redact(e)}` });
+            got += outcome.resources.length;
+            if (outcome.resources.length === 0 && outcome.errors.length > 0) bad += 1;
+          } catch (err) {
+            errors.push({ provider: provider.id, message: `${label}${message(err)}` });
+            bad += 1;
+          }
+        }),
+      );
+      if (got === 0 && bad > 0) failed.push(provider.id);
     }),
   );
   return { resources, errors, failed };
@@ -52,7 +80,7 @@ export async function syncProviders(
 /** What a viewer shows for a resource, minus the per-sync timestamp. */
 function visible(r: CloudResource): unknown[] {
   return [r.id, r.name, r.status, r.health, r.healthDetail, r.replicas?.ready, r.replicas?.desired, r.pods?.running, r.pods?.pending,
-    r.pods?.crashLoop, r.pods?.restarts, r.url, r.hosts, r.linkedNodeId, r.linkSource, r.region, r.tags];
+    r.pods?.crashLoop, r.pods?.restarts, r.url, r.hosts, r.linkedNodeId, r.linkSource, r.region, r.tags, r.account, r.scope];
 }
 
 /** Stable fingerprint of a resource list (order-independent, ignores observedAt). */

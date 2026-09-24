@@ -2,7 +2,7 @@
 // daemon, no project; registry-driven; exit codes for scripts; `--repo`
 // linking; `watch` prints health transitions (fake timers).
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CloudResource, IntegrationInfo } from "../src/contracts/integrations.js";
@@ -62,7 +62,7 @@ function harness(providers: FakeCloud[], extra: Partial<CloudCliDeps> = {}) {
   let err = "";
   const deps: CloudCliDeps = {
     home: tempDir(), registry, out: (t) => void (out += t), err: (t) => void (err += t),
-    now: () => new Date("2026-09-24T12:00:00.000Z"), ...extra,
+    now: () => new Date("2026-09-24T12:00:00.000Z"), cwd: tempDir(), ...extra,
   };
   return { run: (argv: string[]) => runCloud(argv, deps), out: () => out, err: () => err, clear: () => void ((out = ""), (err = "")) };
 }
@@ -125,16 +125,28 @@ describe("ruah app cloud list", () => {
     expect(parsed.resources[0]?.observedAt).toBe("2026-09-24T12:00:00.000Z");
   });
 
-  test("--repo links resources to that repo's map elements (read-only)", async () => {
+  test("--repo scopes to that repo (§14) and links its resources to the map elements (read-only)", async () => {
     const repo = tempDir();
     writeFileSync(join(repo, "architecture.json"), JSON.stringify({ version: 1, name: "acme", nodes: [{ id: "web", type: "frontend", name: "web-app" }], edges: [], workflows: [] }));
+    mkdirSync(join(repo, ".vercel"));
+    writeFileSync(join(repo, ".vercel", "project.json"), JSON.stringify({ projectId: "web", orgId: "team_1" }));
     const h = harness([vercel()]);
     expect(await h.run(["list", "--repo", repo, "--json"])).toBe(0);
-    const parsed = JSON.parse(h.out()) as { resources: CloudResource[] };
-    expect(parsed.resources.find((r) => r.name === "web-app")).toMatchObject({ linkedNodeId: "web", linkSource: "name" });
+    const parsed = JSON.parse(h.out()) as { resources: CloudResource[]; scope: { total: number } };
+    expect(parsed.resources.map((r) => r.name)).toEqual(["web-app"]); // the other client's project is not this repo's
+    expect(parsed.resources[0]).toMatchObject({ linkedNodeId: "web", linkSource: "name", scope: { in: true, confidence: "proof", reasons: ["from .vercel/project.json"] } });
+    expect(parsed.scope.total).toBe(3);
     h.clear();
     expect(await h.run(["list", "--repo", repo])).toBe(0);
-    expect(h.out()).toMatch(/web-app .*→ web-app/);
+    expect(h.out()).toMatch(/Scope: .* — 1 of 3 resources/);
+    expect(h.out()).toMatch(/web-app .*→ web-app\s+from \.vercel\/project\.json/);
+    expect(h.out()).not.toContain("invoices-api");
+    h.clear();
+    expect(await h.run(["list", "--repo", repo, "--all", "--json"])).toBe(0);
+    const all = JSON.parse(h.out()) as { resources: CloudResource[] };
+    expect(all.resources).toHaveLength(3);
+    expect(all.resources.find((r) => r.name === "invoices-api")?.scope).toMatchObject({ in: false });
+    expect(existsSync(join(repo, ".ruah", "cloud.json"))).toBe(false); // reads never write the scope file
   });
 
   test("usage errors exit 2: unknown provider, --account without one provider, bad flags", async () => {
