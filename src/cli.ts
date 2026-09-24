@@ -23,6 +23,13 @@ Usage:
   ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)
+  ruah app resume [<repo-or-id>] [--json]
+                                   where you left off: last chat, focus, agent activity since
+                                   you left, git state, ruah tasks (no argument: every recent
+                                   project, most in need of attention first)
+  ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
+                                   what agents did across projects (default --since 24h),
+                                   unread and waiting-for-permission counts
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -47,6 +54,12 @@ serve options:
   --allow-remote-terminal  allow the integrated terminal when --host is not a loopback
                            address (anyone who can reach the port and the viewer gets a shell)
   --open                   open the viewer URL in the default browser
+
+resume / activity options:
+  --daemon <url>           add live counts from a running daemon (default
+                           $RUAH_DAEMON_URL or http://127.0.0.1:4177; none is required)
+  --offline                do not ask a daemon
+  --limit <n>              resume: projects listed (20); activity: events (200)
 
 scan options:
   --out <path>             output file (default <repo>/architecture.json)
@@ -239,6 +252,14 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "mcp": {
       return await mcp(rest);
+    }
+    case "resume": {
+      const { runResume } = await import("./resume/run-resume.js");
+      return await runResume(rest);
+    }
+    case "activity": {
+      const { runActivity } = await import("./activity/run-activity.js");
+      return await runActivity(rest);
     }
     default:
       process.stdout.write(USAGE);
