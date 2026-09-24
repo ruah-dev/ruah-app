@@ -178,7 +178,7 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
       ? ([
           [
             "URL",
-            <a href={url} target="_blank" rel="noreferrer" className="text-foreground/90 underline-offset-2 hover:underline">
+            <a href={url} target="_blank" rel="noreferrer" className="text-foreground/90 underline-offset-2 hover:underline" title={url}>
               {url.replace(/^https?:\/\//, "")}
             </a>,
           ],

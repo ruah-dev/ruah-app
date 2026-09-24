@@ -1,0 +1,40 @@
+{
+  "whoami": "Logged in as Jane Doe (jane@example.com) 👋\n",
+  "list": [
+    {
+      "id": "prj-1111", "name": "acme", "createdAt": "2024-05-01T00:00:00Z", "updatedAt": "2024-09-20T00:00:00Z",
+      "workspace": { "id": "ws-acme", "name": "Acme Inc" },
+      "environments": { "edges": [{ "node": { "id": "env-prod", "name": "production" } }, { "node": { "id": "env-stg", "name": "staging" } }] },
+      "services": { "edges": [
+        { "node": { "id": "svc-api", "name": "invoices-api" } },
+        { "node": { "id": "svc-pg", "name": "Postgres" } }
+      ] },
+      "plugins": { "edges": [] }
+    },
+    {
+      "id": "prj-2222", "name": "side-project", "team": null,
+      "environments": { "edges": [{ "node": { "id": "env-p2", "name": "production" } }] },
+      "services": { "edges": [{ "node": { "id": "svc-bot", "name": "bot" } }] },
+      "plugins": { "edges": [{ "node": { "id": "plg-1", "name": "redis", "friendlyName": "Redis" } }] }
+    }
+  ],
+  "status": {
+    "id": "prj-1111", "name": "acme",
+    "environments": { "edges": [{ "node": { "id": "env-prod", "name": "production" } }, { "node": { "id": "env-stg", "name": "staging" } }] },
+    "services": { "edges": [
+      { "node": { "id": "svc-api", "name": "invoices-api", "serviceInstances": { "edges": [
+        { "node": { "id": "si-1", "serviceId": "svc-api", "environmentId": "env-prod", "region": "europe-west4-drams3a",
+          "source": { "repo": "acme/invoices", "image": null },
+          "latestDeployment": { "id": "dep-1", "status": "SUCCESS", "createdAt": "2024-09-20T10:00:00Z", "meta": {} },
+          "domains": { "serviceDomains": [{ "domain": "invoices-api-production.up.railway.app" }], "customDomains": [{ "domain": "api.example.com" }] } } },
+        { "node": { "id": "si-2", "serviceId": "svc-api", "environmentId": "env-stg",
+          "latestDeployment": { "id": "dep-2", "status": "CRASHED", "createdAt": "2024-09-21T10:00:00Z" },
+          "domains": { "serviceDomains": [{ "domain": "invoices-api-staging.up.railway.app" }], "customDomains": [] } } }
+      ] } } },
+      { "node": { "id": "svc-pg", "name": "Postgres", "serviceInstances": { "edges": [
+        { "node": { "id": "si-3", "serviceId": "svc-pg", "environmentId": "env-prod", "source": { "image": "ghcr.io/railwayapp-templates/postgres-ssl:16" },
+          "latestDeployment": { "id": "dep-3", "status": "SUCCESS" }, "domains": { "serviceDomains": [], "customDomains": [] } } }
+      ] } } }
+    ] }
+  }
+}

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Notification, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
@@ -120,6 +120,46 @@ function registerIpc() {
   });
 }
 
+// CONTRACTS §13.3: native notifications for background agent activity. The
+// renderer decides when (its activity store knows the open project, the window
+// focus and settings.json's `notifications`); main only shows them and routes
+// a click back: focus the window, then "ruah:notification-click" to the renderer.
+const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const shownNotifications = new Set(); // referenced until closed, or Electron may drop the click handler
+
+function cleanText(value, max) {
+  return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, max) : "";
+}
+
+function registerNotifications() {
+  ipcMain.handle("ruah:notify", (event, opts) => {
+    if (!Notification.isSupported() || opts === null || typeof opts !== "object") return false;
+    const title = cleanText(opts.title, 120);
+    const body = cleanText(opts.body, 300);
+    const projectId = typeof opts.projectId === "string" && ID.test(opts.projectId) ? opts.projectId : null;
+    const chatId = typeof opts.chatId === "string" && ID.test(opts.chatId) ? opts.chatId : null;
+    const root = typeof opts.projectRoot === "string" && path.isAbsolute(opts.projectRoot) ? opts.projectRoot.slice(0, 4096) : null;
+    if (title.length === 0 || projectId === null) return false;
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const note = new Notification({ title, body, silent: opts.silent === true });
+    shownNotifications.add(note);
+    const forget = () => shownNotifications.delete(note);
+    note.on("close", forget);
+    note.on("click", () => {
+      forget();
+      const target = owner !== null && !owner.isDestroyed() ? owner : win;
+      if (target === null || target.isDestroyed()) return;
+      if (target.isMinimized()) target.restore();
+      target.show();
+      target.focus();
+      app.focus({ steal: true });
+      target.webContents.send("ruah:notification-click", { projectId, chatId, projectRoot: root });
+    });
+    note.show();
+    return true;
+  });
+}
+
 function portFree(port) {
   return new Promise((resolve) => {
     const probe = net.createServer();
@@ -146,6 +186,7 @@ function stopDaemon() {
 async function main() {
   const repoDir = process.env.RUAH_REPO ?? repoFromArgv(process.argv);
   registerIpc();
+  registerNotifications();
   // Never attach to whatever already listens on the port (a leftover daemon
   // would show another state): start our own on a free port instead.
   if (!(await portFree(PORT))) {

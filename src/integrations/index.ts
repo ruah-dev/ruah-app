@@ -31,7 +31,7 @@ import { cloudFingerprint, syncProviders } from "./cloud-sync.js";
 import { defaultRunner, IntegrationError, redact, type Runner } from "./exec.js";
 import { Keychain, type SecretStore } from "./keychain.js";
 import { linkResources } from "./linking.js";
-import { IntegrationRegistry, isCloud, isWork, syncable, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
+import { IntegrationRegistry, isCloud, isWork, registerCloudBatchB, syncable, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
 import { RuahIntegration, type Launcher } from "./ruah.js";
 import { CloudCacheStore, readLinks, SettingsStore, updateLink } from "./store.js";
 import { GitHubIntegration } from "./work/github.js";
@@ -124,6 +124,7 @@ export class IntegrationsService implements IntegrationsApi {
         .register(new HetznerIntegration({ runner, settings }))
         .register(new JiraIntegration({ settings, secrets: options.secrets ?? new Keychain({ runner }), ...(options.fetch !== undefined ? { fetch: options.fetch } : {}) }))
         .register(new GitHubIntegration({ runner, settings }));
+    if (options.registry === undefined) registerCloudBatchB(this.registry, { runner, settings });
     if (this.registry.get(this.ruah.id) === undefined) this.registry.register(this.ruah);
     this.cloudCache = new CloudCacheStore(options.home);
     this.now = options.now ?? (() => new Date());
@@ -203,7 +204,8 @@ export class IntegrationsService implements IntegrationsApi {
     const { resources: fresh, errors, failed } = await syncProviders(providers, {
       accounts: body.accounts,
       now: this.now(),
-      syncOne: (provider, account) => this.syncOnce(provider, account),
+      project: { root: project.root },
+      syncOne: (provider, account, ctx) => this.syncOnce(provider, account, ctx),
     });
     const synced = new Set(providers.map((p) => p.id));
     // Sync-all and the watch loop skip providers without their CLI (or disconnected in Ruah); an old
@@ -223,11 +225,11 @@ export class IntegrationsService implements IntegrationsApi {
   }
 
   /** Concurrent syncs of the same provider + account (watch loop, Sync button, second tab) share one run. */
-  private syncOnce(provider: CloudIntegration, account: string | undefined): Promise<CloudSyncOutcome> {
-    const key = `${provider.id}\u0000${account ?? ""}`;
+  private syncOnce(provider: CloudIntegration, account: string | undefined, project: ProjectContext | null): Promise<CloudSyncOutcome> {
+    const key = `${provider.id}\u0000${account ?? ""}\u0000${project?.root ?? ""}`;
     const running = this.inflight.get(key);
     if (running !== undefined) return running;
-    const started = provider.sync(account !== undefined ? { account } : {}).finally(() => this.inflight.delete(key));
+    const started = provider.sync({ ...(account !== undefined ? { account } : {}), project }).finally(() => this.inflight.delete(key));
     this.inflight.set(key, started);
     return started;
   }

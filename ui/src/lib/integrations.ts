@@ -653,6 +653,11 @@ export const PROVIDER_LABEL: Record<string, string> = {
   kubernetes: "Kubernetes",
   netlify: "Netlify",
   hetzner: "Hetzner Cloud",
+  gcp: "Google Cloud",
+  azure: "Azure",
+  cloudflare: "Cloudflare",
+  railway: "Railway",
+  fly: "Fly.io",
   jira: "Jira",
   github: "GitHub",
   ruah: "ruah",
@@ -660,6 +665,43 @@ export const PROVIDER_LABEL: Record<string, string> = {
 export const providerLabel = (id: string) => PROVIDER_LABEL[id] ?? id;
 
 export type StatusTone = "ok" | "warn" | "bad" | "idle";
+
+/** Onboarding state of a provider: which of install / log in / connect is missing. */
+export type ProviderSetupState = "connected" | "not_installed" | "not_logged_in" | "disconnected" | "error";
+
+export function providerSetupState(info: IntegrationInfo): ProviderSetupState {
+  if (info.status === "connected") return "connected";
+  if (info.status === "cli_missing") return "not_installed";
+  if (info.status === "error") return "error";
+  // Every provider words a Ruah-side disconnect as "disconnected in Ruah (… unchanged)".
+  return /disconnected in ruah/i.test(info.detail ?? "") ? "disconnected" : "not_logged_in";
+}
+
+export const PROVIDER_SETUP_LABEL: Record<ProviderSetupState, { label: string; tone: StatusTone }> = {
+  connected: { label: "Connected", tone: "ok" },
+  not_installed: { label: "Not installed", tone: "idle" },
+  not_logged_in: { label: "Not logged in", tone: "warn" },
+  disconnected: { label: "Disconnected", tone: "idle" },
+  error: { label: "Error", tone: "bad" },
+};
+
+/**
+ * The commands that fix a provider's state, in order: install (CLI missing), then log in.
+ * A logged-in CLI with an unusable default (gcloud without a project) puts that fix in
+ * setupHint. Providers without the §10 fields fall back to setupHint.
+ */
+export function setupCommands(info: IntegrationInfo): { label: string; command: string }[] {
+  const state = providerSetupState(info);
+  if (state === "connected" || state === "disconnected") return [];
+  const out: { label: string; command: string }[] = [];
+  if (state === "not_installed" && info.installCommand) out.push({ label: "Install", command: info.installCommand });
+  if (info.loginCommand) {
+    const other = state === "not_logged_in" && !!info.setupHint && info.setupHint !== info.loginCommand;
+    out.push(other ? { label: "Set up", command: info.setupHint! } : { label: "Log in", command: info.loginCommand });
+  }
+  if (out.length === 0 && info.setupHint && state !== "error") out.push({ label: "Run", command: info.setupHint });
+  return out;
+}
 
 /** Provider status strings ("active", "running", "online", "stopped", "error", …) -> a tone. */
 export function resourceTone(status: string | undefined): StatusTone {

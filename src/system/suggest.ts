@@ -46,6 +46,8 @@ export interface SuggestSystem {
 }
 
 export interface SuggestOptions {
+  /** Edges the user rejected before: named in the prompt and dropped from the answer. */
+  rejected?: { from: string; to: string; label?: string | undefined }[];
   minConfidence?: number; // default 0
   maxSuggestions?: number; // default 30
   verifyEvidence?: boolean; // default true when repo roots are known
@@ -226,6 +228,9 @@ export async function suggestConnections(system: SuggestSystem, runAgent: RunAge
     existingEdges: system.architecture.edges.filter((e) => services.some((s) => s.id === e.from) && services.some((s) => s.id === e.to)),
     repos: system.repos.map((r) => ({ id: r.id, path: r.root ?? r.path ?? r.id })),
     ...(opts.maxSuggestions !== undefined ? { maxSuggestions: opts.maxSuggestions } : {}),
+    ...(opts.rejected !== undefined && opts.rejected.length > 0
+      ? { rejectedEdges: opts.rejected.map((r) => ({ from: r.from, to: r.to, ...(r.label !== undefined ? { label: r.label } : {}) })) }
+      : {}),
   });
   const raw = await runAgent(prompt);
   return { ...parseSuggestions(raw, system, opts), prompt, raw };

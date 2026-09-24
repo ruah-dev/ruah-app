@@ -1,5 +1,6 @@
-// Cloud: what is deployed (DigitalOcean, AWS, Vercel, Supabase, Kubernetes, Netlify, Hetzner via
-// their CLIs), grouped provider → region → type, with a link from each resource to the
+// Cloud: what is deployed (DigitalOcean, AWS, Google Cloud, Azure, Cloudflare, Vercel, Supabase,
+// Kubernetes, Railway, Fly.io, Netlify, Hetzner via their CLIs), grouped provider → region → type,
+// with a "Connect a provider" list while none is connected, a link from each resource to the
 // architecture element it runs, and what is really running right now (§9): a health strip, an
 // unhealthy filter, and live updates while this page is open (the daemon re-syncs on an
 // interval and pushes cloud.updated). "Show on map" adds a derived, read-only Cloud level.
@@ -36,7 +37,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import {
-  IntegrationsLink,
   Notice,
   ProviderGlyph,
   RemoteNotice,
@@ -46,6 +46,7 @@ import {
 } from "@/components/integrations/common";
 import { ResourceTable } from "./ResourceTable";
 import { CloudResourceView } from "./CloudDetails";
+import { ConnectProviders } from "./ConnectProviders";
 import { cn } from "@/lib/utils";
 
 function useNow(ms = 30_000) {
@@ -293,15 +294,8 @@ export function CloudPage() {
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
         <RemoteNotice remote={s.cloud} what="Cloud" />
         {noProviders ? (
-          <Notice
-            tone="idle"
-            title="No cloud provider connected"
-            body={
-              <>
-                Connect DigitalOcean, AWS, Vercel, Supabase, Kubernetes, Netlify or Hetzner Cloud in{" "}
-                <IntegrationsLink />. Ruah uses the provider CLI's own login and only reads.
-              </>
-            }
+          <ConnectProviders
+            providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
           />
         ) : null}
         {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}

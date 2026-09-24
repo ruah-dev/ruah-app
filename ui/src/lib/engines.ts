@@ -13,7 +13,8 @@ export interface NodeVerifyState {
 }
 
 export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] {
-  const connected = useDaemon().connection === "open";
+  const daemon = useDaemon();
+  const connected = daemon.connection === "open";
   const [nodes, setNodes] = useState<Record<string, NodeVerifyState>>({});
   const refresh = useCallback(() => {
     if (!connected) return;

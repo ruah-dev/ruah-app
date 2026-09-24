@@ -9,6 +9,7 @@ import {
   CircleHelp,
   FolderOpen,
   FolderPlus,
+  Layers,
   MessagesSquare,
   Pin,
   PinOff,
@@ -30,6 +31,7 @@ import { pinnedShortcut } from "@/components/projects/ProjectPalette";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { openSystemDialog } from "@/lib/system";
 
 const ROW_H = 56;
 /** Recent projects shown on the start screen itself; the rest open in a dialog. */
@@ -268,6 +270,13 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
               shortcut="⌘N"
               onClick={actions.newProject}
               disabled={sample}
+            />
+            <ActionRow
+              icon={Layers}
+              label="New system…"
+              hint="Several repos (one per service) as one map"
+              onClick={() => openSystemDialog({ kind: "new" })}
+              disabled={sample || !actions.connected}
             />
             <ActionRow
               icon={MessagesSquare}

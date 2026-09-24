@@ -1,11 +1,13 @@
 // src/projects/settings-store.ts — the user's saved agent defaults in
 // $RUAH_HOME/settings.json (~/.ruah): the agent the daemon starts with and the
-// model / permission mode each agent starts with. Written atomically (temp +
+// model / permission mode each agent starts with, plus the feature flags of
+// CONTRACTS §13.6 (background agents, notifications). Written atomically (temp +
 // rename); unknown top-level keys are kept, so later settings can live in the
 // same file. A missing or corrupt file reads as "nothing saved".
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { atomicWriteFileSync } from "./fs-util.js";
+import type { AppFeatures, NotificationMode } from "../contracts/ws.js";
 
 export interface SavedAgentSettings {
   /** Agent the daemon starts with when `serve` gets no --agent. */
@@ -24,6 +26,17 @@ export interface AgentSettingsPatch {
 }
 
 const MAX_ID_LENGTH = 200;
+const NOTIFICATION_MODES: readonly NotificationMode[] = ["background", "always", "off"];
+export const DEFAULT_FEATURES: AppFeatures = { backgroundAgents: true, notifications: "background" };
+
+/** Feature flags from the file's top-level keys; anything missing or invalid is the default. */
+export function featuresOf(record: Record<string, unknown>): AppFeatures {
+  const notifications = record.notifications;
+  return {
+    backgroundAgents: typeof record.backgroundAgents === "boolean" ? record.backgroundAgents : DEFAULT_FEATURES.backgroundAgents,
+    notifications: NOTIFICATION_MODES.includes(notifications as NotificationMode) ? (notifications as NotificationMode) : DEFAULT_FEATURES.notifications,
+  };
+}
 
 function stringRecord(value: unknown): Record<string, string> {
   const out: Record<string, string> = {};
@@ -74,6 +87,30 @@ export class SettingsStore {
       this.options.onError?.(`ruah: writing ${this.file} failed: ${(err as Error).message}`);
     }
     return this.get();
+  }
+
+  /**
+   * §13.6 feature flags (top-level keys of the same file): `backgroundAgents`
+   * (default true: a turn keeps running when you switch projects) and
+   * `notifications` ("background" default | "always" | "off").
+   */
+  features(): AppFeatures {
+    return featuresOf(this.load().extra);
+  }
+
+  updateFeatures(patch: Partial<AppFeatures>): AppFeatures {
+    const { settings, extra } = this.load();
+    const nextExtra = { ...extra };
+    if (patch.backgroundAgents !== undefined) nextExtra.backgroundAgents = patch.backgroundAgents;
+    if (patch.notifications !== undefined && NOTIFICATION_MODES.includes(patch.notifications)) nextExtra.notifications = patch.notifications;
+    if (JSON.stringify(nextExtra) === JSON.stringify(extra)) return this.features();
+    this.cache = { settings, extra: nextExtra };
+    try {
+      atomicWriteFileSync(this.file, `${JSON.stringify({ ...nextExtra, version: 1, ...settings }, null, 2)}\n`);
+    } catch (err) {
+      this.options.onError?.(`ruah: writing ${this.file} failed: ${(err as Error).message}`);
+    }
+    return this.features();
   }
 
   private load(): { settings: SavedAgentSettings; extra: Record<string, unknown> } {

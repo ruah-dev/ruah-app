@@ -10,6 +10,11 @@ export const CLOUD_RESOURCE_TYPES = [
   "compute", "container", "function", "app", "database", "cache", "queue",
   "storage", "loadbalancer", "gateway", "cdn", "dns", "kubernetes", "other",
 ] as const;
+/** Cloud provider ids the daemon registers (§6, §9, §10); a sync body may name all of them. */
+export const KNOWN_CLOUD_PROVIDERS = [
+  "digitalocean", "aws", "vercel", "supabase", "kubernetes", "netlify", "hetzner",
+  "gcp", "azure", "cloudflare", "railway", "fly",
+] as const;
 /** §9: every provider's native states normalized for "is it up right now?". */
 export const CLOUD_HEALTH = ["healthy", "degraded", "down", "deploying", "unknown"] as const;
 
@@ -23,13 +28,15 @@ export const IntegrationInfoSchema = z.object({
   detail: z.string().optional(),
   setupHint: z.string().optional(),
   accounts: z.array(IntegrationAccountSchema).optional(),
+  installCommand: z.string().optional(), // §10: exact Homebrew install command of the provider CLI
+  loginCommand: z.string().optional(), // §10: exact CLI login command
 });
 
 export const CloudResourceTypeSchema = z.enum(CLOUD_RESOURCE_TYPES);
 
 export const CloudResourceSchema = z.object({
   id: z.string(), // provider-native id (ARN, DO URN)
-  provider: z.string(), // known: digitalocean | aws | vercel | supabase | kubernetes | netlify | hetzner
+  provider: z.string(), // known: KNOWN_CLOUD_PROVIDERS
   type: CloudResourceTypeSchema,
   service: z.string(), // "droplet", "apps", "ec2", "lambda", "rds", …
   name: z.string(),
@@ -37,6 +44,7 @@ export const CloudResourceSchema = z.object({
   status: z.string().optional(),
   tags: z.record(z.string()).optional(),
   consoleUrl: z.string().optional(),
+  url: z.string().optional(), // §9/§10: public URL it serves (Cloud Run, Pages, Fly app, Vercel/Netlify production, ingress, …)
   linkedNodeId: z.string().optional(),
   linkSource: z.enum(["tag", "name", "manual"]).optional(), // how linkedNodeId was decided
   // §9 live status (all optional; absent = the provider has no health notion for it)
@@ -45,7 +53,6 @@ export const CloudResourceSchema = z.object({
   observedAt: z.string().optional(), // ISO time of the sync that read this state
   replicas: z.object({ ready: z.number(), desired: z.number() }).optional(), // workloads
   pods: z.object({ running: z.number(), pending: z.number(), crashLoop: z.number(), restarts: z.number() }).optional(), // kubernetes workloads
-  url: z.string().optional(), // where it is served (Vercel/Netlify production URL, deployment URL)
   hosts: z.array(z.string()).optional(), // ingress hosts, custom domains, load balancer addresses
   createdAt: z.string().optional(), // ISO (deployments)
 });
@@ -93,7 +100,7 @@ export const ConnectBodySchema = z.object({
 });
 
 export const CloudSyncBodySchema = z.object({
-  providers: z.array(z.string()).max(10).optional(),
+  providers: z.array(z.string()).max(KNOWN_CLOUD_PROVIDERS.length).optional(),
   accounts: z.record(z.string().min(1).max(200)).optional(),
 });
 

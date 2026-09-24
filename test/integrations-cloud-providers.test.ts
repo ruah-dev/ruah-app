@@ -5,8 +5,14 @@ import { afterEach, describe, expect, test } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CloudResourceSchema, type CloudResource } from "../src/contracts/integrations.js";
+import { CloudResourceSchema, CloudSyncBodySchema, KNOWN_CLOUD_PROVIDERS, type CloudResource } from "../src/contracts/integrations.js";
 import * as awsMod from "../src/integrations/cloud/aws.js";
+import * as azure from "../src/integrations/cloud/azure.js";
+import { withLiveHealth } from "../src/integrations/cloud/cli-kit.js";
+import * as cloudflare from "../src/integrations/cloud/cloudflare.js";
+import * as fly from "../src/integrations/cloud/fly.js";
+import * as gcp from "../src/integrations/cloud/gcp.js";
+import * as railway from "../src/integrations/cloud/railway.js";
 import * as doMod from "../src/integrations/cloud/digitalocean.js";
 import * as hcloud from "../src/integrations/cloud/hetzner.js";
 import * as k8s from "../src/integrations/cloud/kubernetes.js";
@@ -15,6 +21,8 @@ import * as supabase from "../src/integrations/cloud/supabase.js";
 import * as vercel from "../src/integrations/cloud/vercel.js";
 import type { RunOptions, RunResult, Runner } from "../src/integrations/exec.js";
 import { formatSummary, healthFrom, summarizeHealth, workloadHealth } from "../src/integrations/health.js";
+import { IntegrationsService } from "../src/integrations/index.js";
+import { syncable } from "../src/integrations/registry.js";
 import { SettingsStore } from "../src/integrations/store.js";
 
 const fx = (name: string): Record<string, unknown> =>
@@ -31,10 +39,13 @@ const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const c of cleanups.splice(0)) c();
 });
-function settings(): SettingsStore {
+function settingsDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "ruah-cloud-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-  return new SettingsStore(dir);
+  return dir;
+}
+function settings(): SettingsStore {
+  return new SettingsStore(settingsDir());
 }
 
 const ok = (value: unknown): RunResult => ({ code: 0, stdout: typeof value === "string" ? value : JSON.stringify(value), stderr: "" });
@@ -524,5 +535,56 @@ describe("Hetzner Cloud", () => {
     expect(await i.info()).toMatchObject({ status: "connected", detail: "hcloud context acme-prod" });
     const missing = new hcloud.HetznerIntegration({ runner, settings: settings(), bin: () => undefined });
     expect(await missing.info()).toMatchObject({ status: "cli_missing", detail: "hcloud not installed", setupHint: "brew install hcloud && hcloud context create <project>" });
+  });
+});
+
+// ---- batch B (§10) wired into live health, one quietness gate, sync body limit --------------
+
+describe("§10 providers in live health", () => {
+  const base = (provider: string, service: string, status: string | undefined): CloudResource => ({
+    id: `${provider}:${service}`, provider, type: "app", service, name: service, ...(status !== undefined ? { status } : {}),
+  });
+
+  test("withLiveHealth applies each adapter's healthOf to the native state; detail + machine counts", () => {
+    expect(withLiveHealth(base("gcp", "cloud-run", "ready"), (s) => gcp.healthOf(s))).toMatchObject({ health: "healthy" });
+    expect(withLiveHealth(base("gcp", "gke", "running · 3 nodes"), (s) => gcp.healthOf(s))).toMatchObject({ health: "healthy", healthDetail: "3 nodes" });
+    expect(withLiveHealth(base("azure", "app-service", "stopped"), (s) => azure.healthOf(s)).health).toBe("down");
+    expect(withLiveHealth(base("cloudflare", "pages", "deploying"), (s) => cloudflare.healthOf(s)).health).toBe("deploying");
+    expect(withLiveHealth(base("railway", "railway/service", "crashed"), (s) => railway.healthOf(s)).health).toBe("down");
+    expect(withLiveHealth(base("fly", "fly/app", "deployed · 1/3 machines started · fra"), (s) => fly.healthOf(s))).toMatchObject({
+      health: "healthy", replicas: { ready: 1, desired: 3 }, healthDetail: "1/3 machines started · fra",
+    });
+    // No status (buckets, topics, KV) and resource groups: no health.
+    expect(withLiveHealth(base("gcp", "gcs", undefined), (s) => gcp.healthOf(s)).health).toBeUndefined();
+    expect(withLiveHealth(base("azure", "resource-group", "succeeded"), (s) => azure.healthOf(s)).health).toBeUndefined();
+  });
+
+  test("a synced §10 adapter sets health on its resources (so the strip and `cloud status` count it)", async () => {
+    const runner = fakeRunner((args) => {
+      if (args[0] === "auth" && args[1] === "whoami") return ok({ email: "dev@example.com" });
+      if (args[0] === "orgs") return ok({ acme: "Acme" });
+      if (args[0] === "apps") return ok([{ Name: "api", Status: "suspended", Organization: { Slug: "acme" }, Hostname: "api.fly.dev" }]);
+      return ok([]);
+    });
+    const out = await new fly.FlyIntegration({ runner, settings: settings(), bin: () => "/fake/fly" }).sync({});
+    expect(out.resources.find((r) => r.name === "api")?.health).toBe("down");
+  });
+
+  test("one gate for sync-all / the watch loop: not installed, logged out or disconnected → not syncable", async () => {
+    const loggedOut = new vercel.VercelIntegration({
+      runner: fakeRunner(() => fail("Error: No existing credentials found. Please run vercel login")), settings: settings(), bin: () => "/fake/vercel",
+    });
+    expect(syncable(loggedOut)).toBe(true); // unknown until info() looked
+    await loggedOut.info();
+    expect(syncable(loggedOut)).toBe(false);
+    expect(syncable(new vercel.VercelIntegration({ runner: fakeRunner(() => ok({})), settings: settings(), bin: () => undefined }))).toBe(false);
+    expect(syncable(new gcp.GcpIntegration({ runner: fakeRunner(() => ok({})), settings: settings(), bin: () => undefined }))).toBe(false);
+  });
+
+  test("a sync body may name every registered cloud provider", () => {
+    const svc = new IntegrationsService({ home: settingsDir(), project: () => null });
+    const ids = svc.registry.cloud().map((c) => c.id);
+    expect([...ids].sort()).toEqual([...KNOWN_CLOUD_PROVIDERS].sort());
+    expect(CloudSyncBodySchema.safeParse({ providers: ids }).success).toBe(true);
   });
 });

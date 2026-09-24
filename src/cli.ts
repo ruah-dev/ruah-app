@@ -16,10 +16,23 @@ Usage:
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   ruah app scan <repo> [options]    scan a repo into architecture.json
-  ruah app system <cmd> <dir> ...   multi-repo system (ruah.system.json in <dir>):
-    init <dir> --repo <id>=<path> ... [--name <n>] [--force]   create ruah.system.json
-    add <dir> <id>=<path>                                      add a repo
-    scan <dir> [--out <path>] [--dry-run]                      write <dir>/architecture.json
+  ruah app system <cmd> ...         multi-repo system (ruah.system.json; no daemon needed;
+                                   <system> = its folder, else --system <dir>, else cwd):
+    init <folder> [--repo <path>|<id>=<path>]... [--name <n>] [--force]
+                                            create ruah.system.json
+    add [<system>] <path|<id>=<path>|gh:owner/name> [--id <id>] [--into <dir>]
+                                            add a repo (gh: clones it with \`gh repo clone\`)
+    remove <id>                             take a repo out (its files are untouched)
+    rename <id> <new-id>                    rename a repo id (map, suggestions, links, chats)
+    status [<system>] [--json]              branch, ahead/behind, dirty, last scan, nodes
+    signals [<system>] [--json]             deterministic cross-repo edges (zero tokens)
+    scan [<system>] [--out <path>] [--dry-run]   write <system>/architecture.json
+    rescan <id>                             re-scan one repo and rebuild the system map
+    suggest [<system>] [--agent claude] [--model <m>] [--min-confidence <n>] [--json]
+            [--print-prompt | --reply-file <file>]
+                                            agent pass: proposes cross-repo edges (pending)
+    suggest --list | --accept <n|id> | --reject <n|id> | --unreject <id>
+                                            review proposals (accepted = source "suggested")
   ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)
@@ -27,6 +40,13 @@ Usage:
     providers                      each provider: connected / not logged in / not installed + fix
     list | status | watch          resources · health summary (exit 1 when down) · live changes
                                    (\`ruah app cloud help\` for options)
+  ruah app resume [<repo-or-id>] [--json]
+                                   where you left off: last chat, focus, agent activity since
+                                   you left, git state, ruah tasks (no argument: every recent
+                                   project, most in need of attention first)
+  ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
+                                   what agents did across projects (default --since 24h),
+                                   unread and waiting-for-permission counts
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -51,6 +71,12 @@ serve options:
   --allow-remote-terminal  allow the integrated terminal when --host is not a loopback
                            address (anyone who can reach the port and the viewer gets a shell)
   --open                   open the viewer URL in the default browser
+
+resume / activity options:
+  --daemon <url>           add live counts from a running daemon (default
+                           $RUAH_DAEMON_URL or http://127.0.0.1:4177; none is required)
+  --offline                do not ask a daemon
+  --limit <n>              resume: projects listed (20); activity: events (200)
 
 scan options:
   --out <path>             output file (default <repo>/architecture.json)
@@ -247,6 +273,14 @@ async function main(argv: readonly string[]): Promise<number> {
     case "cloud": {
       const { runCloud } = await import("./integrations/cloud-cli.js");
       return await runCloud(rest);
+    }
+    case "resume": {
+      const { runResume } = await import("./resume/run-resume.js");
+      return await runResume(rest);
+    }
+    case "activity": {
+      const { runActivity } = await import("./activity/run-activity.js");
+      return await runActivity(rest);
     }
     default:
       process.stdout.write(USAGE);

@@ -22,8 +22,10 @@ import type { ProjectService } from "../projects/service.js";
 import type { AttachmentStore } from "../projects/attachment-store.js";
 import { handleAttachmentsRequest } from "./attachments-http.js";
 import { handleMapOpsRequest } from "./map-ops-http.js";
+import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js";
 import type { MapOpsService } from "./map-ops.js";
 import type { TerminalGateway } from "../terminal/gateway.js";
+import { handleSystemRequest, type SystemService } from "./system-http.js";
 
 export interface ServeOptions {
   host: string;
@@ -45,6 +47,10 @@ export interface ServeOptions {
   mapOps?: MapOpsService;
   /** CONTRACTS §7 GET /api/terminal/token + /ws/terminal; the token endpoint answers 503 when absent. */
   terminal?: TerminalGateway;
+  /** CONTRACTS §12 /api/system/* (multi-repo systems management); answered 503 when absent. */
+  system?: SystemService;
+  /** CONTRACTS §13 /api/activity*, /api/projects/:id/{resume,view}; answered 503 when absent. */
+  activity?: ActivityHttpDeps;
 }
 
 export interface RunningServer {
@@ -103,7 +109,11 @@ export function startServer(
       )
     )
       return;
+    // Before projects-http, which answers every other /api/projects/* path.
+    if (handleActivityRequest(req, res, url, options.activity, (origin) => originAllowed(origin, options.allowOrigins))) return;
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
+    // Multi-repo systems (§12); also takes POST /api/rescan while a system is open.
+    if (handleSystemRequest(req, res, url, options.system, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
     if (handleEnginesRequest(req, res, url, options.engines, options.allowOrigins)) return;

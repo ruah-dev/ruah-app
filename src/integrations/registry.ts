@@ -9,6 +9,12 @@ import type {
   IntegrationInfo,
   WorkItem,
 } from "../contracts/integrations.js";
+import { AzureIntegration } from "./cloud/azure.js";
+import type { CliCloudDeps } from "./cloud/cli-kit.js";
+import { CloudflareIntegration } from "./cloud/cloudflare.js";
+import { FlyIntegration } from "./cloud/fly.js";
+import { GcpIntegration } from "./cloud/gcp.js";
+import { RailwayIntegration } from "./cloud/railway.js";
 
 export interface ProjectContext {
   root: string;
@@ -34,15 +40,15 @@ export interface CloudSyncOutcome {
 
 export interface CloudIntegration extends Integration {
   readonly family: "cloud";
-  /** Read-only listing of everything the account can see. */
-  sync(options: { account?: string }): Promise<CloudSyncOutcome>;
+  /** Read-only listing of everything the account can see. `project` (optional) lets a provider read repo config (§10: Cloudflare Workers, Railway link). */
+  sync(options: { account?: string; project?: ProjectContext | null }): Promise<CloudSyncOutcome>;
   /** False when the user disconnected it in Ruah (sync skips it unless named). */
   enabled(): boolean;
-  /** §9, optional: false when the provider's CLI is not installed (sync-all and the watch loop skip it quietly). */
+  /** §9, optional: false when its CLI is not installed or its login is known to be gone (sync-all and the watch loop skip it quietly). §10 adapters fold the same into enabled(). */
   available?(): boolean;
 }
 
-/** Providers "Sync all" and the watch loop cover: enabled in Ruah and not known to be missing their CLI. */
+/** The one gate for "Sync all" and the watch loop: enabled, installed, not known to be logged out. */
 export function syncable(provider: CloudIntegration): boolean {
   return provider.enabled() && provider.available?.() !== false;
 }
@@ -101,4 +107,24 @@ export class IntegrationRegistry {
   work(): WorkIntegration[] {
     return this.all().filter(isWork);
   }
+}
+
+// ---- cloud providers batch B (CONTRACTS.md §10) ------------------------------
+// Standalone CLI adapters: each needs only a Runner + SettingsStore, so the
+// same set works inside the daemon and from a CLI command with no project.
+
+/** Google Cloud, Azure, Cloudflare, Railway and Fly.io, in display order. */
+export function cloudBatchB(deps: CliCloudDeps): CloudIntegration[] {
+  return [
+    new GcpIntegration(deps),
+    new AzureIntegration(deps),
+    new CloudflareIntegration(deps),
+    new RailwayIntegration(deps),
+    new FlyIntegration(deps),
+  ];
+}
+
+export function registerCloudBatchB(registry: IntegrationRegistry, deps: CliCloudDeps): IntegrationRegistry {
+  for (const integration of cloudBatchB(deps)) registry.register(integration);
+  return registry;
 }

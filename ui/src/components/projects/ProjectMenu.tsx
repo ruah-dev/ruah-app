@@ -5,6 +5,7 @@ import {
   FolderOpen,
   FolderPlus,
   Home,
+  Layers,
   Loader2,
   Search,
   SquareArrowOutUpRight,
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { KindBadge, ProjectTile } from "./ProjectBits";
 import { pinnedShortcut } from "./ProjectPalette";
 import { useProjectActions } from "./useProjectActions";
+import { systemMenuActions } from "@/components/system/SystemDialogs";
 
 const itemClass = "gap-2.5 rounded-md px-2 py-1.5 text-ui";
 
@@ -111,6 +113,13 @@ export function ProjectMenu({ dotClass }: { dotClass: string }) {
           <FolderPlus className="text-muted-foreground" /> New project…
           <kbd className="kbd ms-auto">⇧⌘N</kbd>
         </DropdownMenuItem>
+        {actions.connected && !switching
+          ? systemMenuActions(daemon.project).map((a) => (
+              <DropdownMenuItem key={a.key} className={itemClass} onSelect={a.run}>
+                <Layers className="text-muted-foreground" /> {a.label}
+              </DropdownMenuItem>
+            ))
+          : null}
         <DropdownMenuSeparator className="bg-hairline" />
         <DropdownMenuItem className={itemClass} onSelect={() => wb.setLauncherOpen(true)}>
           <Home className="text-muted-foreground" /> Start screen

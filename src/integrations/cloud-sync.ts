@@ -6,7 +6,7 @@
 // no files: the daemon (IntegrationsService) and the CLI both build on it.
 import type { CloudResource, ProviderError } from "../contracts/integrations.js";
 import { redact } from "./exec.js";
-import type { CloudIntegration, CloudSyncOutcome } from "./registry.js";
+import type { CloudIntegration, CloudSyncOutcome, ProjectContext } from "./registry.js";
 
 export interface ProvidersSyncResult {
   resources: CloudResource[];
@@ -15,9 +15,9 @@ export interface ProvidersSyncResult {
   failed: string[];
 }
 
-export type SyncOne = (provider: CloudIntegration, account: string | undefined) => Promise<CloudSyncOutcome>;
+export type SyncOne = (provider: CloudIntegration, account: string | undefined, project: ProjectContext | null) => Promise<CloudSyncOutcome>;
 
-const defaultSyncOne: SyncOne = (provider, account) => provider.sync(account !== undefined ? { account } : {});
+const defaultSyncOne: SyncOne = (provider, account, project) => provider.sync({ ...(account !== undefined ? { account } : {}), project });
 
 function message(err: unknown): string {
   return redact(err instanceof Error ? err.message : String(err));
@@ -25,7 +25,8 @@ function message(err: unknown): string {
 
 export async function syncProviders(
   providers: readonly CloudIntegration[],
-  options: { accounts?: Readonly<Record<string, string>> | undefined; now: Date; syncOne?: SyncOne },
+  /** `project`: the repo a provider may read config from (§10: Cloudflare Workers, Railway link); null = none. */
+  options: { accounts?: Readonly<Record<string, string>> | undefined; now: Date; project?: ProjectContext | null; syncOne?: SyncOne },
 ): Promise<ProvidersSyncResult> {
   const observedAt = options.now.toISOString();
   const syncOne = options.syncOne ?? defaultSyncOne;
@@ -35,7 +36,7 @@ export async function syncProviders(
   await Promise.all(
     providers.map(async (provider) => {
       try {
-        const outcome = await syncOne(provider, options.accounts?.[provider.id]);
+        const outcome = await syncOne(provider, options.accounts?.[provider.id], options.project ?? null);
         for (const r of outcome.resources) resources.push({ ...r, observedAt });
         for (const e of outcome.errors) errors.push({ provider: provider.id, message: redact(e) });
         if (outcome.resources.length === 0 && outcome.errors.length > 0) failed.push(provider.id);

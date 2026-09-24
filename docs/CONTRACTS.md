@@ -392,15 +392,16 @@ export type ErrorCode =
 
 1. `hello` first. Any other frame before `hello` → `error{bad_message}` and the socket is closed.
 2. Daemon → viewer after `hello`: `architecture{reason:"initial"}` then `agent.status`. `agent.status` is re-sent on every state change.
-3. `prompt` is accepted when `agent.status.state === "idle"` (or `"error"`: the agent is restarted). Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`. **While the current agent is `starting`** (e.g. right after `agent.set` to a cold agent, or while it applies its saved model / mode) the prompt is **queued** instead of refused: `turn.started{queued:true}` at once (the viewer shows the user bubble with "waiting for <agent>…"), then — once the agent is idle — the prompt is sent and a second `turn.started` (without `queued`) follows. One prompt can wait at a time (another one → `error{busy, turnId}`). `cancel` of a queued turn ends it with `turn.finished{cancelled}` without it ever reaching the agent; a switch (agent, project, chat) does the same. If the agent fails to start, the queued turn ends `turn.finished{error, error:"<agent> did not start: <reason>"}`. A queued or cancelled turn is stored in its chat like any other. Otherwise (`busy`, `stopped`) → `error{busy, turnId}`.
+3. `prompt` is accepted when `agent.status.state === "idle"` (or `"error"`: the agent is restarted). Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`. **While the current agent is `starting`** (e.g. right after `agent.set` to a cold agent, or while it applies its saved model / mode) the prompt is **queued** instead of refused: `turn.started{queued:true}` at once (the viewer shows the user bubble with "waiting for <agent>…"), then — once the agent is idle — the prompt is sent and a second `turn.started` (without `queued`) follows. One prompt can wait at a time (another one → `error{busy, turnId}`). `cancel` of a queued turn ends it with `turn.finished{cancelled}` without it ever reaching the agent; an agent or chat switch does the same, a project switch keeps it waiting in the background (§13.1). If the agent fails to start, the queued turn ends `turn.finished{error, error:"<agent> did not start: <reason>"}`. A queued or cancelled turn is stored in its chat like any other. Otherwise (`busy`, `stopped`) → `error{busy, turnId}`.
 4. `permission.request` blocks the agent until `permission.response` arrives. There is no daemon-side timeout in Phase 1. `permission.resolved` is echoed so a second viewer tab stays consistent.
 5. `cancel` makes the daemon (a) answer every pending `permission.request` of that turn with ACP `{outcome:"cancelled"}`, (b) send ACP `session/cancel`, (c) wait up to 15 s for the ACP prompt response, then `turn.finished{stopReason:"cancelled"}`. If the agent does not respond in 15 s the daemon kills and respawns it and sends `turn.finished{stopReason:"error"}` + `agent.status`.
-6. A running turn is cancelled only when the **last** viewer disconnects and none reconnects within 5 s (`RUAH_DISCONNECT_GRACE_MS`); another open tab or a page reload keeps it running. (Later: buffer the turn's events and replay them on reconnect.)
+6. Running turns (the open project's and background ones, §13.1) are cancelled only when the **last** viewer disconnects and none reconnects within 5 s (`RUAH_DISCONNECT_GRACE_MS`); another open tab or a page reload keeps them running. A viewer that (re)connects gets the running turn's events so far in `chat.history` (`running: true`) and any pending `permission.request` again (§13.1).
 7. `stream{kind:"text"}` chunks are forwarded as they arrive, no batching. The viewer appends them to the current assistant segment. A `tool_call` event closes the current text segment; the next text chunk opens a new one (matches t3code's assistant segmentation).
 8. `tool_call` / `tool_result` carry the full merged state, so the viewer upserts by `toolCallId`.
 9. `diff` is emitted in addition to the `tool_call`/`tool_result` that contained it, so the viewer can render diffs without parsing tool content.
 10. The daemon only listens on `127.0.0.1` by default and checks the `Origin` header: `http(s)://localhost:*`, `http(s)://127.0.0.1:*`, plus `--allow-origin <glob>` (needed for Lovable previews, e.g. `https://*.lovable.app`).
 11. Frames larger than 1 MiB are rejected with `bad_message`.
+12. **Switching projects does not cancel a running turn** (2026-09-24, §13.1): it keeps running in the background and re-attaches when the project is opened again. Switching the agent or the chat still cancels it (`turn.finished{cancelled}`), and so does a project switch when background agents are off or the background limit is reached.
 
 ### 2.3 Companion HTTP endpoints (same origin as the WebSocket)
 
@@ -618,7 +619,7 @@ export interface TurnRecord {    // what the viewer needs to redraw a past turn
 - daemon → viewer `{ type: "chats", projectId, chats: ChatInfo[], activeChatId: string | null }` — after `hello`, on switch, and whenever the list changes.
 - daemon → viewer `{ type: "chat.history", chatId, turns: TurnRecord[] }` — reply to `chat.open` (and after `hello` for the active chat).
 - viewer → daemon `{ type: "chat.new" }`, `{ type: "chat.open", chatId }`, `{ type: "chat.rename", chatId, title }`, `{ type: "chat.delete", chatId }`.
-- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first.
+- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1).
 
 ### 5.3 HTTP additions
 | Method + path | Body / result |
@@ -644,11 +645,13 @@ session (the viewer still shows the stored history).
 (IPC to the main process; `dialog.showOpenDialog`). In a plain browser
 `window.ruah` is absent and the viewer offers a path text field instead.
 
+§13.3 adds `notify(opts)` and `onNotificationClick(callback)`.
+
 ### 5.5 Behaviour details (daemon, 2026-09-23)
 - After `hello`: `project`, then (with a project) `architecture` and `agent.status`, then `chats` and the active chat's `chat.history`. Launcher state: `project{null}` + `agent.status{state:"stopped"}` only.
-- On a switch: a running turn is announced `turn.finished{cancelled}` (and stored; the old project's `chats` follows) first, then `project`, `architecture` (or `architecture.error` if the file is invalid), `chats`, `chat.history` (when a chat is active), `agent.status` (`starting` → `idle`, or `idle` at once for a warm agent).
+- On a switch: a running turn keeps running in the background (§13.1; nothing is announced — its events go to the activity feed). Only with background agents off or at the background limit is it announced `turn.finished{cancelled}` (and stored; the old project's `chats` follows) first. Then `project`, `architecture` (or `architecture.error` if the file is invalid), `chats`, `chat.history` (when a chat is active), `agent.status` (`starting` → `idle`, or `idle` at once for a warm agent).
 - Launcher state: `/api/architecture`, `/api/context/*`, `/api/file`, `/api/rescan` answer `409 { error: "no project open" }`; WS `prompt`/`chat.*`/`mode.set`/`model.set`/`session.reset` answer `error{bad_message, "no project open"}`; `agent.set` only changes the agent used for the next project.
-- The active chat on open is the one last active in that project — persisted in `~/.ruah/projects/<id>/state.json` (`{ version: 1, activeChatId: string | null }`, written on every chat switch, so it survives daemon restarts; a chat id that no longer exists is ignored) — else the most recently updated chat, else none (`activeChatId: null`). A `prompt` without an active chat creates one titled after the prompt. `chat.new` reuses the active chat when it has no turns (its title is "New chat" until the first prompt).
+- The active chat on open is the one last active in that project — persisted in `~/.ruah/projects/<id>/state.json` (`{ version: 1, activeChatId: string | null, … }` — §13.5 lists the other fields; written on every chat switch, so it survives daemon restarts; a chat id that no longer exists is ignored; unknown keys are kept) — else the most recently updated chat, else none (`activeChatId: null`). A `prompt` without an active chat creates one titled after the prompt. `chat.new` reuses the active chat when it has no turns (its title is "New chat" until the first prompt).
 - `open` of the project that is already open only refreshes `lastOpenedAt`. Paths may start with `~/`. Errors: 400 bad body/not a folder/bad name, 404 path or parent missing, 409 create target exists, 422 invalid `ruah.system.json`, 403 Origin.
 - The chat header line may carry daemon-internal fields (`sessions`: agent session id per agent id, `autoTitle`); they are never sent on the wire.
 
@@ -778,7 +781,7 @@ export interface WorkItem {
 Links between work items and elements are stored in the project
 (`.ruah/links.json` inside the repo, committable) so a team shares them.
 
-More cloud providers, live health on `CloudResource`, watch mode (`cloud.watch` / `cloud.updated`) and the `ruah app cloud` CLI: see §9.
+More cloud providers, live health on `CloudResource`, watch mode (`cloud.watch` / `cloud.updated`) and the `ruah app cloud` CLI: see §9 (and §10 for GCP, Azure, Cloudflare, Railway, Fly.io).
 
 ---
 
@@ -916,9 +919,14 @@ interface CloudResource {
 }
 ```
 `CloudIntegration` (registry.ts) gains an optional `available?(): boolean` — false when its CLI
-is not installed. "Sync all" (`POST /api/cloud/sync` without `providers`) and the watch loop
-cover `syncable()` providers only (enabled in Ruah and not known to miss their CLI) and drop
-old errors of skipped providers; naming a provider still syncs it.
+is not installed or its last login check said "not logged in" (until `info()` sees a login
+again); the §10 adapters fold the same into `enabled()`. `syncable(p)` = `enabled() &&
+available() !== false` is the one gate: "Sync all" (`POST /api/cloud/sync` without
+`providers`) and the watch loop cover `syncable()` providers only and drop old errors of
+skipped ones; naming a provider still syncs it. `url` is shared with §10.3 (one field).
+`CloudSyncBody.providers` accepts up to `KNOWN_CLOUD_PROVIDERS.length` ids (12: every
+registered cloud provider), and `sync()` receives the open project (§10.3) from both the
+Sync button and the watch loop.
 
 ### 9.3 Health mapping
 | Provider | Rule |
@@ -932,6 +940,7 @@ old errors of skipped providers; naming a provider still syncs it.
 | Hetzner | server `running` → healthy, `initializing`/`starting`/`rebuilding`/`migrating` → deploying, `off`/`stopping`/`deleting` → down; load balancer from its targets' checks: all healthy → healthy, some unhealthy → degraded, all → down, no targets → unknown |
 | DigitalOcean | droplet `active`/`new`/`off`; App Platform: a deployment in progress → deploying ("previous version live"), else active phase (`ACTIVE` healthy, `ERROR` down); databases `online`/`creating`/`migrating`/`resizing`/`offline`; kubernetes `running`/`provisioning`/`upgrading`/`degraded`/`error`; load balancer `active`/`new`/`errored` |
 | AWS | EC2 `running`/`pending`/`stopped`…; RDS `available` (+ backing-up) / modifying… / stopped, failed…; ElastiCache; ELBv2 `active`/`provisioning`/`active_impaired`/`failed`; CloudFront `Deployed`/`InProgress`; Lambda `State` when present (list-functions usually omits it) |
+| §10: Google Cloud, Azure, Cloudflare, Railway, Fly.io | the adapter's pure `healthOf(state)` (§10.5) applied by the kit after every sync (`withLiveHealth`, `cli-kit.ts`) to the native state in `status` (the part before ` · `); the rest of the status becomes `healthDetail`, "2/3 machines started" becomes `replicas`. No status (buckets, topics, KV, D1) and Azure resource groups: no health. Fly volumes use `healthOf(state, "volume")`. |
 
 Unlisted native states map to `unknown`. The viewer and the CLI count `healthy` as "running".
 
@@ -990,3 +999,591 @@ Extend `CliCloudAdapter` (`src/integrations/cloud/cli-adapter.ts`): set `id`, `n
 `test/fixtures/integrations/`); map native states with `healthFrom()` / `workloadHealth()`
 (`health.ts`); register it in `IntegrationsService`. It then appears in Integrations, the Cloud
 page, sync-all, the watch loop and `ruah app cloud`.
+
+---
+
+## 10. Cloud providers batch B: GCP, Azure, Cloudflare, Railway, Fly.io (2026-09-24)
+
+Five more **cloud** integrations (§6), each a read-only adapter over the provider's own
+CLI and its own login. Ruah never runs a login, never stores a credential, never calls a
+mutating subcommand, and never copies secrets (env vars, connection strings, admin logins,
+keys) into a `CloudResource`. Adapters live in `src/integrations/cloud/<id>.ts` on a
+shared base (`cloud/cli-kit.ts`) and are standalone library modules: they need only an
+injectable `Runner` (exec.ts: `execFile` with an args array, 20 s timeout, redacted errors)
+and the `SettingsStore` — no daemon, SessionHub or open project. They are registered only
+through `registry.ts` (`cloudBatchB(deps)` / `registerCloudBatchB(registry, deps)`).
+
+### 10.1 Providers
+
+| id | name | CLI (tried in order) | install (Homebrew) | login | accounts |
+| --- | --- | --- | --- | --- | --- |
+| `gcp` | Google Cloud | `gcloud` | `brew install --cask gcloud-cli` | `gcloud auth login` | `"<configuration>/<project>"` per gcloud configuration with a project, plus `"<project>"` for other projects the login sees (`gcloud projects list`, ≤ 50) |
+| `azure` | Azure | `az` | `brew install azure-cli` | `az login` | subscription ids (`az account list`, local); the default one is used when none is picked |
+| `cloudflare` | Cloudflare | `wrangler` | `brew install cloudflare-wrangler` | `wrangler login` | account ids from `wrangler whoami`; passed as `CLOUDFLARE_ACCOUNT_ID` |
+| `railway` | Railway | `railway` | `brew install railway` | `railway login` | workspace ids (`"personal"` for projects without one); none picked = all |
+| `fly` | Fly.io | `flyctl`, `fly` | `brew install flyctl` | `fly auth login` | org slugs (`orgs list --json`); none picked = all orgs |
+
+### 10.2 Read commands and mapping
+
+gcloud calls always carry `--format=json --quiet` (+ `--project`, `--configuration`), az
+calls `-o json --only-show-errors` (+ `--subscription`), wrangler runs from a neutral cwd.
+
+| provider | command (all read-only) | → `type` / `service` | status |
+| --- | --- | --- | --- |
+| gcp | `run services list` | `container` / `cloud-run` | `ready` (latest created revision is the ready one), `deploying · <revision>`, `failed`; `url` = service URL |
+| gcp | `container clusters list` | `kubernetes` / `gke`, `gke-autopilot` | `running · 3 nodes` |
+| gcp | `sql instances list` | `database` / `cloud-sql/<engine>` | `running`, `stopped` (RUNNABLE + activation NEVER), else lower-cased state |
+| gcp | `functions list` (gen 1 + 2) | `function` / `cloud-functions[/gen2]` | lower-cased state; `url` = trigger / service URI |
+| gcp | `pubsub topics list` | `queue` / `pubsub` | — |
+| gcp | `storage buckets list` | `storage` / `gcs` | — (region = location, lower-cased) |
+| azure | `group list` | `other` / `resource-group` | provisioning state |
+| azure | `webapp list`, `functionapp list` | `app` / `app-service`, `function` / `functionapp` | `running`, `stopped`; `url` = custom hostname, else `*.azurewebsites.net` |
+| azure | `containerapp list` | `container` / `container-app` | running status; `url` = ingress FQDN |
+| azure | `aks list` | `kubernetes` / `aks` | `running · 5 nodes` (power state + summed pool counts) |
+| azure | `sql server list`, `postgres flexible-server list` | `database` / `azure-sql`, `postgres-flexible` | lower-cased state |
+| azure | `storage account list` | `storage` / `storage-account` | `available` / provisioning state |
+| cloudflare | `d1 list --json` | `database` / `d1` | — |
+| cloudflare | `kv namespace list` (JSON) | `storage` / `kv` | — |
+| cloudflare | `r2 bucket list` (text) | `storage` / `r2` | — |
+| cloudflare | `queues list` (table) | `queue` / `queues` | `active` / `no consumers` |
+| cloudflare | `pages project list --json` + `pages deployment list --project-name <p> --json` (≤ 20) | `app` / `pages` | latest production deployment: `deployed`, `deploying`, `failed`, `canceled`; `url` = custom domain, else `*.pages.dev` |
+| cloudflare | Workers from the project's `wrangler.toml` / `wrangler.json(c)` (root + 3 levels, ≤ 20 files) + `deployments list --name <w> --json` | `function` / `workers` | `deployed`; tags `routes`, `environment`, `deployed-at`; `url` from the first concrete route; undeployed Workers are skipped |
+| railway | `list --json` | `app` / `railway/service`; `database`/`cache` / `railway/<engine>` for DB images or names; legacy plugins | tags `project`, `environments` |
+| railway | `status --json` (cwd = the open project, only if it is `railway link`ed) | one resource per service × environment | latest deployment status lower-cased (`success`, `crashed`, `building`, …); `url` = custom, else service domain; tags `project`, `environment` |
+| fly | `apps list --json [--org]` + per app (≤ 50) `machines list --app <a> --json`, `volumes list --app <a> --json`; `postgres list --json` | `app` / `fly/app`, `database` / `fly/postgres` | `deployed · 2/3 machines started · fra, iad` (machines summarized: started / total, regions by count); `url` = `https://<hostname>` |
+| fly | volumes | `storage` / `fly/volume` | `created · 10 GB`; tag `app` |
+| fly | `mpg list --json` (newer flyctl; unknown command ignored) | `database` / `fly/managed-postgres` | status |
+
+Ids are provider-native where one exists (GCP full resource names `//run.googleapis.com/projects/…`,
+Azure ARM ids) and namespaced otherwise (`cf:d1:<uuid>`, `railway:service:<svc>:<env>`,
+`fly:app:<name>`). Labels / tags become `tags`, so `ruah-node=<id>` links as in §6 (GCP
+label keys cannot contain `:`; use `ruah-node` / `ruah_node`). "API not enabled" (GCP),
+"subscription not registered" (Azure) and an unknown `mpg` command are empty listings, not
+errors. A missing `az containerapp` extension is a per-service error naming
+`az extension add --name containerapp`.
+
+### 10.3 Contract additions (all optional, additive)
+
+```ts
+export interface IntegrationInfo {
+  // … §6.1
+  installCommand?: string;   // exact Homebrew install command of the provider CLI
+  loginCommand?: string;     // exact login command
+}
+export interface CloudResource {
+  // … §6.1
+  url?: string;              // public URL the resource serves (Cloud Run, Pages, Fly app, …)
+}
+// registry.ts: CloudIntegration.sync(options: { account?: string; project?: ProjectContext | null })
+// `project` lets a provider read repo config (Cloudflare Workers, Railway link); the
+// daemon passes the open project, a CLI caller may pass its cwd or nothing.
+```
+
+### 10.4 States (not installed / not logged in) and quietness
+
+| situation | `status` | `detail` | `setupHint` |
+| --- | --- | --- | --- |
+| CLI not on PATH (+ Homebrew dirs) | `cli_missing` | `<cli> is not installed` | `<install> && <login>` |
+| installed, no login | `not_connected` | `not logged in to <cli> — <reason>` | `<login>` |
+| logged in, nothing usable (gcloud without a project) | `not_connected` | `no Google Cloud project selected` | `gcloud config set project PROJECT_ID` |
+| disconnected in Ruah | `not_connected` | `disconnected in Ruah (<cli> login unchanged)` | `Connect to use your <cli> login` |
+| connected | `connected` | `<who> · <account noun> <account>` | — |
+
+`installCommand` and `loginCommand` are always set for these providers. Nothing is
+mandatory and nothing polls: an adapter spawns its CLI only from `info()` (GET
+`/api/integrations`), `connect()` and `sync()`. `enabled()` is false while the CLI is
+missing, while Ruah has it disconnected, and once a login check failed (until `info()`
+sees a login again), so a "sync all" (`POST /api/cloud/sync` without `providers`) never
+spawns an unusable CLI and never reports it as an error. A disconnected provider makes no
+CLI call at all, even in `info()`. When every listing of a sync fails with an auth error,
+the sync reports one `credentials expired or missing — run: <login>` instead of one error
+per service.
+
+The viewer shows these states as **Connected / Not logged in / Not installed /
+Disconnected** with the install and login commands, each copyable and — when the app's
+integrated terminal (§7) is available — "Run in terminal" (a new tab with the command
+typed, not executed). The Cloud page shows a "Connect a provider" list of every cloud
+provider while none is connected.
+
+### 10.5 Live health (for later wiring)
+
+Each adapter exports a pure `healthOf(nativeState)` →
+`"healthy" | "degraded" | "down" | "deploying" | "unknown"` (`HealthState` in
+`cli-kit.ts`, = `CloudHealth` of §9). It accepts the provider's native enum values (`RUNNABLE`, `Running`,
+`SUCCESS`, `started`, …) and the adapter's own `status` strings (the part before ` · `).
+Fly's takes a second argument `"app" | "machine" | "volume"` because `created` is a
+volume's normal state but a machine that has not started. Wired (2026-09-24): the kit sets
+`health` / `healthDetail` / `replicas` from it on every synced resource with a status (§9.3),
+so these providers count in the Cloud page strip, its filters and `ruah app cloud status`.
+
+### 10.6 Known gaps
+
+- **Wrangler** cannot list an account's Workers, so only Workers declared in the open
+  project's wrangler config are shown (none when syncing without a project). `r2 bucket
+  list`, `queues list` and `whoami` have no JSON output and are parsed from text; `pages
+  … list` use `--json` and fall back to the table on an older wrangler. The Pages
+  deployment "Status" column is a relative time or a stage word, mapped heuristically.
+- **Railway**: deployment status and domains need the open project folder to be
+  `railway link`ed (`status --json`); other projects show services without status.
+  `list --json` / `status --json` shapes differ across CLI versions; both GraphQL-edge
+  and plain-array shapes are accepted.
+- **Fly.io**: machines and volumes are read per app (≤ 50 apps, 4 at a time); a larger
+  org gets a note in `errors`. JSON key casing varies by flyctl version (`Name` / `name`);
+  both are read.
+- **Azure**: `containerapp` needs the extension on older `az`; SQL databases inside a
+  server and MySQL flexible servers are not listed.
+- **GCP**: Cloud Run jobs, App Engine and Compute Engine VMs are not listed.
+- `/api/integrations` is cached for 15 s (§6), so "Check again" right after a login can
+  show the previous state for a few seconds.
+
+## 12. Multi-repo systems management (2026-09-24)
+
+Creating and managing multi-repo systems (§1.5, docs/MULTI-REPO.md) without
+editing JSON. Everything is **optional**: a single-repo project looks and
+works exactly as before, and the system endpoints answer 409 for it.
+
+**Layering.** The logic is a standalone library, `src/system/*` (no daemon
+dependency): `manage.ts` (create / add / remove / rename / rebuild / rescan),
+`status.ts` (git status), `github.ts` (`gh`), `suggestions-store.ts` (review
+state), `suggest-run.ts` (one agent pass, pluggable `RunAgent`). The
+`ruah app system` CLI (§12.7) and the daemon's `/api/system/*` (§12.6) both
+call it. The daemon adds only two things: changes to the open system go
+through its live store (validated, written atomically, broadcast as
+`architecture` reason `saved`; the project stays open, no switch), and
+"Suggest connections" runs on the **current agent** as a normal turn.
+
+### 12.1 Files (all next to `ruah.system.json`)
+| File | Content | Written by |
+| --- | --- | --- |
+| `ruah.system.json` | §1.5 (`{ version: 1, name, repos: [{ id, path }] }`, paths relative) | create / add / remove / rename |
+| `architecture.json` | the system map (§1.5); hand edits and accepted suggestions are merged on every rebuild | rebuild, accept, the viewer, agents |
+| `.ruah/suggestions.json` | `{ version: 1, pending: StoredSuggestion[], rejected: RejectedSuggestion[], lastRun? }` (§12.5); commit it to share review decisions | suggest, accept, reject |
+| `.ruah/system-scan.json` | `{ version: 1, builtAt, repos: { [id]: { scannedAt, source: "architecture.json" \| "scan" \| "missing", type, nodes, warning? } } }`: facts of the last build, for status | every rebuild |
+
+Repo folders are never written by management calls, with one exception: a
+per-repo **rescan** of a repo that already has its own `architecture.json`
+refreshes that file (as `ruah app scan` would, hand edits merged), so the
+system rebuild reuses it. A repo without one is scanned in memory; no file is
+created in it. **Remove never deletes files**: it only takes the repo out of
+`ruah.system.json` (and drops its pending suggestions).
+
+Rules for the system folder: it must not be one of the repos, and a folder
+that holds a single-repo map (`architecture.json` without `ruah.system.json`)
+is refused (the system map would overwrite it). Repo paths must be existing
+folders (realpath) not already in the system; ids match
+`^[a-z0-9][a-z0-9-]{0,62}$`, are unique, and are derived from the folder name
+when omitted (`Billing_Service` → `billing-service`, then `-2`, `-3`, …).
+
+### 12.2 Types
+```ts
+interface GitStatus { branch: string | null /* null = detached */; upstream: string | null;
+  ahead: number; behind: number; dirty: number /* changed + staged + unmerged + untracked */; head: string | null }
+interface RepoStatus { id: string; path: string /* as in the file */; root: string /* absolute */; exists: boolean;
+  git: GitStatus | null /* null = not a git work tree */; gitError?: string;
+  lastScanAt: string | null; scanSource: "architecture.json" | "scan" | "missing" | null;
+  type: string | null /* service, frontend, worker, library, infra, gateway */;
+  nodes: number /* elements of the repo in the system map, below its repo node */; warning?: string }
+interface SystemStatus { name: string; dir: string; file: string; builtAt: string | null; repos: RepoStatus[] }
+interface GithubRepo { nameWithOwner: string; name: string; description: string | null; url: string;
+  isPrivate: boolean; isArchived: boolean; updatedAt: string | null; defaultBranch: string | null }
+interface StoredSuggestion { id: string /* "s-" + sha1(from, to, lower-cased label)[:10], stable across runs */;
+  from: string; to: string; label?: string; kind?: string; confidence: number /* 0..1 */;
+  evidence: string[] /* "<repoId>/<path>:<line>[-<line>]", verified to exist */; reason?: string;
+  proposedAt: string; agentId?: string }
+interface RejectedSuggestion { id: string; from: string; to: string; label?: string; rejectedAt: string }
+interface SuggestionsView { pending: StoredSuggestion[] /* still valid against the current map */;
+  rejected: RejectedSuggestion[]; lastRun: { at: string; agentId?: string; proposed: number; dropped: number; error?: string } | null;
+  running: { startedAt: string; agentId: string } | null }
+```
+Git status is `git -C <root> status --porcelain=v2 --branch` (execFile, args
+array, 15 s timeout); ahead/behind are relative to the upstream (0 without one).
+
+### 12.3 GitHub
+Browsing uses the user's own `gh auth` (Ruah stores no token):
+`gh repo list [<owner>] --json name,nameWithOwner,description,url,isPrivate,isArchived,updatedAt,defaultBranchRef --limit <n>`
+(owner `^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`, empty = the logged-in user).
+Cloning is `gh repo clone <owner/name> <parentDir>/<name>` and **only happens
+on an explicit request** (the Clone button, `repos/add` with `github`, CLI
+`add gh:owner/name`); the repo must match `owner/name` and the target must not
+exist. `gh` missing → 400 with an install hint.
+
+### 12.4 Rename (decision)
+Renaming a repo id is **allowed** and applied, in one call, to everything Ruah
+stores that names the repo's elements: `ruah.system.json`; the system
+`architecture.json` (the repo node, every `<old>:*` id, `parent`, `repo`,
+`path` / `files[]` / `evidence` `<old>/*`, edge ends, workflow ids and steps);
+pending and rejected suggestions (ids recomputed); `.ruah/links.json` (work
+items); `.ruah/system-scan.json`; and, in the daemon and in the CLI through
+`RUAH_HOME`, the system project's chats (`TurnRecord.nodeId`, header
+`lastNodeId`) and cloud links (`~/.ruah/projects/<id>/cloud.json`
+`manualLinks`, `linkedNodeId`). Then the map is rebuilt, so hand edges and
+accepted suggestions keep pointing at the same elements. Refused: an id that
+does not match `^[a-z0-9][a-z0-9-]{0,62}$` (400), one already in the system,
+one that is already an element of the map such as the shared `postgres` node,
+or any rename while "Suggest connections" runs (409). Not rewritten: agent
+session transcripts (the agent's own history; old ids there are plain text)
+and per-viewer UI state kept in the browser.
+
+### 12.5 Connections: deterministic first, agent second
+1. **Deterministic signals** (zero tokens, `src/system/signals.ts`): compose /
+   k8s / terraform that deploy or link other repos, env / config / source URLs
+   and `*_URL` / `*_HOST` values naming another service, queue / topic names
+   published in one repo and consumed in another, internal packages. They are
+   the top-level `source: "scan"` edges of every rebuild, each with
+   `evidence`. `GET /api/system/signals` lists them.
+2. **Suggest connections** (optional): the prompt (`suggest-prompt.ts`) lists
+   the top-level services, the known edges, where each repo lives, and the
+   edges the user rejected before (so no tokens are spent on them); the agent
+   answers JSON only; `parseSuggestions` validates it (listed services only, no
+   self edges, confidence 0..1, evidence `<repoId>/<path>:<line>` of an
+   existing file line, no duplicate of an existing edge). Valid proposals are
+   stored as `pending` (a repeat refreshes the same id; previously rejected
+   ones are dropped). **Accept** → an edge `{ from, to, label?, kind?, source:
+   "suggested", evidence }` saved to the map and kept by every rebuild.
+   **Reject** → remembered in `rejected`, never proposed again (until
+   "unreject").
+   - **Daemon: the current agent, as a normal turn** (`SessionHub.runTaskTurn`):
+     recorded in the active chat (bubble text "Suggest connections between the
+     N repos of <name>", the full prompt as its context pack), broadcast as
+     `turn.started` / `stream` / `turn.finished` to every viewer, counted in
+     usage, permission requests shown as usual. Chosen over a hidden one-shot
+     so the user sees what the agent read and what it cost, and can cancel it
+     like any turn. A busy agent → 409 (no queueing). The turn's answer (all
+     `text` chunks) is parsed when it finishes; a turn that does not end with
+     `end_turn` records `lastRun.error`. The agent's cwd is the system folder
+     with every repo as an additional directory (Claude); ACP agents get the
+     cwd only (docs/MULTI-REPO.md); evidence is verified on the daemon either way.
+   - **CLI: pluggable.** `--agent claude` runs a one-shot, read-only Claude
+     Agent SDK query (tools Read / Grep / Glob / LS only, everything else
+     denied, the user's Claude Code settings and login); `--print-prompt`
+     prints the prompt for any other agent and `--reply-file <file|->` feeds
+     its answer back.
+
+### 12.6 HTTP
+Every endpoint below passes the Origin check of `/ws` (§2.2 rule 10; 403),
+GETs included (they read the machine's repos and `gh`). POST bodies are JSON
+≤ 64 KiB, validated by `src/contracts/system.ts` (400). Errors: 400 invalid,
+404 unknown repo / suggestion / missing folder, 409 conflict or no system open
+(`"no project open"`, `"the open project is not a multi-repo system"`), 422
+invalid `ruah.system.json`, 503 without the service.
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/system` | `SystemStatus` of the open system |
+| `POST /api/system/create` | `{ dir, name?, repos: { path, id? }[], open?: boolean }` → `{ project: ProjectInfo \| null, created, added: string[], dir }`. Writes `<dir>/ruah.system.json` (folder created when missing); when one exists there, the repos not yet in it are added ("Add another repo…" into an existing system). Then opens it as the current project (default; the usual `project` / `architecture` / `chats` broadcasts). Works with any project open, or none. |
+| `POST /api/system/repos/add` | `{ path }` or `{ github: { repo: "owner/name", parentDir? } }`, plus `id?` → `SystemStatus`. `github` clones into `parentDir` (default: the system folder's parent) first. |
+| `POST /api/system/repos/remove` | `{ id }` → `SystemStatus` (files untouched) |
+| `POST /api/system/repos/rename` | `{ id, newId }` → `SystemStatus` (§12.4) |
+| `POST /api/system/repos/rescan` | `{ id }` → `{ status, nodes, edges, ms }` (§12.1) |
+| `POST /api/system/rescan` | `{}` → `{ status, nodes, edges, ms }`: rebuild every repo |
+| `POST /api/rescan` | while a system is open: rebuilds the system (`{ ok, nodes, edges, ms }`) instead of scanning its folder as a repo |
+| `GET /api/system/signals` | `{ edges: ArchEdge[] }`: the deterministic top-level `scan` edges with evidence |
+| `GET /api/system/suggestions` | `SuggestionsView` |
+| `POST /api/system/suggestions/run` | `{ minConfidence?, maxSuggestions? }` → **202** `SuggestionsView` (`running` set). Proposals land when the turn finishes: poll `GET …/suggestions` or watch `turn.finished`. 409 when a run is going, the agent is busy, or the system has fewer than two repos. |
+| `POST /api/system/suggestions/accept` | `{ id }` → `{ edge, suggestions: SuggestionsView }`; the edge is saved through the store (broadcast `architecture`, `by.kind: "user"`) |
+| `POST /api/system/suggestions/reject`, `…/unreject` | `{ id }` → `SuggestionsView` |
+| `GET /api/system/github/repos?owner=&limit=` | `{ repos: GithubRepo[] }` (newest first); no system needed |
+| `POST /api/system/github/clone` | `{ repo: "owner/name", parentDir }` → `{ path }`; no system needed |
+
+Repos added while an agent session is live reach Claude's additional
+directories on its next session (a new chat, a reset, or a restart); the
+file / context / terminal endpoints resolve them at once.
+
+### 12.7 CLI (`ruah app system`, no daemon needed)
+`<system>` = the folder holding `ruah.system.json` (or the file); commands
+without it take `--system <dir>`, default the current directory. Exit codes:
+0 ok, 2 usage / validation / not found / conflict, 1 other failures.
+```
+init <folder> [--repo <path>|<id>=<path>]... [--name <n>] [--force]
+add [<system>] <path | <id>=<path> | gh:owner/name> [--id <id>] [--into <dir>]
+remove <id>
+rename <id> <new-id>
+status [<system>] [--json]          # SystemStatus as JSON, or a table
+signals [<system>] [--json]         # { edges }: deterministic, zero tokens
+scan [<system>] [--out <path>] [--dry-run]
+rescan <id>
+suggest [<system>] [--agent claude] [--model <m>] [--min-confidence <n>] [--json]
+        [--print-prompt | --reply-file <file|->]
+suggest [<system>] --list | --accept <n|id>... | --reject <n|id>... | --unreject <id>... [--json]
+```
+`--accept 1` refers to the position in the list as printed before the call.
+Accepting writes `architecture.json`; a running daemon picks it up through its
+file watcher.
+
+### 12.8 Context pack and ids (addition to §3)
+For an element of a system (it has `repo`, or its id is `<repoId>:…`, stored or
+expanded) the pack gets one line after `path:`:
+`repo: <repoId> at <absolute repo folder> (paths "<repoId>/<path>" are inside it)`,
+so the agent can open system paths whatever the folder layout. Namespaced ids
+work unchanged in `GET /api/context/:id` and `GET /api/expand/:id` (URL-encode
+the `:`), expanded ids (`<repoId>:<node>/<entry>`), diagram ids (`arch:<id>`),
+breadcrumbs, search (elements without a path show their repo), and the draw.io
+export (one page per repo, XML-safe ids).
+
+### 12.9 Viewer
+Self-contained, mounted once (`<SystemDialogs />` from
+`ui/src/components/system/`) and opened with `openSystemDialog()` from
+`ui/src/lib/system.ts`; nothing in the layout depends on it. Entry points: the
+start screen's **New system…**; the project menu's **Add another repo…** for a
+repo project (creates a system with this repo plus the picked ones in a folder
+the user picks; the repo keeps its own map), or **Repos…** / **Suggest
+connections…** for a system project. The manager has two tabs: *Repos*
+(`ReposPanel`: branch, ↑↓, changes, elements, last scan; add from disk or
+GitHub, rename, rescan, remove) and *Connections* (`ConnectionsPanel`:
+detected edges, the agent's proposals with confidence and clickable
+`file:line` evidence, accept / reject, the rejected list). Both panels are
+exported so a later page layout can host them.
+
+## 13. Background agents, activity feed, resume and view state (2026-09-24)
+
+For a user who switches projects all day: an agent keeps working in the
+project you left, every viewer sees what agents do in every project, the
+desktop app notifies you, and each project remembers where you left off.
+Every part is optional: the feature flags in §13.6 turn background agents
+and notifications off, and the resume / activity data is plain files in
+`$RUAH_HOME` that the CLI reads without a daemon (`ruah app resume`,
+`ruah app activity`, §13.7). Code: `src/serve/activity.ts` (feed),
+`src/activity/log.ts` (persistence), `src/resume/*` (resume library + CLI),
+`src/serve/activity-http.ts` (HTTP), `src/serve/session.ts` (background
+turns), `src/serve/bridge-pool.ts` (pinning); viewer `ui/src/lib/activity.ts`,
+`ui/src/lib/view-state.ts`.
+
+### 13.1 Background agents
+
+- **A project switch does not cancel a running turn.** The turn (or a prompt
+  still queued while its agent starts, §2.2 rule 3) keeps running on its
+  bridge; its stream events are recorded into its chat as before, but not
+  sent to viewers (they show another project). When it finishes it is stored
+  in its chat and reported as an `activity` event (§13.2) — viewers of other
+  projects get no `turn.finished`. A queued prompt of a background agent is
+  sent once that agent is idle.
+- **Pinned in the pool.** A bridge with a running or queued turn is never
+  evicted: not by the pool cap, not by the warm TTL, not by a release (even
+  with `RUAH_WARM_TTL_MS=0`). When the turn ends, the bridge is treated like a
+  fresh release (kept warm for the TTL, or stopped without one). The cap of
+  live agents (`RUAH_MAX_LIVE_AGENTS`, 4) can be exceeded only by pinned
+  bridges; the background limit keeps that bounded.
+- **Limit.** At most **3** turns run outside the open project
+  (`RUAH_MAX_BACKGROUND_TURNS`, capped at `RUAH_MAX_LIVE_AGENTS - 1`). A
+  switch that would exceed it cancels the leaving project's turn as before
+  (`turn.finished{cancelled, error: "cancelled: 3 turns already run in other
+  projects (background limit)"}`, stored). With `backgroundAgents: false`
+  (§13.6) every project switch cancels (the pre-2026-09-24 behaviour).
+- **Re-attach.** Opening a project that has a background turn: the agent
+  running it becomes the current agent (even if another one was picked
+  meanwhile), the turn's chat becomes the active chat (a `chatId` passed to
+  `POST /api/projects/open` is ignored then), and the usual switch frames
+  follow — `chat.history` includes the turn with `running: true`, no
+  `stopReason` and its events so far; `agent.status` says `busy`; then every
+  still-pending `permission.request` of that turn is sent again (after
+  `chat.history`). Further `stream` frames continue the turn; `cancel` works
+  on it as on any turn.
+- **Permissions.** A request made in the background waits (no timeout, §2.2
+  rule 4); it is reported as `activity` `permission.requested` and counted in
+  `waitingPermission`. `permission.response` is routed to whichever bridge
+  asked, so it can be answered from any project; normally the viewer opens the
+  project (e.g. from the notification) and answers the re-sent request.
+- **`running: true` on reconnect.** The same `chat.history` + pending
+  `permission.request` re-send happens after `hello`, so a page reload in the
+  middle of a turn shows it and its open question again.
+- **What stays the same.** `agent.set` and chat switches (`chat.new`,
+  `chat.open`, `chat.delete` of the active chat) still cancel the running
+  turn — including a `chat.open` of another chat right after re-attaching
+  (the viewer's "open project at chat" does that when the chat differs from
+  the running turn's). §2.2 rule 6 covers background turns too: when the last viewer is gone
+  for 5 s, every running turn is cancelled. Daemon shutdown stores every
+  running turn as `cancelled` ("Ruah stopped").
+- **Limitations.** Map edits through the `ruah_*` tools (§1.7) are refused
+  for an agent whose project is not the open one (the tool tells the agent
+  why); code edits are unaffected. `ruah-verify` (engines) runs only after
+  turns of the open project.
+
+### 13.2 Activity feed (WebSocket, every viewer)
+
+```ts
+interface ActivityEvent {
+  id: string;                 // uuid
+  kind: "turn.started" | "turn.finished" | "permission.requested"
+      | "permission.answered" | "agent.error" | "map.changed" | (string & {});
+  projectId: string; projectName: string; projectRoot?: string;
+  chatId: string | null; turnId?: string; agentId?: string;
+  summary: string;            // one line, ≤ 200 chars, e.g. 'Finished "Add tests" · 2 files edited'
+  at: string;                 // ISO
+  background: boolean;        // its project / chat was not in front, or no viewer was connected
+  stopReason?: StopReason;    // turn.finished
+  error?: string;             // turn.finished (error / limit), agent.error
+  requestId?: string;         // permission.*
+  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + diffs; ≤ 20)
+  mapChanges?: number;        // turn.finished, map.changed
+}
+interface ProjectActivity {
+  projectId: string; projectName: string; projectRoot?: string;
+  running: number;            // turns running or queued (the open project's included)
+  waitingPermission: number;  // permission requests waiting for an answer
+  unread: number;             // sum of `chats`
+  chats: Record<string, number>;  // unread per chat id ("none" = a turn without a chat)
+  lastEventAt?: string;
+}
+type AppFeatures = { backgroundAgents: boolean; notifications: "background" | "always" | "off" };
+```
+
+Daemon → viewer (sent to **every** socket, whatever project it shows):
+
+| Frame | When |
+| --- | --- |
+| `{ type: "activity.snapshot", projects: ProjectActivity[], recent: ActivityEvent[], settings: AppFeatures, maxBackgroundTurns: number }` | after `hello` (after `chats` / `chat.history`), and to everyone after `settings.set`. `projects` lists only projects with something running, waiting or unread (of the recent list and live turns); `recent` = the last 50 events, oldest first. |
+| `{ type: "activity", event: ActivityEvent, project: ProjectActivity }` | every event; `project` = that project's counts after it |
+| `{ type: "activity.project", project: ProjectActivity }` | counts changed without an event (unread markers cleared) |
+
+Viewer → daemon: `{ type: "activity.read", projectId, chatId? }` clears the
+unread marker of a chat (or all of the project's).
+
+**Unread markers.** `turn.finished` and `permission.requested` events with
+`background: true` add 1 to their chat's marker, persisted in the project's
+`state.json` (`unread`, §13.5), so badges survive restarts. A marker is
+cleared when the user views the chat: the project is opened on it (with a
+viewer connected), `chat.open` / `chat.new` makes it active, a viewer says
+`hello` while it is active, or `activity.read`.
+
+**Persistence.** Every event (not `activity.project`) is appended to
+`$RUAH_HOME/activity.jsonl` (one JSON object per line; compacted to the newest
+2000 events once the file passes 1 MB; unparseable lines are skipped).
+
+**HTTP** (same data, for CLIs and the launcher):
+
+| Method + path | Result |
+| --- | --- |
+| `GET /api/activity?since=<ISO or 24h/90m/7d>&projectId=&limit=100` | `{ projects: ProjectActivity[], events: ActivityEvent[] (oldest first, newest `limit`, max 2000), settings: AppFeatures, maxBackgroundTurns }`; 400 bad `since` |
+| `POST /api/activity/read` | `{ projectId, chatId? }` → `{ ok: true, project: ProjectActivity }`; Origin checked (403) |
+
+### 13.3 Desktop notifications (Electron)
+
+The renderer decides, the main process shows. `ui/src/lib/activity.ts` calls
+`window.ruah.notify` for an `activity` event of kind `turn.finished` or
+`permission.requested` when `settings.notifications` is:
+`"background"` (default) — and the event is `background`, or the window is
+not focused (`document.hasFocus()`), or its project is not the open one;
+`"always"` — always; `"off"` — never. Title: `"<project>: agent finished"`
+(/ `failed` / `turn cancelled` / `agent stopped`) or `"<project>: permission
+needed"`; body: the event's `summary`.
+
+Preload additions to `window.ruah` (§5.4), typed as `RuahDesktopBridge` in
+`ui/src/lib/contracts.ts`:
+```ts
+notify?(opts: { title: string; body: string; projectId: string; chatId?: string | null;
+                projectRoot?: string; silent?: boolean }): Promise<boolean>;   // false = not shown
+onNotificationClick?(cb: (t: { projectId: string; chatId: string | null; projectRoot: string | null }) => void): () => void;
+```
+Main (`ruah:notify` IPC) validates the input (text stripped of control
+characters, title ≤ 120, body ≤ 300, ids `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`,
+absolute root), shows an Electron `Notification` and, on click, restores and
+focuses the window and sends `ruah:notification-click` to the renderer;
+`daemon.ts` then opens that project and chat (`openActivityTarget`, also
+usable from a feed). A plain browser shows no notifications.
+
+### 13.4 "Where you left off": `GET /api/projects/:id/resume`
+
+`src/resume/resume.ts` computes it from `$RUAH_HOME` and the repo only — no
+SessionHub, no daemon (the CLI uses the same code). The daemon adds `live`.
+
+```ts
+interface ResumeInfo {
+  project: { id; name; root; kind: "repo" | "system"; lastOpenedAt: string | null };
+  lastViewedAt: string | null;   // when the user last left the project (switch away / daemon stop)
+  lastChat: { id; title; agentId; updatedAt; turnCount;
+              lastPrompt: string | null; lastReply: string | null } | null;  // active chat (else newest); ≤ 200 chars each
+  lastFocus: { nodeId: string; name: string; at?: string } | null;           // last focus.set; name from architecture.json
+  since: { from: string | null;  // = lastViewedAt (null: everything logged)
+           turnsFinished; turnsFailed; permissionsRequested;
+           files: string[]; filesTotal;   // files agents edited, most recent first (≤ 20)
+           mapChanges;                    // sum of map.changed
+           events: ActivityEvent[] };     // the last 20
+  unread: number;
+  live?: { running: number; waitingPermission: number };   // only from a running daemon
+  git: { available: true; branch: string | null /* detached */; head: string | null;
+         upstream: string | null; ahead: number | null; behind: number | null;
+         dirty: number; dirtyPaths: string[] /* first 5 */;
+         lastCommit: { hash; subject; author; at } | null }
+     | { available: false; reason: string };   // "not a git repository", "git is not installed", timeout
+  ruah: { initialized: false }                  // no .ruah/ folder
+      | { initialized: true; tasks: { name; status; executor?; files? }[]; error?: string };
+  view: Record<string, unknown> | null;         // §13.5
+  attention: number;
+}
+```
+
+- **git:** two read-only calls in parallel — `git status --porcelain=v2
+  --branch -z` and `git log -1` — no shell, 3 s timeout, `GIT_OPTIONAL_LOCKS=0`,
+  cached per repo root for 5 s.
+- **ruah:** only when the repo has `.ruah/`: `ruah task list --json` (5 s
+  timeout, `src/integrations/ruah.ts` `activeRuahTasks`); tasks that are
+  `done`, `merged` or `cancelled` are left out; a missing CLI or failure is
+  reported in `error`.
+- **attention** (ranking of `ruah app resume` without a project):
+  `100 × waitingPermission + 10 × unread + 5 × running + 2 × (turns finished
+  or failed since you left) + in-progress ruah tasks + (1 if the tree is dirty)`;
+  ties: most recently opened first.
+- 400 invalid id, 404 unknown project (never opened and not the open one).
+
+### 13.5 Per-project state and view state
+
+`$RUAH_HOME/projects/<id>/state.json` (§5.5) now holds, all optional, unknown
+keys kept:
+```ts
+{ version: 1,
+  activeChatId?: string | null,           // §5.5
+  lastViewedAt?: string,                   // §13.4, set when the project stops being the open one
+  lastFocus?: { nodeId: string; at: string },  // focus.set (§2.1) of the open project
+  unread?: Record<string, number>,         // §13.2 markers per chat id
+  view?: Record<string, unknown>,          // viewer-owned view state
+  viewUpdatedAt?: string }
+```
+
+The **view state** is opaque to the daemon (the viewer stores map drill path,
+zoom/pan, open panels, active page …). Rules: a JSON **object** (not an array
+or null), at most **16 KB** serialized (UTF-8), nested at most 16 levels.
+
+| Transport | Save | Load |
+| --- | --- | --- |
+| WebSocket | `{ type: "view.save", projectId, view }` (any project, not only the open one); a refused view → `error{bad_message, "view.save: view is N bytes (max 16384)"}` / `"… must be a JSON object"` | — |
+| HTTP | `POST /api/projects/:id/view` `{ view }` → `{ ok: true, updatedAt }`; 413 over 16 KB, 400 not an object / bad id, 403 Origin | `GET /api/projects/:id/view` → `{ view: object \| null, updatedAt: string \| null }` |
+
+The viewer helpers (`ui/src/lib/daemon.ts` `saveViewState` — debounced 400 ms
+per project over the socket, HTTP when it is down, refuses > 16 KB —
+`fetchViewState`, and the `useViewState(projectId)` / `useResume(projectId)`
+hooks in `ui/src/lib/view-state.ts`) are what the layout uses.
+
+### 13.6 Feature flags (`$RUAH_HOME/settings.json`)
+
+Top-level keys of the settings file (§5.7), read through `SettingsStore.features()`:
+
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `backgroundAgents` | `true` / `false` | `true` | `false`: a project switch cancels the running turn (§13.1) |
+| `notifications` | `"background"` / `"always"` / `"off"` | `"background"` | §13.3 |
+
+Missing or invalid values read as the default. Viewer → daemon
+`{ type: "settings.set", backgroundAgents?, notifications? }` writes them and
+broadcasts a new `activity.snapshot` (whose `settings` carry them) — for the
+Settings screen. Environment: `RUAH_MAX_BACKGROUND_TURNS` (default 3, 0 = off).
+
+### 13.7 CLI (no daemon needed)
+
+```sh
+ruah app resume [<repo-or-project-id>] [--json] [--limit <n>] [--daemon <url> | --offline]
+ruah app activity [--since <duration|ISO>] [--project <repo-or-id>] [--json] [--limit <n>] [--daemon <url> | --offline]
+```
+
+- `resume <repo-or-id>`: the §13.4 report for one project (a folder never
+  opened in Ruah works too); `--json` prints `ResumeInfo`. Without an
+  argument: every recent project whose folder exists (`--limit`, default 20),
+  highest `attention` first; `--json` prints `{ projects: ResumeInfo[], daemon: boolean }`.
+- `activity`: projects with unread / running / waiting counts and the events
+  since `--since` (default `24h`; `90m`, `7d`, `2w`, or an ISO time) from
+  `activity.jsonl`; `--json` prints `{ since, daemon, projects: ProjectActivity[], events: ActivityEvent[] }`.
+- Both read `$RUAH_HOME` directly. Live counts (running turns, waiting
+  permissions) come from a daemon at `--daemon` (default `$RUAH_DAEMON_URL`,
+  else `http://127.0.0.1:4177`) when one answers `GET /api/activity` within
+  600 ms; otherwise they are omitted (and the text output says so).
+  `--offline` never asks. Exit codes: 0 ok, 1 unknown project / folder, 2 bad
+  arguments.

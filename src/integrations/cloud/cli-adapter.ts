@@ -88,6 +88,8 @@ export abstract class CliCloudAdapter implements CloudIntegration {
   protected abstract readonly accountNoun: string;
   /** Extra run options (cwd, closed stdin, env) for every call. */
   protected runOptions: RunOptions = {};
+  /** Last login state info() observed; "out" keeps sync-all and the watch loop away (like §10's kit). */
+  private loginState: "unknown" | "in" | "out" = "unknown";
 
   constructor(protected readonly deps: CliAdapterDeps) {}
 
@@ -106,8 +108,9 @@ export abstract class CliCloudAdapter implements CloudIntegration {
     return this.deps.settings.get(this.id).disabled !== true;
   }
 
+  /** Installed and not known to be logged out (sync-all / the watch loop skip it otherwise; naming it still syncs). */
   available(): boolean {
-    return this.bin() !== undefined;
+    return this.loginState !== "out" && this.bin() !== undefined;
   }
 
   protected base(extra: Partial<IntegrationInfo>): IntegrationInfo {
@@ -168,6 +171,7 @@ export abstract class CliCloudAdapter implements CloudIntegration {
     const account = this.checkAccount(this.deps.settings.get(this.id).account ?? accounts.find((a) => a.current === true)?.id);
     try {
       const result = await this.check(bin, account);
+      this.loginState = result.ok ? "in" : result.status === "not_connected" ? "out" : "unknown";
       return result.ok
         ? this.base({ status: "connected", detail: result.detail, ...withAccounts })
         : this.base({ status: result.status, detail: result.detail, setupHint: result.setupHint, ...withAccounts });
@@ -196,6 +200,7 @@ export abstract class CliCloudAdapter implements CloudIntegration {
       next.account = body.account;
     }
     this.deps.settings.set(this.id, next);
+    this.loginState = "unknown";
     return this.info();
   }
 

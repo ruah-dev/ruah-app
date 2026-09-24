@@ -326,6 +326,7 @@ describe("WebSocket: cloud.watch / cloud.updated", () => {
       options: { cloudWatch, debug: () => {} },
       sockets: new Set<WebSocket>(),
       activeTurnId: () => undefined,
+      hasRunningTurns: () => false,
       sendHello: () => {},
       error: () => {},
     } as unknown as SessionHub;
