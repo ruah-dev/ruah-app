@@ -12,8 +12,10 @@ desktop app is a thin viewer.
 - **Agents:** Claude Code (Claude Agent SDK) and, over ACP, Cursor Agent,
   Grok Build, Kiro CLI and OpenCode — switch instantly, pick models, chats per
   project, images in prompts, map editing through the `ruah_*` tools.
-- **Integrations:** DigitalOcean / AWS (what runs where), Jira / GitHub
-  (issues on elements), ruah orchestration (tasks and workflows).
+- **Integrations:** DigitalOcean / AWS / Vercel / Supabase / Kubernetes /
+  Netlify / Hetzner Cloud (what runs where and whether it is healthy right
+  now, live while you look), Jira / GitHub (issues on elements), ruah
+  orchestration (tasks and workflows).
 - **Export:** draw.io with every technical spec; usage and plan limits.
 
 Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
@@ -31,12 +33,17 @@ ruah app scan <repo>          # write <repo>/architecture.json
 ruah app serve [<repo>]       # daemon + viewer in the browser (http://127.0.0.1:4177)
 ruah app export drawio <repo> --out map.drawio
 ruah app system init <dir> --repo web=../web --repo api=../api
+ruah app cloud providers      # which cloud CLIs are connected / not logged in / not installed
+ruah app cloud status         # health summary (exit 1 when anything is down; no daemon needed)
+ruah app cloud list | watch   # every resource · live health changes (--provider, --json, --repo)
 ruah app help
 ```
 
 `ruah-app` is the same command without the ruah toolkit. Useful environment
 variables: `RUAH_AGENT` (claude | cursor | grok | kiro | opencode | mock),
-`RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`.
+`RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`,
+`RUAH_CLOUD_WATCH_MS` (cloud re-sync interval while the Cloud page is open,
+default 45000; `RUAH_CLOUD_WATCH=0` turns it off).
 
 ## Develop
 

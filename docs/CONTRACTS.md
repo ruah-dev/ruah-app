@@ -778,6 +778,8 @@ export interface WorkItem {
 Links between work items and elements are stored in the project
 (`.ruah/links.json` inside the repo, committable) so a team shares them.
 
+More cloud providers, live health on `CloudResource`, watch mode (`cloud.watch` / `cloud.updated`) and the `ruah app cloud` CLI: see §9.
+
 ---
 
 ## 7. Integrated terminal (2026-09-23)
@@ -855,3 +857,136 @@ reads are held back until complete), so JSON strings carry it losslessly.
 `window.ruah.openExternal(url)` opens an `http:`/`https:` URL in the default browser
 (`shell.openExternal`; anything else is refused in the main process). Terminal links use
 it; a plain browser uses `window.open(url, "_blank", "noopener")`.
+
+---
+
+## 9. Cloud providers and live status (2026-09-24)
+
+Extends §6 (cloud family) with five more providers and with **what is really
+running right now**: a normalized health per resource, a watch mode that keeps
+it fresh while someone looks, and a standalone CLI. Everything stays read-only
+and CLI-first: Ruah runs each provider's own CLI with its own login; no token
+is stored, logged or copied into a resource. Code: `src/integrations/cloud/*`
+(adapters), `health.ts`, `cloud-sync.ts`, `watch.ts`, `cloud-cli.ts` — none of
+them depends on the daemon (`SessionHub`), so the CLI runs them standalone.
+
+### 9.1 Providers
+| id | CLI (setupHint when missing) | Accounts (`ConnectBody.account`) | Resources (read-only) |
+| --- | --- | --- | --- |
+| `vercel` | `vercel` (`brew install vercel-cli && vercel login`) | teams (`vercel teams list`), passed as `--scope <slug>` | projects (`vercel projects list`), the newest production and preview deployment per project (`vercel list --all`, then `vercel list <project>` for projects it missed, ≤ 25), domains (`vercel domains list`); all `--format json` |
+| `supabase` | `supabase` (`brew install supabase/tap/supabase && supabase login`) | organizations (`supabase orgs list`), a filter on the project list | projects (`supabase projects list`); per active project (≤ 25) edge functions (`supabase functions list --project-ref <ref>`) and preview branches (`supabase branches list --project-ref <ref>`; the default branch is the project); all `-o json`. Never needs the database password. |
+| `kubernetes` | `kubectl` (`brew install kubectl && kubectl config use-context <context>`) | kubeconfig contexts (`kubectl config get-contexts -o name`, current from `config current-context`), passed as `--context=<ctx>` | `kubectl get <kind> --all-namespaces -o json --request-timeout=10s` for deployments, statefulsets, daemonsets, cronjobs, services, ingresses, and pods (only summarized per workload). `kube-system`, `kube-public`, `kube-node-lease` and the `default/kubernetes` service are skipped. |
+| `netlify` | `netlify` (`brew install netlify-cli && netlify login`) | teams (`netlify api listAccountsForUser`), a filter on `account_slug` | sites (`netlify api listSites --data {"filter":"all"}`, ≤ 50) with their newest deploy (`netlify api listSiteDeploys --data {"site_id":…,"per_page":1}`) |
+| `hetzner` | `hcloud` (`brew install hcloud && hcloud context create <project>`) | hcloud contexts (`hcloud context list`), passed as `--context <name>` | servers, load balancers, volumes (`hcloud <kind> list -o json`) |
+
+`IntegrationInfo` works as in §6.1: `cli_missing` + `detail: "<cli> not installed"` + the
+setupHint above; `not_connected` with the login command (`vercel login`, `supabase login`,
+`netlify login`, `hcloud context create <project>`) when the CLI answers "not logged in";
+`error` otherwise (e.g. `context kind-dev: cluster unreachable (…)`). Accounts are validated
+against the CLI's own list before they are stored or passed (`--account=--flag` is refused).
+
+Resource ids: `vercel:project:<id>`, `vercel:deployment:<url>`, `vercel:domain:<name>`,
+`supabase:project:<ref>`, `supabase:function:<ref>:<slug>`, `supabase:branch:<id>`,
+`k8s:<context>:<namespace>:<deployment|statefulset|daemonset|cronjob|service|ingress>:<name>`,
+`netlify:site:<id>`, `hcloud:<server|load-balancer|volume>:<id>`. Kubernetes uses the
+namespace as `region`; Kubernetes labels / Hetzner labels become `tags` (so `ruah-node=<id>`
+links a resource, §6 linking).
+
+Safety details: every run goes through `exec.ts` (argv array, no shell, 20 s timeout,
+redacted messages that never echo arguments); stdin is closed (`input: ""`) so no CLI can
+wait on a prompt; `vercel` and `netlify` run from `$TMPDIR` so a linked `.vercel/` /
+`.netlify/` in the daemon's cwd cannot change the scope; `supabase` runs from
+`$TMPDIR/ruah-supabase-cli` because it writes `supabase/.temp/` into its cwd. Server IPs,
+database hosts, build environments and e-mail addresses are never copied; a load balancer's
+public address and ingress hosts are (they are the entry points).
+
+### 9.2 `CloudResource` additions (all optional; §6.1 unchanged otherwise)
+```ts
+type CloudHealth = "healthy" | "degraded" | "down" | "deploying" | "unknown";
+interface CloudResource {
+  // … §6.1 fields …
+  health?: CloudHealth;          // absent = the provider has no health notion for it (domains, volumes, ClusterIP services)
+  healthDetail?: string;         // "2/3 ready · 1 crash-looping · 14 restarts", "latest production deployment failed · previous one still live"
+  observedAt?: string;           // ISO time of the sync that read this state
+  replicas?: { ready: number; desired: number };                                  // workloads (Kubernetes, ECS services)
+  pods?: { running: number; pending: number; crashLoop: number; restarts: number }; // Kubernetes workloads
+  url?: string;                  // where it is served (production URL, deployment URL, ingress URL, App Platform live URL)
+  hosts?: string[];              // ingress hosts, custom domains, load balancer addresses
+  createdAt?: string;            // ISO (deployments, projects, sites)
+}
+```
+`CloudIntegration` (registry.ts) gains an optional `available?(): boolean` — false when its CLI
+is not installed. "Sync all" (`POST /api/cloud/sync` without `providers`) and the watch loop
+cover `syncable()` providers only (enabled in Ruah and not known to miss their CLI) and drop
+old errors of skipped providers; naming a provider still syncs it.
+
+### 9.3 Health mapping
+| Provider | Rule |
+| --- | --- |
+| Kubernetes deployment / statefulset / daemonset, ECS service | ready vs desired: all ready → healthy; none → down (deploying if a rollout just started and nothing crash-loops); some → degraded; a rollout in progress (generation not observed, updated < desired, surplus old pods, statefulset revision change, ECS second deployment / `IN_PROGRESS`) → deploying; crash-looping pods (`CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `Create*Error`, `InvalidImageName`, `RunContainerError`) or `ProgressDeadlineExceeded` / ECS `FAILED` rollout → degraded; desired 0 → unknown ("scaled to 0") |
+| Kubernetes cronjob | suspended → unknown; running job → healthy; last success ≥ last schedule → healthy; else degraded ("last run did not succeed"); never ran → unknown |
+| Kubernetes service / ingress | LoadBalancer with an address → healthy, without → deploying; ingress with a load-balancer address → healthy, without → deploying; other services: none |
+| Vercel project | newest production deployment (CANCELED ignored): READY → healthy; BUILDING / INITIALIZING / QUEUED → deploying; ERROR → degraded when an older READY production deployment is still live, else down; none listed → unknown. Deployment rows carry `status` + `url` + `createdAt`, no health (the project counts once). |
+| Supabase | project `ACTIVE_HEALTHY` → healthy, `ACTIVE_UNHEALTHY` → degraded, `COMING_UP`/`RESTORING`/`UPGRADING`/`RESIZING` → deploying, `INACTIVE` (paused)/`PAUSING`/`GOING_DOWN`/`*_FAILED`/`REMOVED` → down; function `ACTIVE` → healthy, `THROTTLED` → degraded, `REMOVED` → down; branch `MIGRATIONS_PASSED`/`FUNCTIONS_DEPLOYED` → healthy, `CREATING_PROJECT`/`RUNNING_MIGRATIONS` → deploying, `*_FAILED` → down |
+| Netlify site | newest deploy building (new … processed, retrying) → deploying; error → degraded if a published deploy is live, else down; otherwise published → healthy, nothing published → down |
+| Hetzner | server `running` → healthy, `initializing`/`starting`/`rebuilding`/`migrating` → deploying, `off`/`stopping`/`deleting` → down; load balancer from its targets' checks: all healthy → healthy, some unhealthy → degraded, all → down, no targets → unknown |
+| DigitalOcean | droplet `active`/`new`/`off`; App Platform: a deployment in progress → deploying ("previous version live"), else active phase (`ACTIVE` healthy, `ERROR` down); databases `online`/`creating`/`migrating`/`resizing`/`offline`; kubernetes `running`/`provisioning`/`upgrading`/`degraded`/`error`; load balancer `active`/`new`/`errored` |
+| AWS | EC2 `running`/`pending`/`stopped`…; RDS `available` (+ backing-up) / modifying… / stopped, failed…; ElastiCache; ELBv2 `active`/`provisioning`/`active_impaired`/`failed`; CloudFront `Deployed`/`InProgress`; Lambda `State` when present (list-functions usually omits it) |
+
+Unlisted native states map to `unknown`. The viewer and the CLI count `healthy` as "running".
+
+### 9.4 Watch mode and push
+- Viewer → daemon: `{ type: "cloud.watch", on: boolean }` — sent while the Cloud page is open
+  or "Show on map" is on (re-sent after a reconnect; `on: false` when both end). A closed
+  socket counts as `on: false`.
+- Daemon: while ≥ 1 socket watches, `CloudWatcher` re-syncs each `syncable()` provider of the
+  open project every `RUAH_CLOUD_WATCH_MS` (default 45 000 ms). Per provider: never two syncs
+  at once (a manual Sync of the same provider + account shares the running one); after a sync
+  that failed outright (thrown, or only errors) the next one waits interval · 2^failures,
+  capped at 10 min, reset by a success; a Sync-button sync postpones the next poll. No viewer
+  watching → no timer, no CLI runs. `RUAH_CLOUD_WATCH=0` turns watch mode off.
+- Daemon → viewers (broadcast), after every sync (watch loop or `POST /api/cloud/sync`) and
+  every `POST /api/cloud/link`:
+  ```ts
+  { type: "cloud.updated"; root: string;       // project the snapshot belongs to
+    syncedAt: string | null; providers: string[]; // synced in this update ([] = link change)
+    failed: string[];                          // providers whose sync failed outright
+    errors: { provider: string; message: string }[];
+    resources?: CloudResource[] }              // whole snapshot; absent = nothing visible changed
+  ```
+  The viewer ignores it for another project; without `resources` it refreshes `observedAt` of
+  the synced providers and the errors. Sync results still land in `~/.ruah/projects/<id>/cloud.json`.
+
+### 9.5 Viewer
+Cloud page: a strip "12 running · 1 degraded · 1 down · 2 deploying" (clicking degraded / down
+toggles the Unhealthy filter) with a Live indicator, a Health column (dot, label,
+ready/desired, detail), down / degraded counts per provider section, and a details drawer
+(health, replicas, pods, URL, hosts, created, checked) that the Map's Cloud level shares.
+
+### 9.6 CLI: `ruah app cloud`
+No daemon and no open project needed; the provider list is the daemon's registry, so every
+registered cloud adapter appears. Reads `$RUAH_HOME/integrations.json` for account selections
+and never writes any Ruah file.
+
+| Command | Output |
+| --- | --- |
+| `ruah app cloud providers [--json]` | each cloud provider: `connected` / `not logged in` / `not installed` / `disconnected in Ruah` / `error`, detail and `fix: <command>`; `--json`: `{ providers: IntegrationInfo[] }` |
+| `ruah app cloud list [opts]` | resources per provider (name, service, region, health · detail[, → element]); `--json`: `{ resources, syncedAt, errors }` (§6 shape, with `observedAt`) |
+| `ruah app cloud status [opts]` | `Cloud: 12 running · 1 down …`, one line per provider, "Needs attention" (down, degraded, deploying), "Could not read"; `--json`: `{ summary, providers: [{ id, name, summary, failed }], unhealthy, errors, exitCode }` |
+| `ruah app cloud watch [opts] [--interval <s>]` | first poll: a summary per provider (+ unhealthy resources); then one line per change (`+` added, `-` gone, `healthy → deploying · detail`); `--json`: one object per line (`snapshot`, `unhealthy`, `change`, `error`); Ctrl-C stops |
+
+Options: `--provider <id>` (repeatable; default: every enabled provider that is connected —
+not-installed / logged-out ones are skipped quietly, erroring ones are reported),
+`--account <a>` (with exactly one `--provider`), `--repo <path>` (links resources to that
+repo's `architecture.json` elements and its manual links, read-only), `--json`,
+`--interval <s>` (watch, ≥ 5, default 45).
+Exit codes: `0` ok · `1` something is down (`status`) or a named provider is not usable ·
+`2` usage error · `3` a provider could not be read, or none is connected (`status`, `watch`).
+
+### 9.7 Adding a provider
+Extend `CliCloudAdapter` (`src/integrations/cloud/cli-adapter.ts`): set `id`, `name`,
+`binName`, `setupHint`, `accountPattern`, `accountNoun`, optionally `runOptions`; implement
+`accounts()`, `check()` and `list()` with pure, exported mappers (fixtures under
+`test/fixtures/integrations/`); map native states with `healthFrom()` / `workloadHealth()`
+(`health.ts`); register it in `IntegrationsService`. It then appears in Integrations, the Cloud
+page, sync-all, the watch loop and `ruah app cloud`.
