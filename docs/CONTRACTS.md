@@ -392,15 +392,16 @@ export type ErrorCode =
 
 1. `hello` first. Any other frame before `hello` → `error{bad_message}` and the socket is closed.
 2. Daemon → viewer after `hello`: `architecture{reason:"initial"}` then `agent.status`. `agent.status` is re-sent on every state change.
-3. `prompt` is accepted when `agent.status.state === "idle"` (or `"error"`: the agent is restarted). Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`. **While the current agent is `starting`** (e.g. right after `agent.set` to a cold agent, or while it applies its saved model / mode) the prompt is **queued** instead of refused: `turn.started{queued:true}` at once (the viewer shows the user bubble with "waiting for <agent>…"), then — once the agent is idle — the prompt is sent and a second `turn.started` (without `queued`) follows. One prompt can wait at a time (another one → `error{busy, turnId}`). `cancel` of a queued turn ends it with `turn.finished{cancelled}` without it ever reaching the agent; a switch (agent, project, chat) does the same. If the agent fails to start, the queued turn ends `turn.finished{error, error:"<agent> did not start: <reason>"}`. A queued or cancelled turn is stored in its chat like any other. Otherwise (`busy`, `stopped`) → `error{busy, turnId}`.
+3. `prompt` is accepted when `agent.status.state === "idle"` (or `"error"`: the agent is restarted). Accepted prompts produce `turn.started` (carrying the exact context pack that was sent, for transparency) and then `stream` events until `turn.finished`. **While the current agent is `starting`** (e.g. right after `agent.set` to a cold agent, or while it applies its saved model / mode) the prompt is **queued** instead of refused: `turn.started{queued:true}` at once (the viewer shows the user bubble with "waiting for <agent>…"), then — once the agent is idle — the prompt is sent and a second `turn.started` (without `queued`) follows. One prompt can wait at a time (another one → `error{busy, turnId}`). `cancel` of a queued turn ends it with `turn.finished{cancelled}` without it ever reaching the agent; an agent or chat switch does the same, a project switch keeps it waiting in the background (§13.1). If the agent fails to start, the queued turn ends `turn.finished{error, error:"<agent> did not start: <reason>"}`. A queued or cancelled turn is stored in its chat like any other. Otherwise (`busy`, `stopped`) → `error{busy, turnId}`.
 4. `permission.request` blocks the agent until `permission.response` arrives. There is no daemon-side timeout in Phase 1. `permission.resolved` is echoed so a second viewer tab stays consistent.
 5. `cancel` makes the daemon (a) answer every pending `permission.request` of that turn with ACP `{outcome:"cancelled"}`, (b) send ACP `session/cancel`, (c) wait up to 15 s for the ACP prompt response, then `turn.finished{stopReason:"cancelled"}`. If the agent does not respond in 15 s the daemon kills and respawns it and sends `turn.finished{stopReason:"error"}` + `agent.status`.
-6. A running turn is cancelled only when the **last** viewer disconnects and none reconnects within 5 s (`RUAH_DISCONNECT_GRACE_MS`); another open tab or a page reload keeps it running. (Later: buffer the turn's events and replay them on reconnect.)
+6. Running turns (the open project's and background ones, §13.1) are cancelled only when the **last** viewer disconnects and none reconnects within 5 s (`RUAH_DISCONNECT_GRACE_MS`); another open tab or a page reload keeps them running. A viewer that (re)connects gets the running turn's events so far in `chat.history` (`running: true`) and any pending `permission.request` again (§13.1).
 7. `stream{kind:"text"}` chunks are forwarded as they arrive, no batching. The viewer appends them to the current assistant segment. A `tool_call` event closes the current text segment; the next text chunk opens a new one (matches t3code's assistant segmentation).
 8. `tool_call` / `tool_result` carry the full merged state, so the viewer upserts by `toolCallId`.
 9. `diff` is emitted in addition to the `tool_call`/`tool_result` that contained it, so the viewer can render diffs without parsing tool content.
 10. The daemon only listens on `127.0.0.1` by default and checks the `Origin` header: `http(s)://localhost:*`, `http(s)://127.0.0.1:*`, plus `--allow-origin <glob>` (needed for Lovable previews, e.g. `https://*.lovable.app`).
 11. Frames larger than 1 MiB are rejected with `bad_message`.
+12. **Switching projects does not cancel a running turn** (2026-09-24, §13.1): it keeps running in the background and re-attaches when the project is opened again. Switching the agent or the chat still cancels it (`turn.finished{cancelled}`), and so does a project switch when background agents are off or the background limit is reached.
 
 ### 2.3 Companion HTTP endpoints (same origin as the WebSocket)
 
@@ -618,7 +619,7 @@ export interface TurnRecord {    // what the viewer needs to redraw a past turn
 - daemon → viewer `{ type: "chats", projectId, chats: ChatInfo[], activeChatId: string | null }` — after `hello`, on switch, and whenever the list changes.
 - daemon → viewer `{ type: "chat.history", chatId, turns: TurnRecord[] }` — reply to `chat.open` (and after `hello` for the active chat).
 - viewer → daemon `{ type: "chat.new" }`, `{ type: "chat.open", chatId }`, `{ type: "chat.rename", chatId, title }`, `{ type: "chat.delete", chatId }`.
-- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first.
+- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1).
 
 ### 5.3 HTTP additions
 | Method + path | Body / result |
@@ -644,11 +645,13 @@ session (the viewer still shows the stored history).
 (IPC to the main process; `dialog.showOpenDialog`). In a plain browser
 `window.ruah` is absent and the viewer offers a path text field instead.
 
+§13.3 adds `notify(opts)` and `onNotificationClick(callback)`.
+
 ### 5.5 Behaviour details (daemon, 2026-09-23)
 - After `hello`: `project`, then (with a project) `architecture` and `agent.status`, then `chats` and the active chat's `chat.history`. Launcher state: `project{null}` + `agent.status{state:"stopped"}` only.
-- On a switch: a running turn is announced `turn.finished{cancelled}` (and stored; the old project's `chats` follows) first, then `project`, `architecture` (or `architecture.error` if the file is invalid), `chats`, `chat.history` (when a chat is active), `agent.status` (`starting` → `idle`, or `idle` at once for a warm agent).
+- On a switch: a running turn keeps running in the background (§13.1; nothing is announced — its events go to the activity feed). Only with background agents off or at the background limit is it announced `turn.finished{cancelled}` (and stored; the old project's `chats` follows) first. Then `project`, `architecture` (or `architecture.error` if the file is invalid), `chats`, `chat.history` (when a chat is active), `agent.status` (`starting` → `idle`, or `idle` at once for a warm agent).
 - Launcher state: `/api/architecture`, `/api/context/*`, `/api/file`, `/api/rescan` answer `409 { error: "no project open" }`; WS `prompt`/`chat.*`/`mode.set`/`model.set`/`session.reset` answer `error{bad_message, "no project open"}`; `agent.set` only changes the agent used for the next project.
-- The active chat on open is the one last active in that project — persisted in `~/.ruah/projects/<id>/state.json` (`{ version: 1, activeChatId: string | null }`, written on every chat switch, so it survives daemon restarts; a chat id that no longer exists is ignored) — else the most recently updated chat, else none (`activeChatId: null`). A `prompt` without an active chat creates one titled after the prompt. `chat.new` reuses the active chat when it has no turns (its title is "New chat" until the first prompt).
+- The active chat on open is the one last active in that project — persisted in `~/.ruah/projects/<id>/state.json` (`{ version: 1, activeChatId: string | null, … }` — §13.5 lists the other fields; written on every chat switch, so it survives daemon restarts; a chat id that no longer exists is ignored; unknown keys are kept) — else the most recently updated chat, else none (`activeChatId: null`). A `prompt` without an active chat creates one titled after the prompt. `chat.new` reuses the active chat when it has no turns (its title is "New chat" until the first prompt).
 - `open` of the project that is already open only refreshes `lastOpenedAt`. Paths may start with `~/`. Errors: 400 bad body/not a folder/bad name, 404 path or parent missing, 409 create target exists, 422 invalid `ruah.system.json`, 403 Origin.
 - The chat header line may carry daemon-internal fields (`sessions`: agent session id per agent id, `autoTitle`); they are never sent on the wire.
 
@@ -855,3 +858,259 @@ reads are held back until complete), so JSON strings carry it losslessly.
 `window.ruah.openExternal(url)` opens an `http:`/`https:` URL in the default browser
 (`shell.openExternal`; anything else is refused in the main process). Terminal links use
 it; a plain browser uses `window.open(url, "_blank", "noopener")`.
+
+---
+
+## 13. Background agents, activity feed, resume and view state (2026-09-24)
+
+For a user who switches projects all day: an agent keeps working in the
+project you left, every viewer sees what agents do in every project, the
+desktop app notifies you, and each project remembers where you left off.
+Every part is optional: the feature flags in §13.6 turn background agents
+and notifications off, and the resume / activity data is plain files in
+`$RUAH_HOME` that the CLI reads without a daemon (`ruah app resume`,
+`ruah app activity`, §13.7). Code: `src/serve/activity.ts` (feed),
+`src/activity/log.ts` (persistence), `src/resume/*` (resume library + CLI),
+`src/serve/activity-http.ts` (HTTP), `src/serve/session.ts` (background
+turns), `src/serve/bridge-pool.ts` (pinning); viewer `ui/src/lib/activity.ts`,
+`ui/src/lib/view-state.ts`.
+
+### 13.1 Background agents
+
+- **A project switch does not cancel a running turn.** The turn (or a prompt
+  still queued while its agent starts, §2.2 rule 3) keeps running on its
+  bridge; its stream events are recorded into its chat as before, but not
+  sent to viewers (they show another project). When it finishes it is stored
+  in its chat and reported as an `activity` event (§13.2) — viewers of other
+  projects get no `turn.finished`. A queued prompt of a background agent is
+  sent once that agent is idle.
+- **Pinned in the pool.** A bridge with a running or queued turn is never
+  evicted: not by the pool cap, not by the warm TTL, not by a release (even
+  with `RUAH_WARM_TTL_MS=0`). When the turn ends, the bridge is treated like a
+  fresh release (kept warm for the TTL, or stopped without one). The cap of
+  live agents (`RUAH_MAX_LIVE_AGENTS`, 4) can be exceeded only by pinned
+  bridges; the background limit keeps that bounded.
+- **Limit.** At most **3** turns run outside the open project
+  (`RUAH_MAX_BACKGROUND_TURNS`, capped at `RUAH_MAX_LIVE_AGENTS - 1`). A
+  switch that would exceed it cancels the leaving project's turn as before
+  (`turn.finished{cancelled, error: "cancelled: 3 turns already run in other
+  projects (background limit)"}`, stored). With `backgroundAgents: false`
+  (§13.6) every project switch cancels (the pre-2026-09-24 behaviour).
+- **Re-attach.** Opening a project that has a background turn: the agent
+  running it becomes the current agent (even if another one was picked
+  meanwhile), the turn's chat becomes the active chat (a `chatId` passed to
+  `POST /api/projects/open` is ignored then), and the usual switch frames
+  follow — `chat.history` includes the turn with `running: true`, no
+  `stopReason` and its events so far; `agent.status` says `busy`; then every
+  still-pending `permission.request` of that turn is sent again (after
+  `chat.history`). Further `stream` frames continue the turn; `cancel` works
+  on it as on any turn.
+- **Permissions.** A request made in the background waits (no timeout, §2.2
+  rule 4); it is reported as `activity` `permission.requested` and counted in
+  `waitingPermission`. `permission.response` is routed to whichever bridge
+  asked, so it can be answered from any project; normally the viewer opens the
+  project (e.g. from the notification) and answers the re-sent request.
+- **`running: true` on reconnect.** The same `chat.history` + pending
+  `permission.request` re-send happens after `hello`, so a page reload in the
+  middle of a turn shows it and its open question again.
+- **What stays the same.** `agent.set` and chat switches (`chat.new`,
+  `chat.open`, `chat.delete` of the active chat) still cancel the running
+  turn — including a `chat.open` of another chat right after re-attaching
+  (the viewer's "open project at chat" does that when the chat differs from
+  the running turn's). §2.2 rule 6 covers background turns too: when the last viewer is gone
+  for 5 s, every running turn is cancelled. Daemon shutdown stores every
+  running turn as `cancelled` ("Ruah stopped").
+- **Limitations.** Map edits through the `ruah_*` tools (§1.7) are refused
+  for an agent whose project is not the open one (the tool tells the agent
+  why); code edits are unaffected. `ruah-verify` (engines) runs only after
+  turns of the open project.
+
+### 13.2 Activity feed (WebSocket, every viewer)
+
+```ts
+interface ActivityEvent {
+  id: string;                 // uuid
+  kind: "turn.started" | "turn.finished" | "permission.requested"
+      | "permission.answered" | "agent.error" | "map.changed" | (string & {});
+  projectId: string; projectName: string; projectRoot?: string;
+  chatId: string | null; turnId?: string; agentId?: string;
+  summary: string;            // one line, ≤ 200 chars, e.g. 'Finished "Add tests" · 2 files edited'
+  at: string;                 // ISO
+  background: boolean;        // its project / chat was not in front, or no viewer was connected
+  stopReason?: StopReason;    // turn.finished
+  error?: string;             // turn.finished (error / limit), agent.error
+  requestId?: string;         // permission.*
+  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + diffs; ≤ 20)
+  mapChanges?: number;        // turn.finished, map.changed
+}
+interface ProjectActivity {
+  projectId: string; projectName: string; projectRoot?: string;
+  running: number;            // turns running or queued (the open project's included)
+  waitingPermission: number;  // permission requests waiting for an answer
+  unread: number;             // sum of `chats`
+  chats: Record<string, number>;  // unread per chat id ("none" = a turn without a chat)
+  lastEventAt?: string;
+}
+type AppFeatures = { backgroundAgents: boolean; notifications: "background" | "always" | "off" };
+```
+
+Daemon → viewer (sent to **every** socket, whatever project it shows):
+
+| Frame | When |
+| --- | --- |
+| `{ type: "activity.snapshot", projects: ProjectActivity[], recent: ActivityEvent[], settings: AppFeatures, maxBackgroundTurns: number }` | after `hello` (after `chats` / `chat.history`), and to everyone after `settings.set`. `projects` lists only projects with something running, waiting or unread (of the recent list and live turns); `recent` = the last 50 events, oldest first. |
+| `{ type: "activity", event: ActivityEvent, project: ProjectActivity }` | every event; `project` = that project's counts after it |
+| `{ type: "activity.project", project: ProjectActivity }` | counts changed without an event (unread markers cleared) |
+
+Viewer → daemon: `{ type: "activity.read", projectId, chatId? }` clears the
+unread marker of a chat (or all of the project's).
+
+**Unread markers.** `turn.finished` and `permission.requested` events with
+`background: true` add 1 to their chat's marker, persisted in the project's
+`state.json` (`unread`, §13.5), so badges survive restarts. A marker is
+cleared when the user views the chat: the project is opened on it (with a
+viewer connected), `chat.open` / `chat.new` makes it active, a viewer says
+`hello` while it is active, or `activity.read`.
+
+**Persistence.** Every event (not `activity.project`) is appended to
+`$RUAH_HOME/activity.jsonl` (one JSON object per line; compacted to the newest
+2000 events once the file passes 1 MB; unparseable lines are skipped).
+
+**HTTP** (same data, for CLIs and the launcher):
+
+| Method + path | Result |
+| --- | --- |
+| `GET /api/activity?since=<ISO or 24h/90m/7d>&projectId=&limit=100` | `{ projects: ProjectActivity[], events: ActivityEvent[] (oldest first, newest `limit`, max 2000), settings: AppFeatures, maxBackgroundTurns }`; 400 bad `since` |
+| `POST /api/activity/read` | `{ projectId, chatId? }` → `{ ok: true, project: ProjectActivity }`; Origin checked (403) |
+
+### 13.3 Desktop notifications (Electron)
+
+The renderer decides, the main process shows. `ui/src/lib/activity.ts` calls
+`window.ruah.notify` for an `activity` event of kind `turn.finished` or
+`permission.requested` when `settings.notifications` is:
+`"background"` (default) — and the event is `background`, or the window is
+not focused (`document.hasFocus()`), or its project is not the open one;
+`"always"` — always; `"off"` — never. Title: `"<project>: agent finished"`
+(/ `failed` / `turn cancelled` / `agent stopped`) or `"<project>: permission
+needed"`; body: the event's `summary`.
+
+Preload additions to `window.ruah` (§5.4), typed as `RuahDesktopBridge` in
+`ui/src/lib/contracts.ts`:
+```ts
+notify?(opts: { title: string; body: string; projectId: string; chatId?: string | null;
+                projectRoot?: string; silent?: boolean }): Promise<boolean>;   // false = not shown
+onNotificationClick?(cb: (t: { projectId: string; chatId: string | null; projectRoot: string | null }) => void): () => void;
+```
+Main (`ruah:notify` IPC) validates the input (text stripped of control
+characters, title ≤ 120, body ≤ 300, ids `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`,
+absolute root), shows an Electron `Notification` and, on click, restores and
+focuses the window and sends `ruah:notification-click` to the renderer;
+`daemon.ts` then opens that project and chat (`openActivityTarget`, also
+usable from a feed). A plain browser shows no notifications.
+
+### 13.4 "Where you left off": `GET /api/projects/:id/resume`
+
+`src/resume/resume.ts` computes it from `$RUAH_HOME` and the repo only — no
+SessionHub, no daemon (the CLI uses the same code). The daemon adds `live`.
+
+```ts
+interface ResumeInfo {
+  project: { id; name; root; kind: "repo" | "system"; lastOpenedAt: string | null };
+  lastViewedAt: string | null;   // when the user last left the project (switch away / daemon stop)
+  lastChat: { id; title; agentId; updatedAt; turnCount;
+              lastPrompt: string | null; lastReply: string | null } | null;  // active chat (else newest); ≤ 200 chars each
+  lastFocus: { nodeId: string; name: string; at?: string } | null;           // last focus.set; name from architecture.json
+  since: { from: string | null;  // = lastViewedAt (null: everything logged)
+           turnsFinished; turnsFailed; permissionsRequested;
+           files: string[]; filesTotal;   // files agents edited, most recent first (≤ 20)
+           mapChanges;                    // sum of map.changed
+           events: ActivityEvent[] };     // the last 20
+  unread: number;
+  live?: { running: number; waitingPermission: number };   // only from a running daemon
+  git: { available: true; branch: string | null /* detached */; head: string | null;
+         upstream: string | null; ahead: number | null; behind: number | null;
+         dirty: number; dirtyPaths: string[] /* first 5 */;
+         lastCommit: { hash; subject; author; at } | null }
+     | { available: false; reason: string };   // "not a git repository", "git is not installed", timeout
+  ruah: { initialized: false }                  // no .ruah/ folder
+      | { initialized: true; tasks: { name; status; executor?; files? }[]; error?: string };
+  view: Record<string, unknown> | null;         // §13.5
+  attention: number;
+}
+```
+
+- **git:** two read-only calls in parallel — `git status --porcelain=v2
+  --branch -z` and `git log -1` — no shell, 3 s timeout, `GIT_OPTIONAL_LOCKS=0`,
+  cached per repo root for 5 s.
+- **ruah:** only when the repo has `.ruah/`: `ruah task list --json` (5 s
+  timeout, `src/integrations/ruah.ts` `activeRuahTasks`); tasks that are
+  `done`, `merged` or `cancelled` are left out; a missing CLI or failure is
+  reported in `error`.
+- **attention** (ranking of `ruah app resume` without a project):
+  `100 × waitingPermission + 10 × unread + 5 × running + 2 × (turns finished
+  or failed since you left) + in-progress ruah tasks + (1 if the tree is dirty)`;
+  ties: most recently opened first.
+- 400 invalid id, 404 unknown project (never opened and not the open one).
+
+### 13.5 Per-project state and view state
+
+`$RUAH_HOME/projects/<id>/state.json` (§5.5) now holds, all optional, unknown
+keys kept:
+```ts
+{ version: 1,
+  activeChatId?: string | null,           // §5.5
+  lastViewedAt?: string,                   // §13.4, set when the project stops being the open one
+  lastFocus?: { nodeId: string; at: string },  // focus.set (§2.1) of the open project
+  unread?: Record<string, number>,         // §13.2 markers per chat id
+  view?: Record<string, unknown>,          // viewer-owned view state
+  viewUpdatedAt?: string }
+```
+
+The **view state** is opaque to the daemon (the viewer stores map drill path,
+zoom/pan, open panels, active page …). Rules: a JSON **object** (not an array
+or null), at most **16 KB** serialized (UTF-8), nested at most 16 levels.
+
+| Transport | Save | Load |
+| --- | --- | --- |
+| WebSocket | `{ type: "view.save", projectId, view }` (any project, not only the open one); a refused view → `error{bad_message, "view.save: view is N bytes (max 16384)"}` / `"… must be a JSON object"` | — |
+| HTTP | `POST /api/projects/:id/view` `{ view }` → `{ ok: true, updatedAt }`; 413 over 16 KB, 400 not an object / bad id, 403 Origin | `GET /api/projects/:id/view` → `{ view: object \| null, updatedAt: string \| null }` |
+
+The viewer helpers (`ui/src/lib/daemon.ts` `saveViewState` — debounced 400 ms
+per project over the socket, HTTP when it is down, refuses > 16 KB —
+`fetchViewState`, and the `useViewState(projectId)` / `useResume(projectId)`
+hooks in `ui/src/lib/view-state.ts`) are what the layout uses.
+
+### 13.6 Feature flags (`$RUAH_HOME/settings.json`)
+
+Top-level keys of the settings file (§5.7), read through `SettingsStore.features()`:
+
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `backgroundAgents` | `true` / `false` | `true` | `false`: a project switch cancels the running turn (§13.1) |
+| `notifications` | `"background"` / `"always"` / `"off"` | `"background"` | §13.3 |
+
+Missing or invalid values read as the default. Viewer → daemon
+`{ type: "settings.set", backgroundAgents?, notifications? }` writes them and
+broadcasts a new `activity.snapshot` (whose `settings` carry them) — for the
+Settings screen. Environment: `RUAH_MAX_BACKGROUND_TURNS` (default 3, 0 = off).
+
+### 13.7 CLI (no daemon needed)
+
+```sh
+ruah app resume [<repo-or-project-id>] [--json] [--limit <n>] [--daemon <url> | --offline]
+ruah app activity [--since <duration|ISO>] [--project <repo-or-id>] [--json] [--limit <n>] [--daemon <url> | --offline]
+```
+
+- `resume <repo-or-id>`: the §13.4 report for one project (a folder never
+  opened in Ruah works too); `--json` prints `ResumeInfo`. Without an
+  argument: every recent project whose folder exists (`--limit`, default 20),
+  highest `attention` first; `--json` prints `{ projects: ResumeInfo[], daemon: boolean }`.
+- `activity`: projects with unread / running / waiting counts and the events
+  since `--since` (default `24h`; `90m`, `7d`, `2w`, or an ISO time) from
+  `activity.jsonl`; `--json` prints `{ since, daemon, projects: ProjectActivity[], events: ActivityEvent[] }`.
+- Both read `$RUAH_HOME` directly. Live counts (running turns, waiting
+  permissions) come from a daemon at `--daemon` (default `$RUAH_DAEMON_URL`,
+  else `http://127.0.0.1:4177`) when one answers `GET /api/activity` within
+  600 ms; otherwise they are omitted (and the text output says so).
+  `--offline` never asks. Exit codes: 0 ok, 1 unknown project / folder, 2 bad
+  arguments.
