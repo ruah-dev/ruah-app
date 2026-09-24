@@ -32,6 +32,7 @@ import { kindStyles } from "@/components/explorer/kinds";
 import { ChatsSection } from "@/components/chats/ChatsSection";
 import { Launcher } from "@/components/launcher/Launcher";
 import { NewProjectDialog, OpenFolderDialog } from "@/components/projects/ProjectDialogs";
+import { SystemDialogs } from "@/components/system/SystemDialogs";
 import { ProjectMenu, useCurrentProjectLabel } from "@/components/projects/ProjectMenu";
 import { ProjectPalette } from "@/components/projects/ProjectPalette";
 import { ProjectTile } from "@/components/projects/ProjectBits";
@@ -565,7 +566,7 @@ function SearchDialog() {
                 <Icon className={cn("size-4", kind.color)} />
                 <span className="truncate">{n.name}</span>
                 <span className="ms-auto truncate font-mono text-[11.5px] text-faint">
-                  {n.path ?? n.type}
+                  {n.path ?? (n.repo && n.repo !== n.id ? `${n.repo} · ${n.type}` : n.type)}
                 </span>
               </CommandItem>
             );
@@ -668,6 +669,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <RecentChatsSwitcher />
       <OpenFolderDialog />
       <NewProjectDialog />
+      <SystemDialogs />
     </>
   );
 
