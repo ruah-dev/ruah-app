@@ -3,7 +3,7 @@
 // smooth without a virtualisation dependency). The Health column shows the §9 live status
 // (dot + label + ready/desired replicas), falling back to the provider's raw status.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ExternalLink, Loader2, MoreHorizontal, RefreshCw } from "lucide-react";
 import type { ArchNode, CloudResource } from "@/lib/contracts";
 import {
   CLOUD_TYPE_LABEL,
@@ -13,15 +13,69 @@ import {
   healthCounts,
   healthTone,
   providerLabel,
+  scopeActions,
+  scopeBadge,
+  type ScopeResourceAction,
 } from "@/lib/integrations";
 import { kindStyles } from "@/components/explorer/kinds";
 import { ProviderGlyph, StatusDot } from "@/components/integrations/common";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ElementPicker } from "./ElementPicker";
 import { cn } from "@/lib/utils";
 
 const ROW = 40;
 const OVERSCAN = 8;
-const COLS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_2rem] items-center gap-3";
+const COLS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_3.75rem] items-center gap-3";
+
+const SCOPE_ACTION_LABEL: Record<ScopeResourceAction, string> = {
+  include: "Add to project",
+  exclude: "Remove from project",
+  reset: "Back to what the repo says",
+};
+
+/** §14: why a resource belongs to the project ("from .do/app.yaml", "added by you"), or that it does not. */
+export function ScopeBadge({ resource: r }: { resource: CloudResource }) {
+  const s = r.scope;
+  if (!s) return null;
+  const label = s.in ? scopeBadge(s) : s.excluded ? "removed" : s.confidence === "weak" ? "looks related" : undefined;
+  if (!label) return null;
+  const tone = s.confidence === "manual" ? "bg-primary/12 text-primary" : s.in ? "bg-ok/12 text-ok" : "bg-foreground/[0.06] text-muted-foreground";
+  return (
+    <span
+      title={s.reasons.join("\n") || label}
+      className={cn("inline-flex h-4 max-w-[10rem] min-w-0 shrink-[2] items-center truncate rounded px-1.5 text-[10.5px] font-medium max-lg:hidden", tone)}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ScopeMenu({ resource, onScope }: { resource: CloudResource; onScope: (r: CloudResource, a: ScopeResourceAction) => void }) {
+  const actions = scopeActions(resource);
+  if (!actions.length) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Project scope of ${resource.name}`}
+        className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <MoreHorizontal className="size-3.5" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {actions.map((a) => (
+          <DropdownMenuItem key={a} onSelect={() => onScope(resource, a)}>
+            {SCOPE_ACTION_LABEL[a]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 type Row =
   | { kind: "provider"; key: string; provider: string; count: number; down: number; degraded: number }
@@ -117,6 +171,7 @@ export function ResourceTable({
   empty,
   selectedId,
   onSelect,
+  onScope,
 }: {
   resources: CloudResource[];
   nodes: ArchNode[];
@@ -127,6 +182,8 @@ export function ResourceTable({
   /** Resource shown in the page's details drawer. */
   selectedId?: string | null;
   onSelect?: (resourceId: string) => void;
+  /** §14: the row menu's Add to / Remove from project. */
+  onScope?: (resource: CloudResource, action: ScopeResourceAction) => void;
 }) {
   const rows = useMemo(() => buildRows(resources), [resources]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +247,7 @@ export function ResourceTable({
                   onSyncProvider={onSyncProvider}
                   selected={row.kind === "resource" && row.resource.id === selectedId}
                   {...(onSelect ? { onSelect } : {})}
+                  {...(onScope ? { onScope } : {})}
                 />
               </div>
             ))}
@@ -208,6 +266,7 @@ function RowView({
   onSyncProvider,
   selected,
   onSelect,
+  onScope,
 }: {
   row: Row;
   nodes: ArchNode[];
@@ -216,6 +275,7 @@ function RowView({
   onSyncProvider: (provider: string) => void;
   selected: boolean;
   onSelect?: (resourceId: string) => void;
+  onScope?: (resource: CloudResource, action: ScopeResourceAction) => void;
 }) {
   if (row.kind === "provider") {
     const busy = syncing === "all" || !!syncing?.startsWith(`${row.provider}:`);
@@ -293,6 +353,7 @@ function RowView({
           </span>
         )}
         <span className="shrink-0 font-mono text-[11px] text-faint">{r.service}</span>
+        <ScopeBadge resource={r} />
       </span>
       <span
         role="cell"
@@ -330,6 +391,7 @@ function RowView({
         <ElementPicker resource={r} nodes={nodes} manual={manual} />
       </span>
       <span role="cell" className="flex justify-end">
+        {onScope ? <ScopeMenu resource={r} onScope={onScope} /> : null}
         {r.consoleUrl ? (
           <a
             href={r.consoleUrl}

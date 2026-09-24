@@ -4,9 +4,13 @@
 // architecture element it runs, and what is really running right now (§9): a health strip, an
 // unhealthy filter, and live updates while this page is open (the daemon re-syncs on an
 // interval and pushes cloud.updated). "Show on map" adds a derived, read-only Cloud level.
+// §14: resources are per project — "This project" shows what the repo proves (with the reason on
+// each row) plus "Looks related" suggestions; "All accounts" shows everything the project's
+// accounts hold, from which resources are added with one click. Without any proof the page asks
+// which accounts the project lives in.
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Loader2, Map as MapIcon, RefreshCw, Search } from "lucide-react";
-import type { CloudHealth, CloudResource, IntegrationInfo } from "@/lib/contracts";
+import { ChevronDown, Loader2, Map as MapIcon, RefreshCw, Search, Users } from "lucide-react";
+import type { CloudHealth, CloudResource, IntegrationInfo, ScopeAccount } from "@/lib/contracts";
 import { Phantom } from "@/components/brand/Phantom";
 import {
   CLOUD_DIAGRAM_ID,
@@ -15,12 +19,16 @@ import {
   isUnhealthy,
   loadCloud,
   providerLabel,
+  scopeView,
+  setResourceScope,
+  setScopeAccounts,
   setShowCloudOnMap,
   syncCloud,
   timeAgo,
   useCloudWatch,
   useLoad,
   type HealthCounts,
+  type ScopeResourceAction,
   type StatusTone,
 } from "@/lib/integrations";
 import { useWorkspace } from "@/lib/workspace";
@@ -47,6 +55,7 @@ import {
 import { ResourceTable } from "./ResourceTable";
 import { CloudResourceView } from "./CloudDetails";
 import { ConnectProviders } from "./ConnectProviders";
+import { AccountPicker, LooksRelated } from "./ScopePanels";
 import { cn } from "@/lib/utils";
 
 function useNow(ms = 30_000) {
@@ -223,6 +232,11 @@ export function CloudPage() {
   const [healthFilter, setHealthFilter] = useState<"all" | "unhealthy">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  // §14: this project's resources, or everything the (project's) accounts hold.
+  const [view, setView] = useState<"project" | "all">("project");
+  const [editAccounts, setEditAccounts] = useState(false);
+  const [savingAccounts, setSavingAccounts] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   // Live status only while this page is open (the daemon polls nothing otherwise).
   useCloudWatch(s.mode === "daemon");
 
@@ -234,7 +248,12 @@ export function CloudPage() {
     [s.integrations],
   );
   const snapshot = s.cloud.status === "ok" ? s.cloud.data : null;
-  const all = useMemo(() => snapshot?.resources ?? [], [snapshot]);
+  const everything = useMemo(() => snapshot?.resources ?? [], [snapshot]);
+  const sv = useMemo(() => scopeView(everything), [everything]);
+  const scopeInfo = snapshot?.scope;
+  const projectMode = sv.supported && view === "project";
+  // What the page lists and counts: in project mode only the project's resources.
+  const all = projectMode ? sv.project : everything;
   const names = useMemo(() => new Map(architecture.nodes.map((n) => [n.id, n.name])), [architecture]);
   const providersInData = useMemo(() => [...new Set(all.map((r) => r.provider))].sort(), [all]);
 
@@ -251,7 +270,7 @@ export function CloudPage() {
   );
   const counts = useMemo(() => healthCounts(all), [all]);
   const unhealthyCount = counts.down + counts.degraded;
-  const selected = selectedId ? all.find((r) => r.id === selectedId) : undefined;
+  const selected = selectedId ? everything.find((r) => r.id === selectedId) : undefined;
   const linkedCount = all.filter((r) => r.linkedNodeId).length;
   const regions = new Set(all.map((r) => `${r.provider}:${r.region ?? "global"}`)).size;
 
@@ -261,12 +280,59 @@ export function CloudPage() {
     if (!res.ok) setSyncError(res.message);
   };
 
+  const onScope = async (r: CloudResource, action: ScopeResourceAction) => {
+    setScopeError(null);
+    const res = await setResourceScope(r.id, action);
+    if (!res.ok) setScopeError(res.message);
+  };
+
+  const saveAccounts = async (accounts: ScopeAccount[]) => {
+    setScopeError(null);
+    setSavingAccounts(true);
+    const res = await setScopeAccounts(accounts);
+    setSavingAccounts(false);
+    if (!res.ok) return setScopeError(res.message);
+    setEditAccounts(false);
+    await sync({});
+  };
+
   const noProviders =
-    s.integrations.status === "ok" && cloudProviders.length === 0 && all.length === 0;
+    s.integrations.status === "ok" && cloudProviders.length === 0 && everything.length === 0;
+  const scopeFileError = scopeInfo?.files.find((f) => f.error);
+  const writable = scopeInfo?.writable !== false;
+  // Nothing proves anything and no account was picked: ask which accounts are this project's.
+  const noProof = projectMode && sv.project.length === 0 && !scopeInfo?.configured && s.cloud.status === "ok";
+  const showPicker = projectMode && !noProviders && cloudProviders.length > 0 && (noProof || editAccounts);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Cloud">
+        {sv.supported ? (
+          <Segmented
+            className="shrink-0 whitespace-nowrap"
+            value={view}
+            onChange={(v) => {
+              setView(v);
+              setHealthFilter("all");
+            }}
+            options={[
+              { value: "project", label: `This project (${sv.project.length})`, title: "What the repo proves belongs to it, and what you added" },
+              { value: "all", label: `All accounts (${everything.length})`, title: "Everything the synced accounts hold — add resources to the project from here" },
+            ]}
+          />
+        ) : null}
+        {sv.supported && projectMode && !noProof ? (
+          <button
+            type="button"
+            className={quietButton}
+            onClick={() => setEditAccounts((e) => !e)}
+            aria-pressed={editAccounts}
+            title="Which accounts this project lives in (only they are read for it)"
+          >
+            <Users className="size-3.5" />
+            {scopeInfo?.accounts.length ? `Accounts (${scopeInfo.accounts.length})` : "Accounts"}
+          </button>
+        ) : null}
         <span className="text-[12px] text-muted-foreground max-sm:hidden">
           {s.syncing
             ? "Syncing…"
@@ -299,6 +365,28 @@ export function CloudPage() {
           />
         ) : null}
         {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}
+        {scopeError ? <Notice tone="bad" title="Could not change the project's scope" body={scopeError} /> : null}
+        {scopeFileError ? (
+          <Notice
+            tone="warn"
+            title="The project's .ruah/cloud.json is invalid"
+            body={`${scopeFileError.path}: ${scopeFileError.error}. It is ignored (only what the repo proves counts) and Ruah will not overwrite it — fix or delete it.`}
+          />
+        ) : null}
+        {showPicker ? (
+          <AccountPicker
+            key={(scopeInfo?.accounts ?? []).map((a) => `${a.provider}:${a.account ?? ""}:${a.whole ? 1 : 0}`).join(",")}
+            providers={cloudProviders}
+            current={(scopeInfo?.accounts ?? []).map(({ repo: _repo, ...a }) => a)}
+            defaultWhole={noProof}
+            disabled={!writable}
+            saving={savingAccounts}
+            onSave={(a) => void saveAccounts(a)}
+            {...(editAccounts ? { onCancel: () => setEditAccounts(false) } : {})}
+            onShowAll={() => setView("all")}
+          />
+        ) : null}
+        {projectMode ? <LooksRelated resources={sv.suggestions} disabled={!writable} onScope={(r, a) => void onScope(r, a)} /> : null}
         {snapshot?.errors.map((e) => (
           <Notice
             key={e.provider}
@@ -375,6 +463,7 @@ export function CloudPage() {
             onSyncProvider={(p) => void sync({ provider: p })}
             selectedId={selected ? selected.id : null}
             onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
+            {...(sv.supported && writable ? { onScope: (r: CloudResource, a: ScopeResourceAction) => void onScope(r, a) } : {})}
             empty={
               <div className="flex h-full min-h-60 flex-col items-center justify-center gap-2 px-8 text-center">
                 {s.cloud.status === "loading" ? (
@@ -396,15 +485,24 @@ export function CloudPage() {
                         ? healthFilter === "unhealthy" && !unhealthyCount
                           ? "Everything is healthy"
                           : "Nothing matches the filter"
-                        : "No resources yet"}
+                        : projectMode && everything.length
+                          ? "Nothing in this project yet"
+                          : "No resources yet"}
                     </p>
                     <p className="max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
                       {all.length
                         ? "Clear the filter to see every resource."
-                        : cloudProviders.length
-                          ? "Press Sync to read what's deployed. Resources tagged ruah:node=<element id> link themselves."
-                          : "Connect a cloud provider first."}
+                        : projectMode && everything.length
+                          ? `None of the ${everything.length} synced resources is proven to be this project's. Pick its accounts, add a suggestion, or add resources from All accounts (row menu → Add to project).`
+                          : cloudProviders.length
+                            ? "Press Sync to read what's deployed. Resources tagged ruah:node=<element id> link themselves."
+                            : "Connect a cloud provider first."}
                     </p>
+                    {projectMode && everything.length > 0 && all.length === 0 ? (
+                      <button type="button" className={quietButton} onClick={() => setView("all")}>
+                        Show all accounts ({everything.length})
+                      </button>
+                    ) : null}
                     {all.length === 0 && s.cloud.status === "error" ? (
                       <button type="button" className={quietButton} onClick={() => void loadCloud()}>
                         Retry

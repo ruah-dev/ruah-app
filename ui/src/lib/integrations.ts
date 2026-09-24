@@ -12,8 +12,11 @@ import type {
   CloudHealth,
   CloudResource,
   CloudResourceType,
+  CloudScopeSummary,
   CloudSyncResult,
   IntegrationInfo,
+  ResourceScope,
+  ScopeAccount,
   ServerMessage,
   WorkItem,
 } from "./contracts";
@@ -241,7 +244,8 @@ export function applyCloudUpdate(prev: CloudSyncResult | null, u: CloudUpdated):
     u.resources || !u.syncedAt
       ? base
       : base.map((r) => (synced.has(r.provider) && !u.failed.includes(r.provider) ? { ...r, observedAt: u.syncedAt! } : r));
-  return { resources, syncedAt: u.syncedAt ?? prev?.syncedAt ?? null, errors: u.errors };
+  const scope = u.scope ?? prev?.scope;
+  return { resources, syncedAt: u.syncedAt ?? prev?.syncedAt ?? null, errors: u.errors, ...(scope ? { scope } : {}) };
 }
 
 if (typeof window !== "undefined") {
@@ -326,6 +330,7 @@ function normalizeCloud(d: Partial<CloudSyncResult> | null | undefined): CloudSy
     resources: Array.isArray(d?.resources) ? d.resources : [],
     syncedAt: d?.syncedAt ?? null,
     errors: Array.isArray(d?.errors) ? d.errors : [],
+    ...(d?.scope && Array.isArray(d.scope.accounts) ? { scope: d.scope } : {}),
   };
 }
 
@@ -423,6 +428,89 @@ export async function linkCloudResource(resourceId: string, nodeId: string | nul
   }
   const res = await api<{ ok: boolean }>("POST", "/api/cloud/link", { resourceId, nodeId });
   if (!res.ok) set({ cloud: before });
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// §14 per-project cloud scope
+
+/** In the open project's scope. A resource without `scope` comes from an older daemon: counted in. */
+export const inScope = (r: Pick<CloudResource, "scope">) => r.scope === undefined || r.scope.in;
+/** Not in scope, but its name looks like the project's ("Looks related"). */
+export const isSuggestion = (r: Pick<CloudResource, "scope">) =>
+  !!r.scope && !r.scope.in && !r.scope.excluded && r.scope.confidence === "weak";
+
+export interface ScopeView {
+  /** The daemon attaches scope (§14); false = everything is shown as before. */
+  supported: boolean;
+  project: CloudResource[];
+  suggestions: CloudResource[];
+  excluded: CloudResource[];
+  all: CloudResource[];
+}
+
+/** Splits a snapshot for the Cloud page: the project's resources, suggestions, removed ones, all. */
+export function scopeView(resources: CloudResource[]): ScopeView {
+  const supported = resources.some((r) => r.scope !== undefined);
+  return {
+    supported,
+    project: supported ? resources.filter(inScope) : resources,
+    suggestions: resources.filter(isSuggestion),
+    excluded: resources.filter((r) => !!r.scope?.excluded),
+    all: resources,
+  };
+}
+
+/** Short badge for the strongest reason: "from .do/app.yaml (app shop)" → "from .do/app.yaml". */
+export function scopeBadge(scope: ResourceScope | undefined): string | undefined {
+  const reason = scope?.reasons[0];
+  if (!reason) return undefined;
+  const short = reason.replace(/\s*\([^)]*\)$/, "");
+  return short.length > 34 ? `${short.slice(0, 33)}…` : short;
+}
+
+/** Row-menu actions a resource offers: add / remove / back to the evidence. */
+export function scopeActions(r: Pick<CloudResource, "scope">): ScopeResourceAction[] {
+  const s = r.scope;
+  if (!s) return [];
+  if (s.excluded) return ["include", "reset"];
+  const manual = s.reasons.includes("added by you");
+  if (s.in) return manual ? ["exclude", "reset"] : ["exclude"];
+  return ["include"];
+}
+
+export type ScopeResourceAction = "include" | "exclude" | "reset";
+
+function patchScope(resourceId: string, next: (r: CloudResource) => ResourceScope): CloudSyncResult | null {
+  const before = store.cloud;
+  if (before.status !== "ok") return null;
+  const resources = before.data.resources.map((r) => (r.id === resourceId ? { ...r, scope: next(r) } : r));
+  set({ cloud: { ...before, data: { ...before.data, resources } } });
+  return before.data;
+}
+
+/** Adds a resource to the project, removes it, or returns it to what the evidence says (writes .ruah/cloud.json). */
+export async function setResourceScope(resourceId: string, action: ScopeResourceAction): Promise<ApiResult<{ ok: boolean; scope: ResourceScope }>> {
+  const previous = store.cloud;
+  patchScope(resourceId, (r) =>
+    action === "include"
+      ? { in: true, confidence: "manual", reasons: ["added by you"] }
+      : action === "exclude"
+        ? { in: false, confidence: "manual", reasons: ["removed by you"], excluded: true }
+        : { ...(r.scope ?? { in: false, reasons: [] }), excluded: false },
+  );
+  const res = await api<{ ok: boolean; scope: ResourceScope }>("POST", "/api/cloud/scope/resource", { resourceId, action });
+  if (res.ok) patchScope(resourceId, () => res.data.scope);
+  else set({ cloud: previous });
+  return res;
+}
+
+/** Replaces the project's accounts (only they are synced for it) and re-syncs. */
+export async function setScopeAccounts(accounts: ScopeAccount[]): Promise<ApiResult<CloudScopeSummary>> {
+  const res = await api<CloudScopeSummary>("POST", "/api/cloud/scope/accounts", { accounts });
+  if (res.ok && store.cloud.status === "ok") {
+    set({ cloud: { ...store.cloud, data: { ...store.cloud.data, scope: res.data } } });
+  }
   return res;
 }
 
@@ -563,8 +651,17 @@ export function useCloudDiagram(architecture: Architecture): Graph | null {
     if (show && s.cloud.status === "idle" && s.origin) void loadCloud();
   }, [show, s.cloud.status, s.origin]);
   if (!show) return null;
-  const resources = s.cloud.status === "ok" ? s.cloud.data.resources : NO_RESOURCES;
+  // §14: the map shows the project's resources only.
+  const resources = s.cloud.status === "ok" ? projectResourcesMemo(s.cloud.data.resources) : NO_RESOURCES;
   return cloudGraphMemo(architecture, resources);
+}
+
+let scopedMemo: { source: CloudResource[]; scoped: CloudResource[] } | null = null;
+function projectResourcesMemo(source: CloudResource[]): CloudResource[] {
+  if (scopedMemo?.source === source) return scopedMemo.scoped;
+  const scoped = source.filter(inScope);
+  scopedMemo = { source, scoped };
+  return scoped;
 }
 
 const NO_RESOURCES: CloudResource[] = [];
