@@ -23,7 +23,7 @@ import { DigitalOceanIntegration } from "./cloud/digitalocean.js";
 import { defaultRunner, IntegrationError, redact, type Runner } from "./exec.js";
 import { Keychain, type SecretStore } from "./keychain.js";
 import { linkResources } from "./linking.js";
-import { IntegrationRegistry, isCloud, isWork, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
+import { IntegrationRegistry, isCloud, isWork, registerCloudBatchB, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
 import { RuahIntegration, type Launcher } from "./ruah.js";
 import { CloudCacheStore, readLinks, SettingsStore, updateLink } from "./store.js";
 import { GitHubIntegration } from "./work/github.js";
@@ -94,6 +94,7 @@ export class IntegrationsService implements IntegrationsApi {
         .register(new AwsIntegration({ runner, settings }))
         .register(new JiraIntegration({ settings, secrets: options.secrets ?? new Keychain({ runner }), ...(options.fetch !== undefined ? { fetch: options.fetch } : {}) }))
         .register(new GitHubIntegration({ runner, settings }));
+    if (options.registry === undefined) registerCloudBatchB(this.registry, { runner, settings });
     if (this.registry.get(this.ruah.id) === undefined) this.registry.register(this.ruah);
     this.cloudCache = new CloudCacheStore(options.home);
     this.now = options.now ?? (() => new Date());
@@ -176,7 +177,7 @@ export class IntegrationsService implements IntegrationsApi {
       providers.map(async (provider) => {
         try {
           const account = body.accounts?.[provider.id];
-          const outcome = await provider.sync(account !== undefined ? { account } : {});
+          const outcome = await provider.sync({ ...(account !== undefined ? { account } : {}), project: { root: project.root } });
           fresh.push(...outcome.resources);
           for (const e of outcome.errors) errors.push({ provider: provider.id, message: redact(e) });
         } catch (err) {

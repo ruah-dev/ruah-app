@@ -1,0 +1,94 @@
+{
+  "authList": [
+    { "account": "me@example.com", "status": "ACTIVE" },
+    { "account": "ci@acme-prod.iam.gserviceaccount.com", "status": "" }
+  ],
+  "configurations": [
+    { "is_active": true, "name": "default", "properties": { "core": { "account": "me@example.com", "project": "acme-prod" }, "compute": { "region": "europe-west1" } } },
+    { "is_active": false, "name": "staging", "properties": { "core": { "account": "me@example.com", "project": "acme-staging" } } },
+    { "is_active": false, "name": "empty", "properties": { "core": { "account": "me@example.com" } } }
+  ],
+  "projects": [
+    { "createTime": "2024-02-01T10:00:00.000Z", "lifecycleState": "ACTIVE", "name": "Acme Prod", "projectId": "acme-prod", "projectNumber": "123456789012" },
+    { "createTime": "2024-03-01T10:00:00.000Z", "lifecycleState": "ACTIVE", "name": "Acme Sandbox", "projectId": "acme-sandbox", "projectNumber": "223456789012" }
+  ],
+  "run": [
+    {
+      "apiVersion": "serving.knative.dev/v1",
+      "kind": "Service",
+      "metadata": {
+        "name": "invoices-api",
+        "namespace": "123456789012",
+        "labels": { "cloud.googleapis.com/location": "europe-west1", "ruah-node": "api", "team": "billing" },
+        "annotations": { "run.googleapis.com/ingress": "all" },
+        "creationTimestamp": "2024-05-01T12:00:00.000000Z",
+        "generation": 12,
+        "uid": "0f0e0d0c-aaaa-bbbb-cccc-000000000001"
+      },
+      "spec": { "template": { "spec": { "containers": [{ "image": "europe-docker.pkg.dev/acme-prod/app/invoices:1.4.2", "env": [{ "name": "DB_PASSWORD", "value": "SECRETPASSWORD" }] }] } } },
+      "status": {
+        "conditions": [
+          { "lastTransitionTime": "2024-09-20T08:00:00.000000Z", "status": "True", "type": "Ready" },
+          { "lastTransitionTime": "2024-09-20T08:00:00.000000Z", "status": "True", "type": "ConfigurationsReady" },
+          { "lastTransitionTime": "2024-09-20T08:00:00.000000Z", "status": "True", "type": "RoutesReady" }
+        ],
+        "latestCreatedRevisionName": "invoices-api-00012-xyz",
+        "latestReadyRevisionName": "invoices-api-00012-xyz",
+        "observedGeneration": 12,
+        "url": "https://invoices-api-abc123-ew.a.run.app",
+        "address": { "url": "https://invoices-api-abc123-ew.a.run.app" }
+      }
+    },
+    {
+      "apiVersion": "serving.knative.dev/v1",
+      "kind": "Service",
+      "metadata": { "name": "web-app", "labels": { "cloud.googleapis.com/location": "us-central1" } },
+      "status": {
+        "conditions": [{ "status": "Unknown", "type": "Ready" }],
+        "latestCreatedRevisionName": "web-app-00004-new",
+        "latestReadyRevisionName": "web-app-00003-old",
+        "url": "https://web-app-abc123-uc.a.run.app"
+      }
+    },
+    {
+      "metadata": { "name": "broken-job", "labels": { "cloud.googleapis.com/location": "us-central1" } },
+      "status": { "conditions": [{ "status": "False", "type": "Ready", "message": "Revision failed" }], "latestCreatedRevisionName": "broken-job-00001-a" }
+    }
+  ],
+  "gke": [
+    {
+      "name": "prod-cluster", "location": "europe-west1", "zone": "europe-west1", "status": "RUNNING", "currentNodeCount": 3,
+      "currentMasterVersion": "1.30.4-gke.1348000", "endpoint": "203.0.113.20", "resourceLabels": { "env": "prod" },
+      "masterAuth": { "clusterCaCertificate": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t" }
+    },
+    { "name": "autopilot-1", "location": "us-central1", "status": "PROVISIONING", "currentNodeCount": 1, "autopilot": { "enabled": true } }
+  ],
+  "sql": [
+    {
+      "name": "postgres", "databaseVersion": "POSTGRES_15", "region": "europe-west1", "state": "RUNNABLE", "project": "acme-prod",
+      "connectionName": "acme-prod:europe-west1:postgres", "ipAddresses": [{ "ipAddress": "198.51.100.30", "type": "PRIMARY" }],
+      "settings": { "tier": "db-custom-2-7680", "activationPolicy": "ALWAYS", "userLabels": { "tier": "data" } }
+    },
+    { "name": "legacy-mysql", "databaseVersion": "MYSQL_8_0", "region": "us-central1", "state": "RUNNABLE", "settings": { "activationPolicy": "NEVER" } }
+  ],
+  "functions": [
+    {
+      "name": "projects/acme-prod/locations/europe-west1/functions/resize-image", "environment": "GEN_2", "state": "ACTIVE",
+      "buildConfig": { "runtime": "nodejs20", "entryPoint": "resize" },
+      "serviceConfig": { "uri": "https://resize-image-abc123-ew.a.run.app", "environmentVariables": { "API_KEY": "should-not-appear" } },
+      "labels": { "deployment-tool": "cli-gcloud", "owner": "media" }, "updateTime": "2024-09-01T00:00:00Z"
+    },
+    {
+      "name": "projects/acme-prod/locations/us-central1/functions/legacy-hook", "status": "ACTIVE", "runtime": "python39",
+      "httpsTrigger": { "url": "https://us-central1-acme-prod.cloudfunctions.net/legacy-hook" }
+    }
+  ],
+  "topics": [
+    { "name": "projects/acme-prod/topics/invoice-created", "labels": { "ruah-node": "bus" } },
+    { "name": "projects/acme-prod/topics/audit-log" }
+  ],
+  "buckets": [
+    { "name": "acme-uploads", "location": "EUROPE-WEST1", "location_type": "region", "storage_url": "gs://acme-uploads/", "default_storage_class": "STANDARD", "labels": { "env": "prod" } },
+    { "storage_url": "gs://acme-backups/", "location": "EU" }
+  ]
+}

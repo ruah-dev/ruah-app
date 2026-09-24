@@ -21,6 +21,8 @@ export const IntegrationInfoSchema = z.object({
   detail: z.string().optional(),
   setupHint: z.string().optional(),
   accounts: z.array(IntegrationAccountSchema).optional(),
+  installCommand: z.string().optional(), // §10: exact Homebrew install command of the provider CLI
+  loginCommand: z.string().optional(), // §10: exact CLI login command
 });
 
 export const CloudResourceTypeSchema = z.enum(CLOUD_RESOURCE_TYPES);
@@ -35,6 +37,7 @@ export const CloudResourceSchema = z.object({
   status: z.string().optional(),
   tags: z.record(z.string()).optional(),
   consoleUrl: z.string().optional(),
+  url: z.string().optional(), // §10: public URL the resource serves (Cloud Run, Pages, Fly app, …)
   linkedNodeId: z.string().optional(),
   linkSource: z.enum(["tag", "name", "manual"]).optional(), // how linkedNodeId was decided
 });

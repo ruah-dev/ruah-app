@@ -1,0 +1,25 @@
+{
+  "whoami": { "email": "me@example.com" },
+  "orgs": { "personal": "Jane Doe", "acme": "Acme Inc" },
+  "orgsArray": [{ "ID": "o1", "Name": "Acme Inc", "Slug": "acme", "Type": "SHARED" }, { "ID": "o2", "Name": "Jane Doe", "Slug": "personal", "Type": "PERSONAL" }],
+  "apps": [
+    { "ID": "invoices-api", "Name": "invoices-api", "Status": "deployed", "Deployed": true, "Hostname": "invoices-api.fly.dev", "AppURL": "", "Version": 42, "Organization": { "Slug": "acme", "Name": "Acme Inc" }, "PlatformVersion": "machines" },
+    { "ID": "acme-db", "Name": "acme-db", "Status": "deployed", "Deployed": true, "Hostname": "acme-db.fly.dev", "Organization": { "Slug": "acme", "Name": "Acme Inc" }, "PlatformVersion": "machines" },
+    { "ID": "old-worker", "Name": "old-worker", "Status": "suspended", "Deployed": false, "Hostname": "old-worker.fly.dev", "Organization": { "Slug": "personal", "Name": "Jane Doe" } }
+  ],
+  "postgres": [
+    { "ID": "acme-db", "Name": "acme-db", "Status": "deployed", "Hostname": "acme-db.fly.dev", "Organization": { "Slug": "acme" } }
+  ],
+  "machinesApi": [
+    { "id": "3d8d9e1a2b3c48", "name": "blue-sun-1234", "state": "started", "region": "fra", "instance_id": "01J0000000000000000000000A", "private_ip": "fdaa:0:1::2", "config": { "env": { "DATABASE_URL": "postgres://u:SECRETPASSWORD@acme-db.flycast/db" } }, "checks": [{ "name": "http", "status": "passing" }] },
+    { "id": "3d8d9e1a2b3c49", "name": "red-moon-5678", "state": "stopped", "region": "fra" },
+    { "id": "3d8d9e1a2b3c50", "name": "green-sky-9012", "state": "started", "region": "iad" },
+    { "id": "3d8d9e1a2b3c51", "name": "gone", "state": "destroyed", "region": "ord" }
+  ],
+  "machinesDb": [{ "id": "7a1b2c3d4e5f60", "state": "started", "region": "fra" }],
+  "volumesApi": [
+    { "id": "vol_4y5z6a7b8c9d0e1f", "name": "data", "state": "created", "size_gb": 10, "region": "fra", "zone": "a1b2", "attached_machine_id": "3d8d9e1a2b3c48" },
+    { "id": "vol_old", "name": "old", "state": "pending_destroy", "size_gb": 1, "region": "fra" }
+  ],
+  "mpg": [{ "id": "mpg-abc123", "name": "analytics", "region": "iad", "status": "ready", "organization": { "slug": "acme" } }]
+}

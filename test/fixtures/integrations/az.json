@@ -1,0 +1,76 @@
+{
+  "accounts": [
+    {
+      "cloudName": "AzureCloud", "homeTenantId": "11111111-2222-3333-4444-555555555555", "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "isDefault": true, "managedByTenants": [], "name": "Acme Production", "state": "Enabled", "tenantId": "11111111-2222-3333-4444-555555555555",
+      "user": { "name": "me@example.com", "type": "user" }
+    },
+    {
+      "cloudName": "AzureCloud", "id": "ffffffff-0000-1111-2222-333333333333", "isDefault": false, "name": "Acme Dev", "state": "Disabled",
+      "tenantId": "11111111-2222-3333-4444-555555555555", "user": { "name": "me@example.com", "type": "user" }
+    }
+  ],
+  "groups": [
+    { "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod", "location": "westeurope", "managedBy": null, "name": "acme-prod", "properties": { "provisioningState": "Succeeded" }, "tags": { "env": "prod" }, "type": "Microsoft.Resources/resourceGroups" }
+  ],
+  "webapps": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.Web/sites/web-app",
+      "name": "web-app", "kind": "app,linux", "location": "West Europe", "resourceGroup": "acme-prod", "state": "Running", "enabled": true,
+      "defaultHostName": "web-app.azurewebsites.net", "hostNames": ["web-app.azurewebsites.net", "www.example.com"],
+      "tags": { "ruah-node": "web" }, "siteConfig": { "connectionStrings": "Server=tcp:x;Password=SECRETPASSWORD" }
+    },
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.Web/sites/old-site",
+      "name": "old-site", "kind": "app", "location": "North Europe", "resourceGroup": "acme-prod", "state": "Stopped",
+      "defaultHostName": "old-site.azurewebsites.net", "hostNames": ["old-site.azurewebsites.net"]
+    }
+  ],
+  "functionapps": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.Web/sites/billing-jobs",
+      "name": "billing-jobs", "kind": "functionapp,linux", "location": "West Europe", "resourceGroup": "acme-prod", "state": "Running",
+      "defaultHostName": "billing-jobs.azurewebsites.net", "hostNames": ["billing-jobs.azurewebsites.net"]
+    }
+  ],
+  "containerapps": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.App/containerApps/invoices-api",
+      "name": "invoices-api", "location": "West Europe", "resourceGroup": "acme-prod", "tags": { "ruah:node": "api" },
+      "properties": {
+        "provisioningState": "Succeeded", "runningStatus": "Running", "latestRevisionName": "invoices-api--r12", "latestReadyRevisionName": "invoices-api--r12",
+        "latestRevisionFqdn": "invoices-api--r12.happyhill-1234.westeurope.azurecontainerapps.io",
+        "configuration": { "ingress": { "external": true, "fqdn": "invoices-api.happyhill-1234.westeurope.azurecontainerapps.io", "targetPort": 8080 }, "secrets": [{ "name": "db-password" }] }
+      }
+    }
+  ],
+  "aks": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourcegroups/acme-prod/providers/Microsoft.ContainerService/managedClusters/prod-aks",
+      "name": "prod-aks", "location": "westeurope", "resourceGroup": "acme-prod", "kubernetesVersion": "1.30.3", "provisioningState": "Succeeded",
+      "powerState": { "code": "Running" }, "fqdn": "prod-aks-dns-abc.hcp.westeurope.azmk8s.io",
+      "agentPoolProfiles": [{ "name": "system", "count": 2, "vmSize": "Standard_D4s_v5" }, { "name": "user", "count": 3, "vmSize": "Standard_D8s_v5" }]
+    }
+  ],
+  "sqlservers": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.Sql/servers/acme-sql",
+      "name": "acme-sql", "location": "westeurope", "resourceGroup": "acme-prod", "state": "Ready", "administratorLogin": "sqladmin-should-not-appear",
+      "fullyQualifiedDomainName": "acme-sql.database.windows.net", "version": "12.0"
+    }
+  ],
+  "postgres": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.DBforPostgreSQL/flexibleServers/postgres",
+      "name": "postgres", "location": "West Europe", "resourceGroup": "acme-prod", "state": "Stopped", "version": "16",
+      "administratorLogin": "pgadmin-should-not-appear", "fullyQualifiedDomainName": "postgres.postgres.database.azure.com", "sku": { "name": "Standard_B1ms", "tier": "Burstable" }
+    }
+  ],
+  "storage": [
+    {
+      "id": "/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/acme-prod/providers/Microsoft.Storage/storageAccounts/acmeuploads",
+      "name": "acmeuploads", "location": "westeurope", "resourceGroup": "acme-prod", "kind": "StorageV2", "provisioningState": "Succeeded",
+      "statusOfPrimary": "available", "primaryEndpoints": { "blob": "https://acmeuploads.blob.core.windows.net/" }, "sku": { "name": "Standard_LRS" }
+    }
+  ]
+}

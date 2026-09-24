@@ -1,0 +1,28 @@
+{
+  "whoami": " ⛅️ wrangler 3.80.0\n-------------------\n\nGetting User settings...\n👋 You are logged in with an OAuth Token, associated with the email me@example.com.\n┌───────────────────────────┬──────────────────────────────────┐\n│ Account Name              │ Account ID                       │\n├───────────────────────────┼──────────────────────────────────┤\n│ Me@example.com's Account  │ 0123456789abcdef0123456789abcdef │\n├───────────────────────────┼──────────────────────────────────┤\n│ Acme Inc                  │ fedcba9876543210fedcba9876543210 │\n└───────────────────────────┴──────────────────────────────────┘\n🔓 Token Permissions: If scopes are missing, you may need to logout and re-login.\nScope (Access)\n- account (read)\n- workers (write)\n",
+  "whoamiLoggedOut": " ⛅️ wrangler 3.80.0\n-------------------\n\nGetting User settings...\nYou are not authenticated. Please run `wrangler login`.\n",
+  "d1": [
+    { "uuid": "5c1d2e3f-0000-4000-8000-000000000001", "name": "invoices-db", "created_at": "2024-06-01T10:00:00.000Z", "version": "production", "num_tables": 7, "file_size": 81920 }
+  ],
+  "kv": " ⛅️ wrangler 3.80.0\n-------------------\n\n[\n  {\n    \"id\": \"0f2ac74b498b48028cb68387c421e279\",\n    \"title\": \"SESSIONS\",\n    \"supports_url_encoding\": true\n  }\n]\n",
+  "r2": " ⛅️ wrangler 3.80.0\n-------------------\n\nListing buckets...\nname:           acme-assets\ncreation_date:  2024-05-01T12:00:00.000Z\n\nname:           acme-backups\ncreation_date:  2024-05-02T12:00:00.000Z\n",
+  "queues": " ⛅️ wrangler 3.80.0\n-------------------\n\n┌──────────────────────────────────┬─────────────┬─────────────────────────────┬─────────────────────────────┬───────────┬───────────┐\n│ Id                               │ Name        │ Created On                  │ Modified On                 │ Producers │ Consumers │\n├──────────────────────────────────┼─────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 9a1b2c3d4e5f60718293a4b5c6d7e8f9 │ events-bus  │ 2024-06-01T00:00:00.000000Z │ 2024-06-02T00:00:00.000000Z │ 1         │ 1         │\n├──────────────────────────────────┼─────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 0a1b2c3d4e5f60718293a4b5c6d7e8f0 │ dead-letter │ 2024-06-01T00:00:00.000000Z │ 2024-06-02T00:00:00.000000Z │ 0         │ 0         │\n└──────────────────────────────────┴─────────────┴─────────────────────────────┴─────────────────────────────┴───────────┴───────────┘\n",
+  "pagesProjects": [
+    { "Project Name": "web-app", "Project Domains": "web-app-7x9.pages.dev, www.example.com", "Git Provider": "Yes", "Last Modified": "2 hours ago" },
+    { "Project Name": "docs", "Project Domains": "docs-3kd.pages.dev", "Git Provider": "No", "Last Modified": "3 days ago" }
+  ],
+  "pagesProjectsTable": "┌──────────────┬────────────────────────────────────────┬──────────────┬───────────────┐\n│ Project Name │ Project Domains                        │ Git Provider │ Last Modified │\n├──────────────┼────────────────────────────────────────┼──────────────┼───────────────┤\n│ web-app      │ web-app-7x9.pages.dev, www.example.com │ Yes          │ 2 hours ago   │\n└──────────────┴────────────────────────────────────────┴──────────────┴───────────────┘\n",
+  "pagesDeploymentsWeb": [
+    { "Id": "b1c2d3e4-0000-4000-8000-00000000000a", "Environment": "Preview", "Branch": "feat/x", "Source": "abc1234", "Deployment": "https://b1c2d3e4.web-app-7x9.pages.dev", "Status": "Failure", "Build": "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/pages/view/web-app/b1c2d3e4" },
+    { "Id": "a1c2d3e4-0000-4000-8000-000000000009", "Environment": "Production", "Branch": "main", "Source": "def5678", "Deployment": "https://a1c2d3e4.web-app-7x9.pages.dev", "Status": "2 hours ago", "Build": "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/pages/view/web-app/a1c2d3e4" }
+  ],
+  "pagesDeploymentsDocs": [
+    { "Id": "c1c2d3e4-0000-4000-8000-000000000001", "Environment": "Production", "Branch": "main", "Source": "0001111", "Deployment": "https://c1c2d3e4.docs-3kd.pages.dev", "Status": "Building", "Build": "" }
+  ],
+  "deploymentsApi": [
+    { "id": "d0000000-0000-4000-8000-000000000001", "source": "wrangler", "strategy": "percentage", "author_email": "me@example.com", "created_on": "2024-09-01T10:00:00.000000Z", "versions": [{ "version_id": "v1", "percentage": 100 }] },
+    { "id": "d0000000-0000-4000-8000-000000000002", "source": "wrangler", "strategy": "percentage", "author_email": "me@example.com", "created_on": "2024-09-20T10:00:00.000000Z", "versions": [{ "version_id": "v2", "percentage": 100 }] }
+  ],
+  "wranglerToml": "# Invoices API worker\nname = \"invoices-api\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2024-09-01\"\naccount_id = \"0123456789abcdef0123456789abcdef\"\nroutes = [\n  { pattern = \"api.example.com/*\", zone_name = \"example.com\" }, # prod\n  \"api.example.org/v1/*\"\n]\n\n[vars]\nAPI_KEY = \"should-not-appear\"\n\n[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"invoices-db\"\n\n[env.staging]\nroute = { pattern = \"staging-api.example.com/*\", zone_name = \"example.com\" }\n\n[env.preview]\nname = \"invoices-preview\"\n\n[[env.preview.routes]]\npattern = \"preview.example.com/*\"\ncustom_domain = true\n",
+  "wranglerJsonc": "{\n  // Edge cron worker\n  \"name\": \"cron-worker\", /* no routes */\n  \"main\": \"src/cron.ts\",\n  \"triggers\": { \"crons\": [\"*/5 * * * *\"] },\n  \"env\": {\n    \"production\": { \"routes\": [{ \"pattern\": \"cron.example.com/*\", \"zone_name\": \"example.com\" },], },\n  },\n}\n"
+}
