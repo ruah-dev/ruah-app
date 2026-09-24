@@ -8,7 +8,8 @@ desktop app is a thin viewer.
 
 - **Map:** `ruah app scan` turns a repo (or a multi-repo system,
   `ruah.system.json`) into `architecture.json`; drill in down to symbols;
-  hand edits survive re-scans.
+  hand edits survive re-scans. Infrastructure as code (Terraform, Kubernetes,
+  Kustomize, Helm, Ansible, Dockerfiles, CI) shows how it all runs and ships.
 - **Agents:** Claude Code (Claude Agent SDK) and, over ACP, Cursor Agent,
   Grok Build, Kiro CLI and OpenCode — switch instantly, pick models, chats per
   project, images in prompts, map editing through the `ruah_*` tools.
@@ -27,7 +28,8 @@ pnpm app                      # build engine + viewer, open the desktop app
 
 ruah app                      # open the desktop app (start screen)
 ruah app .                    # open it on the current repo
-ruah app scan <repo>          # write <repo>/architecture.json
+ruah app scan <repo>          # write <repo>/architecture.json (--no-infra: code only)
+ruah app infra <repo>         # print the Terraform / k8s / Helm / Ansible / CI it finds (--json, --kind); writes nothing
 ruah app serve [<repo>]       # daemon + viewer in the browser (http://127.0.0.1:4177)
 ruah app export drawio <repo> --out map.drawio
 ruah app system init <dir> --repo web=../web --repo api=../api

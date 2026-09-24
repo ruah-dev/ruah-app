@@ -453,7 +453,7 @@ export function detectCi(ctx: ScanContext, report: InfraReport): void {
         ...(wf.triggers.length > 0 ? { triggers: wf.triggers.join("; ") } : {}),
         jobs: String(wf.jobs.length),
         ...(uniqBuilds.length > 0 ? { builds: uniq(uniqBuilds.map((b) => b.image ?? b.context ?? "image")).join(", ") } : {}),
-        ...(uniqDeploys.length > 0 ? { deploys: uniqDeploys.map((d) => `${d.tool} ${d.target}`).slice(0, 8).join(", ") } : {}),
+        ...(uniqDeploys.length > 0 ? { deploys: uniqDeploys.map((d) => `${d.tool} ${d.target === "" ? "." : d.target}`).slice(0, 8).join(", ") } : {}),
         ...(uniq(environments).length > 0 ? { environments: uniq(environments).join(", ") } : {}),
       },
       details: [],
@@ -584,12 +584,31 @@ export function resolvePipelines(report: InfraReport): void {
         const hits = report.items.filter((it) => it.tool === "terraform" && it.hints.some((h) => m(h)) && (it.category === "compute" || it.category === "workload"));
         for (const h of hits) t.push({ item: h.key });
       }
+      // Too broad (a wildcard workload, a whole manifests tree): the groups say it better than 20 items.
+      const itemTargets = t.filter((e): e is { item: string } => "item" in e);
+      if (itemTargets.length > 6) {
+        const groupOf = new Map(report.items.map((i) => [i.key, i.group]));
+        const collapsed = uniq(itemTargets.map((e) => groupOf.get(e.item)).filter((g): g is string => g !== undefined));
+        t.splice(0, t.length, ...t.filter((e) => !("item" in e)), ...collapsed.map((g) => ({ group: g })));
+      }
       d.targets = uniqBy(t, (e) => JSON.stringify(e));
       for (const e of d.targets) {
         report.links.push({ from: { item: p.itemKey }, to: e, label: "deploys", kind: "deploy", evidence: [`${p.file}:${d.line}`] });
       }
     }
+    // A build loop (`for s in …; docker build -f $s/Dockerfile`) leaves wildcards: expand them against the Dockerfiles found.
+    const builds: PipelineBuild[] = [];
     for (const b of p.builds) {
+      const pattern = b.dockerfile ?? (b.context !== undefined && b.context !== "compose" ? `${b.context === "" ? "" : `${b.context}/`}Dockerfile` : undefined);
+      if (pattern !== undefined && pattern.includes("*")) {
+        const m = pathMatcher(pattern);
+        const hits = report.dockerfiles.filter((d) => m(d.file)).slice(0, 20);
+        for (const d of hits) builds.push({ dockerfile: d.file, line: b.line });
+        if (hits.length > 0) continue;
+      }
+      builds.push(b);
+    }
+    for (const b of builds) {
       const to: InfraEnd | undefined =
         b.dockerfile !== undefined
           ? { dockerfile: b.dockerfile }

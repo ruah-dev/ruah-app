@@ -217,6 +217,11 @@ const SETTING_KEYS = [
   "port", "load_balancer_type", "internal", "fifo_queue", "billing_mode", "versioning", "storage_class", "family",
 ];
 
+const NESTED_SETTING_KEYS = new Set([
+  "tier", "size", "vm_size", "node_count", "min_size", "max_size", "desired_size", "min_node_count", "max_node_count",
+  "machine_type", "instance_type", "node_type", "cpu", "memory", "image", "replicas", "runtime", "database_version",
+]);
+
 const NAME_KEYS = ["identifier", "name", "bucket", "cluster_name", "function_name", "cluster_id", "domain", "zone_name", "repository_name", "family", "app_name"];
 
 const GENERIC_LABELS = new Set(["this", "main", "default", "primary", "self", "app", "resource", "example", "it", "instance", "cluster", "db", "bucket"]);
@@ -465,7 +470,9 @@ export function detectTerraform(ctx: ScanContext, report: InfraReport): void {
       const inst = r.inst;
       const settings: Record<string, string> = {};
       for (const k of SETTING_KEYS) {
-        const v = safeSetting(k, literal(inst, findAttr(r.block, k)));
+        // Sizing keys may sit in a nested block (scaling_config, default_node_pool, settings);
+        // identity keys (engine, region, zone, …) only count on the resource itself.
+        const v = safeSetting(k, literal(inst, findAttr(r.block, k, NESTED_SETTING_KEYS.has(k) ? 2 : 0)));
         if (v !== undefined) settings[k] = v;
       }
       if (r.block.attrs.count !== undefined) settings.count = literal(inst, r.block.attrs.count) ?? "dynamic";
@@ -519,6 +526,17 @@ export function detectTerraform(ctx: ScanContext, report: InfraReport): void {
       g.files = uniq([...g.files, r.file]);
     }
 
+    // The same module instantiated several times gives items with the same name: qualify them.
+    const byName = new Map<string, InfraItem[]>();
+    for (const it of items.values()) byName.set(`${it.group}\u0000${it.name}`, [...(byName.get(`${it.group}\u0000${it.name}`) ?? []), it]);
+    for (const same of byName.values()) {
+      if (same.length < 2) continue;
+      for (const it of same) {
+        const where = it.address.replace(/\.[a-z0-9]+_[a-z0-9_]+\.[^.]+$/, "");
+        it.name = where !== it.address && where !== "" ? `${it.name} (${where.replace(/^module\./, "").replace(/\.module\./g, "/")})` : `${it.name} (${it.address})`;
+      }
+    }
+
     // Folded resources: attach to the one item they reference, else to the group.
     const folded = resources.filter((r) => r.cls.category === undefined);
     const defaultGroup = (): InfraGroup => {
@@ -565,6 +583,45 @@ export function detectTerraform(ctx: ScanContext, report: InfraReport): void {
       components.set(find(r.addr), c);
     }
     for (const r of nodeRes) for (const a of rawRefs.get(r.addr) ?? []) if (parent.has(a)) components.get(find(a))?.around.add(r.addr);
+    // DNS records whose zone is not managed here (a data source, a variable): one
+    // "<provider> DNS records" item per provider stands for the zone.
+    const recordRe = /(^|_)(record|record_set|dns_record|route53_record)$/;
+    for (const c of components.values()) {
+      const records = c.glue.filter((g) => recordRe.test(g.type));
+      if (records.length === 0 || [...c.around].some((a) => items.get(a)?.category === "dns")) continue;
+      const provider = providerOf(records[0]?.type ?? "");
+      const addr = `${provider}_dns_records`;
+      let dns = items.get(addr);
+      if (dns === undefined) {
+        const first = records[0];
+        const pretty = PROVIDER_NAMES[provider] ?? provider;
+        const g = groupFor(provider);
+        dns = {
+          key: itemKey(addr),
+          group: g.key,
+          tool: "terraform",
+          kind: "dns records",
+          address: `${provider} DNS records`,
+          name: `${pretty} DNS`,
+          category: "dns",
+          file: first?.file ?? "",
+          line: first?.block.line ?? 1,
+          settings: {},
+          details: [],
+          hints: [],
+          images: [],
+          tech: [pretty],
+        };
+        items.set(addr, dns);
+        g.files = uniq([...g.files, dns.file]);
+      }
+      for (const r of records) {
+        const recName = literal(r.inst, r.block.attrs.name);
+        dns.details.push(`${r.addr}${recName !== undefined ? ` (${recName})` : ""}`);
+        if (recName !== undefined) dns.hints = uniq([...dns.hints, recName]);
+      }
+      c.around.add(addr);
+    }
     for (const c of components.values()) {
       const around = [...c.around].map((a) => items.get(a)).filter((x): x is InfraItem => x !== undefined);
       const ranked = around.map((it) => ({ it, rank: FRONT_RANK[it.category] ?? 9 })).sort((a, b) => a.rank - b.rank || byString(a.it.key, b.it.key));
@@ -579,7 +636,7 @@ export function detectTerraform(ctx: ScanContext, report: InfraReport): void {
         }
       }
       // Glue with a single item around it (records in a zone we do not manage, a lone listener) is a detail of that item.
-      if (around.length === 1) around[0]?.details.push(...c.glue.map((g) => g.addr));
+      if (around.length === 1 && around[0]?.kind !== "dns records") around[0]?.details.push(...c.glue.map((g) => g.addr));
       else if (around.length === 0) defaultGroup().details.push(...c.glue.map((g) => g.addr));
     }
     // k8s Secrets / ConfigMaps managed by Terraform: their names carry the items they reference (for manifests' envFrom).

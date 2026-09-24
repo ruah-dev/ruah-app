@@ -52,6 +52,7 @@ const ROUTE_KINDS = new Set(["Ingress", "IngressRoute", "HTTPRoute", "Route"]);
 const RELEASE_KINDS = new Set(["HelmChart", "HelmRelease", "Application"]);
 const ENV_NAMES = new Set(["prod", "production", "prd", "staging", "stage", "stg", "dev", "development", "qa", "uat", "test", "testing", "preview", "sandbox", "demo", "local", "hil", "canary", "live"]);
 const KUSTOMIZATION_NAMES = new Set(["kustomization.yaml", "kustomization.yml", "Kustomization"]);
+const CLUSTER_KINDS = new Set(["Namespace", "ClusterRole", "ClusterRoleBinding", "CustomResourceDefinition", "StorageClass", "PriorityClass", "PersistentVolume", "ClusterIssuer", "IngressClass", "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration", "APIService"]);
 
 export interface K8sContainer {
   name: string;
@@ -487,11 +488,18 @@ export function detectKubernetes(ctx: ScanContext, report: InfraReport, charts: 
     if (!g.files.includes(file)) g.files.push(file);
     return g;
   };
+  const clusterScoped = (o: K8sObj): boolean => o.namespace === undefined && CLUSTER_KINDS.has(o.kind);
   for (const root of roots) {
     const env = envOf(root.dir);
     const touched = new Set<InfraGroup>();
-    for (const obj of render(root, 0, new Set())) {
-      const g = groupFor(env, obj.namespace, root.dir, root.file);
+    const rendered = render(root, 0, new Set());
+    // Cluster-scoped objects (Namespace, ClusterRole, CRDs, …) join the root's main group, not "default".
+    const counts = new Map<string, number>();
+    for (const obj of rendered) if (!clusterScoped(obj)) counts.set(obj.namespace ?? "", (counts.get(obj.namespace ?? "") ?? 0) + 1);
+    const mainNs = [...counts].sort((a, b) => b[1] - a[1] || byString(a[0], b[0]))[0]?.[0];
+    for (const obj of rendered) {
+      const ns = clusterScoped(obj) && mainNs !== undefined && mainNs !== "" ? mainNs : obj.namespace;
+      const g = groupFor(env, ns, root.dir, root.file);
       touched.add(g);
       scan.push({ obj, group: g.key, tool: "kustomize", root });
       if (obj.namespace !== undefined) g.settings.namespaces = uniq([...(g.settings.namespaces?.split(", ") ?? []), obj.namespace]).sort().join(", ");
@@ -502,6 +510,8 @@ export function detectKubernetes(ctx: ScanContext, report: InfraReport, charts: 
   for (const [f, list] of [...objsByFile].sort((a, b) => byString(a[0], b[0]))) {
     if (usedFiles.has(f) || usedFiles.has(dirname(f))) continue;
     for (const obj of list) {
+      // A workload without containers is a patch applied some other way (kubectl patch), not an object.
+      if (WORKLOAD_KINDS.has(obj.kind) && obj.containers.length === 0) continue;
       const g = groupFor(undefined, obj.namespace, dirname(f), f);
       scan.push({ obj, group: g.key, tool: "kubernetes" });
     }
@@ -551,7 +561,8 @@ export function detectKubernetes(ctx: ScanContext, report: InfraReport, charts: 
       if (ports.length > 0) settings.ports = ports.join(", ");
       if (obj.schedule !== undefined) settings.schedule = obj.schedule;
       if (obj.serviceAccount !== undefined) settings.serviceAccount = obj.serviceAccount;
-      const kind = images.map((i) => infraFromImage(i)).find((k) => k !== undefined);
+      // A product image makes a long-running workload that product; a Job / CronJob using it (pg_dump, bootstrap) stays a job.
+      const kind = category === "job" ? undefined : images.map((i) => infraFromImage(i)).find((k) => k !== undefined);
       if (kind !== undefined) {
         infraKind = kind.key;
         category = kind.type === "datastore" ? "database" : kind.key === "redis" ? "cache" : kind.type === "queue" ? "queue" : kind.type === "gateway" ? "gateway" : category;
@@ -632,6 +643,8 @@ export function detectKubernetes(ctx: ScanContext, report: InfraReport, charts: 
     }
   }
 
+  const configUsers = new Map<string, number>(); // `${group}\0ConfigMap/<name>` → workloads using it
+  for (const w of items) for (const r of w.refs ?? []) if (r.startsWith("ConfigMap/")) configUsers.set(`${w.group}\u0000${r}`, (configUsers.get(`${w.group}\u0000${r}`) ?? 0) + 1);
   // Env / ConfigMap hosts → other workloads (through their Service or name) or infra kinds.
   for (const w of items.filter((i) => WORKLOAD_KINDS.has(i.kind))) {
     const obj = scan.find((s) => s.group === w.group && s.obj.kind === w.kind && s.obj.name === w.name)?.obj;
@@ -652,7 +665,8 @@ export function detectKubernetes(ctx: ScanContext, report: InfraReport, charts: 
       }
     }
     for (const r of obj.refs) {
-      if (!r.startsWith("ConfigMap/")) continue;
+      // A ConfigMap shared by many workloads (every service URL in one place) says nothing about who calls whom.
+      if (!r.startsWith("ConfigMap/") || (configUsers.get(`${w.group}\u0000${r}`) ?? 0) > 2) continue;
       for (const h of configHosts.get(`${w.group}\u0000${r.slice(10)}`) ?? []) hosts.push({ host: h, label: "calls", ev: `${w.file}:${w.line}` });
     }
     const seen = new Set<string>();
