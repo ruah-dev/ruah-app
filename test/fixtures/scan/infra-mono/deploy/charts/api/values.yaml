@@ -1,0 +1,27 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/acme/api
+  tag: ""
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: api.acme.dev
+      paths:
+        - path: /
+          pathType: Prefix
+
+env:
+  DATABASE_HOST: acme-prod-db.cluster-xyz.eu-west-1.rds.amazonaws.com
+  REDIS_URL: redis://api-redis-master:6379
+  DATABASE_PASSWORD: "set-by-secret"
+
+redis:
+  enabled: true

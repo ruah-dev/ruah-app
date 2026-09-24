@@ -19,7 +19,10 @@
 //    hand-added node are kept too. Everything else comes from the scan; an
 //    existing edge without `source` predates provenance and counts as scan
 //    output (the scanner now writes source "scan" on every edge).
-// 4. Existing workflows are kept when every step still exists.
+// 4. Existing workflows are kept when every step still exists, except scanned
+//    ones (`source: "scan"`, the IaC "how it ships" workflows of §11), which the
+//    new scan replaces. Scanned IaC nodes (`infra`, §11) the scan no longer
+//    produces are dropped even when their file still exists.
 import { existsSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import type { Architecture, ArchEdge, ArchNode } from "../contracts/architecture.js";
@@ -51,8 +54,15 @@ export function mergeWithExisting(scanned: Architecture, existing: Architecture,
   });
 
   const drawn = (n: ArchNode): boolean => n.origin === "agent" || n.origin === "user";
+  // Infrastructure-as-code elements (§11) are the scanner's: one it no longer
+  // produces was removed from the IaC (or IaC scanning is off), even when the
+  // file that declared it still exists. Code packages annotated with a
+  // Dockerfile / compose service keep the ordinary rule.
+  const scannedInfra = (n: ArchNode): boolean => n.infra !== undefined && n.infra.tool !== "docker" && n.infra.tool !== "compose";
   const kept: ArchNode[] = existing.nodes.filter(
-    (n) => !scannedIds.has(n.id) && (drawn(n) || n.path === undefined || (root !== undefined && pathStillExists(root, n.path))),
+    (n) =>
+      !scannedIds.has(n.id) &&
+      (drawn(n) || (!scannedInfra(n) && (n.path === undefined || (root !== undefined && pathStillExists(root, n.path))))),
   );
   const allIds = new Set([...scannedIds, ...kept.map((n) => n.id)]);
   const layers = [...(scanned.layers ?? [])];
@@ -78,7 +88,8 @@ export function mergeWithExisting(scanned: Architecture, existing: Architecture,
     edges.push(e);
   }
 
-  const workflows = existing.workflows.filter((w) => w.steps.every((s) => allIds.has(s)));
+  // Scanned workflows (source "scan", §11) are replaced by this scan's; the rest are the user's.
+  const workflows = existing.workflows.filter((w) => w.source !== "scan" && w.steps.every((s) => allIds.has(s)));
   const wfIds = new Set(workflows.map((w) => w.id));
   for (const w of scanned.workflows) if (!wfIds.has(w.id)) workflows.push(w);
 

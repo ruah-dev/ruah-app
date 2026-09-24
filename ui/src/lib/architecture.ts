@@ -120,6 +120,10 @@ const TYPE_ALIASES: Record<string, NodeKind> = {
   component: "module",
   person: "actor",
   role: "actor",
+  // Infrastructure-as-code groups and items (CONTRACTS §11)
+  cloud: "cluster",
+  pipeline: "worker",
+  registry: "storage",
 };
 
 export function kindFor(type: string): NodeKind {

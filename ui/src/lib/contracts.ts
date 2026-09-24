@@ -31,6 +31,18 @@ export interface ArchNode {
   y?: number;
   repo?: string; // multi-repo systems: id of the owning repo in ruah.system.json
   origin?: "scan" | "user" | "agent" | (string & {}); // §1.7: "agent" = drawn by a coding agent (marked until kept)
+  infra?: InfraDetails; // §11: infrastructure-as-code details (round-tripped untouched)
+}
+
+// CONTRACTS §11: what an infrastructure-as-code element is and where it is declared.
+export interface InfraDetails {
+  tool: "terraform" | "kubernetes" | "kustomize" | "helm" | "ansible" | "compose" | "docker" | "ci" | (string & {});
+  kind: string; // aws_db_instance | Deployment | hosts | workflow | Dockerfile | provider | environment …
+  address?: string; // aws_db_instance.main | prod/Deployment/api
+  source?: string[]; // "path:line"
+  settings?: Record<string, string>; // replicas, image, instance_class, …
+  details?: string[]; // folded resources / objects
+  hints?: string[]; // names live cloud resources may carry
 }
 
 export interface ArchEdge {
@@ -47,6 +59,7 @@ export interface Workflow {
   name: string;
   description?: string;
   steps: string[]; // node ids in order, >= 2 entries. Consecutive steps are drawn as arrows.
+  source?: "scan" | (string & {}); // §11: "scan" = derived by the scanner ("how it ships"), replaced on re-scan
 }
 
 export interface Architecture {

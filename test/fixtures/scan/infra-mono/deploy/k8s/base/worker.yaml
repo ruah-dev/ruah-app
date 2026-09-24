@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      serviceAccountName: worker
+      containers:
+        - name: worker
+          image: ghcr.io/acme/worker:latest
+          ports:
+            - containerPort: 9090
+          envFrom:
+            - secretRef:
+                name: db-credentials
+            - configMapRef:
+                name: worker-config
+          env:
+            - name: QUEUE_URL
+              value: redis://redis:6379/0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+spec:
+  selector:
+    app: worker
+  ports:
+    - port: 9090

@@ -3,7 +3,8 @@
 // It holds the chat that was last active in the project (reopening lands in
 // the same conversation), when the user last left the project, the element
 // last focused, the unread markers per chat (activity badges) and the
-// viewer's opaque view state. Writes are atomic; an unreadable file counts as
+// viewer's opaque view state, and the project's scan options (CONTRACTS §11:
+// `scan.infra`, default on). Writes are atomic; an unreadable file counts as
 // "no state"; unknown keys are kept (other features may add their own).
 // One instance per process (ChatStore.state): two instances would overwrite
 // each other's fields.
@@ -34,6 +35,8 @@ const ProjectStateSchema = z
     /** §13.5: viewer-owned, opaque. */
     view: z.record(z.string(), z.unknown()).optional(),
     viewUpdatedAt: z.string().optional(),
+    /** CONTRACTS §11: how the project is scanned; absent fields = defaults (infra on). */
+    scan: z.object({ infra: z.boolean().optional() }).optional(),
   })
   .passthrough();
 export type ProjectState = z.infer<typeof ProjectStateSchema>;
@@ -64,6 +67,10 @@ export function checkView(view: unknown): string | undefined {
   };
   if (depth(view, 0) > MAX_VIEW_DEPTH) return `view is nested deeper than ${MAX_VIEW_DEPTH} levels`;
   return undefined;
+}
+
+export interface ProjectScanOptions {
+  infra: boolean;
 }
 
 export class ProjectStateStore {
@@ -163,6 +170,19 @@ export class ProjectStateStore {
     if (problem !== undefined) return problem;
     this.write(projectId, (s) => ({ ...s, view: view as Record<string, unknown>, viewUpdatedAt: this.now() }));
     return undefined;
+  }
+
+  /** The project's scan options with defaults applied (CONTRACTS §11). */
+  scanOptions(projectId: string): ProjectScanOptions {
+    return { infra: this.read(projectId).scan?.infra ?? true };
+  }
+
+  setScanOptions(projectId: string, patch: Partial<ProjectScanOptions>): ProjectScanOptions {
+    if (!PROJECT_ID.test(projectId)) return this.scanOptions(projectId);
+    const current = this.read(projectId).scan ?? {};
+    const scan = { ...current, ...(patch.infra !== undefined ? { infra: patch.infra } : {}) };
+    if (JSON.stringify(scan) !== JSON.stringify(current)) this.write(projectId, (s) => ({ ...s, scan }));
+    return this.scanOptions(projectId);
   }
 
   // ----- internals -----

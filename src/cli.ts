@@ -16,6 +16,10 @@ Usage:
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   ruah app scan <repo> [options]    scan a repo into architecture.json
+  ruah app infra <repo> [--json] [--kind <k>]...
+                                   print the infrastructure as code the scan finds (resources,
+                                   workloads, how it ships, links); writes nothing. <k>: terraform,
+                                   k8s, helm, kustomize, ansible, compose, docker, ci (repeatable)
   ruah app system <cmd> ...         multi-repo system (ruah.system.json; no daemon needed;
                                    <system> = its folder, else --system <dir>, else cwd):
     init <folder> [--repo <path>|<id>=<path>]... [--name <n>] [--force]
@@ -82,6 +86,7 @@ scan options:
   --out <path>             output file (default <repo>/architecture.json)
   --dry-run                print the JSON to stdout instead of writing it
   --describe               ask the agent to write node descriptions (needs the agent bridge)
+  --no-infra               skip infrastructure as code (Terraform, Kubernetes, Helm, Ansible, CI)
 `;
 
 async function serve(argv: readonly string[]): Promise<number> {
@@ -154,6 +159,7 @@ async function scan(argv: readonly string[]): Promise<number> {
         out: { type: "string" },
         "dry-run": { type: "boolean", default: false },
         describe: { type: "boolean", default: false },
+        "no-infra": { type: "boolean", default: false },
       },
       allowPositionals: true,
       strict: true,
@@ -174,9 +180,36 @@ async function scan(argv: readonly string[]): Promise<number> {
       ...(parsed.values.out !== undefined ? { out: parsed.values.out } : {}),
       dryRun: parsed.values["dry-run"] === true,
       describe: parsed.values.describe === true,
+      infra: parsed.values["no-infra"] !== true,
     },
     pkg.version,
   );
+}
+
+async function infra(argv: readonly string[]): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: [...argv],
+      options: {
+        json: { type: "boolean", default: false },
+        kind: { type: "string", multiple: true, default: [] },
+      },
+      allowPositionals: true,
+      strict: true,
+    });
+  } catch (err) {
+    process.stderr.write(`ruah app infra: ${(err as Error).message}\n`);
+    return 2;
+  }
+  const repo = parsed.positionals[0];
+  if (repo === undefined) {
+    process.stderr.write("ruah app infra: missing <repo> argument\n");
+    return 2;
+  }
+  const kinds = (parsed.values.kind ?? []).flatMap((k) => k.split(",")).map((k) => k.trim()).filter((k) => k !== "");
+  const { runInfra } = await import("./scan/iac/run-infra.js");
+  return runInfra({ repo, json: parsed.values.json === true, kinds }, pkg.version);
 }
 
 async function mcp(argv: readonly string[]): Promise<number> {
@@ -258,6 +291,9 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "scan": {
       return await scan(rest);
+    }
+    case "infra": {
+      return await infra(rest);
     }
     case "system": {
       const { runSystem } = await import("./system/run-system.js");

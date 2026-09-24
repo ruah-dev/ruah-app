@@ -1136,6 +1136,79 @@ so these providers count in the Cloud page strip, its filters and `ruah app clou
 - `/api/integrations` is cached for 15 s (§6), so "Check again" right after a login can
   show the previous state for a few seconds.
 
+## 11. Infrastructure-as-code in the map (2026-09-24)
+
+`ruah app scan` (and the daemon's first-open scan and `POST /api/rescan`) also reads the repo's infrastructure as code and shows **how things actually run**: which code runs where, deployed by which tool, on what cloud resources. Deterministic, no AI, no network; implemented as a standalone library in `src/scan/iac/` (no daemon dependency). Everything below is additive and optional: maps of repos without IaC only gain `infra` details on code packages that have a Dockerfile or compose service.
+
+### 11.1 What is read
+
+| Tool | Files | Becomes |
+| --- | --- | --- |
+| Terraform / OpenTofu | `*.tf`, `*.tf.json` (roots = dirs no other config uses as a local module; `modules/` dirs only when instantiated) | a group per root × provider (`Terraform: AWS`); resources → children by category; local modules instantiated (`module.db.aws_db_instance.this`, the caller's literal inputs resolved); remote modules → one child classified by `source` |
+| Kubernetes | `*.yaml` / `*.yml` documents with `apiVersion` + `kind` (multi-document), outside Helm charts | workloads (Deployment, StatefulSet, DaemonSet, Job, CronJob, Pod, Rollout) and routes (Ingress, Traefik IngressRoute, HTTPRoute), HelmChart / HelmRelease / Argo Application CRs; Services fold into the workloads they select |
+| Kustomize | `kustomization.yaml` graphs | roots (kustomizations nothing else references) rendered in memory: `namespace`, `namePrefix` / `nameSuffix`, `images`, `replicas`, strategic-merge patches of replicas / images; one group per environment (`overlays/<env>`, `envs/`, `environments/`, `clusters/`, or an env-like dir name); raw manifests join the group of their namespace |
+| Helm | `Chart.yaml`, `values.yaml`, `templates/*.yaml` (nothing rendered) | a group per chart; workloads from the templates' kinds with image / replicas / port resolved from the `.Values.*` paths they use; ingress hosts from values; well-known dependencies (postgresql, redis, …) |
+| Ansible | playbooks (YAML lists of plays with `hosts:`), `roles/<r>/tasks`, INI / YAML inventories (host names only) | one group per Ansible project; a child per host pattern (`server`) with roles as details; products the roles / packages install (nginx, postgres, …) as children; `docker_container` images → code |
+| Dockerfiles | `Dockerfile`, `Dockerfile.<x>`, `<x>.Dockerfile`, `Containerfile` | `infra` details on the code package it builds (runtime base, ports, workdir, cmd, images) — no new node |
+| Compose | as before (`detectors/compose.ts`) | `infra` details on the compose nodes |
+| CI | `.github/workflows/*.yml` (listed directly: `.github` is a hidden dir the walker skips), `.gitlab-ci.yml` | a `CI/CD` group: a child per pipeline that builds or deploys, its registries and PaaS targets; other workflows are details |
+
+**Never read:** `terraform.tfstate*`, `*.tfvars`, `.env*`, Secret / SealedSecret / ExternalSecret data (name and namespace only, by regex), Ansible `group_vars` / `host_vars` / inventory variables, values under keys that look secret. Settings keep literal values of whitelisted keys only. **Bounds:** Terraform 3,000 files, YAML 4,000, Dockerfiles 500, workflows 200; each file ≤ 2 MiB (manifests ≤ 512 KiB) and read at most once per scan; test-data dirs (`fixtures`, `testdata`, `__tests__`, `__mocks__`) are skipped. The fixture monorepo scans in a few ms.
+
+### 11.2 Map shape
+
+- **Top level:** code packages as before, plus one node per IaC group with `layer: "infra"`: `Terraform: AWS` (`type: "cloud"`), `Kubernetes: prod` / `Helm: api` / `Ansible` (`type: "cluster"`), `CI/CD: GitHub Actions` (`type: "pipeline"`). Ids: `tf-<provider>`, `k8s-<env|namespace>`, `helm-<chart>`, `ansible`, `ci`. With more than 6 groups, a tool with several groups gets one umbrella node (`Kubernetes`, `Terraform`) holding them, so the top level stays readable.
+- **Children** (`parent` = group, id `<group>.<name>`, `path` and `files` = the declaring file): `type` by category — `datastore` (RDS, Cloud SQL, managed DBs), `cache`, `storage`, `queue`, `search`, `registry`, `cluster`, `container` (k8s workloads, ECS tasks), `worker` (CronJob / Job), `service` (VMs, ECS services, Cloud Run, releases), `function`, `frontend`, `server` (Ansible host groups), `gateway` (ingress, API gateway), `loadbalancer`, `dns`, `cdn`, `firewall`, `secret`, `pipeline`, `external` (PaaS). Layers: `edge` (gateway, loadbalancer, dns, cdn, firewall), `services` (compute, workloads, pipelines), `data` (stores, queues, registries), `infra` (cluster, secret, other). The new types are aliased where the viewer and draw.io had no kind: `cloud` → cluster, `pipeline` → worker, `registry` → storage.
+- **Noise is folded, not drawn:** IAM, networking (VPC, subnets, security groups, EIPs), `random_*`, `null_resource`, `time_*`, `tls_*`, data sources, locals, policy attachments, node groups, ConfigMaps, Secrets, RBAC, NetworkPolicies, … go into `infra.details` of the item they belong to (a folded resource that references exactly one item) or of the group.
+
+### 11.3 Node detail fields (`ArchNode.infra`, optional)
+
+```ts
+interface InfraDetails {
+  tool: "terraform" | "kubernetes" | "kustomize" | "helm" | "ansible" | "compose" | "docker" | "ci" | (string & {});
+  kind: string;          // aws_db_instance | Deployment | CronJob | dependency | hosts | workflow | registry | Dockerfile | provider | environment | namespace | chart | inventory | pipelines …
+  address?: string;      // tool-native: module.db.aws_db_instance.this | prod/Deployment/worker | api/Deployment/api | web
+  source?: string[];     // "path:line" of the declaration(s), <= 10
+  settings?: Record<string, string>; // replicas, image, ports, schedule, service, namespace, engine, engine_version, instance_class, allocated_storage, multi_az, kubernetes_version, hosts, roles, triggers, builds, deploys, base, expose, …
+  details?: string[];    // folded resources / objects, <= 40 ("aws_iam_role.eks", "Secret db-credentials (values not read)")
+  hints?: string[];      // names a live cloud resource may carry (§11.6)
+}
+interface Workflow { /* … */ source?: "scan" | (string & {}) } // "scan" = derived by the scanner
+```
+
+Receivers that save an architecture MUST round-trip `infra` and `Workflow.source` (the viewer spreads nodes and workflows; a workflow the user edits loses `source` and becomes theirs).
+
+### 11.4 Edges and workflows
+
+- Edges carry `source: "scan"` and `evidence` (`path:line`, sorted, <= 10): workload → code `runs` (`kind: "deploy"`; by image — CI builds, compose, Dockerfile location / name suffix / COPY sources / workspace filters, package names); IaC item → the top-level infra node `runs` (the RDS instance runs the `Postgres` the code uses; an S3 bucket → `AWS S3`); Terraform references (`sql`, `cache`, `objects`, `messages`, `uses`, `runs on`) and glue resources (DNS records, LB listeners / target groups) as `resolves` / `routes`; route → workload labelled with its host/path; workload → workload / infra kind / code service from env and ConfigMap host names (`HTTP`, `gRPC`, `calls`, `cache`, `sql`); Kubernetes workloads using a Secret / ConfigMap that Terraform writes (`kubernetes_secret`) → the resources it references; pipeline → code `builds`, → registry `pushes`, → targets `deploys`.
+- **Lifting:** an edge whose ends sit on different levels is also added between their ancestors at the level where both are visible (`Kubernetes: prod → worker [runs]`), so the top level shows how things run.
+- **"How it ships" workflows** (`source: "scan"`): per pipeline and code package it builds, `Ship <package>` = `[package, pipeline, registry, …the workloads in the deploy targets that run its image]`. Targets come from `kubectl apply -k/-f`, `kustomize build`, `kubectl set image / rollout restart`, `helm upgrade --install`, `terraform|tofu [-chdir] apply`, `ansible-playbook`, `docker compose up`, `gcloud run deploy`, `aws ecs update-service`, PaaS CLIs and actions; `${{ env.X }}` / `$X` resolve from literal env, anything else is a `*` wildcard. Pipelines that deploy but build nothing: `Deploy: <pipeline>`.
+
+### 11.5 Provenance and re-scans (`src/scan/merge.ts`)
+
+- IaC nodes have no `origin` (scanned, §1.7) and are regenerated by every scan; hand edits (`description`, `notes`, `x` / `y`) survive by id like on any node. An IaC node the scan no longer produces is dropped **even when its file still exists** (the resource was removed, or IaC scanning is off); elements with `origin` `user` / `agent` are kept. Code packages with `docker` / `compose` details keep the ordinary rule.
+- Workflows with `source: "scan"` are replaced by the new scan's; all other workflows are kept as before.
+- System architectures (§1.5) carry each repo's `infra` (`source` paths prefixed `<repoId>/`), inner edge `evidence` and workflow `source`.
+
+### 11.6 Linking live cloud resources (`src/integrations/linking.ts`)
+
+After manual > tag > unique exact name > unique normalized name: (a) an ambiguous name match is narrowed to the one IaC node whose `type` fits the resource type (a `container` resource named `worker` → the `worker` Deployment, not the `worker` package); (b) `infra.hints` are matched against the resource name, its `Name` / `name` / `app` / `app.kubernetes.io/name` / `app.kubernetes.io/instance` / `k8s-app` / `service` tag, and `<namespace>/<name>` — exact, then normalized, narrowed by type when several match. Hints: Terraform address, `type.label`, literal `identifier` / `name` / `bucket` / …, `Name` tag; Kubernetes name, `namespace/name`, `kind/name`, app labels, the names of the Services selecting it; Helm workload and chart names; Ansible host pattern and inventory host names. Links decided this way report `linkSource: "name"`.
+
+### 11.7 Context pack and draw.io
+
+- Context pack (§3.1), after `layer:` when the element has `infra`: `infra: <tool> <kind> <address>`, `declared in: <path:line>, …`, `settings: k=v; …` (<= 12), `folded: …` (<= 12). Nothing changes for elements without `infra`.
+- draw.io: elements with `infra` get the properties `infra`, `declaredIn`, `settings`, `folded` and tooltip lines; the Specifications page gets an **Infrastructure as code** table (element, tool / kind / address, declared in, settings, folded, cloud link hints).
+
+### 11.8 Optional everywhere
+
+- **CLI:** `ruah app scan <repo> --no-infra` skips IaC. `ruah app infra <repo> [--json] [--kind terraform|k8s|helm|kustomize|ansible|compose|docker|ci]…` prints what the IaC scan finds — groups with their resources / workloads, declaration lines and key settings, code packaging, "how it ships" workflows, links — and writes nothing (`--kind` repeatable or comma-separated; `--json` → `{ repo, kinds, nodes, edges, workflows, ms }`; unknown kind or missing repo → exit 2).
+- **Daemon** — per project, persisted in `$RUAH_HOME/projects/<id>/state.json` as `scan.infra` (default `true`); the first-open scan and `POST /api/rescan` use it. System (multi-repo) scans always include IaC.
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/projects/scan-options[?id=<projectId>]` | `{ projectId, options: { infra: boolean } }` (default: the open project; none open → 409) |
+| `POST /api/projects/scan-options` | `{ id?, infra? }` → `{ projectId, options }`; same Origin rule as every POST (403); bad body 400; unknown project 404 |
+
 ## 12. Multi-repo systems management (2026-09-24)
 
 Creating and managing multi-repo systems (§1.5, docs/MULTI-REPO.md) without

@@ -10,12 +10,13 @@
 // datastore / queue / gateway / external nodes with edges from their users.
 // Output is deterministic: sorted inputs, stable ids, no timestamps unless
 // `opts.now` is given.
-import type { Architecture, ArchEdge, ArchNode } from "../contracts/architecture.js";
+import type { Architecture, ArchEdge, ArchNode, Workflow } from "../contracts/architecture.js";
 import { detectCompose, externalsFromDeps, infraFromDeps, type InfraKind } from "./detectors/compose.js";
 import { classify, isTestFile } from "./detectors/entrypoints.js";
 import { SOURCE_EXT } from "./detectors/imports.js";
 import { readManifest } from "./detectors/manifests.js";
 import { detectWorkspaces } from "./detectors/workspaces.js";
+import { buildInfraGraph, detectInfra } from "./iac/index.js";
 import { layoutArchitecture } from "./layout.js";
 import { mergeWithExisting } from "./merge.js";
 import { buildModuleTree, IdAllocator, rankByInDegree, slug, sourceRoot } from "./modules.js";
@@ -28,6 +29,7 @@ export interface ScanOptions {
   now?: Date; // generatedAt; omitted when absent (keeps output byte-stable)
   useGit?: boolean; // default true: use `git ls-files` when root has .git
   previous?: Architecture | null; // existing architecture.json to merge hand edits from
+  infra?: boolean; // default true: infrastructure-as-code groups, links and "how it ships" workflows (§11)
 }
 
 const LAYER_ORDER = [
@@ -305,6 +307,27 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
     }
   }
 
+  // ---- Infrastructure as code: Terraform, Kubernetes, Helm, Ansible, Dockerfiles, CI (§11) ----
+  const workflows: Workflow[] = [];
+  if (opts.infra !== false) {
+    const report = detectInfra(ctx, { compose });
+    const graph = buildInfraGraph(report, {
+      ids,
+      owners: owners.map(({ pkg, id }) => ({ dir: pkg.dir, id, name: pkg.name })),
+      nodes,
+      infraNodeByKind,
+      externalIds,
+      composeIds,
+    });
+    for (const n of nodes) {
+      const infra = graph.annotations.get(n.id);
+      if (infra !== undefined) n.infra = infra;
+    }
+    nodes.push(...graph.nodes);
+    for (const e of graph.edges) addEdge(e);
+    workflows.push(...graph.workflows);
+  }
+
   edges.sort((a, b) =>
     a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : a.to > b.to ? 1 : (a.label ?? "") < (b.label ?? "") ? -1 : 1,
   );
@@ -317,7 +340,7 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
     layers,
     nodes,
     edges,
-    workflows: [],
+    workflows,
   };
   // Provenance: every scanned edge is marked, so re-scans replace only these.
   arch = { ...arch, edges: arch.edges.map((e) => ({ ...e, source: "scan" })) };

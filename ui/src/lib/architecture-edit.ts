@@ -2,7 +2,7 @@
 // returns a new Architecture (or null when the edit is not allowed) and only
 // touches the fields it changes, so everything the editor does not know about
 // (files, notes, layer, unknown node types, generatedBy, ...) survives a save.
-import type { Architecture, ArchEdge, ArchNode } from "./contracts";
+import type { Architecture, ArchEdge, ArchNode, Workflow } from "./contracts";
 import type { DiagramNode, NodeKind } from "@/data/graphs";
 import { ORIGIN, isFlowType, parseDiagramId, typeFor } from "./architecture";
 
@@ -24,6 +24,12 @@ export function slugId(base: string, taken: Set<string>): string {
 }
 
 const nodeIds = (arch: Architecture) => new Set(arch.nodes.map((n) => n.id));
+
+/** A workflow the user changed is theirs: scanned ones (source "scan", CONTRACTS §11) are replaced on re-scan. */
+function withSteps(w: Workflow, steps: string[]): Workflow {
+  const { source: _source, ...rest } = w;
+  return { ...rest, steps };
+}
 
 function withNode(arch: Architecture, id: string, fn: (n: ArchNode) => ArchNode): Architecture {
   return { ...arch, nodes: arch.nodes.map((n) => (n.id === id ? fn(n) : n)) };
@@ -114,7 +120,7 @@ export function addNode(
   return {
     ...arch,
     nodes: [...arch.nodes, created],
-    workflows: arch.workflows.map((w) => (w.id === wf.id ? { ...w, steps: [...w.steps, id] } : w)),
+    workflows: arch.workflows.map((w) => (w.id === wf.id ? withSteps(w, [...w.steps, id]) : w)),
   };
 }
 
@@ -124,7 +130,7 @@ function removeNodes(arch: Architecture, ids: Set<string>): Architecture {
     nodes: arch.nodes.filter((n) => !ids.has(n.id)),
     edges: arch.edges.filter((e) => !ids.has(e.from) && !ids.has(e.to)),
     workflows: arch.workflows
-      .map((w) => ({ ...w, steps: w.steps.filter((s) => !ids.has(s)) }))
+      .map((w) => (w.steps.some((s) => ids.has(s)) ? withSteps(w, w.steps.filter((s) => !ids.has(s))) : w))
       .filter((w) => w.steps.length >= 2),
   };
 }
@@ -158,7 +164,7 @@ export function deleteNode(
   if (steps.length < 2) return null;
   let next: Architecture = {
     ...arch,
-    workflows: arch.workflows.map((w) => (w.id === wf.id ? { ...w, steps } : w)),
+    workflows: arch.workflows.map((w) => (w.id === wf.id ? withSteps(w, steps) : w)),
   };
   const node = arch.nodes.find((n) => n.id === nodeId);
   const usedElsewhere =
@@ -188,7 +194,7 @@ export function addEdge(
   const i = wf.steps.indexOf(from);
   if (i === -1 || wf.steps[i + 1] === to) return null;
   const steps = [...wf.steps.slice(0, i + 1), to, ...wf.steps.slice(i + 1)];
-  return { ...arch, workflows: arch.workflows.map((w) => (w.id === wf.id ? { ...w, steps } : w)) };
+  return { ...arch, workflows: arch.workflows.map((w) => (w.id === wf.id ? withSteps(w, steps) : w)) };
 }
 
 export function patchEdge(
@@ -236,7 +242,7 @@ export function deleteEdge(
   if (i === -1) return null;
   const steps = wf.steps.filter((_, k) => k !== i + 1);
   if (steps.length < 2) return null;
-  return { ...arch, workflows: arch.workflows.map((w) => (w.id === wf.id ? { ...w, steps } : w)) };
+  return { ...arch, workflows: arch.workflows.map((w) => (w.id === wf.id ? withSteps(w, steps) : w)) };
 }
 
 /** Rename a diagram: top level -> architecture name, drill level -> its node, workflow -> workflow. */

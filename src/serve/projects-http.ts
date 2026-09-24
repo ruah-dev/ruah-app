@@ -1,6 +1,7 @@
 // src/serve/projects-http.ts — CONTRACTS §5.3 endpoints: GET /api/projects,
 // POST /api/projects/{open,create,pin,forget}, GET /api/chats/recent, plus the
-// switching helpers GET /api/projects/preview and GET /api/chats/history. Every
+// switching helpers GET /api/projects/preview and GET /api/chats/history, and
+// GET/POST /api/projects/scan-options (§11, per-project scan options). Every
 // POST passes the same Origin check as /ws (403 otherwise; CSRF defence for a
 // localhost daemon). Bodies are JSON, at most 64 KiB.
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -10,6 +11,7 @@ import {
   ForgetProjectBodySchema,
   OpenProjectBodySchema,
   PinProjectBodySchema,
+  ScanOptionsBodySchema,
 } from "../contracts/projects.js";
 import { ProjectError, type ProjectService } from "../projects/service.js";
 
@@ -93,6 +95,15 @@ export function handleProjectsRequest(
       else sendJson(res, 200, preview);
       return true;
     }
+    if (pathname === "/api/projects/scan-options") {
+      try {
+        const projectId = service.projectIdOrCurrent(url.searchParams.get("id") ?? undefined);
+        sendJson(res, 200, { projectId, options: service.scanOptions(projectId) });
+      } catch (err) {
+        fail(res, err);
+      }
+      return true;
+    }
     if (pathname === "/api/chats/history") {
       const projectId = url.searchParams.get("projectId") ?? "";
       const chatId = url.searchParams.get("chatId") ?? "";
@@ -138,6 +149,14 @@ export function handleProjectsRequest(
         const body = await parseBody(req, PinProjectBodySchema);
         if (!service.pin(body.id, body.pinned !== false)) throw new ProjectError(404, `unknown project: ${body.id}`);
         sendJson(res, 200, { ok: true });
+        return;
+      }
+      case "/api/projects/scan-options": {
+        // CONTRACTS §11: persisted per project; the next rescan uses them.
+        const body = await parseBody(req, ScanOptionsBodySchema);
+        const projectId = service.projectIdOrCurrent(body.id);
+        const options = service.setScanOptions(projectId, body.infra !== undefined ? { infra: body.infra } : {});
+        sendJson(res, 200, { projectId, options });
         return;
       }
       case "/api/projects/forget": {

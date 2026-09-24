@@ -159,7 +159,10 @@ export function startServer(
       const started = Date.now();
       let arch;
       try {
-        arch = scanRepo(store.root, { version: hub.version(), now: new Date(), previous: store.current() });
+        // Per-project scan options (CONTRACTS §11): IaC on unless the project turned it off.
+        const projectId = hub.project()?.id;
+        const infra = projectId !== undefined && options.projects !== undefined ? options.projects.scanOptions(projectId).infra : true;
+        arch = scanRepo(store.root, { version: hub.version(), now: new Date(), previous: store.current(), infra });
       } catch (err) {
         sendJson(res, 500, { error: `scan failed: ${(err as Error).message}` });
         return;

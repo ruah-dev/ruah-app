@@ -4,6 +4,18 @@ import { z } from "zod";
 // literals are documented in comments (§1 preamble: receivers ignore unknown
 // type/kind values instead of rejecting).
 export const NodeTypeSchema = z.string(); // known: service | module | datastore | external | step | frontend | gateway | queue | file
+// §11 (2026-09-24): what an infrastructure-as-code element is and where it is
+// declared. Written by the scanner on IaC nodes (and on code nodes a Dockerfile
+// or compose service packages); never secret values.
+export const InfraDetailsSchema = z.object({
+  tool: z.string(), // known: terraform | kubernetes | kustomize | helm | ansible | compose | docker | ci
+  kind: z.string(), // tool-native kind: aws_db_instance | Deployment | hosts | workflow | Dockerfile | provider | environment …
+  address: z.string().optional(), // tool-native address: aws_db_instance.main | prod/Deployment/api
+  source: z.array(z.string()).optional(), // "path:line" declarations, <= 10
+  settings: z.record(z.string()).optional(), // key settings (replicas, image, instance_class, …), literal values only
+  details: z.array(z.string()).optional(), // folded resources / objects, <= 40
+  hints: z.array(z.string()).optional(), // names a live cloud resource may carry (src/integrations/linking.ts)
+});
 export const ArchNodeSchema = z.object({
   id: z.string(),
   type: NodeTypeSchema,
@@ -17,6 +29,7 @@ export const ArchNodeSchema = z.object({
   parent: z.string().optional(),
   repo: z.string().optional(), // system architectures only: id of the owning repo in ruah.system.json
   origin: z.string().optional(), // who made the element, known: scan | user | agent; absent = scan or hand-written (§1.7)
+  infra: InfraDetailsSchema.optional(), // §11: infrastructure-as-code details
   x: z.number().optional(),
   y: z.number().optional(),
 });
@@ -33,6 +46,7 @@ export const WorkflowSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   steps: z.array(z.string()), // >= 2 entries (§1.2 rule 7)
+  source: z.string().optional(), // §11: "scan" = derived by the scanner (replaced on re-scan); absent = hand-written
 });
 export const ArchitectureSchema = z.object({
   version: z.literal(1),
@@ -51,4 +65,5 @@ export type EdgeSource = "scan" | "suggested" | "manual" | "agent";
 /** ArchNode.origin (§1.7): "agent" = drawn by a coding agent through the map tools, kept by re-scans. */
 export type NodeOrigin = "scan" | "user" | "agent";
 export type Workflow = z.infer<typeof WorkflowSchema>;
+export type InfraDetails = z.infer<typeof InfraDetailsSchema>;
 export type Architecture = z.infer<typeof ArchitectureSchema>;
