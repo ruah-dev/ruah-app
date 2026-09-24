@@ -18,6 +18,7 @@ import { scanRepo } from "../scan/index.js";
 import { atomicWriteFileSync, expandHome, projectIdFor } from "./fs-util.js";
 import type { ProjectsStore } from "./projects-store.js";
 import { toChatInfo, type ChatStore } from "./chat-store.js";
+import type { ProjectScanOptions } from "./project-state.js";
 
 export const SYSTEM_FILE = "ruah.system.json";
 export const ARCHITECTURE_FILE = "architecture.json";
@@ -197,6 +198,24 @@ export class ProjectService {
     return this.deps.projects.forget(id);
   }
 
+  /** `id`, else the open project's id (409 when none is open). */
+  projectIdOrCurrent(id: string | undefined): string {
+    const resolved = id ?? this.deps.host.project()?.id;
+    if (resolved === undefined) throw new ProjectError(409, "no project is open");
+    return resolved;
+  }
+
+  /** CONTRACTS §11: the project's scan options (defaults: infra on). Unknown ids get the defaults. */
+  scanOptions(projectId: string): ProjectScanOptions {
+    return this.deps.chats.state.scanOptions(projectId);
+  }
+
+  /** Persists scan options for a known project (the next rescan uses them). */
+  setScanOptions(projectId: string, patch: Partial<ProjectScanOptions>): ProjectScanOptions {
+    if (!isProjectId(projectId) || this.deps.projects.lookup(projectId) === undefined) throw new ProjectError(404, `unknown project: ${projectId}`);
+    return this.deps.chats.state.setScanOptions(projectId, patch);
+  }
+
   /** Chats of every project (or of `projectId` only), newest first, with the project's name and root. */
   recentChats(limit: number, projectId?: string): RecentChat[] {
     const out: RecentChat[] = [];
@@ -286,7 +305,7 @@ export class ProjectService {
     } else {
       const archPath = options.file !== undefined ? path.resolve(options.file) : path.join(root, ARCHITECTURE_FILE);
       if (!fs.existsSync(archPath)) {
-        this.scanInto(root, archPath);
+        this.scanInto(root, archPath, this.scanOptions(id));
         scanned = true;
       }
       store = createArchitectureStore(archPath, { watch: this.deps.watch !== false });
@@ -305,10 +324,10 @@ export class ProjectService {
   }
 
   /** First open of a repo: `ruah app scan` in-process, written atomically. */
-  private scanInto(root: string, archPath: string): void {
+  private scanInto(root: string, archPath: string, options: ProjectScanOptions): void {
     let arch: Architecture;
     try {
-      arch = scanRepo(root, { version: this.deps.version, now: new Date() });
+      arch = scanRepo(root, { version: this.deps.version, now: new Date(), infra: options.infra });
     } catch (err) {
       throw new ProjectError(500, `scan failed: ${(err as Error).message}`);
     }

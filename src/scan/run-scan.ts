@@ -1,4 +1,4 @@
-// `ruah app scan <repo> [--out <path>] [--dry-run] [--describe]` (PLAN.md Phase 2).
+// `ruah app scan <repo> [--out <path>] [--dry-run] [--describe] [--no-infra]` (PLAN.md Phase 2).
 //
 // Scans, merges hand edits from the existing output file (see merge.ts),
 // validates against CONTRACTS.md §1.2, then writes the file (or prints it with
@@ -15,6 +15,7 @@ export interface RunScanOptions {
   out?: string;
   dryRun: boolean;
   describe: boolean;
+  infra?: boolean; // default true; --no-infra skips infrastructure as code (§11)
 }
 
 function readPrevious(file: string, root: string): Architecture | null {
@@ -37,7 +38,7 @@ export async function runScan(opts: RunScanOptions, version: string): Promise<nu
   }
   const out = path.resolve(opts.out ?? path.join(root, "architecture.json"));
   const started = Date.now();
-  let arch = scanRepo(root, { version, now: new Date(), previous: readPrevious(out, root) });
+  let arch = scanRepo(root, { version, now: new Date(), previous: readPrevious(out, root), infra: opts.infra !== false });
   if (opts.describe) {
     const d = await describeArchitecture(arch, root);
     arch = d.architecture;

@@ -36,6 +36,18 @@ export const CreateProjectBodySchema = z.object({
 export const PinProjectBodySchema = z.object({ id: z.string().min(1), pinned: z.boolean().optional() });
 export const ForgetProjectBodySchema = z.object({ id: z.string().min(1) });
 
+// CONTRACTS §11: per-project scan options (persisted in state.json; defaults on).
+export const ScanOptionsSchema = z.object({
+  infra: z.boolean(), // infrastructure-as-code groups, links and "how it ships" workflows
+});
+export type ScanOptions = z.infer<typeof ScanOptionsSchema>;
+export const ScanOptionsBodySchema = z.object({
+  id: z.string().min(1).max(64).optional(), // default: the open project
+  infra: z.boolean().optional(),
+});
+export const ScanOptionsResultSchema = z.object({ projectId: z.string(), options: ScanOptionsSchema });
+export type ScanOptionsResult = z.infer<typeof ScanOptionsResultSchema>;
+
 export const RecentChatSchema = ChatInfoSchema.extend({ projectName: z.string(), projectRoot: z.string() });
 export type RecentChat = z.infer<typeof RecentChatSchema>;
 export const RecentChatsSchema = z.object({ chats: z.array(RecentChatSchema) });

@@ -1,7 +1,8 @@
 // src/projects/project-state.ts — small per-project state that must survive a
 // daemon restart (CONTRACTS §5.5): $RUAH_HOME/projects/<id>/state.json.
-// Today it holds the chat that was last active in the project, so reopening
-// the project (after a switch or a restart) lands in the same conversation.
+// It holds the chat that was last active in the project, so reopening
+// the project (after a switch or a restart) lands in the same conversation,
+// and the project's scan options (CONTRACTS §11: `scan.infra`, default on).
 // Writes are atomic; an unreadable file counts as "no state".
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -15,8 +16,14 @@ const ProjectStateSchema = z.object({
   version: z.literal(1),
   /** null = the user left the project with no chat active (e.g. deleted it). */
   activeChatId: z.string().nullable().optional(),
+  /** CONTRACTS §11: how the project is scanned; absent fields = defaults (infra on). */
+  scan: z.object({ infra: z.boolean().optional() }).optional(),
 });
 export type ProjectState = z.infer<typeof ProjectStateSchema>;
+
+export interface ProjectScanOptions {
+  infra: boolean;
+}
 
 export class ProjectStateStore {
   private readonly cache = new Map<string, ProjectState>();
@@ -54,7 +61,23 @@ export class ProjectStateStore {
     if (!PROJECT_ID.test(projectId)) return;
     const current = this.read(projectId);
     if (current.activeChatId === chatId) return;
-    const next: ProjectState = { ...current, version: 1, activeChatId: chatId };
+    this.write(projectId, { ...current, version: 1, activeChatId: chatId });
+  }
+
+  /** The project's scan options with defaults applied (CONTRACTS §11). */
+  scanOptions(projectId: string): ProjectScanOptions {
+    return { infra: this.read(projectId).scan?.infra ?? true };
+  }
+
+  setScanOptions(projectId: string, patch: Partial<ProjectScanOptions>): ProjectScanOptions {
+    if (!PROJECT_ID.test(projectId)) return this.scanOptions(projectId);
+    const current = this.read(projectId);
+    const scan = { ...(current.scan ?? {}), ...(patch.infra !== undefined ? { infra: patch.infra } : {}) };
+    if (JSON.stringify(scan) !== JSON.stringify(current.scan ?? {})) this.write(projectId, { ...current, version: 1, scan });
+    return this.scanOptions(projectId);
+  }
+
+  private write(projectId: string, next: ProjectState): void {
     this.cache.set(projectId, next);
     try {
       atomicWriteFileSync(this.file(projectId), `${JSON.stringify(next, null, 2)}\n`);
