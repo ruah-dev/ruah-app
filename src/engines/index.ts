@@ -1,8 +1,13 @@
 // src/engines/index.ts — EnginesService facade for HTTP + session hooks.
 import type { Architecture, ArchNode } from "../contracts/architecture.js";
-import type { EngineCliDeps } from "./cli.js";
 import { detectSpecsForNode, runConv } from "./conv.js";
 import { runEvalOnNode } from "./eval.js";
+import { runGuardAudit, runGuardScan } from "./guard.js";
+import { runOptUsage } from "./opt.js";
+import { engineStatus, type EngineCliDeps } from "./cli.js";
+import { readReplayHtml, renderChatTurn } from "./watch.js";
+import { ruahHome } from "../usage/log.js";
+import * as path from "node:path";
 import {
   loadVerifyState,
   runVerifyForNode,
@@ -19,6 +24,8 @@ export interface EnginesDeps {
   root: () => string | null;
   /** Current architecture; null when none. */
   architecture: () => Architecture | null;
+  /** $RUAH_HOME. Defaults to ruahHome() so tests that set RUAH_HOME stay isolated. */
+  home?: () => string;
   debug?: (line: string) => void;
 }
 
@@ -67,6 +74,55 @@ export class EnginesService {
         `verify after turn failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
+  }
+
+  private cliDeps(): EngineCliDeps | undefined {
+    return this.deps.cli;
+  }
+
+  private homeDir(): string {
+    return this.deps.home?.() ?? ruahHome();
+  }
+
+  status() {
+    return engineStatus(this.cliDeps() ?? {});
+  }
+
+  async guardScan() {
+    const root = this.requireRoot();
+    return runGuardScan({ root, ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}) });
+  }
+
+  async guardAudit(last?: number) {
+    const root = this.requireRoot();
+    return runGuardAudit({
+      root,
+      ...(last !== undefined ? { last } : {}),
+      ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}),
+    });
+  }
+
+  async optUsage() {
+    const file = path.join(this.homeDir(), "usage.jsonl");
+    return runOptUsage({
+      file,
+      ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}),
+    });
+  }
+
+  async watchReplay(chatId: string, turnId: string) {
+    const root = this.requireRoot();
+    return renderChatTurn({
+      root,
+      home: this.homeDir(),
+      chatId,
+      turnId,
+      ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}),
+    });
+  }
+
+  watchHtml(name: string): string | undefined {
+    return readReplayHtml(this.homeDir(), name);
   }
 
   async runEval(nodeId: string, prompt: string) {

@@ -74,6 +74,48 @@ export function handleEnginesRequest(
 
   void (async () => {
     try {
+      if (method === "GET" && url.pathname === "/api/engines/status") {
+        json(res, 200, engines.status());
+        return;
+      }
+      if (method === "POST" && url.pathname === "/api/engines/guard/scan") {
+        const result = await engines.guardScan();
+        json(res, result.ok ? 200 : result.status, result.ok ? result.data : { error: result.error });
+        return;
+      }
+      if (method === "GET" && url.pathname === "/api/engines/guard/audit") {
+        const lastRaw = url.searchParams.get("last");
+        const last = lastRaw === null ? undefined : Number(lastRaw);
+        if (last !== undefined && (!Number.isInteger(last) || last < 0)) {
+          json(res, 400, { error: "last must be a non-negative integer" });
+          return;
+        }
+        const result = await engines.guardAudit(last);
+        json(res, result.ok ? 200 : result.status, result.ok ? result.data : { error: result.error });
+        return;
+      }
+      if (method === "POST" && url.pathname === "/api/engines/opt/usage") {
+        const result = await engines.optUsage();
+        json(res, result.ok ? 200 : result.status, result.ok ? result.data : { error: result.error });
+        return;
+      }
+      if (method === "POST" && url.pathname === "/api/engines/watch/replay") {
+        const body = z.object({ chatId: z.string().min(1), turnId: z.string().min(1) }).parse(await readBody(req));
+        const result = await engines.watchReplay(body.chatId, body.turnId);
+        json(res, result.ok ? 200 : result.status, result.ok ? result.data : { error: result.error });
+        return;
+      }
+      if (method === "GET" && url.pathname === "/api/engines/watch/view") {
+        const name = url.searchParams.get("name") ?? "";
+        const html = engines.watchHtml(name);
+        if (html === undefined) {
+          json(res, 404, { error: "replay not found" });
+          return;
+        }
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+        res.end(html);
+        return;
+      }
       if (method === "GET" && url.pathname === "/api/engines/verify/state") {
         json(res, 200, { nodes: engines.verifyState() });
         return;

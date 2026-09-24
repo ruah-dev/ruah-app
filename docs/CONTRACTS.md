@@ -863,6 +863,26 @@ it; a plain browser uses `window.open(url, "_blank", "noopener")`.
 
 ---
 
+## 8. Ruah engines: guard, opt, watch (2026-09-24)
+
+Optional CLIs behind `/api/engines/*`. Each one is also usable on its own
+(`ruah guard`, `ruah opt`, `ruah watch`, or the package bin). When the binary
+is missing the route answers **424** with `{ error }` that includes
+`npm i -g @ruah-dev/cli @ruah-dev/<tool>`. `GET /api/engines/status` reports
+that without spawning anything. Nothing here changes agent permissions.
+
+| Method + path | Body / query | Result |
+| --- | --- | --- |
+| `GET /api/engines/status` | — | `{ guard, opt, watch }` each `{ installed, install }` |
+| `POST /api/engines/guard/scan` | `{}` | `ruah guard scan . --json` on the open project (secrets + policy rules). Findings are a report only. |
+| `GET /api/engines/guard/audit` | `last` (optional, non-negative integer) | `{ entries, count, file }` from `ruah guard audit` |
+| `POST /api/engines/opt/usage` | `{}` | `ruah opt usage $RUAH_HOME/usage.jsonl --json`: top spenders, waste signals, suggestions. Missing log → empty report. |
+| `POST /api/engines/watch/replay` | `{ chatId, turnId }` | Renders that turn from `$RUAH_HOME/projects/<projectId>/chats/<chatId>.jsonl` via `ruah watch render`. `{ path, name, turns }` |
+| `GET /api/engines/watch/view?name=` | basename `turn-….html` under `$RUAH_HOME/replays` only | `text/html` replay. The viewer shows it in an iframe and can reveal the file. |
+
+409 when no project is open. 404 when the chat or turn is missing. POST still
+requires an allowed `Origin` (§2.2).
+
 ## 9. Cloud providers and live status (2026-09-24)
 
 Extends §6 (cloud family) with five more providers and with **what is really

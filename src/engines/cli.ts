@@ -13,7 +13,7 @@ import {
 
 export const ENGINE_TIMEOUT_MS = 120_000;
 
-export type EngineNamespace = "verify" | "eval" | "opt" | "conv" | "guard";
+export type EngineNamespace = "verify" | "eval" | "opt" | "conv" | "guard" | "watch";
 
 const DIRECT_BINS: Record<EngineNamespace, string> = {
   verify: "ruah-verify",
@@ -21,7 +21,32 @@ const DIRECT_BINS: Record<EngineNamespace, string> = {
   opt: "ruah-opt",
   conv: "ruah-conv",
   guard: "ruah-guard",
+  watch: "ruah-watch",
 };
+
+export function engineInstallCommand(namespace: EngineNamespace): string {
+  return `npm i -g @ruah-dev/cli @ruah-dev/${namespace}`;
+}
+
+export interface EngineAvailability {
+  installed: boolean;
+  install: string;
+}
+
+/** Whether each optional engine binary can be resolved. Does not spawn it. */
+export function engineStatus(
+  deps: EngineCliDeps = {},
+  namespaces: readonly EngineNamespace[] = ["guard", "opt", "watch"],
+): Record<string, EngineAvailability> {
+  const out: Record<string, EngineAvailability> = {};
+  for (const namespace of namespaces) {
+    out[namespace] = {
+      installed: resolveEngineInvocation(namespace, deps) !== null,
+      install: engineInstallCommand(namespace),
+    };
+  }
+  return out;
+}
 
 export interface EngineCliDeps {
   runner?: Runner;
@@ -65,6 +90,7 @@ export function resolveEngineInvocation(
   deps: EngineCliDeps = {},
 ): { kind: "ruah"; bin: string; prefix: string[] } | { kind: "direct"; bin: string; prefix: string[] } | null {
   const env = deps.env ?? process.env;
+  if (env.RUAH_ENGINES_OFF === "1") return null;
   const workspace = deps.workspaceRoot ?? (env.RUAH_WORKSPACE?.trim() || undefined);
   const ruah = resolveBin("ruah", env);
   if (ruah) return { kind: "ruah", bin: ruah, prefix: [namespace] };
@@ -95,7 +121,7 @@ export async function runEngineJson<T>(
       ok: false,
       status: 424,
       kind: "missing",
-      error: `ruah ${namespace} is not installed. npm i -g @ruah-dev/cli @ruah-dev/${namespace}`,
+      error: `ruah ${namespace} is not installed. ${engineInstallCommand(namespace)}`,
     };
   }
   const fullArgs = [...inv.prefix, ...args];

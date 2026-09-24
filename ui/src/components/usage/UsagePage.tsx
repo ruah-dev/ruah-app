@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { UsageChart, type ChartColumn } from "./UsageChart";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
+import { OptimizeSection } from "@/components/engines/OptimizeSection";
 import { agentColor, agentLabel, orderAgents } from "./usageAgents";
 import {
   readUsagePagePreferences,
@@ -449,6 +450,7 @@ export function UsagePage() {
               </section>
             </>
           )}
+          <OptimizeSection />
         </div>
       </div>
       <UsagePriceOverrides

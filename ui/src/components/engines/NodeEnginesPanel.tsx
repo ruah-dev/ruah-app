@@ -1,6 +1,7 @@
 // Inspector actions: eval scorecard + convert OpenAPI via engine CLIs.
 import { useEffect, useState } from "react";
 import { detectConv, runConv, runEval } from "@/lib/engines";
+import { GuardCard } from "@/components/engines/GuardCard";
 import { Button } from "@/components/ui/button";
 
 export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; defaultPrompt?: string }) {
@@ -97,6 +98,7 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
           ) : null}
         </div>
       ) : null}
+      <GuardCard />
     </div>
   );
 }

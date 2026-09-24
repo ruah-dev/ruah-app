@@ -86,3 +86,79 @@ export async function runConv(
   });
   return res.json();
 }
+
+export interface EngineToolStatus {
+  installed: boolean;
+  install: string;
+}
+
+export async function engineStatus(): Promise<Record<string, EngineToolStatus>> {
+  const res = await fetch("/api/engines/status");
+  if (!res.ok) return {};
+  return res.json();
+}
+
+export interface GuardScan {
+  findings?: unknown[];
+  summary?: { filesScanned?: number; total?: number; failed?: boolean };
+  error?: string;
+}
+
+export async function guardScan(): Promise<GuardScan | { error: string }> {
+  const res = await fetch("/api/engines/guard/scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const body = (await res.json()) as GuardScan & { error?: string };
+  if (!res.ok) return { error: body.error ?? `guard failed (${res.status})` };
+  return body;
+}
+
+export interface GuardAudit {
+  entries?: unknown[];
+  count?: number;
+  error?: string;
+}
+
+export async function guardAudit(): Promise<GuardAudit | { error: string }> {
+  const res = await fetch("/api/engines/guard/audit");
+  const body = (await res.json()) as GuardAudit & { error?: string };
+  if (!res.ok) return { error: body.error ?? `audit failed (${res.status})` };
+  return body;
+}
+
+export interface OptUsage {
+  records: number;
+  summary: { totalTokens: number; costUsd: number };
+  topSpenders: Array<{ by: string; key: string; tokens: number; costUsd: number }>;
+  waste: Array<{ signal: string; detail: string }>;
+  suggestions: string[];
+  error?: string;
+}
+
+export async function optUsage(): Promise<OptUsage | { error: string }> {
+  const res = await fetch("/api/engines/opt/usage", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const body = (await res.json()) as OptUsage & { error?: string };
+  if (!res.ok) return { error: body.error ?? `opt failed (${res.status})` };
+  return body;
+}
+
+export async function watchReplay(
+  projectId: string,
+  chatId: string,
+  turnId: string,
+): Promise<{ path: string; name: string; turns: number } | { error: string }> {
+  const res = await fetch("/api/engines/watch/replay", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ projectId, chatId, turnId }),
+  });
+  const body = (await res.json()) as { path?: string; name?: string; turns?: number; error?: string };
+  if (!res.ok || !body.path || !body.name) return { error: body.error ?? `replay failed (${res.status})` };
+  return { path: body.path, name: body.name, turns: body.turns ?? 0 };
+}
