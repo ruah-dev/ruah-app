@@ -2,7 +2,7 @@
 // Cloud page strip, and the health → tone mapping (status heuristic as fallback).
 import { describe, expect, it } from "vitest";
 import type { CloudResource, CloudSyncResult } from "@/lib/contracts";
-import { applyCloudUpdate, healthCounts, healthTone, isUnhealthy } from "@/lib/integrations";
+import { applyCloudUpdate, pushOutdatesLoad, healthCounts, healthTone, isUnhealthy } from "@/lib/integrations";
 
 const r = (id: string, provider: string, extra: Partial<CloudResource> = {}): CloudResource => ({
   id,
@@ -48,6 +48,18 @@ describe("applyCloudUpdate", () => {
       ["b", "t0"],
     ]);
     expect(next.errors).toEqual([{ provider: "kubernetes", message: "cluster unreachable" }]);
+  });
+});
+
+describe("pushOutdatesLoad", () => {
+  it("keeps a push that landed while the first load was in flight (a slow provider finished in between)", () => {
+    expect(pushOutdatesLoad(true, 2_000, 1_000)).toBe(true);
+    expect(pushOutdatesLoad(true, 1_000, 1_000)).toBe(true);
+  });
+  it("applies the load when no push arrived since it was requested", () => {
+    expect(pushOutdatesLoad(true, 500, 1_000)).toBe(false);
+    expect(pushOutdatesLoad(true, null, 1_000)).toBe(false);
+    expect(pushOutdatesLoad(false, 2_000, 1_000)).toBe(false);
   });
 });
 

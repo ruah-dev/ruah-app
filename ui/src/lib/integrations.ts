@@ -299,6 +299,11 @@ export function loadIntegrations(): Promise<void> {
   });
 }
 
+/** True when a cloud.updated push applied at `pushedAt` is newer than a load requested at `requestedAt`. */
+export function pushOutdatesLoad(haveSnapshot: boolean, pushedAt: number | null, requestedAt: number): boolean {
+  return haveSnapshot && pushedAt !== null && pushedAt >= requestedAt;
+}
+
 export function loadCloud(): Promise<void> {
   return once("cloud", async () => {
     if (!store.origin) {
@@ -306,7 +311,12 @@ export function loadCloud(): Promise<void> {
       return;
     }
     if (store.cloud.status !== "ok") set({ cloud: { status: "loading" } });
+    const requestedAt = Date.now();
     const res = await api<CloudSyncResult>("GET", "/api/cloud/resources");
+    // A cloud.updated push that landed while this request was in flight is newer than its
+    // answer (a slow provider's sync can finish in between): keep it, or the page would sit
+    // on the stale list, since later pushes only carry resources when something changes.
+    if (pushOutdatesLoad(store.cloud.status === "ok", store.cloudPushedAt, requestedAt)) return;
     set({ cloud: res.ok ? { status: "ok", data: normalizeCloud(res.data), at: Date.now() } : failed(res) });
   });
 }
