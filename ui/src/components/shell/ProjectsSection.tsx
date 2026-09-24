@@ -11,6 +11,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { VirtualList } from "@/components/common/VirtualList";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { ProjectTile } from "@/components/projects/ProjectBits";
+import { ProjectActivityBadge } from "@/components/projects/ProjectActivityBadge";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -233,6 +234,7 @@ export function ProjectsSection({ onNavigate }: { onNavigate?: (() => void) | un
               <span className={cn("pointer-events-none min-w-0 flex-1 truncate", isCurrent && "font-medium text-foreground")}>
                 {p.name}
               </span>
+              <ProjectActivityBadge projectId={p.id} className="group-hover/proj:hidden" />
               {isCurrent ? <span className="pointer-events-none size-1.5 shrink-0 rounded-full bg-primary group-hover/proj:hidden" /> : null}
               {p.pinned ? <Pin className="pointer-events-none size-3 shrink-0 text-faint group-hover/proj:hidden" /> : null}
               <span className="hidden items-center gap-0.5 group-hover/proj:flex">

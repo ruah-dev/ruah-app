@@ -169,8 +169,63 @@ export const TurnRecordSchema = z.object({
   stopReason: StopReasonSchema.optional(),
   startedAt: z.string(),
   finishedAt: z.string().optional(),
+  /** §13: only in chat.history — the turn is still running (events so far; stream frames continue it). Never stored. */
+  running: z.literal(true).optional(),
 });
 export type TurnRecord = z.infer<typeof TurnRecordSchema>;
+
+// ---------- CONTRACTS.md §13: activity feed, view state, feature settings ----------
+/** Known kinds: turn.started | turn.finished | permission.requested | permission.answered | agent.error | map.changed (open). */
+export type ActivityKind = "turn.started" | "turn.finished" | "permission.requested" | "permission.answered" | "agent.error" | "map.changed";
+
+export const ActivityEventSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  projectRoot: z.string().optional(),
+  chatId: z.string().nullable(),
+  turnId: z.string().optional(),
+  agentId: z.string().optional(),
+  /** One line, at most 200 chars. */
+  summary: z.string(),
+  at: z.string(), // ISO
+  /** Happened while its project (or chat) was not in front, or no viewer was connected. */
+  background: z.boolean(),
+  stopReason: StopReasonSchema.optional(),
+  error: z.string().optional(),
+  requestId: z.string().optional(),
+  /** turn.finished: repo-relative files the agent edited (at most 20). */
+  files: z.array(z.string()).optional(),
+  /** turn.finished / map.changed: number of map changes. */
+  mapChanges: z.number().optional(),
+});
+export type ActivityEvent = z.infer<typeof ActivityEventSchema>;
+
+export const ProjectActivitySchema = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  projectRoot: z.string().optional(),
+  /** Turns running or queued (the open project's included). */
+  running: z.number(),
+  /** Permission requests waiting for an answer. */
+  waitingPermission: z.number(),
+  /** Unread turns / requests, summed over the project's chats (persisted in state.json). */
+  unread: z.number(),
+  /** Unread per chat id ("none" = a turn without a chat). */
+  chats: z.record(z.string(), z.number()),
+  lastEventAt: z.string().optional(),
+});
+export type ProjectActivity = z.infer<typeof ProjectActivitySchema>;
+
+export const NotificationModeSchema = z.enum(["background", "always", "off"]);
+export type NotificationMode = z.infer<typeof NotificationModeSchema>;
+/** Feature flags in $RUAH_HOME/settings.json (§13.6). */
+export const AppFeaturesSchema = z.object({
+  backgroundAgents: z.boolean(),
+  notifications: NotificationModeSchema,
+});
+export type AppFeatures = z.infer<typeof AppFeaturesSchema>;
 
 // ---------- viewer -> daemon ----------
 export const ClientMessageSchema = z.union([
@@ -211,6 +266,12 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("chat.delete"), chatId: z.string() }),
   // §1.7: restore the elements an agent's turn changed (in-memory snapshot, this daemon's life)
   z.object({ type: z.literal("arch.undo"), turnId: z.string() }),
+  // §13.2: clear unread markers (one chat, or the whole project)
+  z.object({ type: z.literal("activity.read"), projectId: z.string().max(64), chatId: z.string().max(64).optional() }),
+  // §13.5: the viewer's opaque per-project view state (a JSON object, ≤ 16 KB)
+  z.object({ type: z.literal("view.save"), projectId: z.string().max(64), view: z.unknown() }),
+  // §13.6: feature flags (settings.json)
+  z.object({ type: z.literal("settings.set"), backgroundAgents: z.boolean().optional(), notifications: NotificationModeSchema.optional() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -277,6 +338,17 @@ export const ServerMessageSchema = z.union([
   z.object({ type: z.literal("project"), project: ProjectInfoSchema.nullable() }),
   z.object({ type: z.literal("chats"), projectId: z.string(), chats: z.array(ChatInfoSchema), activeChatId: z.string().nullable() }),
   z.object({ type: z.literal("chat.history"), chatId: z.string(), turns: z.array(TurnRecordSchema) }),
+  // §13.2: sent to every viewer, whatever project is open
+  z.object({ type: z.literal("activity"), event: ActivityEventSchema, project: ProjectActivitySchema }),
+  // §13.2: a project's counts changed without an event (unread markers cleared)
+  z.object({ type: z.literal("activity.project"), project: ProjectActivitySchema }),
+  z.object({
+    type: z.literal("activity.snapshot"),
+    projects: z.array(ProjectActivitySchema),
+    recent: z.array(ActivityEventSchema),
+    settings: AppFeaturesSchema,
+    maxBackgroundTurns: z.number(),
+  }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 

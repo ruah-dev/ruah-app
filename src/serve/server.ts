@@ -22,6 +22,7 @@ import type { ProjectService } from "../projects/service.js";
 import type { AttachmentStore } from "../projects/attachment-store.js";
 import { handleAttachmentsRequest } from "./attachments-http.js";
 import { handleMapOpsRequest } from "./map-ops-http.js";
+import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js";
 import type { MapOpsService } from "./map-ops.js";
 import type { TerminalGateway } from "../terminal/gateway.js";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
@@ -48,6 +49,8 @@ export interface ServeOptions {
   terminal?: TerminalGateway;
   /** CONTRACTS §12 /api/system/* (multi-repo systems management); answered 503 when absent. */
   system?: SystemService;
+  /** CONTRACTS §13 /api/activity*, /api/projects/:id/{resume,view}; answered 503 when absent. */
+  activity?: ActivityHttpDeps;
 }
 
 export interface RunningServer {
@@ -106,6 +109,8 @@ export function startServer(
       )
     )
       return;
+    // Before projects-http, which answers every other /api/projects/* path.
+    if (handleActivityRequest(req, res, url, options.activity, (origin) => originAllowed(origin, options.allowOrigins))) return;
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Multi-repo systems (§12); also takes POST /api/rescan while a system is open.
     if (handleSystemRequest(req, res, url, options.system, (origin) => originAllowed(origin, options.allowOrigins))) return;

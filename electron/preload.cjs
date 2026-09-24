@@ -17,4 +17,23 @@ contextBridge.exposeInMainWorld("ruah", {
   openExternal: (url) => {
     if (typeof url === "string") void ipcRenderer.invoke("ruah:open-external", url);
   },
+  /** Shows an OS notification (CONTRACTS §13.3); resolves false when not shown. */
+  notify: (opts) =>
+    opts !== null && typeof opts === "object"
+      ? ipcRenderer.invoke("ruah:notify", {
+          title: opts.title,
+          body: opts.body,
+          projectId: opts.projectId,
+          chatId: opts.chatId,
+          projectRoot: opts.projectRoot,
+          silent: opts.silent === true,
+        })
+      : Promise.resolve(false),
+  /** Called with { projectId, chatId, projectRoot } when the user clicks a notification; returns an unsubscribe function. */
+  onNotificationClick: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event, target) => callback(target);
+    ipcRenderer.on("ruah:notification-click", listener);
+    return () => ipcRenderer.removeListener("ruah:notification-click", listener);
+  },
 });

@@ -15,6 +15,9 @@ desktop app is a thin viewer.
 - **Integrations:** DigitalOcean / AWS (what runs where), Jira / GitHub
   (issues on elements), ruah orchestration (tasks and workflows).
 - **Export:** draw.io with every technical spec; usage and plan limits.
+- **Context switching:** agents keep working when you switch projects; an
+  activity feed, unread badges and desktop notifications tell you when one
+  finishes or needs permission; `ruah app resume` shows where you left off.
 
 Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
 installed this package is `ruah app`.
@@ -36,12 +39,17 @@ ruah app system status [--json]        # branch, ahead/behind, dirty, last scan 
 ruah app system signals [--json]       # deterministic cross-repo edges (zero tokens)
 ruah app system suggest                # agent proposes edges; --accept/--reject <n|id>
 ruah app system remove|rename|rescan <id> …
+ruah app resume [<repo-or-id>]  # where you left off (no argument: every recent project)
+ruah app activity --since 24h   # what agents did across projects (no daemon needed)
 ruah app help
 ```
 
 `ruah-app` is the same command without the ruah toolkit. Useful environment
 variables: `RUAH_AGENT` (claude | cursor | grok | kiro | opencode | mock),
-`RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`.
+`RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`,
+`RUAH_MAX_BACKGROUND_TURNS` (default 3). `~/.ruah/settings.json` switches
+features off: `"backgroundAgents": false`, `"notifications": "off"` (or
+`"always"`; default `"background"`).
 
 ## Develop
 

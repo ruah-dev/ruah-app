@@ -10,7 +10,8 @@ import * as path from "node:path";
 import type { ArchNode } from "../contracts/architecture.js";
 import type { ConnectBody, IntegrationInfo, RuahTaskAction, RuahTaskBody } from "../contracts/integrations.js";
 import { RuahTaskNameSchema } from "../contracts/integrations.js";
-import { arr, cliMessage, CliError, IntegrationError, obj, parseJson, resolveBin, searchPath, str, stripAnsi, type Runner } from "./exec.js";
+import type { RuahResume, RuahTaskSummary } from "../contracts/resume.js";
+import { arr, cliMessage, CliError, defaultRunner, IntegrationError, obj, parseJson, resolveBin, searchPath, str, stripAnsi, type Runner } from "./exec.js";
 import type { Integration, ProjectContext } from "./registry.js";
 import { projectIdOf } from "./store.js";
 
@@ -75,6 +76,43 @@ export function globsForNode(node: ArchNode, root: string): string[] {
 
 export function isInitialized(root: string): boolean {
   return fs.existsSync(path.join(root, ".ruah", "state.json"));
+}
+
+/** Task states that are over (left out of "running tasks"). */
+const FINISHED_TASK_STATES = new Set(["done", "merged", "cancelled"]);
+
+/**
+ * CONTRACTS §13.4: the unfinished `ruah` tasks of a repo that has `.ruah/`
+ * (`ruah task list --json`, bounded by a short timeout). Never throws: a
+ * missing CLI or a failed call is reported in `error`.
+ */
+export async function activeRuahTasks(
+  root: string,
+  deps: { runner?: Runner; bin?: string | undefined; timeoutMs?: number } = {},
+): Promise<RuahResume> {
+  if (!fs.existsSync(path.join(root, ".ruah"))) return { initialized: false };
+  const bin = deps.bin ?? resolveBin("ruah");
+  if (bin === undefined) return { initialized: true, tasks: [], error: `ruah CLI not installed — ${SETUP_HINT}` };
+  const runner = deps.runner ?? defaultRunner;
+  try {
+    const result = await runner(bin, ["task", "list", "--json"], { cwd: root, timeoutMs: deps.timeoutMs ?? 5000 });
+    if (result.code !== 0) return { initialized: true, tasks: [], error: `ruah task list: ${cliMessage(result)}` };
+    const json = parseJson(stripAnsi(result.stdout));
+    const entries = Array.isArray(json) ? json : Object.values(obj(json) ?? {});
+    const tasks: RuahTaskSummary[] = [];
+    for (const entry of entries) {
+      const task = obj(entry);
+      const name = str(task?.name);
+      const status = str(task?.status) ?? "unknown";
+      if (name === undefined || FINISHED_TASK_STATES.has(status)) continue;
+      const executor = str(task?.executor);
+      const files = arr(task?.files).filter((f): f is string => typeof f === "string");
+      tasks.push({ name, status, ...(executor !== undefined ? { executor } : {}), ...(files.length > 0 ? { files } : {}) });
+    }
+    return { initialized: true, tasks };
+  } catch (err) {
+    return { initialized: true, tasks: [], error: err instanceof CliError ? err.message : "ruah failed" };
+  }
 }
 
 export interface RuahDeps {

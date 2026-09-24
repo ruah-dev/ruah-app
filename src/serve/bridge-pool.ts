@@ -10,6 +10,9 @@
 // a switch to a bridge that is still starting attaches to that start. The
 // pool also keeps each bridge's last-known status (agent/session/modes/
 // models), merged across events, so a re-acquired bridge is described at once.
+// A bridge with a turn running or queued (`turnId`, CONTRACTS §13.1: a turn
+// keeps running when the user switches projects) is pinned: never evicted by
+// the cap, the TTL or a release, until the hub calls `turnEnded`.
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import type { AgentState, ModeState, ModelState } from "../contracts/ws.js";
 
@@ -47,6 +50,8 @@ export interface PooledBridge {
   configuring: Promise<void> | undefined;
   /** Session id the saved model / mode were last applied to (once per session). */
   configuredSession: string | undefined;
+  /** The turn running or queued on this bridge: pinned in the pool until turnEnded (§13.1). */
+  turnId: string | undefined;
   timer: NodeJS.Timeout | undefined;
   unsubscribe: () => void;
 }
@@ -176,11 +181,33 @@ export class BridgePool {
   release(entry: PooledBridge): Promise<void> {
     if (!this.entries.includes(entry)) return Promise.resolve();
     entry.inUse = false;
+    if (entry.turnId !== undefined) {
+      // A turn runs on it (background turn): kept, whatever the TTL; turnEnded applies the policy.
+      entry.releasedAt = this.now();
+      entry.lastUsedAt = entry.releasedAt;
+      this.clearTimer(entry);
+      return Promise.resolve();
+    }
     const unhealthy = (entry.status.state === "error" || entry.status.state === "stopped") && entry.starting === undefined;
     if (this.options.ttlMs <= 0 || unhealthy) return this.evict(entry, unhealthy ? "not running" : "released");
     this.park(entry);
     this.makeRoom(this.options.maxLive);
     return Promise.resolve();
+  }
+
+  /**
+   * The turn pinning `entry` is over: a bridge the hub is not using is then
+   * treated like a fresh release (stopped without a TTL, else kept warm).
+   */
+  turnEnded(entry: PooledBridge): Promise<void> {
+    entry.turnId = undefined;
+    if (entry.inUse || !this.entries.includes(entry)) return Promise.resolve();
+    return this.release(entry);
+  }
+
+  /** Bridges pinned by a running or queued turn. */
+  busy(): PooledBridge[] {
+    return this.entries.filter((e) => e.turnId !== undefined);
   }
 
   /** Stops every bridge (daemon shutdown). */
@@ -203,14 +230,14 @@ export class BridgePool {
     if (this.options.ttlMs <= 0) return;
     entry.timer = setTimeout(() => {
       entry.timer = undefined;
-      if (!entry.inUse) void this.evict(entry, "idle ttl expired");
+      if (!entry.inUse && entry.turnId === undefined) void this.evict(entry, "idle ttl expired");
     }, this.options.ttlMs);
     entry.timer.unref?.();
   }
 
-  /** Warm (not in use) bridges, least recently used first. */
+  /** Warm (not in use, not running a turn) bridges, least recently used first. */
   private lru(): PooledBridge[] {
-    return this.entries.filter((e) => !e.inUse).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+    return this.entries.filter((e) => !e.inUse && e.turnId === undefined).sort((a, b) => a.lastUsedAt - b.lastUsedAt);
   }
 
   private track(root: string, agentId: string, bridge: AcpBridge): PooledBridge {
@@ -228,6 +255,7 @@ export class BridgePool {
       starting: undefined,
       configuring: undefined,
       configuredSession: undefined,
+      turnId: undefined,
       timer: undefined,
       unsubscribe: () => {},
     };
@@ -241,7 +269,7 @@ export class BridgePool {
     return entry;
   }
 
-  /** Evicts warm bridges, least recently used first, until at most `limit` are live (never the current one). */
+  /** Evicts warm bridges, least recently used first, until at most `limit` are live (never the current one or a busy one). */
   private makeRoom(limit: number): void {
     let live = this.entries.length;
     for (const entry of this.lru()) {

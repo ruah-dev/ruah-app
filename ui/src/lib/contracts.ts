@@ -94,7 +94,11 @@ export type ClientMessage =
   | { type: "chat.rename"; chatId: string; title: string }
   | { type: "chat.delete"; chatId: string }
   // §1.7: undo the map changes an agent made in a turn
-  | { type: "arch.undo"; turnId: string };
+  | { type: "arch.undo"; turnId: string }
+  // §13: clear unread markers (a chat, or the whole project); save the view state; feature flags
+  | { type: "activity.read"; projectId: string; chatId?: string }
+  | { type: "view.save"; projectId: string; view: ViewState }
+  | { type: "settings.set"; backgroundAgents?: boolean; notifications?: NotificationMode };
 
 // ---------- daemon -> viewer ----------
 export type ServerMessage =
@@ -156,7 +160,17 @@ export type ServerMessage =
   // §5.2 projects + chats
   | { type: "project"; project: ProjectInfo | null } // null = launcher state (no architecture follows)
   | { type: "chats"; projectId: string; chats: ChatInfo[]; activeChatId: string | null }
-  | { type: "chat.history"; chatId: string; turns: TurnRecord[] };
+  | { type: "chat.history"; chatId: string; turns: TurnRecord[] }
+  // §13 activity feed: every viewer, whatever project is open
+  | { type: "activity"; event: ActivityEvent; project: ProjectActivity }
+  | { type: "activity.project"; project: ProjectActivity }
+  | {
+      type: "activity.snapshot";
+      projects: ProjectActivity[];
+      recent: ActivityEvent[];
+      settings: AppFeatures;
+      maxBackgroundTurns: number;
+    };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -310,6 +324,105 @@ export interface TurnRecord {
   stopReason?: StopReason;
   startedAt: string;
   finishedAt?: string;
+  /** §13: only in chat.history — the turn is still running (a background turn re-attached, or a reload). */
+  running?: true;
+}
+
+// §13 background agents, activity feed, resume, view state (CONTRACTS.md §13)
+export type ActivityKind =
+  | "turn.started"
+  | "turn.finished"
+  | "permission.requested"
+  | "permission.answered"
+  | "agent.error"
+  | "map.changed"
+  | (string & {});
+
+export interface ActivityEvent {
+  id: string;
+  kind: ActivityKind;
+  projectId: string;
+  projectName: string;
+  projectRoot?: string;
+  chatId: string | null;
+  turnId?: string;
+  agentId?: string;
+  summary: string; // one line
+  at: string; // ISO
+  /** Happened while its project / chat was not in front (or no viewer was connected). */
+  background: boolean;
+  stopReason?: StopReason;
+  error?: string;
+  requestId?: string;
+  files?: string[];
+  mapChanges?: number;
+}
+
+export interface ProjectActivity {
+  projectId: string;
+  projectName: string;
+  projectRoot?: string;
+  running: number;
+  waitingPermission: number;
+  unread: number;
+  chats: Record<string, number>; // unread per chat id ("none" = no chat)
+  lastEventAt?: string;
+}
+
+export type NotificationMode = "background" | "always" | "off";
+export interface AppFeatures {
+  backgroundAgents: boolean;
+  notifications: NotificationMode;
+}
+
+/** §13.5: viewer-owned, opaque to the daemon (a JSON object, ≤ 16 KB serialized). */
+export type ViewState = Record<string, unknown>;
+
+export type GitState =
+  | {
+      available: true;
+      branch: string | null;
+      head: string | null;
+      upstream: string | null;
+      ahead: number | null;
+      behind: number | null;
+      dirty: number;
+      dirtyPaths: string[];
+      lastCommit: { hash: string; subject: string; author: string; at: string } | null;
+    }
+  | { available: false; reason: string };
+
+export interface ResumeInfo {
+  project: { id: string; name: string; root: string; kind: "repo" | "system"; lastOpenedAt: string | null };
+  lastViewedAt: string | null;
+  lastChat: {
+    id: string;
+    title: string;
+    agentId: string;
+    updatedAt: string;
+    turnCount: number;
+    lastPrompt: string | null;
+    lastReply: string | null;
+  } | null;
+  lastFocus: { nodeId: string; name: string; at?: string } | null;
+  since: {
+    from: string | null;
+    turnsFinished: number;
+    turnsFailed: number;
+    permissionsRequested: number;
+    files: string[];
+    filesTotal: number;
+    mapChanges: number;
+    events: ActivityEvent[];
+  };
+  unread: number;
+  live?: { running: number; waitingPermission: number };
+  git: GitState;
+  ruah:
+    | { initialized: false }
+    | { initialized: true; tasks: { name: string; status: string; executor?: string; files?: string[] }[]; error?: string };
+  view: ViewState | null;
+  attention: number;
 }
 
 // §1.7 map edits by agents
@@ -361,6 +474,25 @@ export interface RuahDesktopBridge {
   revealInFinder(path: string): void;
   /** §7.5: opens an http(s) URL in the default browser (older desktop builds lack it). */
   openExternal?(url: string): void;
+  /** §13.3: OS notification (older desktop builds lack it); resolves false when not shown. */
+  notify?(opts: NotificationRequest): Promise<boolean>;
+  /** §13.3: a notification was clicked (the window is already focused); returns an unsubscribe function. */
+  onNotificationClick?(callback: (target: NotificationTarget) => void): () => void;
+}
+
+export interface NotificationTarget {
+  projectId: string;
+  chatId: string | null;
+  projectRoot: string | null;
+}
+
+export interface NotificationRequest {
+  title: string;
+  body: string;
+  projectId: string;
+  chatId?: string | null;
+  projectRoot?: string;
+  silent?: boolean;
 }
 
 declare global {
