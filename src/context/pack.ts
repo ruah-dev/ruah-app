@@ -4,6 +4,7 @@ import type { ArchNode } from "../contracts/architecture.js";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { systemRepoRoot } from "../system/roots.js";
 
 export const DESCRIPTION_MAX = 400;
 export const NOTES_MAX = 600;
@@ -58,6 +59,10 @@ export function buildContextPack(
   lines.push(`node: ${collapse(node.name)} (${node.type}) id=${node.id}`);
 
   if (node.path !== undefined && node.path !== "") lines.push(`path: ${node.path}`);
+  // Multi-repo systems (CONTRACTS §1.5, §12): paths are "<repoId>/<path>"; say where that repo is.
+  const repoId = node.repo ?? /^([a-z0-9][a-z0-9-]{0,62}):/.exec(node.id)?.[1];
+  const repoRoot = repoId !== undefined ? systemRepoRoot(root, repoId) : undefined;
+  if (repoId !== undefined && repoRoot !== undefined) lines.push(`repo: ${repoId} at ${repoRoot} (paths "${repoId}/<path>" are inside it)`);
   if (node.description !== undefined && collapse(node.description) !== "") {
     lines.push(`description: ${oneLine(node.description, DESCRIPTION_MAX)}`);
   }
