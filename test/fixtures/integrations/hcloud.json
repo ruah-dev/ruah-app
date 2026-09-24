@@ -1,0 +1,34 @@
+{
+  "contextsText": "*        acme-prod\n         acme-staging\n",
+  "contextsJson": [{ "name": "acme-prod", "active": true }, { "name": "acme-staging", "active": false }],
+  "locations": [{ "id": 1, "name": "fsn1", "city": "Falkenstein" }],
+  "servers": [
+    {
+      "id": 42, "name": "invoices-api", "status": "running",
+      "public_net": { "ipv4": { "ip": "198.51.100.20" }, "ipv6": { "ip": "2001:db8::/64" } },
+      "server_type": { "name": "cx22", "cores": 2, "memory": 4 },
+      "datacenter": { "name": "fsn1-dc14", "location": { "name": "fsn1", "city": "Falkenstein" } },
+      "labels": { "ruah-node": "api", "env": "prod" }, "created": "2026-01-01T10:00:00+00:00"
+    },
+    {
+      "id": 43, "name": "worker-1", "status": "off",
+      "public_net": { "ipv4": { "ip": "198.51.100.21" } }, "server_type": { "name": "cx32" },
+      "datacenter": { "name": "nbg1-dc3", "location": { "name": "nbg1" } }, "labels": {}, "created": "2026-02-01T10:00:00+00:00"
+    },
+    { "name": "no-id" }
+  ],
+  "loadBalancers": [
+    {
+      "id": 7, "name": "edge-lb", "public_net": { "ipv4": { "ip": "203.0.113.9" } }, "location": { "name": "fsn1" },
+      "load_balancer_type": { "name": "lb11" },
+      "targets": [
+        { "type": "server", "server": { "id": 42 }, "health_status": [{ "listen_port": 80, "status": "healthy" }, { "listen_port": 443, "status": "unhealthy" }] }
+      ],
+      "labels": {}, "created": "2026-01-02T10:00:00+00:00"
+    },
+    { "id": 8, "name": "empty-lb", "public_net": { "ipv4": { "ip": "203.0.113.10" } }, "location": { "name": "nbg1" }, "load_balancer_type": { "name": "lb11" }, "targets": [], "labels": {} }
+  ],
+  "volumes": [
+    { "id": 9, "name": "pgdata", "size": 50, "server": 42, "location": { "name": "fsn1" }, "status": "available", "labels": { "ruah-node": "db" }, "created": "2026-01-01T10:05:00+00:00" }
+  ]
+}

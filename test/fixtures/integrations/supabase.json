@@ -1,0 +1,33 @@
+{
+  "orgs": [
+    { "id": "org_acme", "name": "Acme", "slug": "acme-org" },
+    { "id": "org_other", "name": "Other", "slug": "other-org" }
+  ],
+  "projects": [
+    {
+      "created_at": "2026-03-19T02:21:19.188478Z",
+      "database": { "host": "db.abcdefghijklmnopqrst.supabase.co", "postgres_engine": "17", "release_channel": "ga", "version": "17.6.1.084" },
+      "id": "abcdefghijklmnopqrst", "linked": false, "name": "invoices-db", "organization_id": "org_acme", "organization_slug": "acme-org",
+      "ref": "abcdefghijklmnopqrst", "region": "eu-central-1", "status": "ACTIVE_HEALTHY"
+    },
+    {
+      "created_at": "2025-11-02T10:00:00Z", "database": { "host": "db.pausedpausedpausedpa.supabase.co" },
+      "id": "pausedpausedpausedpa", "linked": false, "name": "old-demo", "organization_id": "org_acme", "organization_slug": "acme-org",
+      "ref": "pausedpausedpausedpa", "region": "us-east-1", "status": "INACTIVE"
+    },
+    {
+      "created_at": "2026-01-10T08:00:00Z", "database": { "host": "db.otherotherotherother.supabase.co" },
+      "id": "otherotherotherother", "linked": true, "name": "side-app", "organization_id": "org_other", "organization_slug": "other-org",
+      "ref": "otherotherotherother", "region": "eu-central-2", "status": "ACTIVE_UNHEALTHY"
+    },
+    { "name": "no-ref" }
+  ],
+  "functions": [
+    { "id": "f1", "slug": "send-email", "name": "send-email", "status": "ACTIVE", "version": 7, "created_at": 1790000000000, "updated_at": 1790100000000, "verify_jwt": true, "entrypoint_path": "file:///src/index.ts" },
+    { "id": "f2", "slug": "old-hook", "name": "old-hook", "status": "THROTTLED", "version": 2, "created_at": 1780000000000, "updated_at": 1780000000000, "verify_jwt": false }
+  ],
+  "branches": [
+    { "id": "br-main", "name": "main", "project_ref": "abcdefghijklmnopqrst", "parent_project_ref": "abcdefghijklmnopqrst", "is_default": true, "persistent": true, "status": "FUNCTIONS_DEPLOYED", "created_at": "2026-03-19T02:21:19Z" },
+    { "id": "br-feat", "name": "feature-billing", "project_ref": "featfeatfeatfeatfeat", "parent_project_ref": "abcdefghijklmnopqrst", "is_default": false, "persistent": false, "git_branch": "feature/billing", "pr_number": 12, "status": "MIGRATIONS_FAILED", "created_at": "2026-09-20T10:00:00Z" }
+  ]
+}

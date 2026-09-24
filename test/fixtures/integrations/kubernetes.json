@@ -1,0 +1,133 @@
+{
+  "contexts": "kind-dev\narn:aws:eks:eu-central-1:123456789012:cluster/prod\n",
+  "currentContext": "arn:aws:eks:eu-central-1:123456789012:cluster/prod\n",
+  "version": {
+    "clientVersion": { "major": "1", "minor": "34", "gitVersion": "v1.34.1" },
+    "serverVersion": { "major": "1", "minor": "31", "gitVersion": "v1.31.4-eks-2d5f260" }
+  },
+  "deployments": {
+    "apiVersion": "v1", "kind": "List",
+    "items": [
+      {
+        "metadata": { "name": "invoices-api", "namespace": "prod", "generation": 5, "labels": { "app": "invoices-api", "ruah-node": "api" } },
+        "spec": { "replicas": 3 },
+        "status": { "observedGeneration": 5, "replicas": 3, "readyReplicas": 3, "updatedReplicas": 3, "availableReplicas": 3,
+          "conditions": [{ "type": "Available", "status": "True" }, { "type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable" }] }
+      },
+      {
+        "metadata": { "name": "web-app", "namespace": "prod", "generation": 9, "labels": { "app": "web-app" } },
+        "spec": { "replicas": 3 },
+        "status": { "observedGeneration": 9, "replicas": 3, "readyReplicas": 2, "updatedReplicas": 3, "availableReplicas": 2, "unavailableReplicas": 1 }
+      },
+      {
+        "metadata": { "name": "worker", "namespace": "staging", "generation": 3 },
+        "spec": { "replicas": 2 },
+        "status": { "observedGeneration": 3, "replicas": 2, "updatedReplicas": 2, "unavailableReplicas": 2 }
+      },
+      {
+        "metadata": { "name": "notify", "namespace": "prod", "generation": 12 },
+        "spec": { "replicas": 2 },
+        "status": { "observedGeneration": 12, "replicas": 3, "readyReplicas": 2, "updatedReplicas": 1, "availableReplicas": 2 }
+      },
+      {
+        "metadata": { "name": "checkout", "namespace": "prod", "generation": 4 },
+        "spec": { "replicas": 2 },
+        "status": { "observedGeneration": 4, "replicas": 3, "readyReplicas": 2, "updatedReplicas": 1,
+          "conditions": [{ "type": "Progressing", "status": "False", "reason": "ProgressDeadlineExceeded" }] }
+      },
+      {
+        "metadata": { "name": "idle", "namespace": "staging", "generation": 2 },
+        "spec": { "replicas": 0 },
+        "status": { "observedGeneration": 2 }
+      },
+      {
+        "metadata": { "name": "coredns", "namespace": "kube-system", "generation": 1 },
+        "spec": { "replicas": 2 }, "status": { "observedGeneration": 1, "readyReplicas": 2, "updatedReplicas": 2 }
+      }
+    ]
+  },
+  "statefulsets": {
+    "items": [
+      {
+        "metadata": { "name": "postgres", "namespace": "prod", "generation": 2, "labels": { "app": "postgres" } },
+        "spec": { "replicas": 1 },
+        "status": { "observedGeneration": 2, "replicas": 1, "readyReplicas": 1, "updatedReplicas": 1, "currentRevision": "postgres-7c9", "updateRevision": "postgres-7c9" }
+      }
+    ]
+  },
+  "daemonsets": {
+    "items": [
+      {
+        "metadata": { "name": "log-agent", "namespace": "monitoring", "generation": 1 },
+        "status": { "observedGeneration": 1, "desiredNumberScheduled": 3, "numberReady": 3, "updatedNumberScheduled": 3 }
+      }
+    ]
+  },
+  "cronjobs": {
+    "items": [
+      {
+        "metadata": { "name": "nightly-report", "namespace": "prod" },
+        "spec": { "schedule": "0 2 * * *", "suspend": false },
+        "status": { "lastScheduleTime": "2026-09-24T02:00:00Z", "lastSuccessfulTime": "2026-09-24T02:03:10Z" }
+      },
+      {
+        "metadata": { "name": "cleanup", "namespace": "prod" },
+        "spec": { "schedule": "0 3 * * *" },
+        "status": { "lastScheduleTime": "2026-09-24T03:00:00Z", "lastSuccessfulTime": "2026-09-23T03:00:40Z" }
+      },
+      { "metadata": { "name": "archive", "namespace": "prod" }, "spec": { "schedule": "@weekly", "suspend": true }, "status": {} }
+    ]
+  },
+  "services": {
+    "items": [
+      { "metadata": { "name": "kubernetes", "namespace": "default" }, "spec": { "type": "ClusterIP", "clusterIP": "10.96.0.1", "ports": [{ "port": 443, "targetPort": 6443, "protocol": "TCP" }] } },
+      { "metadata": { "name": "invoices-api", "namespace": "prod", "labels": { "app": "invoices-api" } }, "spec": { "type": "ClusterIP", "ports": [{ "port": 80, "targetPort": 8080, "protocol": "TCP" }] } },
+      { "metadata": { "name": "edge", "namespace": "prod" }, "spec": { "type": "LoadBalancer", "ports": [{ "port": 443, "targetPort": 8443, "protocol": "TCP" }] },
+        "status": { "loadBalancer": { "ingress": [{ "hostname": "a1b2c3.elb.eu-central-1.amazonaws.com" }] } } },
+      { "metadata": { "name": "pending-lb", "namespace": "staging" }, "spec": { "type": "LoadBalancer", "ports": [{ "port": 80, "protocol": "TCP" }] }, "status": { "loadBalancer": {} } }
+    ]
+  },
+  "ingresses": {
+    "items": [
+      {
+        "metadata": { "name": "web", "namespace": "prod" },
+        "spec": { "ingressClassName": "nginx", "tls": [{ "hosts": ["app.example.com"], "secretName": "web-tls" }], "rules": [{ "host": "app.example.com" }, { "host": "www.example.com" }] },
+        "status": { "loadBalancer": { "ingress": [{ "hostname": "lb.example.net" }] } }
+      },
+      {
+        "metadata": { "name": "api", "namespace": "staging" },
+        "spec": { "rules": [{ "host": "api.staging.example.com" }] },
+        "status": { "loadBalancer": {} }
+      }
+    ]
+  },
+  "pods": {
+    "items": [
+      { "metadata": { "name": "invoices-api-6d5f7c9b8-a1", "namespace": "prod", "labels": { "pod-template-hash": "6d5f7c9b8" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "invoices-api-6d5f7c9b8", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "app", "ready": true, "restartCount": 1, "state": { "running": {} } }] } },
+      { "metadata": { "name": "invoices-api-6d5f7c9b8-a2", "namespace": "prod", "labels": { "pod-template-hash": "6d5f7c9b8" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "invoices-api-6d5f7c9b8", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "app", "ready": true, "restartCount": 0, "state": { "running": {} } }] } },
+      { "metadata": { "name": "invoices-api-6d5f7c9b8-a3", "namespace": "prod", "labels": { "pod-template-hash": "6d5f7c9b8" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "invoices-api-6d5f7c9b8", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "app", "ready": true, "restartCount": 0, "state": { "running": {} } }] } },
+      { "metadata": { "name": "web-app-5c4-b1", "namespace": "prod", "labels": { "pod-template-hash": "5c4" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "web-app-5c4", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "web", "ready": true, "restartCount": 0, "state": { "running": {} } }] } },
+      { "metadata": { "name": "web-app-5c4-b2", "namespace": "prod", "labels": { "pod-template-hash": "5c4" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "web-app-5c4", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "web", "ready": true, "restartCount": 0, "state": { "running": {} } }] } },
+      { "metadata": { "name": "web-app-5c4-b3", "namespace": "prod", "labels": { "pod-template-hash": "5c4" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "web-app-5c4", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "web", "ready": false, "restartCount": 14, "state": { "waiting": { "reason": "CrashLoopBackOff", "message": "back-off 5m0s restarting failed container" } } }] } },
+      { "metadata": { "name": "worker-7-c1", "namespace": "staging", "labels": { "pod-template-hash": "7" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "worker-7", "controller": true }] },
+        "status": { "phase": "Pending", "containerStatuses": [{ "name": "worker", "ready": false, "restartCount": 0, "state": { "waiting": { "reason": "ImagePullBackOff" } } }] } },
+      { "metadata": { "name": "worker-7-c2", "namespace": "staging", "labels": { "pod-template-hash": "7" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "worker-7", "controller": true }] },
+        "status": { "phase": "Pending", "containerStatuses": [{ "name": "worker", "ready": false, "restartCount": 0, "state": { "waiting": { "reason": "ErrImagePull" } } }] } },
+      { "metadata": { "name": "notify-9-d1", "namespace": "prod", "labels": { "pod-template-hash": "9" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "notify-9", "controller": true }] },
+        "status": { "phase": "Pending", "containerStatuses": [{ "name": "notify", "ready": false, "restartCount": 0, "state": { "waiting": { "reason": "ContainerCreating" } } }] } },
+      { "metadata": { "name": "postgres-0", "namespace": "prod", "ownerReferences": [{ "kind": "StatefulSet", "name": "postgres", "controller": true }] },
+        "status": { "phase": "Running", "containerStatuses": [{ "name": "postgres", "ready": true, "restartCount": 2, "state": { "running": {} } }] } },
+      { "metadata": { "name": "cleanup-29312345-x", "namespace": "prod", "labels": { "job-name": "cleanup-29312345" }, "ownerReferences": [{ "kind": "Job", "name": "cleanup-29312345", "controller": true }] },
+        "status": { "phase": "Failed", "containerStatuses": [{ "name": "cleanup", "ready": false, "restartCount": 3, "state": { "terminated": { "reason": "Error", "exitCode": 1 } } }] } },
+      { "metadata": { "name": "coredns-1-z", "namespace": "kube-system", "labels": { "pod-template-hash": "1" }, "ownerReferences": [{ "kind": "ReplicaSet", "name": "coredns-1", "controller": true }] },
+        "status": { "phase": "Running" } },
+      { "metadata": { "name": "bare-pod", "namespace": "prod" }, "status": { "phase": "Running" } }
+    ]
+  }
+}

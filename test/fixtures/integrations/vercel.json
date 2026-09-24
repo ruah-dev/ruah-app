@@ -1,0 +1,57 @@
+{
+  "whoami": { "username": "dev-user", "email": "dev@example.com", "name": null, "team": { "id": "team_acme", "slug": "acme", "name": "Acme" } },
+  "teams": {
+    "teams": [
+      { "id": "team_acme", "slug": "acme", "name": "Acme", "current": true },
+      { "id": "team_side", "slug": "side-gig", "name": "Side gig", "current": false }
+    ],
+    "pagination": { "count": 2, "next": null, "prev": null }
+  },
+  "projects": {
+    "projects": [
+      { "name": "web-app", "id": "prj_web", "latestProductionUrl": "https://web-app.example.com", "updatedAt": 1790195150091, "nodeVersion": "24.x", "deprecated": false },
+      { "name": "invoices-api", "id": "prj_api", "latestProductionUrl": "https://invoices-api.vercel.app", "updatedAt": 1790190000000, "nodeVersion": "22.x", "deprecated": false },
+      { "name": "docs", "id": "prj_docs", "latestProductionUrl": "https://docs.example.com", "updatedAt": 1790180000000, "nodeVersion": "22.x", "deprecated": false },
+      { "name": "landing", "id": "prj_landing", "latestProductionUrl": null, "updatedAt": 1790170000000, "nodeVersion": "22.x", "deprecated": false },
+      { "name": "old-site", "id": "prj_old", "latestProductionUrl": "https://old.example.com", "updatedAt": 1700000000000, "nodeVersion": "18.x", "deprecated": true },
+      { "id": "prj_no_name" }
+    ],
+    "pagination": { "count": 6, "next": null, "prev": 1790195150091 },
+    "contextName": "acme",
+    "elapsed": "312ms"
+  },
+  "deployments": {
+    "contextName": "acme",
+    "deployments": [
+      {
+        "url": "web-app-7f3k2-acme.vercel.app", "name": "web-app", "state": "READY", "target": "production",
+        "createdAt": 1790195091995, "buildingAt": 1790195095160, "ready": 1790195149813,
+        "creator": { "uid": "u_1", "username": "dev-user" },
+        "meta": { "githubCommitRef": "main", "githubCommitAuthorEmail": "dev@example.com", "githubCommitMessage": "ship it" }
+      },
+      { "url": "web-app-git-feature-acme.vercel.app", "name": "web-app", "state": "BUILDING", "target": null, "createdAt": 1790196000000, "meta": { "githubCommitRef": "feature/search" } },
+      { "url": "web-app-old-acme.vercel.app", "name": "web-app", "state": "READY", "target": "production", "createdAt": 1790100000000, "meta": {} },
+      { "url": "invoices-api-9x-acme.vercel.app", "name": "invoices-api", "state": "ERROR", "target": "production", "createdAt": 1790190000000, "meta": { "githubCommitRef": "main" } },
+      { "url": "invoices-api-8x-acme.vercel.app", "name": "invoices-api", "state": "READY", "target": "production", "createdAt": 1790150000000, "meta": { "githubCommitRef": "main" } },
+      { "url": "docs-2b-acme.vercel.app", "name": "docs", "state": "BUILDING", "target": "production", "createdAt": 1790180000000, "meta": {} },
+      { "url": "docs-1a-acme.vercel.app", "name": "docs", "state": "READY", "target": "production", "createdAt": 1790170000000, "meta": {} },
+      { "url": "landing-1-acme.vercel.app", "name": "landing", "state": "ERROR", "target": "production", "createdAt": 1790160000000, "meta": {} },
+      { "url": "landing-0-acme.vercel.app", "name": "landing", "state": "CANCELED", "target": "production", "createdAt": 1790150000000, "meta": {} },
+      { "name": "no-url", "state": "READY" }
+    ],
+    "pagination": { "count": 10, "next": 1790100000000, "prev": 1790196000000 }
+  },
+  "deploymentsOldSite": {
+    "contextName": "acme",
+    "deployments": [
+      { "url": "old-site-z-acme.vercel.app", "name": "old-site", "state": "READY", "target": "production", "createdAt": 1700000000000, "meta": {} }
+    ],
+    "pagination": { "count": 1, "next": null, "prev": 1700000000000 }
+  },
+  "domains": {
+    "domains": [
+      { "name": "example.com", "registrar": "Third Party", "nameservers": "external", "expiresAt": null, "createdAt": 1775912705935, "creator": "dev-user" },
+      { "name": "example.dev", "registrar": "Vercel", "nameservers": "vercel", "expiresAt": 1802159085000, "createdAt": 1770623087234, "creator": "dev-user" }
+    ]
+  }
+}
