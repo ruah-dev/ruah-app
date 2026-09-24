@@ -39,6 +39,29 @@ function edgeTags(edge: ArchEdgeRef): string {
   return out;
 }
 
+export const INFRA_SETTINGS_MAX = 12;
+export const INFRA_DETAILS_MAX = 12;
+
+/**
+ * CONTRACTS §11: what an infrastructure-as-code element is, where it is
+ * declared (path:line) and its key settings. Absent `infra` adds nothing, so
+ * packs of code-only maps are unchanged.
+ */
+function infraLines(infra: NonNullable<ArchNode["infra"]>): string[] {
+  const out = [`infra: ${[infra.tool, infra.kind, infra.address].filter((x) => x !== undefined && x !== "").join(" ")}`];
+  if (infra.source !== undefined && infra.source.length > 0) out.push(`declared in: ${infra.source.join(", ")}`);
+  const settings = Object.entries(infra.settings ?? {});
+  if (settings.length > 0) {
+    const shown = settings.slice(0, INFRA_SETTINGS_MAX).map(([k, v]) => `${k}=${oneLine(v, 120)}`);
+    out.push(`settings: ${shown.join("; ")}${settings.length > INFRA_SETTINGS_MAX ? `; +${settings.length - INFRA_SETTINGS_MAX} more` : ""}`);
+  }
+  const details = infra.details ?? [];
+  if (details.length > 0) {
+    out.push(`folded: ${details.slice(0, INFRA_DETAILS_MAX).map((d) => oneLine(d, 120)).join("; ")}${details.length > INFRA_DETAILS_MAX ? `; +${details.length - INFRA_DETAILS_MAX} more` : ""}`);
+  }
+  return out;
+}
+
 /** Appended to the instruction paragraph when the agent has the ruah_* map tools (CONTRACTS §1.7). */
 export const MAP_TOOLS_SENTENCE =
   " You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.";
@@ -66,6 +89,7 @@ export function buildContextPack(
   }
   if (node.tech !== undefined && node.tech.length > 0) lines.push(`tech: ${node.tech.join(", ")}`);
   if (node.layer !== undefined && node.layer !== "") lines.push(`layer: ${node.layer}`);
+  if (node.infra !== undefined) lines.push(...infraLines(node.infra));
 
   const parent = node.parent === undefined ? undefined : index.byId(node.parent);
   if (parent !== undefined) {

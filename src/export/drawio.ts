@@ -81,6 +81,8 @@ const TYPE_ALIASES: Record<string, string> = {
   lambda: "function", serverless: "function", job: "worker", daemon: "service", server: "service", backend: "service",
   microservice: "service", package: "module", library: "module", lib: "module", entry: "module", app: "module",
   component: "module", person: "actor", role: "actor",
+  // §11 infrastructure-as-code types
+  cloud: "cluster", pipeline: "worker", registry: "storage",
 };
 const FLOW_KINDS = new Set(["step", "decision", "event", "timer", "approval"]);
 const CYLINDER_KINDS = new Set(["database", "cache", "warehouse"]);
@@ -375,7 +377,24 @@ function nodeProperties(model: Model, n: ArchNode): Attrs {
     links: [...out.map((e) => edgeLine(model, e, "out")), ...inc.map((e) => edgeLine(model, e, "in"))].join("\n"),
     cloud: cloud.map(cloudLine).join("\n"),
     issues: issues.map(issueLine).join("\n"),
+    // CONTRACTS §11: infrastructure-as-code specs (only on elements that have them).
+    ...(n.infra !== undefined
+      ? {
+          infra: infraSummary(n.infra),
+          declaredIn: (n.infra.source ?? []).join("\n"),
+          settings: infraSettingsLines(n.infra).join("\n"),
+          folded: (n.infra.details ?? []).join("\n"),
+        }
+      : {}),
   };
+}
+
+function infraSummary(infra: NonNullable<ArchNode["infra"]>): string {
+  return [infra.tool, infra.kind, infra.address].filter((x) => x !== undefined && x !== "").join(" ");
+}
+
+function infraSettingsLines(infra: NonNullable<ArchNode["infra"]>): string[] {
+  return Object.entries(infra.settings ?? {}).map(([k, v]) => `${k}: ${v}`);
 }
 
 function nodeTooltip(model: Model, n: ArchNode): string {
@@ -385,6 +404,12 @@ function nodeTooltip(model: Model, n: ArchNode): string {
   if (n.tech?.length) lines.push(`tech: ${n.tech.join(", ")}`);
   if (n.layer !== undefined) lines.push(`layer: ${n.layer}`);
   if (n.repo !== undefined) lines.push(`repo: ${n.repo}`);
+  if (n.infra !== undefined) {
+    lines.push(`infra: ${infraSummary(n.infra)}`);
+    if (n.infra.source?.length) lines.push(`declared in: ${n.infra.source.slice(0, 3).join(", ")}`);
+    const settings = infraSettingsLines(n.infra);
+    if (settings.length > 0) lines.push(`settings: ${settings.slice(0, 8).join("; ")}`);
+  }
   const cloud = model.cloud.get(n.id) ?? [];
   if (cloud.length > 0) lines.push(`cloud: ${cloud.map(cloudLine).join("; ")}`);
   const issues = model.issues.get(n.id) ?? [];
@@ -876,6 +901,30 @@ function specificationsPage(model: Model, opts: DrawioOptions): Page {
   page.vertex("links-heading", "1", "<b>Links</b>", TEXT_STYLE({ fontSize: 13 }), { x: ORIGIN - GROUP_PAD, y, w: 400, h: 22 });
   y += 26;
   y += table(page, "links", ORIGIN - GROUP_PAD, y, linkColumns, linkRows.length > 0 ? linkRows : [[{ text: "(none)" }, { text: "" }, { text: "" }, { text: "" }, { text: "" }, { text: "" }]]) + 40;
+
+  // CONTRACTS §11: infrastructure-as-code specs, one row per element that has them.
+  const infraNodes = specOrder(model).filter((n) => n.infra !== undefined);
+  if (infraNodes.length > 0) {
+    const infraColumns: Column[] = [
+      { title: "element", width: 220 }, { title: "tool / kind / address", width: 260 }, { title: "declared in", width: 260 },
+      { title: "settings", width: 320 }, { title: "folded", width: 300 }, { title: "cloud link hints", width: 200 },
+    ];
+    const infraRows: TableCell[][] = infraNodes.map((n) => {
+      const infra = n.infra as NonNullable<ArchNode["infra"]>;
+      const details = infra.details ?? [];
+      return [
+        { text: `${n.name} (${n.id})`, link: model.levelPage.get(n.id) ?? homePage(model, n) },
+        { text: infraSummary(infra) },
+        { text: (infra.source ?? []).join("\n") },
+        { text: infraSettingsLines(infra).join("\n") },
+        { text: details.slice(0, 20).join("\n") + (details.length > 20 ? `\n… +${details.length - 20} more` : "") },
+        { text: (infra.hints ?? []).join("\n") },
+      ];
+    });
+    page.vertex("infra-heading", "1", "<b>Infrastructure as code</b>", TEXT_STYLE({ fontSize: 13 }), { x: ORIGIN - GROUP_PAD, y, w: 400, h: 22 });
+    y += 26;
+    y += table(page, "infra", ORIGIN - GROUP_PAD, y, infraColumns, infraRows) + 40;
+  }
 
   if (arch.workflows.length > 0) {
     const flowColumns: Column[] = [{ title: "id", width: 160 }, { title: "name", width: 200 }, { title: "description", width: 320 }, { title: "steps", width: 510 }];
