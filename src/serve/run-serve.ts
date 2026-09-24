@@ -19,6 +19,7 @@ import { AttachmentStore } from "../projects/attachment-store.js";
 import { SettingsStore } from "../projects/settings-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
+import { CloudWatcher, DEFAULT_WATCH_INTERVAL_MS } from "../integrations/watch.js";
 import { EnginesService } from "../engines/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
 import { MapOpsService } from "./map-ops.js";
@@ -137,6 +138,25 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
       workspaceRoot: process.env.RUAH_WORKSPACE?.trim() || undefined,
     },
   });
+  // Follows the hub's current project; null in the launcher state (endpoints answer 409).
+  const integrations = new IntegrationsService({
+    home: ruahHome(),
+    project: () => {
+      const current = hubRef?.store ?? null;
+      return current === null ? null : { root: current.root, architecture: current.current() };
+    },
+  });
+  // CONTRACTS §9 watch mode: re-sync enabled cloud providers only while a viewer is on the
+  // Cloud page or shows cloud on the map (RUAH_CLOUD_WATCH=0 turns it off).
+  const cloudWatch = process.env.RUAH_CLOUD_WATCH === "0" ? undefined : new CloudWatcher({
+    providers: () => ((hubRef?.store ?? null) !== null ? integrations.registry.cloud().filter((c) => c.enabled()).map((c) => c.id) : []),
+    sync: async (id) => {
+      const result = await integrations.cloudSync({ providers: [id] });
+      return { ok: !result.errors.some((e) => e.provider === id) || result.resources.some((r) => r.provider === id) };
+    },
+    intervalMs: envInt("RUAH_CLOUD_WATCH_MS", DEFAULT_WATCH_INTERVAL_MS, 1000),
+    onError: (id, err) => debug(`cloud watch ${id}: ${(err as Error).message}`),
+  });
   const hub = new SessionHub(null, null, {
     version,
     links: flags.links,
@@ -150,12 +170,18 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     attachments,
     settings,
     ...(mapOps !== undefined ? { mapOps } : {}),
+    ...(cloudWatch !== undefined ? { cloudWatch } : {}),
     warmTtlMs: warmTtlMs(),
     maxLiveBridges: maxLiveAgents(),
     // The scripted mock must not start real agent CLIs behind the user's back.
     prewarm: !flags.mock && process.env.RUAH_PREWARM !== "0",
   });
   hubRef = hub;
+  integrations.onCloudUpdated((update) => {
+    // Syncs from the Sync button count for the watch schedule too.
+    for (const id of update.providers) cloudWatch?.noteSynced(id, !update.failed.includes(id));
+    hub.broadcast({ type: "cloud.updated", ...update });
+  });
   const projects = new ProjectService({
     projects: new ProjectsStore(home, { onError }),
     chats,
@@ -203,14 +229,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     terminal,
     engines,
     ...(mapOps !== undefined ? { mapOps } : {}),
-    // Follows the hub's current project; null in the launcher state (endpoints answer 409).
-    integrations: new IntegrationsService({
-      home: ruahHome(),
-      project: () => {
-        const current = hub.store;
-        return current === null ? null : { root: current.root, architecture: current.current() };
-      },
-    }),
+    integrations,
   });
 
   mapOps?.setDaemonUrl(running.url);
@@ -224,6 +243,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   }
 
   const shutdown = (): void => {
+    cloudWatch?.stop();
     void Promise.all([hub.shutdown(), terminals.shutdown()])
       .then(() => running.close())
       .then(() => resolveServe(0));

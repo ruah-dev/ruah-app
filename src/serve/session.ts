@@ -102,6 +102,8 @@ export interface SessionHubOptions {
   prewarmRetryMs?: number;
   /** Agents edit the map through the ruah_* tools (CONTRACTS §1.7): context-pack hint + per-turn undo. */
   mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
+  /** §9 cloud watch mode: `cloud.watch` frames (and closed sockets) register viewers; optional. */
+  cloudWatch?: { watch(viewer: unknown, on: boolean): void };
 }
 
 /** A prompt that arrived while the current agent was starting: sent once it is idle. */
@@ -1394,6 +1396,7 @@ export function attachSession(hub: SessionHub, socket: WebSocket): void {
   socket.on("close", () => {
     session.alive = false;
     hub.sockets.delete(socket);
+    hub.options.cloudWatch?.watch(socket, false);
     // §2.2 rule 6: cancel a running turn only when the LAST viewer is gone and
     // none reconnects within the grace period (another tab, or a page reload,
     // keeps the turn alive).
@@ -1532,6 +1535,10 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     }
     case "arch.undo": {
       hub.undoMapTurn(message.turnId, socket);
+      return;
+    }
+    case "cloud.watch": {
+      hub.options.cloudWatch?.watch(socket, message.on);
       return;
     }
   }

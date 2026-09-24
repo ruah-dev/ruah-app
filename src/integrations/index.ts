@@ -1,8 +1,10 @@
 // src/integrations/index.ts — IntegrationsService: the §6 API behind the HTTP
-// handler. Owns the registry (DigitalOcean, AWS, Jira, GitHub, ruah), the
+// handler. Owns the registry (DigitalOcean, AWS, Jira, GitHub, ruah, and the
+// §9 providers Vercel, Supabase, Kubernetes, Netlify, Hetzner), the
 // per-project cloud cache and the committable links file, and applies the
 // cloud→element linking on every read. The current project comes from a
-// callback so project switching (§5) needs no rewiring.
+// callback so project switching (§5) needs no rewiring. Every cloud change is
+// announced to onCloudUpdated listeners (the daemon's `cloud.updated`, §9).
 import type { Architecture } from "../contracts/architecture.js";
 import type {
   CloudLinkBody,
@@ -20,10 +22,16 @@ import type {
 } from "../contracts/integrations.js";
 import { AwsIntegration } from "./cloud/aws.js";
 import { DigitalOceanIntegration } from "./cloud/digitalocean.js";
+import { HetznerIntegration } from "./cloud/hetzner.js";
+import { KubernetesIntegration } from "./cloud/kubernetes.js";
+import { NetlifyIntegration } from "./cloud/netlify.js";
+import { SupabaseIntegration } from "./cloud/supabase.js";
+import { VercelIntegration } from "./cloud/vercel.js";
+import { cloudFingerprint, syncProviders } from "./cloud-sync.js";
 import { defaultRunner, IntegrationError, redact, type Runner } from "./exec.js";
 import { Keychain, type SecretStore } from "./keychain.js";
 import { linkResources } from "./linking.js";
-import { IntegrationRegistry, isCloud, isWork, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
+import { IntegrationRegistry, isCloud, isWork, type CloudIntegration, type CloudSyncOutcome, type ProjectContext, type WorkIntegration, type WorkItemData } from "./registry.js";
 import { RuahIntegration, type Launcher } from "./ruah.js";
 import { CloudCacheStore, readLinks, SettingsStore, updateLink } from "./store.js";
 import { GitHubIntegration } from "./work/github.js";
@@ -68,6 +76,20 @@ export interface IntegrationsOptions {
   ruah?: RuahIntegration;
 }
 
+/** §9 `cloud.updated` payload (minus the message type). */
+export interface CloudUpdate {
+  /** Project the snapshot belongs to. */
+  root: string;
+  syncedAt: string | null;
+  /** Providers synced in this update ([] = a link change). */
+  providers: string[];
+  /** Providers whose sync failed outright (the watch loop backs off). */
+  failed: string[];
+  errors: ProviderError[];
+  /** The whole snapshot; absent when nothing a viewer shows changed since the last update. */
+  resources?: CloudResource[];
+}
+
 const ITEM_ID_RE = /^[A-Za-z0-9._/#-]{1,300}$/;
 const MAX_LINKED_ITEMS = 100;
 const LIST_CACHE_MS = 15_000;
@@ -82,6 +104,9 @@ export class IntegrationsService implements IntegrationsApi {
   private readonly cloudCache: CloudCacheStore;
   private readonly now: () => Date;
   private listCache: { at: number; root: string | null; value: { integrations: IntegrationInfo[] } } | undefined;
+  private readonly inflight = new Map<string, Promise<CloudSyncOutcome>>();
+  private readonly cloudListeners = new Set<(update: CloudUpdate) => void>();
+  private readonly cloudFingerprints = new Map<string, string>();
 
   constructor(private readonly options: IntegrationsOptions) {
     const runner = options.runner ?? defaultRunner;
@@ -92,6 +117,11 @@ export class IntegrationsService implements IntegrationsApi {
       new IntegrationRegistry()
         .register(new DigitalOceanIntegration({ runner, settings }))
         .register(new AwsIntegration({ runner, settings }))
+        .register(new VercelIntegration({ runner, settings }))
+        .register(new SupabaseIntegration({ runner, settings }))
+        .register(new KubernetesIntegration({ runner, settings }))
+        .register(new NetlifyIntegration({ runner, settings }))
+        .register(new HetznerIntegration({ runner, settings }))
         .register(new JiraIntegration({ settings, secrets: options.secrets ?? new Keychain({ runner }), ...(options.fetch !== undefined ? { fetch: options.fetch } : {}) }))
         .register(new GitHubIntegration({ runner, settings }));
     if (this.registry.get(this.ruah.id) === undefined) this.registry.register(this.ruah);
@@ -170,20 +200,11 @@ export class IntegrationsService implements IntegrationsApi {
           return integration;
         })
       : this.registry.cloud().filter((c) => c.enabled());
-    const errors: ProviderError[] = [];
-    const fresh: CloudResource[] = [];
-    await Promise.all(
-      providers.map(async (provider) => {
-        try {
-          const account = body.accounts?.[provider.id];
-          const outcome = await provider.sync(account !== undefined ? { account } : {});
-          fresh.push(...outcome.resources);
-          for (const e of outcome.errors) errors.push({ provider: provider.id, message: redact(e) });
-        } catch (err) {
-          errors.push({ provider: provider.id, message: message(err) });
-        }
-      }),
-    );
+    const { resources: fresh, errors, failed } = await syncProviders(providers, {
+      accounts: body.accounts,
+      now: this.now(),
+      syncOne: (provider, account) => this.syncOnce(provider, account),
+    });
     const synced = new Set(providers.map((p) => p.id));
     const cache = this.cloudCache.read(project.root);
     const kept = cache.resources.filter((r) => !synced.has(r.provider));
@@ -193,7 +214,42 @@ export class IntegrationsService implements IntegrationsApi {
     const syncedAt = this.now().toISOString();
     const keptErrors = cache.errors.filter((e) => !synced.has(e.provider));
     this.cloudCache.write(project.root, { ...cache, syncedAt, resources, errors: [...keptErrors, ...errors] });
-    return { resources, syncedAt, errors: [...keptErrors, ...errors] };
+    const result = { resources, syncedAt, errors: [...keptErrors, ...errors] };
+    this.emitCloud(project.root, result, [...synced], failed);
+    return result;
+  }
+
+  /** Concurrent syncs of the same provider + account (watch loop, Sync button, second tab) share one run. */
+  private syncOnce(provider: CloudIntegration, account: string | undefined): Promise<CloudSyncOutcome> {
+    const key = `${provider.id}\u0000${account ?? ""}`;
+    const running = this.inflight.get(key);
+    if (running !== undefined) return running;
+    const started = provider.sync(account !== undefined ? { account } : {}).finally(() => this.inflight.delete(key));
+    this.inflight.set(key, started);
+    return started;
+  }
+
+  /** §9: called after every sync / link change; the daemon pushes it to viewers as `cloud.updated`. */
+  onCloudUpdated(listener: (update: CloudUpdate) => void): () => void {
+    this.cloudListeners.add(listener);
+    return () => this.cloudListeners.delete(listener);
+  }
+
+  private emitCloud(root: string, result: CloudSyncResult, providers: string[], failed: string[]): void {
+    if (this.cloudListeners.size === 0) return;
+    const fingerprint = cloudFingerprint(result.resources);
+    const changed = this.cloudFingerprints.get(root) !== fingerprint;
+    this.cloudFingerprints.set(root, fingerprint);
+    const update: CloudUpdate = {
+      root, syncedAt: result.syncedAt, providers, failed, errors: result.errors, ...(changed ? { resources: result.resources } : {}),
+    };
+    for (const listener of this.cloudListeners) {
+      try {
+        listener(update);
+      } catch {
+        // a broken listener must not fail the sync
+      }
+    }
   }
 
   async cloudResources(): Promise<CloudSyncResult> {
@@ -217,6 +273,7 @@ export class IntegrationsService implements IntegrationsApi {
     cache.manualLinks[body.resourceId] = body.nodeId;
     cache.resources = linkResources(cache.resources, this.nodes(project), cache.manualLinks);
     this.cloudCache.write(project.root, cache);
+    this.emitCloud(project.root, { resources: cache.resources, syncedAt: cache.syncedAt, errors: cache.errors }, [], []);
     return { ok: true };
   }
 

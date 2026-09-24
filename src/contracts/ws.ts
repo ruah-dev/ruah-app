@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Architecture } from "./architecture.js";
 import { ArchitectureSchema } from "./architecture.js";
+import { CloudResourceSchema, ProviderErrorSchema } from "./integrations.js";
 import { MapActorSchema, MapChangeSchema } from "./map.js";
 
 // CONTRACTS.md §2.1 — field for field. Open unions use z.string() with the
@@ -211,6 +212,8 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("chat.delete"), chatId: z.string() }),
   // §1.7: restore the elements an agent's turn changed (in-memory snapshot, this daemon's life)
   z.object({ type: z.literal("arch.undo"), turnId: z.string() }),
+  // §9: this viewer is on the Cloud page or has "Show on map" on (the daemon re-syncs cloud providers while any viewer watches)
+  z.object({ type: z.literal("cloud.watch"), on: z.boolean() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -277,6 +280,16 @@ export const ServerMessageSchema = z.union([
   z.object({ type: z.literal("project"), project: ProjectInfoSchema.nullable() }),
   z.object({ type: z.literal("chats"), projectId: z.string(), chats: z.array(ChatInfoSchema), activeChatId: z.string().nullable() }),
   z.object({ type: z.literal("chat.history"), chatId: z.string(), turns: z.array(TurnRecordSchema) }),
+  // §9: after every cloud sync (watch loop or Sync button) and link change; resources absent = nothing visible changed
+  z.object({
+    type: z.literal("cloud.updated"),
+    root: z.string(),
+    syncedAt: z.string().nullable(),
+    providers: z.array(z.string()),
+    failed: z.array(z.string()),
+    errors: z.array(ProviderErrorSchema),
+    resources: z.array(CloudResourceSchema).optional(),
+  }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 
