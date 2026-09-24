@@ -23,6 +23,10 @@ Usage:
   ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
                                    drill level + workflow + Specifications; --out - = stdout)
+  ruah app cloud <cmd> [options]    cloud resources + live status without the app (no daemon):
+    providers                      each provider: connected / not logged in / not installed + fix
+    list | status | watch          resources · health summary (exit 1 when down) · live changes
+                                   (\`ruah app cloud help\` for options)
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -239,6 +243,10 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "mcp": {
       return await mcp(rest);
+    }
+    case "cloud": {
+      const { runCloud } = await import("./integrations/cloud-cli.js");
+      return await runCloud(rest);
     }
     default:
       process.stdout.write(USAGE);
