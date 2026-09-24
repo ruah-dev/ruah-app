@@ -374,7 +374,7 @@ async function serve(arch: Architecture | null, integrations?: IntegrationsApi) 
 function fakeIntegrations(fail: boolean): IntegrationsApi {
   const no = (): Promise<never> => Promise.reject(new Error("not used"));
   return {
-    list: no, connect: no, disconnect: no, cloudSync: no, cloudLink: no, workLink: no, workCreate: no,
+    list: no, connect: no, disconnect: no, cloudSync: no, cloudLink: no, cloudScope: no, cloudScopeAccounts: no, cloudScopeResource: no, workLink: no, workCreate: no,
     ruahStatus: no, ruahTask: no, ruahTaskAction: no, ruahWorkflows: no, ruahWorkflowRun: no,
     cloudResources: () => (fail ? Promise.reject(new Error("doctl exploded")) : Promise.resolve({ resources: CLOUD, syncedAt: "2026-09-22T00:00:00Z", errors: [] })),
     workItems: () => Promise.resolve({ items: ISSUES, ...(fail ? { errors: [{ provider: "jira", message: "401" }] } : {}) }),
@@ -426,9 +426,14 @@ describe("ruah app export drawio", () => {
     writeFileSync(path.join(repo, "architecture.json"), JSON.stringify(arch));
     mkdirSync(path.join(repo, ".ruah"));
     writeFileSync(path.join(repo, ".ruah", "links.json"), JSON.stringify({ version: 1, links: [{ nodeId: "api", provider: "github", itemId: "acme/api#42" }] }));
+    // §14: only the project's cloud scope is exported (here: added by hand).
+    writeFileSync(path.join(repo, ".ruah", "cloud.json"), JSON.stringify({ version: 1, include: ["arn:aws:lambda:x"] }));
     new CloudCacheStore(home).write(repo, {
       version: 1, syncedAt: "2026-09-21T00:00:00Z", errors: [], manualLinks: {},
-      resources: [{ id: "arn:aws:lambda:x", provider: "aws", type: "function", service: "lambda", name: "Postgres", region: "eu-west-1" }],
+      resources: [
+        { id: "arn:aws:lambda:x", provider: "aws", type: "function", service: "lambda", name: "Postgres", region: "eu-west-1" },
+        { id: "arn:aws:lambda:other-client", provider: "aws", type: "function", service: "lambda", name: "OtherClientFn", region: "eu-west-1" },
+      ],
     });
     const out = path.join(tempDir("ruah-out-"), "nested", "arch.drawio");
     const previous = process.env.RUAH_HOME;
@@ -452,6 +457,7 @@ describe("ruah app export drawio", () => {
     const doc = parseXml(xml);
     expect(all(doc, "diagram").map((d) => d.attrs.name)).toContain("Specifications");
     expect(xml).toContain("aws/lambda Postgres (eu-west-1) [name]"); // linked by name to the db element
+    expect(xml).not.toContain("OtherClientFn"); // outside the project's cloud scope
     expect(xml).toContain("acme/api#42 [not fetched] https://github.com/acme/api/issues/42");
     expect(xml).toContain("cloud resources from the cached sync of 2026-09-21T00:00:00Z");
   });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Architecture } from "./architecture.js";
 import { ArchitectureSchema } from "./architecture.js";
-import { CloudResourceSchema, ProviderErrorSchema } from "./integrations.js";
+import { CloudResourceSchema, CloudScopeSummarySchema, ProviderErrorSchema } from "./integrations.js";
 import { MapActorSchema, MapChangeSchema } from "./map.js";
 
 // CONTRACTS.md §2.1 — field for field. Open unions use z.string() with the
@@ -350,6 +350,7 @@ export const ServerMessageSchema = z.union([
     failed: z.array(z.string()),
     errors: z.array(ProviderErrorSchema),
     resources: z.array(CloudResourceSchema).optional(),
+    scope: CloudScopeSummarySchema.optional(), // §14: the project's accounts and scope files
   }),
   // §13.2: sent to every viewer, whatever project is open
   z.object({ type: z.literal("activity"), event: ActivityEventSchema, project: ProjectActivitySchema }),

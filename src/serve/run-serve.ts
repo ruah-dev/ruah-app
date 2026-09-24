@@ -20,7 +20,6 @@ import { SettingsStore } from "../projects/settings-store.js";
 import { ProjectError, ProjectService, type OpenSystemProject } from "../projects/service.js";
 import { IntegrationsService } from "../integrations/index.js";
 import { CloudWatcher, DEFAULT_WATCH_INTERVAL_MS } from "../integrations/watch.js";
-import { syncable } from "../integrations/registry.js";
 import { EnginesService } from "../engines/index.js";
 import { makeOpenSystemProject } from "../system/open.js";
 import { MapOpsService } from "./map-ops.js";
@@ -165,7 +164,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   // CONTRACTS §9 watch mode: re-sync enabled cloud providers only while a viewer is on the
   // Cloud page or shows cloud on the map (RUAH_CLOUD_WATCH=0 turns it off).
   const cloudWatch = process.env.RUAH_CLOUD_WATCH === "0" ? undefined : new CloudWatcher({
-    providers: () => ((hubRef?.store ?? null) !== null ? integrations.registry.cloud().filter(syncable).map((c) => c.id) : []),
+    // §14: only the providers (and accounts) of the project's cloud scope when it lists any.
+    providers: () => ((hubRef?.store ?? null) !== null ? integrations.watchProviders() : []),
     sync: async (id) => {
       const result = await integrations.cloudSync({ providers: [id] });
       return { ok: !result.errors.some((e) => e.provider === id) || result.resources.some((r) => r.provider === id) };

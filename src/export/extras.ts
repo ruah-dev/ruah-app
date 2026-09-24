@@ -10,6 +10,7 @@ import type { IntegrationsApi } from "../integrations/index.js";
 import { IntegrationsService } from "../integrations/index.js";
 import { isWork } from "../integrations/registry.js";
 import { linkResources } from "../integrations/linking.js";
+import { applyScope, loadScopeUnits } from "../integrations/scope/index.js";
 import { CloudCacheStore, readLinks } from "../integrations/store.js";
 import type { DrawioOptions } from "./drawio.js";
 
@@ -39,7 +40,8 @@ export async function extrasFromService(api: IntegrationsApi | undefined, timeou
   ]);
   let resources: CloudResource[] = [];
   if (cloud.status === "fulfilled") {
-    resources = cloud.value.resources;
+    // §14: in-scope resources only (resources without a scope come from an older daemon).
+    resources = cloud.value.resources.filter((r) => r.scope === undefined || r.scope.in);
     if (cloud.value.syncedAt !== null) notes.push(`cloud resources as of the last sync (${cloud.value.syncedAt})`);
     for (const e of cloud.value.errors) notes.push(`cloud sync error (${e.provider}): ${e.message}`);
   } else {
@@ -61,7 +63,9 @@ export function extrasFromDisk(root: string, arch: Architecture, home: string): 
   let cloud: CloudResource[] = [];
   try {
     const cache = new CloudCacheStore(home).read(root);
-    cloud = linkResources(cache.resources, arch.nodes, cache.manualLinks);
+    // §14: only the project's resources (its cloud scope), like the Cloud page and the map.
+    const linked = linkResources(cache.resources, arch.nodes, cache.manualLinks);
+    cloud = applyScope({ units: loadScopeUnits(root), resources: linked, nodes: arch.nodes, manualLinks: cache.manualLinks }).filter((r) => r.scope?.in === true);
     if (cache.syncedAt !== null) notes.push(`cloud resources from the cached sync of ${cache.syncedAt}`);
   } catch (err) {
     notes.push(`cloud cache unreadable: ${msg(err)}`);

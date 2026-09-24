@@ -149,6 +149,15 @@ describe("HTTP routes: origin checks, validation, redaction", () => {
     },
     cloudResources: () => Promise.resolve({ resources: [], syncedAt: null, errors: [] }),
     cloudLink: () => Promise.resolve({ ok: true }),
+    cloudScope: () => Promise.resolve({ root: "/r", scope: { configured: false, accounts: [], files: [], writable: true }, evidence: [], resources: [], counts: { in: 0, suggestions: 0, excluded: 0, total: 0 } }),
+    cloudScopeAccounts: (body) => {
+      calls.push(`scope-accounts:${body.accounts.length}`);
+      return Promise.resolve({ configured: true, accounts: body.accounts, files: [], writable: true });
+    },
+    cloudScopeResource: (body) => {
+      calls.push(`scope-resource:${body.action}`);
+      return Promise.resolve({ ok: true, scope: { in: body.action === "include", reasons: [] } });
+    },
     workItems: () => Promise.resolve({ items: [] }),
     workLink: () => Promise.resolve({ ok: true }),
     workCreate: () => {
