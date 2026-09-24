@@ -287,7 +287,12 @@ describe("Supabase", () => {
       ["functions", "list", "--project-ref", "abcdefghijklmnopqrst", "-o", "json"],
       ["branches", "list", "--project-ref", "abcdefghijklmnopqrst", "-o", "json"],
     ]);
-    for (const c of runner.calls) expect(c.args[1]).toBe("list");
+    for (const c of runner.calls) {
+      expect(c.args[1]).toBe("list");
+      // The CLI writes supabase/.temp/ into its cwd: never the daemon's (a user's repo).
+      expect(c.options?.cwd).toBe(supabase.SUPABASE_WORKDIR);
+      expect(c.options?.input).toBe("");
+    }
   });
 
   test("logged out → not_connected with `supabase login`; missing CLI → brew hint", async () => {
@@ -456,7 +461,10 @@ describe("Netlify", () => {
     const i = new netlify.NetlifyIntegration({ runner, settings: settings(), bin: () => "/fake/netlify" });
     const out = await i.sync({ account: "acme" });
     expect(out.resources.map((r) => r.name)).toEqual(["marketing", "docs", "blog"]);
-    for (const { args } of runner.calls) expect(["getCurrentUser", "listAccountsForUser", "listSites", "listSiteDeploys"]).toContain(args[1]);
+    for (const { args, options } of runner.calls) {
+      expect(["getCurrentUser", "listAccountsForUser", "listSites", "listSiteDeploys"]).toContain(args[1]);
+      expect(options?.cwd).toBe(tmpdir());
+    }
     const perSite = runner.calls.filter((c) => c.args[1] === "listSiteDeploys").map((c) => JSON.parse(c.args[3] ?? "{}") as { per_page: number });
     expect(perSite.every((d) => d.per_page === 1)).toBe(true);
     const info = await i.info();

@@ -4,6 +4,9 @@
 // list`, `projects list`, and per active project `functions list` / `branches
 // list --project-ref <ref>` — never anything that needs the database
 // password. Project status → health per CONTRACTS.md §9.
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import type { CloudResource } from "../../contracts/integrations.js";
 import { arr, mapLimit, obj, str } from "../exec.js";
 import { healthFrom, type HealthTable } from "../health.js";
@@ -13,6 +16,7 @@ const PROVIDER = "supabase";
 const DASHBOARD = "https://supabase.com/dashboard";
 const REF_RE = /^[a-z0-9]{8,40}$/;
 const MAX_PROJECT_DETAILS = 25;
+export const SUPABASE_WORKDIR = path.join(tmpdir(), "ruah-supabase-cli");
 
 export const SUPABASE_HEALTH = {
   project: {
@@ -110,8 +114,15 @@ export class SupabaseIntegration extends CliCloudAdapter {
   protected readonly setupHint = "brew install supabase/tap/supabase && supabase login";
   protected readonly accountPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
   protected readonly accountNoun = "organization";
-  // The CLI's update notice goes to stderr; stdin closed so nothing can prompt.
-  protected override runOptions = { input: "", env: { SUPABASE_TELEMETRY_DISABLED: "1" } };
+  // The CLI writes supabase/.temp/ (version cache, "linked-project.json") into its working
+  // directory: run it from a private temp dir, never the user's repo. Stdin closed so nothing can
+  // prompt; its update notice goes to stderr.
+  protected override runOptions = { input: "", cwd: SUPABASE_WORKDIR, env: { SUPABASE_TELEMETRY_DISABLED: "1" } };
+
+  protected override run(bin: string, args: string[]): Promise<string> {
+    mkdirSync(SUPABASE_WORKDIR, { recursive: true });
+    return super.run(bin, args);
+  }
 
   protected async accounts(bin: string): Promise<CliAccount[]> {
     const json = await this.json(bin, ["orgs", "list", "-o", "json"]);

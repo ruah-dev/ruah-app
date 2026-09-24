@@ -4,6 +4,7 @@
 // listAccountsForUser, listSites and, per site, listSiteDeploys with
 // per_page 1 for the newest deploy. A site's health combines its published
 // deploy with the newest one (CONTRACTS.md §9).
+import { tmpdir } from "node:os";
 import type { CloudHealth, CloudResource } from "../../contracts/integrations.js";
 import { arr, mapLimit, obj, str, type Json } from "../exec.js";
 import { CliCloudAdapter, cloudResource, guarded, isoTime, type CheckResult, type CliAccount } from "./cli-adapter.js";
@@ -55,7 +56,8 @@ export class NetlifyIntegration extends CliCloudAdapter {
   protected readonly setupHint = "brew install netlify-cli && netlify login";
   protected readonly accountPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
   protected readonly accountNoun = "team";
-  protected override runOptions = { input: "", env: { NETLIFY_TELEMETRY_DISABLED: "1" } };
+  // A linked .netlify/ in the daemon's cwd must not matter; stdin closed so nothing can prompt.
+  protected override runOptions = { input: "", cwd: tmpdir(), env: { NETLIFY_TELEMETRY_DISABLED: "1" } };
 
   private api(bin: string, operation: string, data?: Record<string, unknown>): Promise<unknown> {
     return this.json(bin, ["api", operation, ...(data !== undefined ? ["--data", JSON.stringify(data)] : [])]);
