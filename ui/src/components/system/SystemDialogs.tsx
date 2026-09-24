@@ -313,7 +313,10 @@ function NewSystemDialog({ open, seedRepos }: { open: boolean; seedRepos: string
                   <Input
                     aria-label="Repo id"
                     value={r.id}
-                    onChange={(e) => setRepos((rs) => rs.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setRepos((rs) => rs.map((x, j) => (j === i ? { ...x, id } : x)));
+                    }}
                     className={cn(fieldClass, "h-8 w-36 font-mono", !REPO_ID_RE.test(r.id) && "border-bad")}
                   />
                   <span className="min-w-0 flex-1 truncate font-mono text-meta text-muted-foreground" title={r.path}>

@@ -164,7 +164,11 @@ export function ResourceTable({
       </div>
       <div
         ref={scrollRef}
-        onScroll={(e) => setView((v) => ({ ...v, top: e.currentTarget.scrollTop }))}
+        onScroll={(e) => {
+          // Read it now: React clears currentTarget before the updater runs.
+          const top = e.currentTarget.scrollTop;
+          setView((v) => ({ ...v, top }));
+        }}
         className="min-h-0 flex-1 overflow-y-auto"
         role="rowgroup"
       >
