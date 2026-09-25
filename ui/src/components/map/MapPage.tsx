@@ -57,7 +57,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { Phantom, PhantomCompanion } from "@/components/brand/Phantom";
+import { Phantom } from "@/components/brand/Phantom";
+import { PhantomPose } from "@/components/brand/PhantomPose";
 
 export const iconButton =
   "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
@@ -355,8 +356,9 @@ function EmptyMap() {
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
       <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
-        <PhantomCompanion size="lg" expression={scanning ? "loading" : "tracking"} />
+        <PhantomPose pose={scanning ? "reading" : "mapping"} size={96} label={scanning ? "Scanning the repo" : undefined} />
         <div className="space-y-1.5">
+          <p className="text-[11px] font-medium tracking-[0.14em] text-brand uppercase">{scanning ? "Scanning" : "New project"}</p>
           <p className="heading text-[16px] text-foreground">An empty map</p>
           <p className="text-ui-sm leading-relaxed text-muted-foreground">
             {wb.editing

@@ -114,6 +114,18 @@ export function agentTintOf(agentId: string | undefined | null): AgentTint | und
   return AGENT_ALIASES[agentId.toLowerCase()];
 }
 
+/** The agent tint for a display name ("Claude Code", "Cursor Agent", "Kiro CLI", …). */
+export function agentTintFromName(name: string | undefined | null): AgentTint | undefined {
+  if (!name) return undefined;
+  const n = name.toLowerCase().replace(/[\s_-]+/g, "");
+  if (n.startsWith("claude")) return "claude";
+  if (n.startsWith("cursor")) return "cursor";
+  if (n.startsWith("grok")) return "grok";
+  if (n.startsWith("kiro")) return "kiro";
+  if (n.startsWith("opencode")) return "opencode";
+  return undefined;
+}
+
 export interface PhantomAgentProps extends Common {
   /** A daemon agent id (claude, cursor, grok, kiro, opencode, claude-acp, …). Unknown ids get
    * the palette's AI ghost. */
@@ -123,14 +135,20 @@ export interface PhantomAgentProps extends Common {
   emblem?: boolean | undefined;
 }
 
-/** A coding agent's own ghost: the agent's tint, the expression's eyes and a small emblem. */
+/** Expressions that report a status keep their semantic colour on an agent's ghost too. */
+const STATUS_EXPRESSIONS: ReadonlySet<PhantomExpression> = new Set(["success", "loading", "warning", "error"]);
+
+/** A coding agent's own ghost: the agent's tint (the palette's AI colour for unknown agents),
+ * the expression's eyes and a small emblem. Status expressions (success, loading, warning,
+ * error) keep their semantic colour so a waiting or failed agent still reads at a glance. */
 export function PhantomAgent({ agent, expression = "idle", emblem, size = "md", tone, label, ...rest }: PhantomAgentProps) {
   const tint = agentTintOf(agent);
   const s = px(size);
   const cfg = EXPRESSION_CONFIG[expression];
   const showEmblem = !!tint && (emblem ?? s >= 32) && (expression === "idle" || expression === "agent" || expression === "tracking");
+  const body = tone ? canonicalTone(tone) : STATUS_EXPRESSIONS.has(expression) ? cfg.tone : (tint ?? "ai");
   return (
-    <Shell size={s} tone={tone ? canonicalTone(tone) : (tint ?? "ai")} expression={expression} label={label} {...rest}>
+    <Shell size={s} tone={body} expression={expression} label={label} {...rest}>
       <Figure eyes={cfg.eye} agent={showEmblem ? tint : undefined} {...eyeScale(s)} />
     </Shell>
   );

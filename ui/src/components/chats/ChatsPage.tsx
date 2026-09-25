@@ -2,7 +2,8 @@
 // Opening a chat of another project switches the project first, then opens the chat.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MessageSquarePlus, RefreshCw, Search } from "lucide-react";
-import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import { EmptyState as GhostState } from "@/components/brand/EmptyState";
+import type { PhantomPoseName } from "@/components/brand/PhantomPose";
 import type { RecentChat } from "@/lib/contracts";
 import { fetchRecentChats, prefetchChat, prefetchProject } from "@/lib/daemon";
 import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
@@ -144,12 +145,13 @@ export function ChatsPage() {
 
         {!connected ? (
           <EmptyState
-            expression="warning"
+            pose="sleeping"
+            eyebrow="Offline"
             title="No daemon connected"
             body="Chats are stored by the Ruah daemon. Start the Ruah app (or ruah app serve) to see them."
           />
         ) : error ? (
-          <EmptyState expression="error" title="Couldn't load chats" body={error} />
+          <EmptyState pose="detective" eyebrow="Couldn't load" title="Couldn't load chats" body={error} />
         ) : chats === null ? (
           <div className="space-y-2 pt-1">
             {Array.from({ length: 7 }, (_, i) => (
@@ -158,7 +160,8 @@ export function ChatsPage() {
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
-            expression={query ? "thinking" : "idle"}
+            pose={query ? "searching" : "chatting"}
+            eyebrow={query ? undefined : "Chats"}
             title={query ? "No chat matches" : "No chats yet"}
             body={
               query
@@ -235,20 +238,16 @@ export function ChatsPage() {
   );
 }
 
-function EmptyState({
-  title,
-  body,
-  expression,
-}: {
-  title: string;
-  body: string;
-  expression: PhantomExpression;
-}) {
+/** Page states: sleeping (offline), detective (failed), searching (no match), chatting (none). */
+function EmptyState({ title, body, pose, eyebrow }: { title: string; body: string; pose: PhantomPoseName; eyebrow?: string | undefined }) {
   return (
-    <div className="mx-auto flex max-w-sm flex-col items-center gap-3 py-16 text-center">
-      <Phantom expression={expression} size="md" />
-      <p className="text-title font-medium">{title}</p>
-      <p className="text-ui-sm leading-relaxed text-muted-foreground">{body}</p>
-    </div>
+    <GhostState
+      pose={pose}
+      eyebrow={eyebrow}
+      title={title}
+      body={body}
+      className="mx-auto max-w-md"
+      live={pose === "detective" ? "polite" : undefined}
+    />
   );
 }

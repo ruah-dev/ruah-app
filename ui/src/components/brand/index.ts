@@ -35,6 +35,7 @@ export {
   PhantomPose,
   PhantomScene,
   SCENE_NAMES,
+  agentTintFromName,
   agentTintOf,
   expressionTone,
   sceneRole,

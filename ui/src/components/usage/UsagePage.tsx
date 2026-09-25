@@ -4,7 +4,7 @@
 // daemon's /api/usage endpoints (src/lib/usage.ts).
 import { useMemo, useState } from "react";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
-import { Phantom } from "@/components/brand/Phantom";
+import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import {
   bucketOf,
   bucketsFor,
@@ -58,13 +58,17 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** No data yet: the Accountant (charting) waits for turns; a failure brings the detective. */
 function EmptyState({ title, body, failed = false }: { title: string; body: string; failed?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-24 text-center">
-      <Phantom expression={failed ? "error" : "idle"} size="md" className="mb-1" />
-      <p className="heading text-[16px] text-foreground">{title}</p>
-      <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">{body}</p>
-    </div>
+    <GhostState
+      pose={failed ? "detective" : "charting"}
+      eyebrow={failed ? "Couldn't load" : "Usage"}
+      title={title}
+      body={body}
+      className="py-20"
+      live={failed ? "polite" : undefined}
+    />
   );
 }
 
@@ -276,6 +280,12 @@ export function UsagePage() {
                             {metric === "cost" ? formatUsd(a.cost) : formatTokens(a.tokens)}
                           </span>
                         </div>
+                        <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-3">
+                          <span
+                            className="block h-full rounded-full"
+                            style={{ width: `${Math.max(2, share * 100)}%`, backgroundColor: model.colors.get(a.agentId) }}
+                          />
+                        </span>
                         <span className="text-[12px] text-muted-foreground">
                           {metric === "cost"
                             ? `${formatPercent(share)} of cost · ${formatTokens(a.tokens)} tokens`

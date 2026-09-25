@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Map as MapIcon, RefreshCw, Search, Users } from "lucide-react";
 import type { CloudHealth, CloudResource, IntegrationInfo, ScopeAccount } from "@/lib/contracts";
-import { Phantom } from "@/components/brand/Phantom";
+import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import {
   CLOUD_DIAGRAM_ID,
   HEALTH_LABEL,
@@ -465,52 +465,54 @@ export function CloudPage() {
             onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
             {...(sv.supported && writable ? { onScope: (r: CloudResource, a: ScopeResourceAction) => void onScope(r, a) } : {})}
             empty={
-              <div className="flex h-full min-h-60 flex-col items-center justify-center gap-2 px-8 text-center">
-                {s.cloud.status === "loading" ? (
-                  <>
-                    <Phantom expression="loading" size="md" label="Loading resources" />
-                    <p className="text-ui-sm text-muted-foreground">Reading what's deployed…</p>
-                  </>
-                ) : (
-                  <>
-                    <Phantom
-                      expression={
-                        s.cloud.status === "error" && all.length === 0 ? "error" : all.length ? "thinking" : "idle"
-                      }
-                      size="md"
-                      className="mb-1"
-                    />
-                    <p className="heading text-[16px] text-foreground">
-                      {all.length
-                        ? healthFilter === "unhealthy" && !unhealthyCount
-                          ? "Everything is healthy"
-                          : "Nothing matches the filter"
-                        : projectMode && everything.length
-                          ? "Nothing in this project yet"
-                          : "No resources yet"}
-                    </p>
-                    <p className="max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
-                      {all.length
-                        ? "Clear the filter to see every resource."
-                        : projectMode && everything.length
-                          ? `None of the ${everything.length} synced resources is proven to be this project's. Pick its accounts, add a suggestion, or add resources from All accounts (row menu → Add to project).`
-                          : cloudProviders.length
-                            ? "Press Sync to read what's deployed. Resources tagged ruah:node=<element id> link themselves."
-                            : "Connect a cloud provider first."}
-                    </p>
-                    {projectMode && everything.length > 0 && all.length === 0 ? (
-                      <button type="button" className={quietButton} onClick={() => setView("all")}>
-                        Show all accounts ({everything.length})
-                      </button>
-                    ) : null}
-                    {all.length === 0 && s.cloud.status === "error" ? (
-                      <button type="button" className={quietButton} onClick={() => void loadCloud()}>
-                        Retry
-                      </button>
-                    ) : null}
-                  </>
-                )}
-              </div>
+              s.cloud.status === "loading" ? (
+                <GhostState pose="cloud" title="Reading what's deployed…" className="h-full min-h-60 px-8" live="polite" />
+              ) : (
+                <GhostState
+                  className="h-full min-h-60 px-8"
+                  {...(s.cloud.status === "error" && all.length === 0
+                    ? { pose: "detective" as const, eyebrow: "Couldn't load", live: "polite" as const }
+                    : all.length
+                      ? healthFilter === "unhealthy" && !unhealthyCount
+                        ? { pose: "celebrating" as const, eyebrow: "Healthy" }
+                        : { pose: "searching" as const }
+                      : cloudProviders.length || (projectMode && everything.length)
+                        ? { pose: "cloud" as const }
+                        : { pose: "plugging" as const, eyebrow: "Not connected" })}
+                  title={
+                    all.length
+                      ? healthFilter === "unhealthy" && !unhealthyCount
+                        ? "Everything is healthy"
+                        : "Nothing matches the filter"
+                      : projectMode && everything.length
+                        ? "Nothing in this project yet"
+                        : "No resources yet"
+                  }
+                  body={
+                    all.length
+                      ? "Clear the filter to see every resource."
+                      : projectMode && everything.length
+                        ? `None of the ${everything.length} synced resources is proven to be this project's. Pick its accounts, add a suggestion, or add resources from All accounts (row menu → Add to project).`
+                        : cloudProviders.length
+                          ? "Press Sync to read what's deployed. Resources tagged ruah:node=<element id> link themselves."
+                          : "Connect a cloud provider first."
+                  }
+                  actions={
+                    <>
+                      {projectMode && everything.length > 0 && all.length === 0 ? (
+                        <button type="button" className={quietButton} onClick={() => setView("all")}>
+                          Show all accounts ({everything.length})
+                        </button>
+                      ) : null}
+                      {all.length === 0 && s.cloud.status === "error" ? (
+                        <button type="button" className={quietButton} onClick={() => void loadCloud()}>
+                          Retry
+                        </button>
+                      ) : null}
+                    </>
+                  }
+                />
+              )
             }
           />
         </div>
