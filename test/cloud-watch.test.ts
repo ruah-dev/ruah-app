@@ -207,6 +207,38 @@ describe("CloudWatcher", () => {
     w.stop();
   });
 
+  // Regression: the schedule was keyed by provider only, so after a project switch the new
+  // project's providers waited out the previous project's backoff (up to 10 min).
+  test("the schedule is per project: a switch neither inherits backoff nor waits for the old timer", async () => {
+    let root = "/a";
+    const calls: string[] = [];
+    const w = new CloudWatcher({
+      providers: () => ["k8s"],
+      key: () => root,
+      intervalMs: 10_000,
+      maxBackoffMs: 600_000,
+      sync: async () => {
+        calls.push(root);
+        return { ok: root !== "/a" };
+      },
+    });
+    w.watch("v", true);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(calls).toEqual(["/a", "/a", "/a"]);
+    expect(w.state("k8s")?.failures).toBe(3); // next /a poll 80 s out
+    root = "/b";
+    w.projectChanged();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(["/a", "/a", "/a", "/b"]);
+    expect(w.state("k8s")?.failures).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(calls.at(-1)).toBe("/b");
+    expect(calls).toHaveLength(5);
+    w.stop();
+  });
+
   test("providers are re-read on every tick (a provider connected while watching joins)", async () => {
     const ids = ["a"];
     const synced: string[] = [];
@@ -275,6 +307,23 @@ describe("IntegrationsService: cloud.updated events", () => {
     a.outcome = new Error("not logged in");
     await svc.cloudSync({ providers: ["a"] });
     expect(updates[3]).toMatchObject({ failed: ["a"], errors: [{ provider: "a", message: "not logged in" }] });
+  });
+
+  // Regression: a sync that failed outright (kubectl timeout) wiped the provider's cached resources,
+  // so the Cloud page and the map's cloud links went empty until the next success.
+  test("a provider whose sync fails outright keeps its last resources", async () => {
+    const { svc, a, b } = setup();
+    a.outcome = { resources: [res("r1", "a", "healthy")], errors: [] };
+    b.outcome = { resources: [res("s1", "b", "healthy")], errors: [] };
+    await svc.cloudSync({});
+    a.outcome = new Error("timed out");
+    const after = await svc.cloudSync({ providers: ["a"] });
+    expect(after.resources.map((r) => r.id).sort()).toEqual(["r1", "s1"]);
+    expect(after.errors).toEqual([{ provider: "a", message: "timed out" }]);
+    expect((await svc.cloudResources()).resources.map((r) => r.id).sort()).toEqual(["r1", "s1"]);
+    // A successful sync that finds nothing still empties it.
+    a.outcome = { resources: [], errors: [] };
+    expect((await svc.cloudSync({ providers: ["a"] })).resources.map((r) => r.id)).toEqual(["s1"]);
   });
 
   test("sync-all skips providers whose CLI is not installed (and drops their old errors); naming one still tries it", async () => {

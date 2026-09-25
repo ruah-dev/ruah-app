@@ -254,7 +254,12 @@ export class IntegrationsService implements IntegrationsApi {
     const skipped = new Set(this.registry.cloud().filter((c) => (!syncable(c) || (plan !== null && !plan.has(c.id))) && !synced.has(c.id)).map((c) => c.id));
     const cache = this.cloudCache.read(project.root);
     // A sync-all under account scope also drops what other providers left in this project's cache.
-    const kept = cache.resources.filter((r) => !synced.has(r.provider) && (wanted !== undefined || plan === null || plan.has(r.provider)));
+    // A provider whose sync failed outright (timeout, cluster unreachable) keeps its last resources
+    // (with their old observedAt) instead of vanishing from the Cloud page and the map until it recovers.
+    const failedNow = new Set(failed);
+    const kept = cache.resources.filter(
+      (r) => (!synced.has(r.provider) || failedNow.has(r.provider)) && (wanted !== undefined || plan === null || plan.has(r.provider)),
+    );
     const resources = linkResources(withoutScope([...kept, ...fresh]), this.nodes(project), cache.manualLinks).sort(
       (a, b) => a.provider.localeCompare(b.provider) || a.type.localeCompare(b.type) || a.name.localeCompare(b.name),
     );
