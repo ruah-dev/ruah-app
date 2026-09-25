@@ -14,6 +14,7 @@ import { usePalette, useTheme, type PalettePref, type ThemePref } from "@/lib/th
 import { AgentMark, WarmDot, modeLabel, plain } from "@/components/agent/ComposerControls";
 import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
+import { FeaturesSettings } from "./FeaturesSettings";
 import { cn } from "@/lib/utils";
 
 const PALETTES: readonly { value: PalettePref; label: string; swatch: string }[] = [
@@ -294,6 +295,8 @@ export function SettingsPage() {
               <AgentDefaultsGroup daemon={daemon} agents={agents} />
             </Group>
           ) : null}
+
+          <FeaturesSettings />
 
           <Group
             title="Integrations"
