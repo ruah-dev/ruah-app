@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "featured": [
+    {
+      "id": "claude-design",
+      "kind": "mcp",
+      "name": "Claude Design",
+      "description": "Anthropic's design MCP server: generate and iterate on UI designs and mockups from the agent.",
+      "category": "Design",
+      "homepage": "https://claude.ai",
+      "runs": { "type": "http", "url": "https://api.anthropic.com/v1/design/mcp" },
+      "notes": "Remote server with its own sign-in: run /design-login in Claude Code once (or finish the OAuth prompt the first time a session connects). Ruah never stores credentials for it. Other agents need remote-MCP (HTTP) support and their own OAuth.",
+      "suggestedFor": ["claude"]
+    },
+    {
+      "id": "filesystem",
+      "kind": "mcp",
+      "name": "Filesystem",
+      "description": "Read, write and search files, limited to the project folder.",
+      "category": "Core",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "${project}"] },
+      "notes": "Downloads the package with npx the first time a session starts."
+    },
+    {
+      "id": "github",
+      "kind": "mcp",
+      "name": "GitHub",
+      "description": "Issues, pull requests, code search and Actions through GitHub's official MCP server.",
+      "category": "Code",
+      "homepage": "https://github.com/github/github-mcp-server",
+      "runs": { "type": "stdio", "command": "docker", "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"] },
+      "env": ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+      "notes": "Needs Docker. Save a fine-grained personal access token as GITHUB_PERSONAL_ACCESS_TOKEN (kept in the macOS Keychain). Hosted alternative: https://api.githubcopilot.com/mcp/ (OAuth, in agents that support remote MCP)."
+    },
+    {
+      "id": "playwright",
+      "kind": "mcp",
+      "name": "Playwright",
+      "description": "Drive a real browser: navigate, click, fill forms, read the accessibility tree, take screenshots.",
+      "category": "Browser",
+      "homepage": "https://github.com/microsoft/playwright-mcp",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest"] }
+    },
+    {
+      "id": "chrome-devtools",
+      "kind": "mcp",
+      "name": "Chrome DevTools",
+      "description": "Inspect and debug a live Chrome: console, network, performance traces.",
+      "category": "Browser",
+      "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "chrome-devtools-mcp@latest"] }
+    },
+    {
+      "id": "context7",
+      "kind": "mcp",
+      "name": "Context7",
+      "description": "Up-to-date, version-specific library documentation and code examples.",
+      "category": "Docs",
+      "homepage": "https://github.com/upstash/context7",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "@upstash/context7-mcp"] },
+      "optionalEnv": ["CONTEXT7_API_KEY"],
+      "notes": "Works without a key; an API key (CONTEXT7_API_KEY) raises the rate limits."
+    },
+    {
+      "id": "sentry",
+      "kind": "mcp",
+      "name": "Sentry",
+      "description": "Errors, issues and releases from Sentry.",
+      "category": "Observability",
+      "homepage": "https://docs.sentry.io/product/sentry-mcp/",
+      "runs": { "type": "http", "url": "https://mcp.sentry.dev/mcp" },
+      "notes": "Remote server; sign in with OAuth the first time an agent connects (agents that support remote MCP)."
+    },
+    {
+      "id": "linear",
+      "kind": "mcp",
+      "name": "Linear",
+      "description": "Find, create and update Linear issues, projects and comments.",
+      "category": "Work",
+      "homepage": "https://linear.app/docs/mcp",
+      "runs": { "type": "http", "url": "https://mcp.linear.app/mcp" },
+      "notes": "Remote server; sign in with OAuth the first time an agent connects."
+    },
+    {
+      "id": "figma",
+      "kind": "mcp",
+      "name": "Figma",
+      "description": "Design context from Figma files: frames, components, variables, code connect.",
+      "category": "Design",
+      "homepage": "https://help.figma.com/hc/en-us/articles/32132100833559",
+      "runs": { "type": "http", "url": "https://mcp.figma.com/mcp" },
+      "notes": "Remote server with OAuth. The Figma desktop app's local server is http://127.0.0.1:3845/mcp — add it as a custom MCP server if you prefer it."
+    },
+    {
+      "id": "notion",
+      "kind": "mcp",
+      "name": "Notion",
+      "description": "Search and edit Notion pages and databases.",
+      "category": "Work",
+      "homepage": "https://developers.notion.com/docs/mcp",
+      "runs": { "type": "http", "url": "https://mcp.notion.com/mcp" },
+      "notes": "Remote server; sign in with OAuth the first time an agent connects."
+    },
+    {
+      "id": "supabase",
+      "kind": "mcp",
+      "name": "Supabase",
+      "description": "Query and manage Supabase projects: tables, migrations, logs, edge functions.",
+      "category": "Cloud",
+      "homepage": "https://supabase.com/docs/guides/getting-started/mcp",
+      "runs": { "type": "http", "url": "https://mcp.supabase.com/mcp" },
+      "notes": "Remote server with OAuth. Consider a read-only, project-scoped connection for production data."
+    },
+    {
+      "id": "terraform",
+      "kind": "mcp",
+      "name": "Terraform",
+      "description": "Terraform Registry providers, modules and policies (HashiCorp).",
+      "category": "Cloud",
+      "homepage": "https://github.com/hashicorp/terraform-mcp-server",
+      "runs": { "type": "stdio", "command": "docker", "args": ["run", "-i", "--rm", "hashicorp/terraform-mcp-server"] },
+      "notes": "Needs Docker."
+    },
+    {
+      "id": "aws-docs",
+      "kind": "mcp",
+      "name": "AWS Documentation",
+      "description": "Search and read AWS documentation (AWS Labs).",
+      "category": "Cloud",
+      "homepage": "https://github.com/awslabs/mcp",
+      "runs": { "type": "stdio", "command": "uvx", "args": ["awslabs.aws-documentation-mcp-server@latest"] },
+      "notes": "Needs uv (brew install uv)."
+    },
+    {
+      "id": "cloudflare-docs",
+      "kind": "mcp",
+      "name": "Cloudflare Docs",
+      "description": "Search Cloudflare's developer documentation.",
+      "category": "Cloud",
+      "homepage": "https://github.com/cloudflare/mcp-server-cloudflare",
+      "runs": { "type": "http", "url": "https://docs.mcp.cloudflare.com/mcp" }
+    },
+    {
+      "id": "kubernetes",
+      "kind": "mcp",
+      "name": "Kubernetes",
+      "description": "Inspect and manage Kubernetes resources with your current kubeconfig context.",
+      "category": "Cloud",
+      "homepage": "https://github.com/containers/kubernetes-mcp-server",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest", "--read-only"] },
+      "notes": "Starts read-only; remove --read-only in a custom server if you want the agent to change resources."
+    },
+    {
+      "id": "memory",
+      "kind": "mcp",
+      "name": "Memory",
+      "description": "A local knowledge graph the agent can remember facts in across sessions.",
+      "category": "Core",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"] }
+    },
+    {
+      "id": "sequential-thinking",
+      "kind": "mcp",
+      "name": "Sequential Thinking",
+      "description": "Structured step-by-step reasoning tool for hard problems.",
+      "category": "Core",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      "runs": { "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"] }
+    },
+    {
+      "id": "fetch",
+      "kind": "mcp",
+      "name": "Fetch",
+      "description": "Fetch web pages and convert them to Markdown.",
+      "category": "Core",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "runs": { "type": "stdio", "command": "uvx", "args": ["mcp-server-fetch"] },
+      "notes": "Needs uv (brew install uv)."
+    }
+  ]
+}
