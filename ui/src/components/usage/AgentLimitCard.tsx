@@ -1,0 +1,294 @@
+// One coding agent's plan limits: plan / tier, a meter per window (used of limit, a bar with the
+// even-pace mark, "resets in 3d 4h" with the absolute time on hover), on-demand spend, what the
+// agent's CLI recorded locally, Ruah's own estimate, and the source with a refresh. Agents with
+// nothing to measure get a compact card that says why and what to do.
+import { Fragment, type ReactNode } from "react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { AgentMark } from "@/components/agent/ComposerControls";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { costOf, usePrices } from "@/lib/usage";
+import { cn } from "@/lib/utils";
+import {
+  STATUS_LABEL,
+  elapsedShare,
+  formatAbsolute,
+  formatAgo,
+  formatAmount,
+  formatMoney,
+  formatResetsIn,
+  formatTokens,
+  severityOf,
+  type AgentLimits,
+  type LimitMeter,
+  type LimitThresholds,
+  type Severity,
+  type UsageEstimate,
+} from "./agentLimitsModel";
+
+const FILL: Record<Severity, string> = {
+  normal: "var(--primary)",
+  warn: "var(--warn)",
+  critical: "var(--bad)",
+};
+
+const TEXT: Record<Severity, string> = {
+  normal: "text-foreground",
+  warn: "text-warn",
+  critical: "text-bad",
+};
+
+/** Text with `code` spans (CLI commands in reasons and actions). */
+export function InlineCode({ text }: { text: string }) {
+  const parts = text.split(/(`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
+          <code key={i} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[11.5px] text-foreground">
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          <Fragment key={i}>{part}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+function ResetTime({ meter, now }: { meter: LimitMeter; now: number }) {
+  const text = formatResetsIn(meter, now);
+  if (!text || !meter.resetsAt) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="cursor-default rounded outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {text}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{formatAbsolute(meter.resetsAt)}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function LimitMeterRow({ meter, thresholds, now }: { meter: LimitMeter; thresholds: LimitThresholds; now: number }) {
+  const pct = meter.usedPercent;
+  const severity = severityOf(pct, thresholds);
+  const elapsed = elapsedShare(meter, now);
+  const hasAmounts = meter.used !== null && meter.used !== undefined && meter.limit !== null && meter.limit !== undefined;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline gap-2 text-[12.5px]">
+        <span className="min-w-0 truncate text-muted-foreground">{meter.label}</span>
+        <span className={cn("ms-auto shrink-0 font-medium tabular-nums", TEXT[severity])}>
+          {pct === null ? (meter.detail ?? "—") : `${Math.round(pct)}% used`}
+        </span>
+      </div>
+      <div
+        role="meter"
+        aria-label={meter.label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct ?? undefined}
+        aria-valuetext={pct === null ? "unknown" : `${Math.round(pct)}% used`}
+        className="relative h-1.5 overflow-visible rounded-full bg-foreground/[0.08]"
+      >
+        {pct !== null && pct > 0 ? (
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
+            style={{ width: `${Math.max(2, pct)}%`, backgroundColor: FILL[severity] }}
+          />
+        ) : null}
+        {elapsed !== null && pct !== null ? (
+          <span
+            aria-hidden
+            title="Even pace: where usage would be if spread evenly over the window"
+            className="absolute -inset-y-1 w-px -translate-x-1/2 bg-foreground/45"
+            style={{ left: `${elapsed * 100}%` }}
+          />
+        ) : null}
+      </div>
+      <div className="flex items-baseline gap-2 text-[11.5px] text-faint tabular-nums">
+        <span className="min-w-0 truncate">
+          {hasAmounts ? `${formatAmount(meter.used!, meter.unit)} of ${formatAmount(meter.limit!, meter.unit)}` : ""}
+          {meter.detail && pct !== null && !meter.detail.startsWith("Expires") ? `${hasAmounts ? " · " : ""}${meter.detail}` : ""}
+        </span>
+        <span className="ms-auto shrink-0">
+          <ResetTime meter={meter} now={now} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
+  return (
+    <div className="flex items-baseline gap-3 text-[12.5px]" title={hint}>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="ms-auto min-w-0 truncate text-end tabular-nums text-foreground">{children}</span>
+    </div>
+  );
+}
+
+function EstimateRow({ estimate }: { estimate: UsageEstimate }) {
+  const prices = usePrices();
+  let cost: number | null = null;
+  let priced = false;
+  for (const m of estimate.byModel) {
+    const c = costOf(m, prices);
+    if (c === null) continue;
+    if (m.costUsd === null) priced = true;
+    cost = (cost ?? 0) + c;
+  }
+  const tokens = estimate.inputTokens + estimate.outputTokens;
+  return (
+    <Row
+      label="Ruah estimate"
+      hint={`Turns run through Ruah only, ${estimate.basis}. Cost is what the agent reported${priced ? ", plus your model prices" : ""}.`}
+    >
+      <span className="me-1.5 rounded-sm bg-ai/12 px-1 py-px text-[10.5px] font-medium tracking-wide text-ai uppercase">
+        estimate
+      </span>
+      {estimate.turns} {estimate.turns === 1 ? "turn" : "turns"} · {formatTokens(tokens)} tokens
+      {cost !== null ? ` · ${formatMoney(cost)}` : ""}
+      <span className="text-faint"> · {estimate.basis}</span>
+    </Row>
+  );
+}
+
+function localPeriod(since: string | null, checkedAt: string): string {
+  if (!since) return "all time";
+  const days = Math.round((Date.parse(checkedAt) - Date.parse(since)) / 86_400_000);
+  return Number.isFinite(days) && days > 0 ? `last ${days} days` : "recent";
+}
+
+function StatusPill({ agent }: { agent: AgentLimits }) {
+  const label = agent.stale ? "Stale" : STATUS_LABEL[agent.status];
+  if (!label) return null;
+  const tone =
+    agent.stale || agent.status === "error"
+      ? "border-warn/40 text-warn"
+      : agent.status === "not_logged_in" || agent.status === "partial"
+        ? "border-hairline text-muted-foreground"
+        : "border-hairline text-faint";
+  return <span className={cn("shrink-0 rounded-full border px-2 py-px text-[11px]", tone)}>{label}</span>;
+}
+
+export function AgentLimitCard({
+  agent,
+  thresholds,
+  now,
+  refreshing,
+  onRefresh,
+}: {
+  agent: AgentLimits;
+  thresholds: LimitThresholds;
+  now: number;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const quiet = agent.status === "not_installed" || agent.status === "not_logged_in";
+  const hasBody = agent.meters.length > 0 || agent.onDemand || agent.local || agent.estimate;
+  return (
+    <section
+      aria-label={`${agent.name} limits`}
+      className={cn("card-warm flex min-w-0 flex-col gap-4 p-4", quiet && "bg-transparent shadow-none")}
+    >
+      <header className="flex items-center gap-2.5">
+        <AgentMark name={agent.name} className={cn("size-6 rounded-md text-[10px]", quiet && "opacity-60")} />
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <h3 className={cn("heading truncate text-[14px]", quiet ? "text-muted-foreground" : "text-foreground")}>
+            {agent.name}
+          </h3>
+          {agent.plan ? (
+            <span className="shrink-0 rounded-full bg-primary/12 px-2 py-px text-[11px] font-medium text-primary">
+              {agent.plan}
+            </span>
+          ) : null}
+          <StatusPill agent={agent} />
+        </div>
+        <button
+          type="button"
+          aria-label={`Refresh ${agent.name} limits`}
+          title="Refresh"
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-60"
+        >
+          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+        </button>
+      </header>
+
+      {agent.meters.length > 0 ? (
+        <div className="flex flex-col gap-3.5">
+          {agent.meters.map((m) => (
+            <LimitMeterRow key={m.id} meter={m} thresholds={thresholds} now={now} />
+          ))}
+        </div>
+      ) : null}
+
+      {agent.onDemand || agent.local || agent.estimate ? (
+        <div className={cn("flex flex-col gap-1.5", agent.meters.length > 0 && "border-t border-hairline pt-3")}>
+          {agent.onDemand ? (
+            <Row label="On-demand" hint={agent.onDemand.note}>
+              {agent.onDemand.enabled ? (
+                <>
+                  {agent.onDemand.used !== null ? formatMoney(agent.onDemand.used, agent.onDemand.currency) : "—"}
+                  {agent.onDemand.limit !== null ? (
+                    <span className="text-faint"> of {formatMoney(agent.onDemand.limit, agent.onDemand.currency)}</span>
+                  ) : (
+                    <span className="text-faint"> · no cap</span>
+                  )}
+                  {agent.onDemand.scope === "team" ? <span className="text-faint"> · team</span> : null}
+                </>
+              ) : (
+                <span className="text-faint">Off</span>
+              )}
+            </Row>
+          ) : null}
+          {agent.local ? (
+            <Row label="Recorded locally" hint={`${agent.local.source}${agent.local.approximate ? " (rounded figures)" : ""}`}>
+              {agent.local.sessions !== undefined ? `${agent.local.sessions} sessions · ` : ""}
+              {formatTokens(agent.local.inputTokens + agent.local.outputTokens)} tokens
+              {agent.local.costUsd !== null ? ` · ${formatMoney(agent.local.costUsd)}` : ""}
+              <span className="text-faint"> · {localPeriod(agent.local.since, agent.checkedAt)}</span>
+            </Row>
+          ) : null}
+          {agent.estimate ? <EstimateRow estimate={agent.estimate} /> : null}
+        </div>
+      ) : null}
+
+      {agent.reason || agent.action ? (
+        <div className={cn("flex flex-col gap-1 text-[12.5px] leading-relaxed", hasBody && "border-t border-hairline pt-3")}>
+          {agent.reason ? (
+            <p className={cn(agent.status === "error" || agent.stale ? "text-warn" : "text-muted-foreground")}>
+              <InlineCode text={agent.reason} />
+            </p>
+          ) : null}
+          {agent.action ? (
+            <p className="text-foreground">
+              <InlineCode text={agent.action} />
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <footer className="mt-auto flex min-w-0 items-center gap-1.5 text-[11.5px] text-faint">
+        <span className="min-w-0 truncate" title={agent.source}>
+          {agent.source}
+        </span>
+        <span className="shrink-0">· {formatAgo(agent.checkedAt, now)}</span>
+        {agent.dashboardUrl ? (
+          <a
+            href={agent.dashboardUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="ms-auto inline-flex shrink-0 items-center gap-0.5 rounded text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            Dashboard
+            <ArrowUpRight className="size-3" aria-hidden />
+          </a>
+        ) : null}
+      </footer>
+    </section>
+  );
+}
