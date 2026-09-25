@@ -13,7 +13,6 @@ import { ArrowLeft,
   MessageSquare,
   MoreHorizontal,
   PanelRightClose,
-  PanelRightOpen,
   Pin,
   Plus,
   RefreshCw,
@@ -58,6 +57,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { Phantom, PhantomCompanion } from "@/components/brand/Phantom";
+import { DrawerToggle, PageDrawer } from "@/components/shell/PageDrawer";
+import { MapSidebarSection } from "@/components/shell/SidebarSections";
 
 export const iconButton =
   "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
@@ -554,7 +555,7 @@ function PaneMenu({ pane, diagram }: { pane: Pane; diagram: Diagram }) {
   );
 }
 
-function PaneView({ pane, last }: { pane: Pane; last: boolean }) {
+function PaneView({ pane, first, last }: { pane: Pane; first: boolean; last: boolean }) {
   const ws = useWorkspace();
   const wb = useWorkbench();
   const { app } = ws;
@@ -570,7 +571,8 @@ function PaneView({ pane, last }: { pane: Pane; last: boolean }) {
       )}
       onPointerDownCapture={() => ws.setActivePane(pane.id)}
     >
-      <div className="flex h-12 shrink-0 items-center gap-2 px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
+        {first ? <DrawerToggle label="Outline" /> : null}
         {pane.tabs.length > 1 ? (
           <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
             {pane.tabs.map((t) => {
@@ -610,19 +612,9 @@ function PaneView({ pane, last }: { pane: Pane; last: boolean }) {
           </>
         ) : null}
         <PaneMenu pane={pane} diagram={diagram} />
-        {last && !wb.showPanel ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" aria-label="Show agent panel" className={iconButton} onClick={() => wb.setShowPanel(true)}>
-                <PanelRightOpen className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Show agent panel</TooltipContent>
-          </Tooltip>
-        ) : null}
       </div>
       {tab.type === "diagram" ? (
-        <Canvas diagram={diagram} showTray={wb.editing && isActivePane && wb.sidebarCollapsed} active={isActivePane} />
+        <Canvas diagram={diagram} showTray={wb.editing && isActivePane && !wb.outlineOpen} active={isActivePane} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
           <InspectorPanel
@@ -660,7 +652,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center gap-1.5 border-b border-hairline px-3">
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-hairline px-3">
         <Segmented value={view} options={options} onChange={wb.setPanelView} />
         {view === "agent" ? <ChatSwitcher compact className="min-w-0 shrink" /> : null}
         <span className="flex-1" />
@@ -793,35 +785,25 @@ export function MapPage() {
 
   if (isMobile) return <MobileMap />;
 
+  // The agent panel is the shell's (AppShell, every page); the Map adds its left drawer.
   return (
-    <ResizablePanelGroup className="min-h-0 flex-1">
-      <ResizablePanel id="canvas" minSize="30%">
-        <ResizablePanelGroup className="min-h-0">
-          {app.panes.map((pane, i) => (
-            <Fragment key={pane.id}>
-              {i > 0 ? <ResizableHandle className="bg-hairline" /> : null}
-              <ResizablePanel id={pane.id} minSize="20%">
-                <PaneView pane={pane} last={i === app.panes.length - 1} />
-              </ResizablePanel>
-            </Fragment>
-          ))}
-        </ResizablePanelGroup>
-      </ResizablePanel>
-      {wb.showPanel ? (
-        <>
-          <ResizableHandle className="bg-hairline" />
-          <ResizablePanel
-            id="agent"
-            defaultSize="448px"
-            minSize="360px"
-            maxSize="680px"
-            groupResizeBehavior="preserve-pixel-size"
-          >
-            <SidePanel onClose={() => wb.setShowPanel(false)} />
-          </ResizablePanel>
-        </>
+    <div className="flex min-h-0 min-w-0 flex-1">
+      {wb.outlineOpen ? (
+        <PageDrawer title="Outline">
+          <MapSidebarSection />
+        </PageDrawer>
       ) : null}
-    </ResizablePanelGroup>
+      <ResizablePanelGroup className="min-h-0 min-w-0 flex-1">
+        {app.panes.map((pane, i) => (
+          <Fragment key={pane.id}>
+            {i > 0 ? <ResizableHandle className="bg-hairline" /> : null}
+            <ResizablePanel id={pane.id} minSize="20%">
+              <PaneView pane={pane} first={i === 0} last={i === app.panes.length - 1} />
+            </ResizablePanel>
+          </Fragment>
+        ))}
+      </ResizablePanelGroup>
+    </div>
   );
 }
 

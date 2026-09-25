@@ -647,6 +647,13 @@ session (the viewer still shows the stored history).
 
 §13.3 adds `notify(opts)` and `onNotificationClick(callback)`. §15.4 adds `onMenuCommand(callback)` (application-menu commands).
 
+2026-09-25 (optional, Settings → Features & behaviour, off by default):
+`setLauncherShortcut(on: boolean): Promise<boolean>` registers / releases ⌥Space
+as a global shortcut in the main process (`globalShortcut`, released on quit;
+resolves false when another app owns it), and `onLauncherShortcut(callback)`
+is called when it is pressed (the window is restored and focused first; the
+viewer opens its ⌘K launcher). Older desktop builds lack both.
+
 ### 5.5 Behaviour details (daemon, 2026-09-23)
 - After `hello`: `project`, then (with a project) `architecture` and `agent.status`, then `chats` and the active chat's `chat.history`. Launcher state: `project{null}` + `agent.status{state:"stopped"}` only.
 - On a switch: a running turn keeps running in the background (§13.1; nothing is announced — its events go to the activity feed). Only with background agents off or at the background limit is it announced `turn.finished{cancelled}` (and stored; the old project's `chats` follows) first. Then `project`, `architecture` (or `architecture.error` if the file is invalid), `chats`, `chat.history` (when a chat is active), `agent.status` (`starting` → `idle`, or `idle` at once for a warm agent).

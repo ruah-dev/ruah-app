@@ -29,17 +29,35 @@ const ProjectStateSchema = z
     /** §13.4: when the user last left the project (switch away, daemon stop). ISO. */
     lastViewedAt: z.string().optional(),
     /** §13.4: the element last focused (focus.set). */
-    lastFocus: z.object({ nodeId: z.string(), at: z.string() }).optional(),
+    lastFocus: z.object({ nodeId: z.string(), at: z.string() }).passthrough().optional(),
     /** §13.2: unread turns / permission requests per chat id ("none" = no chat). */
     unread: z.record(z.string(), z.number().int().nonnegative()).optional(),
     /** §13.5: viewer-owned, opaque. */
     view: z.record(z.string(), z.unknown()).optional(),
     viewUpdatedAt: z.string().optional(),
     /** CONTRACTS §11: how the project is scanned; absent fields = defaults (infra on). */
-    scan: z.object({ infra: z.boolean().optional() }).optional(),
+    scan: z.object({ infra: z.boolean().optional() }).passthrough().optional(),
   })
   .passthrough();
 export type ProjectState = z.infer<typeof ProjectStateSchema>;
+
+/**
+ * A state file with one bad field (hand edit, another version's shape) keeps
+ * every other field: only the fields that fail their own schema are dropped.
+ * (Resetting to `{ version: 1 }` lost the active chat, the view and the scan
+ * options on the next write.)
+ */
+function parseState(raw: unknown): ProjectState {
+  const whole = ProjectStateSchema.safeParse(raw);
+  if (whole.success) return whole.data;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return { version: 1 };
+  const out: Record<string, unknown> = { ...(raw as Record<string, unknown>), version: 1 };
+  for (const [key, schema] of Object.entries(ProjectStateSchema.shape)) {
+    if (key !== "version" && key in out && !(schema as z.ZodTypeAny).safeParse(out[key]).success) delete out[key];
+  }
+  const salvaged = ProjectStateSchema.safeParse(out);
+  return salvaged.success ? salvaged.data : { version: 1 };
+}
 
 /**
  * §13.5 shape check for the viewer's view state: a JSON object (not an array
@@ -91,8 +109,7 @@ export class ProjectStateStore {
     if (cached !== undefined) return cached;
     let state: ProjectState = { version: 1 };
     try {
-      const parsed = ProjectStateSchema.safeParse(JSON.parse(fs.readFileSync(this.file(projectId), "utf8")));
-      if (parsed.success) state = parsed.data;
+      state = parseState(JSON.parse(fs.readFileSync(this.file(projectId), "utf8")));
     } catch {
       // no state yet, or a corrupt file (replaced on the next write)
     }

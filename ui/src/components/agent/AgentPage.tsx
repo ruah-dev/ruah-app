@@ -1,12 +1,12 @@
 // Agent: the same conversation as the Map's side panel, as its own page with the column centered
 // (Cursor agents window / Claude Code desktop).
 import { useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Map as MapIcon } from "lucide-react";
 import { kindFor } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { PageHeader } from "@/components/shell/AppShell";
+import { DrawerToggle, PageDrawer } from "@/components/shell/PageDrawer";
+import { AgentSidebarSection } from "@/components/shell/SidebarSections";
 import { kindStyles } from "@/components/explorer/kinds";
 import {
   CommandDialog,
@@ -30,6 +30,7 @@ export function AgentPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
+        leading={<DrawerToggle label="Turns" />}
         title={
           daemon.projectsSupported && daemon.project ? (
             <span className="flex min-w-0 items-center gap-1.5">
@@ -51,25 +52,25 @@ export function AgentPage() {
         }
       >
         <NewSessionButton daemon={daemon} />
-        <Link
-          to="/map"
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <MapIcon className="size-3.5" />
-          Open map
-        </Link>
       </PageHeader>
-      <AgentPanel
-        node={node}
-        contextPath={node ? wb.contextPathFor(node) : ""}
-        daemon={daemon}
-        architecture={architecture}
-        onOpenPath={wb.openPath}
-        onClearContext={wb.clearSelection}
-        onPickContext={() => setPicking(true)}
-        focusSignal={wb.askSignal}
-        focusTurnId={wb.focusTurnId}
-      />
+      <div className="flex min-h-0 flex-1">
+        {wb.outlineOpen ? (
+          <PageDrawer title="In this chat">
+            <AgentSidebarSection />
+          </PageDrawer>
+        ) : null}
+        <AgentPanel
+          node={node}
+          contextPath={node ? wb.contextPathFor(node) : ""}
+          daemon={daemon}
+          architecture={architecture}
+          onOpenPath={wb.openPath}
+          onClearContext={wb.clearSelection}
+          onPickContext={() => setPicking(true)}
+          focusSignal={wb.askSignal}
+          focusTurnId={wb.focusTurnId}
+        />
+      </div>
       <CommandDialog open={picking} onOpenChange={setPicking}>
         <CommandInput placeholder="Add an element as context…" className="text-[13.5px]" />
         <CommandList className="max-h-[min(60vh,420px)]">

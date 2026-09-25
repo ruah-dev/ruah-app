@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Menu, Notification, dialog, ipcMain, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, dialog, globalShortcut, ipcMain, screen, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const net = require("node:net");
 const desktop = require("./app-shell.cjs");
+const { sameOrigin, webUrl } = require("./links.cjs");
 
 // 4177 when it is free (keeps the viewer's saved preferences, which are per
 // origin); otherwise any free port, so a second window or a leftover process
@@ -105,6 +106,12 @@ function startDaemon(repoDir) {
     },
   );
   daemon = child;
+  // A bad RUAH_NODE (spawn failure) is an "error" event: without a handler it is an uncaught
+  // exception in main, and `daemon` stayed set so waitForDaemon waited its full minute.
+  daemon.on("error", (err) => {
+    log(`[ruah] backend failed to start: ${err.message}`);
+    if (daemon === child) daemon = null;
+  });
   child.stdout.on("data", (c) => {
     if (IS_DEV) process.stdout.write(`[daemon] ${c}`);
     logStream?.write(c);
@@ -150,6 +157,7 @@ async function waitForDaemon(maxMs) {
 }
 
 function stopDaemon() {
+  quitting = true;
   if (daemon !== null && daemon.exitCode === null) daemon.kill("SIGTERM");
 }
 
@@ -307,16 +315,18 @@ function createWindow() {
     log(`[ruah] viewer process gone: ${details.reason} (${details.exitCode})`);
     if (!quitting && details.reason !== "clean-exit" && win !== null && !win.isDestroyed()) win.reload();
   });
-  // Dropping a file (e.g. a screenshot from Finder) outside the chat's drop zone makes Chromium
-  // navigate the window to that file://…; the viewer handles drops itself, so never leave the app.
+  // The window only ever shows the daemon's viewer. Dropping a file (e.g. a screenshot from
+  // Finder) outside the chat's drop zone makes Chromium navigate to that file://…, and a plain
+  // link (agent Markdown, a cloud resource URL) would load an outside page that still gets
+  // window.ruah from the preload: web links go to the default browser, everything else stays.
   win.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith("file:")) event.preventDefault();
+    if (sameOrigin(url, BASE)) return;
+    event.preventDefault();
+    openInBrowser(url);
   });
-  // target=_blank links (Jira, GitHub, cloud consoles): the default browser, not a bare app
-  // window. The viewer's own pages may still open in a window of their own.
+  // target="_blank" links and window.open: never a child BrowserWindow (it would inherit the preload).
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url === BASE || url.startsWith(`${BASE}/`)) return { action: "allow" };
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    openInBrowser(url);
     return { action: "deny" };
   });
 
@@ -458,6 +468,43 @@ function registerNotifications() {
   });
 }
 
+function openInBrowser(url) {
+  const web = webUrl(url);
+  if (web !== null) shell.openExternal(web).catch(() => {});
+}
+
+// Settings → Features & behaviour: ⌥Space anywhere focuses Ruah and opens the launcher. Off by
+// default; registered only while the renderer asks for it (and released on quit). If another app
+// already owns the accelerator, register() fails and the renderer is told (false).
+const LAUNCHER_ACCELERATOR = "Alt+Space";
+let launcherShortcutOn = false;
+
+function registerLauncherShortcut() {
+  ipcMain.handle("ruah:launcher-shortcut", (_event, on) => {
+    const want = on === true;
+    if (want === launcherShortcutOn) return launcherShortcutOn;
+    if (!want) {
+      globalShortcut.unregister(LAUNCHER_ACCELERATOR);
+      launcherShortcutOn = false;
+      return false;
+    }
+    try {
+      launcherShortcutOn = globalShortcut.register(LAUNCHER_ACCELERATOR, () => {
+        if (win === null || win.isDestroyed()) return;
+        if (win.isMinimized()) win.restore();
+        win.show(); // also brings back a window hidden by ⌘W (§15.5)
+        win.focus();
+        app.focus({ steal: true });
+        win.webContents.send("ruah:launcher");
+      });
+    } catch {
+      launcherShortcutOn = false;
+    }
+    return launcherShortcutOn;
+  });
+  app.on("will-quit", () => globalShortcut.unregisterAll());
+}
+
 // ---------- startup ----------
 
 function portFree(port) {
@@ -483,6 +530,7 @@ async function main() {
   openLog();
   registerIpc();
   registerNotifications();
+  registerLauncherShortcut();
   installMenu();
   // Never attach to whatever already listens on the port (a leftover daemon
   // would show another state): start our own on a free port instead.

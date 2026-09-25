@@ -14,8 +14,10 @@
 //    `source` (hand-written JSON, older viewers; normalised to `manual`) — is
 //    kept when both ends still exist. When a kept edge has the same
 //    (from, to, label) as a scan edge, the kept edge wins (the user decided).
-// 4. Existing workflows are kept when every step still exists; new scanned
-//    workflows are added.
+// 4. Existing workflows are kept when every step still exists, except scanned
+//    ones (`source: "scan"`, the IaC "how it ships" workflows of §11), which
+//    the new scan replaces (as in src/scan/merge.ts); new scanned workflows
+//    are added.
 import type { ArchEdge, ArchNode, Architecture } from "../contracts/architecture.js";
 
 const edgeKey = (e: ArchEdge): string => `${e.from}\u0000${e.to}\u0000${e.label ?? ""}`;
@@ -63,7 +65,7 @@ export function mergeSystemWithExisting(scanned: Architecture, existing: Archite
   }
   const edges = [...scanned.edges.filter((e) => !userKeys.has(edgeKey(e))), ...userEdges];
 
-  const workflows = existing.workflows.filter((w) => w.steps.every((s) => allIds.has(s)));
+  const workflows = existing.workflows.filter((w) => w.source !== "scan" && w.steps.every((s) => allIds.has(s)));
   const wfIds = new Set(workflows.map((w) => w.id));
   for (const w of scanned.workflows) if (!wfIds.has(w.id)) workflows.push(w);
 
