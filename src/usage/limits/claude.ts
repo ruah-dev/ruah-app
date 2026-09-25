@@ -50,7 +50,7 @@ function onDemandOf(snapshot: ClaudeLimitsSnapshot): OnDemandSpend | undefined {
     used: extra.used_credits !== null ? round(extra.used_credits / 100) : null,
     limit: extra.monthly_limit !== null ? round(extra.monthly_limit / 100) : null,
     currency,
-    note: "Extra usage this month",
+    ...(extra.is_enabled ? { note: "Extra usage this month" } : {}),
   };
 }
 

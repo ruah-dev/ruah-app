@@ -14,7 +14,7 @@ export { defaultContext, type LimitsContext, type LimitsProvider, type FetchLike
 export { claudeProvider, claudeLimitsFromReading, probeSource, type ClaudePlanReading, type ClaudePlanSource } from "./claude.js";
 export { cursorProvider, parseCursorAbout, parseCursorUsage, parseCursorAuthRows, cursorSessionCookie, cursorStateDbPath } from "./cursor.js";
 export { kiroProvider, parseKiroUsage, parseKiroWhoami, parseKiroUsageText, kiroAcpUsage } from "./kiro.js";
-export { grokProvider, parseGrokLogin, parseGrokSessions, GrokUsageTotals } from "./grok.js";
+export { grokProvider, parseGrokLogin, parseGrokSessions, recentGrokSessions, GrokUsageTotals } from "./grok.js";
 export { opencodeProvider, parseOpencodeStats } from "./opencode.js";
 export { buildEstimates, estimatePeriod, limitsAgentId } from "./estimate.js";
 export { formatLimitsReport } from "./format.js";

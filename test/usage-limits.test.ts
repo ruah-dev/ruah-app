@@ -3,7 +3,7 @@
 // end to end with fake CLIs / fetch / ACP child, the caching service, the
 // Ruah-log estimates, GET /api/usage/agents and `ruah app usage limits`.
 import { EventEmitter } from "node:events";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -39,6 +39,7 @@ import {
   parseKiroWhoami,
   parseOpencodeStats,
   probeSource,
+  recentGrokSessions,
   type FetchLike,
   type LimitsContext,
   type LimitsProvider,
@@ -153,6 +154,11 @@ describe("Claude limits", () => {
     expect(limits.meters[0]?.periodStart).toBe("2026-09-25T11:40:00.000Z");
     expect(limits.meters[1]?.periodStart).toBe("2026-09-22T09:00:00.000Z");
     expect(limits.onDemand).toEqual({ enabled: true, used: 4.2, limit: 50, currency: "USD", note: "Extra usage this month" });
+    const off = new ClaudeLimitsState().recordUsageResponse(
+      { ...response, rate_limits: { ...response.rate_limits, extra_usage: { is_enabled: false, monthly_limit: null, used_credits: null, utilization: null } } },
+      "t",
+    );
+    expect(claudeLimitsFromReading({ snapshot: off, error: undefined, canProbe: true }, NOW).onDemand).toEqual({ enabled: false, used: null, limit: null, currency: "USD" });
     // A streamed event keeps plan and extra usage.
     state.recordRateLimit({ rateLimitType: "five_hour", utilization: 0.6 }, "2026-09-25T12:01:00.000Z");
     expect(state.snapshot()).toMatchObject({ subscriptionType: "max", extraUsage: { used_credits: 420 } });
@@ -446,6 +452,30 @@ describe("Grok limits", () => {
     const local = totals.toLocalUsage("2026-08-26T12:00:00.000Z", "grok usage");
     expect(local).toMatchObject({ sessions: 1, inputTokens: 36131, outputTokens: 258, cacheReadTokens: 768, costUsd: 0.0247, approximate: false });
     expect(local.byModel).toEqual([{ model: "grok-4.6-build", turns: 1, inputTokens: 36131, outputTokens: 258, cacheReadTokens: 768, cacheWriteTokens: 0, costUsd: 0.0247 }]);
+  });
+
+  it("finds recent sessions in every directory's group of grok's session store", async () => {
+    const home = tempDir("ruah-grok-home-");
+    const ids = ["0190aaaa-0000-7000-8000-000000000001", "0190aaaa-0000-7000-8000-000000000002", "0190aaaa-0000-7000-8000-000000000003"];
+    mkdirSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fa", ids[0]!), { recursive: true });
+    mkdirSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fb", ids[1]!), { recursive: true });
+    mkdirSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fb", ids[2]!), { recursive: true });
+    mkdirSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fb", "not-a-session"), { recursive: true });
+    writeFileSync(path.join(home, "sessions", "README"), "");
+    const at = (iso: string) => Date.parse(iso) / 1000;
+    utimesSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fa", ids[0]!), at("2026-09-22T10:00:00Z"), at("2026-09-22T10:00:00Z"));
+    utimesSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fb", ids[1]!), at("2026-09-24T10:00:00Z"), at("2026-09-24T10:00:00Z"));
+    utimesSync(path.join(home, "sessions", "%2FUsers%2Fdev%2Fb", ids[2]!), at("2026-07-01T10:00:00Z"), at("2026-07-01T10:00:00Z"));
+    expect(recentGrokSessions({ GROK_HOME: home }, Date.parse("2026-08-26T12:00:00Z"))).toEqual([ids[1], ids[0]]);
+    expect(recentGrokSessions({ GROK_HOME: path.join(home, "missing") }, 0)).toBeUndefined();
+
+    const bins = stubBins(["grok"]);
+    const { run, calls } = fakeRunner({
+      grok: (args) => (args[0] === "models" ? { stdout: fixture("grok-models.txt") } : args[0] === "usage" ? { stdout: fixture("grok-usage-session.json") } : { code: 2 }),
+    });
+    const limits = await grokProvider().read(ctx({ env: { ...bins.env, GROK_HOME: home }, run }));
+    expect(limits.local?.sessions).toBe(2);
+    expect(calls.some((c) => c.startsWith("grok sessions"))).toBe(false); // the store answered
   });
 
   it("reports sign-in and local stats, and says the allowance is not readable", async () => {

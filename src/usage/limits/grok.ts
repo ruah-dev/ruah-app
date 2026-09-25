@@ -1,9 +1,15 @@
 // src/usage/limits/grok.ts — Grok Build: sign-in from `grok models` ("You
 // are logged in with grok.com."), and what grok itself persisted on this
-// machine: per-turn tokens and cost (`grok sessions list` + `grok usage <id>`,
-// cost in USD ticks, 1 USD = 1e10 ticks). The plan allowance is only shown
+// machine: per-turn tokens and cost from `grok usage <id>` (cost in USD
+// ticks, 1 USD = 1e10 ticks). Sessions are found in grok's documented store,
+// $GROK_HOME/sessions/<encoded-cwd>/<session-id>/ (names and modification
+// times only — `grok sessions list` covers the current directory alone), with
+// `grok sessions list` as the fallback. The plan allowance is only shown
 // inside grok's TUI (/usage); there is no headless command for it, so the card
 // says so instead of guessing.
+import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
 import type { AgentLimits, LocalUsage, ModelUsage } from "../../contracts/agent-limits.js";
 import { resolveAgentBinary } from "../../acp/presets.js";
 import { mapLimit } from "../../integrations/exec.js";
@@ -39,6 +45,42 @@ export function parseGrokSessions(stdout: string): GrokSessionRow[] {
     if (m !== null) rows.push({ id: m[1]!, created: m[2]!, updated: m[3]! });
   }
   return rows;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Session ids grok touched since `sinceMs`, newest first, from its session
+ * store (every working directory). Undefined when the store is missing.
+ */
+export function recentGrokSessions(env: NodeJS.ProcessEnv, sinceMs: number): string[] | undefined {
+  const home = env.GROK_HOME?.trim() || path.join(env.HOME ?? homedir(), ".grok");
+  const root = path.join(home, "sessions");
+  let groups: string[];
+  try {
+    groups = readdirSync(root);
+  } catch {
+    return undefined;
+  }
+  const found: Array<{ id: string; mtime: number }> = [];
+  for (const group of groups) {
+    let ids: string[];
+    try {
+      ids = readdirSync(path.join(root, group));
+    } catch {
+      continue; // not a directory
+    }
+    for (const id of ids) {
+      if (!UUID.test(id)) continue;
+      try {
+        const mtime = statSync(path.join(root, group, id)).mtimeMs;
+        if (mtime >= sinceMs) found.push({ id, mtime });
+      } catch {
+        // vanished
+      }
+    }
+  }
+  return found.sort((a, b) => b.mtime - a.mtime).map((s) => s.id);
 }
 
 interface Acc {
@@ -172,12 +214,15 @@ export function grokProvider(): LimitsProvider {
       const sinceDay = since.slice(0, 10);
       let local: LocalUsage | undefined;
       try {
-        const list = await ctx.run(bin, ["sessions", "list", "-n", "200"], { timeoutMs: 20_000 });
-        const rows = parseGrokSessions(list.stdout).filter((r) => r.updated >= sinceDay).slice(0, MAX_SESSIONS);
+        let ids = recentGrokSessions(ctx.env, sinceMs);
+        if (ids === undefined) {
+          const list = await ctx.run(bin, ["sessions", "list", "-n", "200"], { timeoutMs: 20_000 });
+          ids = parseGrokSessions(list.stdout).filter((r) => r.updated >= sinceDay).map((r) => r.id);
+        }
         const totals = new GrokUsageTotals();
-        const answers = await mapLimit(rows, 4, async (row) => {
+        const answers = await mapLimit(ids.slice(0, MAX_SESSIONS), 4, async (id) => {
           try {
-            const res = await ctx.run(bin, ["usage", row.id], { timeoutMs: 10_000 });
+            const res = await ctx.run(bin, ["usage", id], { timeoutMs: 10_000 });
             return res.code === 0 ? (JSON.parse(res.stdout) as unknown) : undefined;
           } catch {
             return undefined;
