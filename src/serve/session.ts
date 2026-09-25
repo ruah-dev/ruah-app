@@ -1094,11 +1094,16 @@ export class SessionHub {
       return;
     }
     const arch = open.store.current();
-    if (arch === null) return;
     const nodeId = message.nodeId;
+    // A map that did not load (architecture.error) still allows plain chats; a prompt about an
+    // element gets an answer instead of silence (the composer would wait forever).
+    if (arch === null && nodeId !== undefined) {
+      this.error(socket, "unknown_node", `the map is not loaded, so ${nodeId} has no context; ask without an element or fix architecture.json`, { turnId: message.turnId });
+      return;
+    }
     // Stored nodes, and expanded folders / files / symbols (CONTRACTS §1.6). No nodeId = a plain
     // chat on the project: the agent gets the question as typed, no context pack.
-    const scope = nodeId === undefined ? undefined : resolveNodeScope(open.store, arch, nodeId);
+    const scope = nodeId === undefined || arch === null ? undefined : resolveNodeScope(open.store, arch, nodeId);
     if (scope === null) {
       this.error(socket, "unknown_node", `unknown node: ${nodeId}`, { turnId: message.turnId });
       return;
