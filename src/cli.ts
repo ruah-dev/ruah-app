@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { createRequire } from "node:module";
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -12,7 +12,10 @@ const pkg = require("../package.json") as { version: string };
 const USAGE = `ruah app — the Ruah desktop app (architecture map + coding agents) and its daemon
 
 Usage:
-  ruah app [<repo>]                 open the desktop app (on <repo>, e.g. \`ruah app .\`)
+  ruah app [<repo>]                 open the desktop app (on <repo>, e.g. \`ruah app .\`): an
+                                   installed Ruah.app (/Applications or ~/Applications) opens
+                                   the folder in its running window; else this checkout's
+                                   Electron (RUAH_APP_DEV=1 forces that)
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   ruah app scan <repo> [options]    scan a repo into architecture.json
@@ -51,6 +54,10 @@ Usage:
   ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
                                    what agents did across projects (default --since 24h),
                                    unread and waiting-for-permission counts
+  ruah app doctor [--json] [--no-login-shell]
+                                   which agent / git / cloud CLIs Ruah finds on your login
+                                   shell's PATH (what the desktop app uses), where it keeps
+                                   its data and which Ruah.app \`ruah app\` opens
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -128,6 +135,13 @@ async function serve(argv: readonly string[]): Promise<number> {
   if (agent !== undefined && !isAgentProvider(agent)) {
     process.stderr.write(`ruah app serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
     return 2;
+  }
+  // Started by the desktop app (Finder / Dock / `open`): PATH is launchd's bare one, so take the
+  // login shell's (cached; refreshed in the background) before any agent or CLI is looked up.
+  if (process.env.RUAH_LOGIN_PATH === "1") {
+    delete process.env.RUAH_LOGIN_PATH;
+    const { applyLoginPath } = await import("./desktop/login-path.js");
+    await applyLoginPath({ log: (line) => process.stderr.write(`[ruah] ${line}\n`) });
   }
   const { runServe } = await import("./serve/run-serve.js");
   return runServe(
@@ -249,24 +263,32 @@ function isDirectory(p: string): boolean {
   }
 }
 
-/** Launches the Electron app from this package (detached, so the terminal is free). */
-function openDesktop(repo: string | undefined): number {
+/** Opens the desktop app: an installed Ruah.app via `open -a`, else this package's Electron (detached). */
+async function openDesktop(repo: string | undefined): Promise<number> {
+  const { planDesktopLaunch } = await import("./desktop/launch.js");
   const root = dirname(dirname(fileURLToPath(import.meta.url))); // dist/cli.js → package root
-  if (!existsSync(join(root, "viewer", "index.html"))) {
-    process.stderr.write(`ruah app: the viewer is not built — run \`pnpm ui:build\` in ${root}\n`);
+  const target = repo !== undefined ? resolve(repo) : undefined;
+  const plan = planDesktopLaunch({
+    ...(target !== undefined ? { repo: target } : {}),
+    packageRoot: root,
+    exists: existsSync,
+    electron: () => {
+      try {
+        return require("electron") as string; // the electron package exports its binary path
+      } catch {
+        return undefined;
+      }
+    },
+  });
+  if (plan.kind === "error") {
+    process.stderr.write(`ruah app: ${plan.message}\n`);
     return 1;
   }
-  let electron: string;
-  try {
-    electron = require("electron") as string; // the electron package exports its binary path
-  } catch {
-    process.stderr.write(`ruah app: Electron is not installed — run \`pnpm install\` in ${root}\n`);
-    return 1;
-  }
-  const args = [root, ...(repo !== undefined ? [resolve(repo)] : [])];
-  const child = spawn(electron, args, { detached: true, stdio: "ignore" });
+  const child = spawn(plan.command, plan.args, { detached: true, stdio: "ignore" });
+  child.on("error", (err) => process.stderr.write(`ruah app: ${err.message}\n`));
   child.unref();
-  process.stdout.write(`Opening Ruah${repo !== undefined ? ` on ${resolve(repo)}` : ""}…\n`);
+  const where = plan.kind === "bundle" ? ` (${plan.bundle})` : "";
+  process.stdout.write(`Opening Ruah${target !== undefined ? ` on ${target}` : ""}${where}…\n`);
   return 0;
 }
 
@@ -283,7 +305,7 @@ async function main(argv: readonly string[]): Promise<number> {
   // `ruah app`, `ruah app open [<repo>]`, `ruah app <repo-dir>`: the desktop app.
   if (cmd === undefined || cmd === "open" || (!cmd.startsWith("-") && isDirectory(cmd))) {
     const repo = cmd === "open" ? rest[0] : cmd;
-    return openDesktop(repo);
+    return await openDesktop(repo);
   }
   switch (cmd) {
     case "serve": {
@@ -305,6 +327,10 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "mcp": {
       return await mcp(rest);
+    }
+    case "doctor": {
+      const { runDoctor } = await import("./desktop/doctor.js");
+      return await runDoctor(rest, pkg.version);
     }
     case "cloud": {
       const { runCloud } = await import("./integrations/cloud-cli.js");
