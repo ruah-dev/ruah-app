@@ -26,9 +26,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { RuahLogo } from "@/components/brand/RuahLogo";
 import { PhantomCompanion } from "@/components/brand/Phantom";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
-import { KindBadge, ProjectTile } from "@/components/projects/ProjectBits";
-import { pinnedShortcut } from "@/components/projects/ProjectPalette";
+import { KindBadge, ProjectTile, pinnedShortcut } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
+import { setShellDialog, useShellDialogs } from "@/components/shell/shellState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { openSystemDialog } from "@/lib/system";
@@ -172,7 +172,8 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const router = useRouter();
   const actions = useProjectActions();
   const [active, setActive] = useState(0);
-  const [allOpen, setAllOpen] = useState(false);
+  const allOpen = useShellDialogs().allProjects;
+  const setAllOpen = (open: boolean) => setShellDialog("allProjects", open);
   const sample = daemon.source === "sample";
 
   const recents = useMemo(() => daemon.recentProjects.slice(0, LAUNCHER_RECENTS), [daemon.recentProjects]);
@@ -189,7 +190,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   }, [recents.length]);
 
   // ↑↓ Enter on the whole screen (not while a dialog or menu is open).
-  const dialogsOpen = allOpen || wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen || wb.searchOpen;
+  const dialogsOpen = allOpen || wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen;
   useEffect(() => {
     if (dialogsOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -219,7 +220,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
 
   return (
     <div className="grain flex h-dvh flex-col overflow-y-auto bg-background text-foreground">
-      <header className="flex h-bar shrink-0 items-center gap-2 px-5 max-md:px-4">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-hairline px-4 max-md:px-3">
         <RuahLogo size="sm" className="me-2" />
         {overlay && backLabel ? (
           <button
@@ -380,16 +381,6 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           </div>
         </div>
 
-        <AllProjectsDialog
-          open={allOpen}
-          onOpenChange={setAllOpen}
-          projects={daemon.recentProjects}
-          currentId={daemon.project?.id}
-          onOpen={openProject}
-          onPin={(p) => void actions.togglePin(p)}
-          onForget={(p) => void actions.forget(p)}
-        />
-
         <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-10 text-meta text-faint max-md:hidden">
           <span className="flex items-center gap-1">
             <kbd className="kbd">↑</kbd>
@@ -399,7 +390,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
             <kbd className="kbd">↵</kbd> open
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="kbd">⌘K</kbd> switch project anywhere
+            <kbd className="kbd">⌘K</kbd> search, jump, run — anywhere
           </span>
           <span className="flex items-center gap-1">
             <kbd className="kbd">⌘.</kbd> agent · model
@@ -407,6 +398,29 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         </footer>
       </main>
     </div>
+  );
+}
+
+/** "All projects" for every entry point (start screen, top-bar project menu, launcher). */
+export function AllProjectsHost() {
+  const { daemon } = useWorkspace();
+  const wb = useWorkbench();
+  const actions = useProjectActions();
+  const open = useShellDialogs().allProjects;
+  return (
+    <AllProjectsDialog
+      open={open}
+      onOpenChange={(v) => setShellDialog("allProjects", v)}
+      projects={daemon.recentProjects}
+      currentId={daemon.project?.id}
+      onOpen={(p) => {
+        setShellDialog("allProjects", false);
+        if (daemon.project?.id === p.id) wb.setLauncherOpen(false);
+        else void actions.openRecent(p);
+      }}
+      onPin={(p) => void actions.togglePin(p)}
+      onForget={(p) => void actions.forget(p)}
+    />
   );
 }
 

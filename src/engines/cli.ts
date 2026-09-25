@@ -82,6 +82,23 @@ function workspaceCli(namespace: EngineNamespace, workspaceRoot: string | undefi
 }
 
 /**
+ * `ruah` binaries seen to lack a namespace ("unknown command 'guard'": the
+ * toolkit is installed, that engine is not). Keyed by bin path + namespace;
+ * they are skipped by resolveEngineInvocation from then on.
+ */
+const ruahWithout = new Set<string>();
+
+/** Whether `ruah`'s output says it has no such namespace. */
+export function isUnknownNamespace(output: string, namespace: EngineNamespace): boolean {
+  return new RegExp(`unknown command ['"\u2018\u201c]?${namespace}\\b`, "i").test(output);
+}
+
+/** Tests: forget what was learned about installed namespaces. */
+export function resetEngineProbe(): void {
+  ruahWithout.clear();
+}
+
+/**
  * Resolve how to invoke an engine: prefer `ruah <ns>`, then direct bin, then
  * a workspace dist/cli.js when RUAH_WORKSPACE / sibling layout is known.
  */
@@ -93,7 +110,7 @@ export function resolveEngineInvocation(
   if (env.RUAH_ENGINES_OFF === "1") return null;
   const workspace = deps.workspaceRoot ?? (env.RUAH_WORKSPACE?.trim() || undefined);
   const ruah = resolveBin("ruah", env);
-  if (ruah) return { kind: "ruah", bin: ruah, prefix: [namespace] };
+  if (ruah && !ruahWithout.has(`${ruah}\u0000${namespace}`)) return { kind: "ruah", bin: ruah, prefix: [namespace] };
 
   const direct = resolveBin(DIRECT_BINS[namespace], env);
   if (direct) return { kind: "direct", bin: direct, prefix: [] };
@@ -132,6 +149,11 @@ export async function runEngineJson<T>(
       timeoutMs: options.timeoutMs ?? ENGINE_TIMEOUT_MS,
     });
     const parsed = parseJson(result.stdout);
+    if (parsed === undefined && inv.kind === "ruah" && isUnknownNamespace(`${result.stdout}\n${result.stderr}`, namespace)) {
+      // The ruah toolkit is there but this engine is not: try its own bin, else say how to install it.
+      ruahWithout.add(`${inv.bin}\u0000${namespace}`);
+      return runEngineJson<T>(namespace, args, options);
+    }
     if (parsed === undefined) {
       return {
         ok: false,

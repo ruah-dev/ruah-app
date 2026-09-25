@@ -129,6 +129,14 @@ describe("defaultRunner (real execFile)", () => {
     expect((m as CliError).kind).toBe("missing");
     expect((m as Error).message).not.toContain(TOKEN);
   });
+
+  // Regression: output over the buffer also kills the child, and was reported as "timed out after 20 s".
+  test("output over the buffer is not reported as a timeout", async () => {
+    const big = await defaultRunner(process.execPath, ["-e", "process.stdout.write('x'.repeat(33 * 1024 * 1024))"]).catch((e: unknown) => e);
+    expect(big).toBeInstanceOf(CliError);
+    expect((big as CliError).kind).toBe("failed");
+    expect((big as Error).message).toMatch(/more than 32 MiB/);
+  });
 });
 
 describe("HTTP routes: origin checks, validation, redaction", () => {

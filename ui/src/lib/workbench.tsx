@@ -40,7 +40,7 @@ export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
 
 const ONBOARDING_KEY = "ruah.onboarded.v1";
-const SIDEBAR_KEY = "ruah.sidebar.collapsed";
+const OUTLINE_KEY = "ruah.map.outline.open";
 
 type Ctx = {
   selectedNodeId: string | null;
@@ -84,14 +84,13 @@ type Ctx = {
   focusTurnId: string | null;
   focusTurn: (turnId: string) => void;
 
-  searchOpen: boolean;
-  setSearchOpen: (v: boolean) => void;
   sheetOpen: boolean;
   setSheetOpen: (v: boolean) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: (v: boolean) => void;
-  sidebarCollapsed: boolean;
-  setSidebarCollapsed: (v: boolean | ((v: boolean) => boolean)) => void;
+  /** The Map's left drawer (outline, workflows, files; the element palette in Edit mode). */
+  outlineOpen: boolean;
+  setOutlineOpen: (v: boolean | ((v: boolean) => boolean)) => void;
   /** First-run flow on the start screen (dismissible, re-openable from Help / Settings). */
   onboardingOpen: boolean;
   setOnboardingOpen: (v: boolean) => void;
@@ -102,7 +101,7 @@ type Ctx = {
   /** Start screen shown over an open project (the daemon's launcher state shows it anyway). */
   launcherOpen: boolean;
   setLauncherOpen: (v: boolean) => void;
-  /** ⌘K / ⌘P project + chat palette. */
+  /** ⌘K / ⌘P command launcher (projects, chats, elements, cloud, actions). */
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
   /** Browser fallback for "Open folder…" (no desktop bridge): a path field. */
@@ -159,10 +158,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [editMode, setEditModeState] = useState(false);
   const [askSignal, setAskSignal] = useState(0);
   const [focusTurnId, setFocusTurnId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
+  const [outlineOpen, setOutlineOpenState] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -170,7 +168,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
 
   useEffect(() => {
-    setSidebarCollapsedState(readFlag(SIDEBAR_KEY));
+    setOutlineOpenState(readFlag(OUTLINE_KEY));
     if (!readFlag(ONBOARDING_KEY)) {
       // First run: the start screen carries the introduction.
       setOnboardingOpen(true);
@@ -201,10 +199,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     if (ws.daemon.architecture.nodes.length === 0 && ws.editable) setEditModeState(true);
   }, [ws.daemon.architecture, ws.daemon.projectSwitch, ws.editable]);
 
-  const setSidebarCollapsed = useCallback((v: boolean | ((v: boolean) => boolean)) => {
-    setSidebarCollapsedState((prev) => {
+  const setOutlineOpen = useCallback((v: boolean | ((v: boolean) => boolean)) => {
+    setOutlineOpenState((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      writeFlag(SIDEBAR_KEY, next);
+      writeFlag(OUTLINE_KEY, next);
       return next;
     });
   }, []);
@@ -375,14 +373,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         setFocusTurnId(turnId);
         if (router.state.location.pathname !== "/agent") void router.navigate({ to: "/agent" });
       },
-      searchOpen,
-      setSearchOpen,
       sheetOpen,
       setSheetOpen,
       mobileNavOpen,
       setMobileNavOpen,
-      sidebarCollapsed,
-      setSidebarCollapsed,
+      outlineOpen,
+      setOutlineOpen,
       onboardingOpen,
       setOnboardingOpen,
       finishOnboarding: () => {
@@ -423,7 +419,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
           setSelectedNodeId(node.id);
           setSelectedEdge(null);
         }
-        if (router.state.location.pathname === "/map") {
+        // The agent panel is on every page but the Agent page (which is the chat itself).
+        if (router.state.location.pathname !== "/agent") {
           setPanelView("agent");
           setSheetOpen(true);
         }
@@ -477,11 +474,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     editing,
     askSignal,
     focusTurnId,
-    searchOpen,
     sheetOpen,
     mobileNavOpen,
-    sidebarCollapsed,
-    setSidebarCollapsed,
+    outlineOpen,
+    setOutlineOpen,
     onboardingOpen,
     launcherOpen,
     paletteOpen,

@@ -15,6 +15,7 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { PhantomAgent } from "@/components/brand/PhantomPose";
 import { AgentMark, WarmDot, modeLabel, plain } from "@/components/agent/ComposerControls";
 import { PageHeader } from "@/components/shell/AppShell";
+import { FeaturesSettings } from "./FeaturesSettings";
 import { cn } from "@/lib/utils";
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
@@ -295,6 +296,8 @@ export function SettingsPage() {
               <AgentDefaultsGroup daemon={daemon} agents={agents} />
             </Group>
           ) : null}
+
+          <FeaturesSettings />
 
           <Group
             title="Integrations"

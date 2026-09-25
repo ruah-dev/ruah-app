@@ -21,6 +21,7 @@ import type {
   WorkItem,
 } from "./contracts";
 import { setCloudWatch, type DaemonState } from "./daemon";
+import { useViewerPrefs } from "./preferences";
 import type { DiagramEdge, DiagramGroup, DiagramNode, Graph, NodeKind } from "@/data/graphs";
 import { ORIGIN, NODE_W, NODE_H, kindFor, subtitleFor } from "./architecture";
 
@@ -198,6 +199,8 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 const getSnapshot = () => store;
+/** The store outside React (tests, event handlers). */
+export const integrationsSnapshot = (): IntegrationsStore => store;
 const getServerSnapshot = () => INITIAL;
 
 function failed<T>(res: Extract<ApiResult<T>, { ok: false }>): Remote<never> {
@@ -207,7 +210,7 @@ function failed<T>(res: Extract<ApiResult<T>, { ok: false }>): Remote<never> {
 }
 
 /** Called from a hook with the daemon state: resets the lists when the project changes. */
-function bind(daemon: Pick<DaemonState, "source" | "httpOrigin" | "root" | "connection">) {
+export function bindIntegrationsStore(daemon: Pick<DaemonState, "source" | "httpOrigin" | "root" | "connection">) {
   const mode = daemon.source === "daemon" ? "daemon" : daemon.source === "sample" ? "no-daemon" : "pending";
   const origin = daemon.source === "daemon" ? daemon.httpOrigin : null;
   const projectKey = daemon.source === "daemon" ? (daemon.root ?? "daemon") : null;
@@ -266,21 +269,34 @@ function watchCloud(reason: "page" | "map", on: boolean) {
   setCloudWatch(watchReasons.size > 0);
 }
 
-/** Keeps cloud status live while the calling component (the Cloud page) is mounted. */
+/** Keeps cloud status live while the calling component (the Cloud page) is mounted — unless
+ * Settings → Features & behaviour turned live refresh off. */
 export function useCloudWatch(active = true) {
+  const { cloudLive } = useViewerPrefs();
   useEffect(() => {
-    if (!active) return;
+    if (!active || !cloudLive) return;
     watchCloud("page", true);
     return () => watchCloud("page", false);
-  }, [active]);
+  }, [active, cloudLive]);
 }
 
+/**
+ * One load per list and project at a time. Per project: a load started before a project switch
+ * must not stand in for the new project's (its answer is the old project's). Loaders check
+ * `sameProject` after every await for the same reason.
+ */
 function once(key: string, fn: () => Promise<void>): Promise<void> {
-  const running = inflight.get(key);
+  const k = `${key}\u0000${store.projectKey ?? ""}`;
+  const running = inflight.get(k);
   if (running) return running;
-  const p = fn().finally(() => inflight.delete(key));
-  inflight.set(key, p);
+  const p = fn().finally(() => inflight.delete(k));
+  inflight.set(k, p);
   return p;
+}
+
+/** Whether the store still shows the project a request was made for. */
+function sameProject(projectKey: string | null): boolean {
+  return store.projectKey === projectKey;
 }
 
 function noDaemon(): Remote<never> {
@@ -294,7 +310,9 @@ export function loadIntegrations(): Promise<void> {
       return;
     }
     if (store.integrations.status !== "ok") set({ integrations: { status: "loading" } });
+    const project = store.projectKey;
     const res = await api<{ integrations: IntegrationInfo[] }>("GET", "/api/integrations");
+    if (!sameProject(project)) return;
     set({
       integrations: res.ok
         ? { status: "ok", data: res.data.integrations ?? [], at: Date.now() }
@@ -316,7 +334,9 @@ export function loadCloud(): Promise<void> {
     }
     if (store.cloud.status !== "ok") set({ cloud: { status: "loading" } });
     const requestedAt = Date.now();
+    const project = store.projectKey;
     const res = await api<CloudSyncResult>("GET", "/api/cloud/resources");
+    if (!sameProject(project)) return;
     // A cloud.updated push that landed while this request was in flight is newer than its
     // answer (a slow provider's sync can finish in between): keep it, or the page would sit
     // on the stale list, since later pushes only carry resources when something changes.
@@ -341,7 +361,9 @@ export function loadRuah(): Promise<void> {
       return;
     }
     if (store.ruah.status !== "ok") set({ ruah: { status: "loading" } });
+    const project = store.projectKey;
     const res = await api<unknown>("GET", "/api/ruah/status");
+    if (!sameProject(project)) return;
     set({ ruah: res.ok ? { status: "ok", data: normalizeRuahStatus(res.data), at: Date.now() } : failed(res) });
   });
 }
@@ -353,7 +375,9 @@ export function loadWorkflows(): Promise<void> {
       return;
     }
     if (store.workflows.status !== "ok") set({ workflows: { status: "loading" } });
+    const project = store.projectKey;
     const res = await api<unknown>("GET", "/api/ruah/workflows");
+    if (!sameProject(project)) return;
     if (!res.ok) return set({ workflows: failed(res) });
     const raw = res.data as { workflows?: RuahWorkflowFile[] } | RuahWorkflowFile[];
     const list = Array.isArray(raw) ? raw : (raw.workflows ?? []);
@@ -398,7 +422,10 @@ export async function syncCloud(opts: { provider?: string; account?: string } = 
   const body: { providers?: string[]; accounts?: Record<string, string> } = {};
   if (opts.provider) body.providers = [opts.provider];
   if (opts.provider && opts.account) body.accounts = { [opts.provider]: opts.account };
+  const project = store.projectKey;
   const res = await api<CloudSyncResult>("POST", "/api/cloud/sync", body);
+  // Switched projects meanwhile: the answer is the old project's (bind() reset `syncing`).
+  if (!sameProject(project)) return res;
   if (res.ok) {
     const fresh = normalizeCloud(res.data);
     // A per-provider sync returns that provider's resources: keep the others.
@@ -426,8 +453,9 @@ export async function linkCloudResource(resourceId: string, nodeId: string | nul
       manualLinks: { ...store.manualLinks, [resourceId]: true },
     });
   }
+  const project = store.projectKey;
   const res = await api<{ ok: boolean }>("POST", "/api/cloud/link", { resourceId, nodeId });
-  if (!res.ok) set({ cloud: before });
+  if (!res.ok && sameProject(project)) set({ cloud: before });
   return res;
 }
 
@@ -499,7 +527,9 @@ export async function setResourceScope(resourceId: string, action: ScopeResource
         ? { in: false, confidence: "manual", reasons: ["removed by you"], excluded: true }
         : { ...(r.scope ?? { in: false, reasons: [] }), excluded: false },
   );
+  const project = store.projectKey;
   const res = await api<{ ok: boolean; scope: ResourceScope }>("POST", "/api/cloud/scope/resource", { resourceId, action });
+  if (!sameProject(project)) return res;
   if (res.ok) patchScope(resourceId, () => res.data.scope);
   else set({ cloud: previous });
   return res;
@@ -507,8 +537,9 @@ export async function setResourceScope(resourceId: string, action: ScopeResource
 
 /** Replaces the project's accounts (only they are synced for it) and re-syncs. */
 export async function setScopeAccounts(accounts: ScopeAccount[]): Promise<ApiResult<CloudScopeSummary>> {
+  const project = store.projectKey;
   const res = await api<CloudScopeSummary>("POST", "/api/cloud/scope/accounts", { accounts });
-  if (res.ok && store.cloud.status === "ok") {
+  if (res.ok && sameProject(project) && store.cloud.status === "ok") {
     set({ cloud: { ...store.cloud, data: { ...store.cloud.data, scope: res.data } } });
   }
   return res;
@@ -597,7 +628,7 @@ export function useIntegrationsBinding(
 ) {
   const { source, httpOrigin, root, connection } = daemon;
   useEffect(() => {
-    bind({ source, httpOrigin, root, connection });
+    bindIntegrationsStore({ source, httpOrigin, root, connection });
   }, [source, httpOrigin, root, connection]);
   useEffect(() => {
     try {

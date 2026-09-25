@@ -8,6 +8,7 @@ import { EnginesService } from "../src/engines/index.js";
 import { handleEnginesRequest } from "../src/engines/http.js";
 import { projectIdFor } from "../src/projects/fs-util.js";
 import { ruahHome } from "../src/usage/log.js";
+import { engineStatus, isUnknownNamespace, resetEngineProbe, resolveEngineInvocation, runEngineJson } from "../src/engines/cli.js";
 
 function workspace(namespaces: string[]): string {
   const root = mkdtempSync(join(tmpdir(), "ruah-eng-"));
@@ -228,5 +229,54 @@ describe("engines HTTP", () => {
     const err = (await usage.json()) as { error: string };
     expect(err.error).toContain("not installed");
     expect(ruahHome()).not.toBe("");
+  });
+});
+
+// Regression: with the ruah toolkit on PATH but without an engine's namespace, `ruah guard …`
+// printed "unknown command 'guard'" and the Guard button reported "returned non-JSON (exit 1)".
+describe("ruah without the engine's namespace", () => {
+  afterEach(() => resetEngineProbe());
+
+  function fakeRuahDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "ruah-bin-"));
+    writeFileSync(join(dir, "ruah"), "#!/bin/sh\n", { mode: 0o755 });
+    return dir;
+  }
+  const unknown = { code: 1, stdout: "", stderr: "ruah: unknown command 'guard'\n\nAvailable namespaces:\n  orch\n" };
+
+  it("falls back to the engine's own CLI", async () => {
+    const bin = fakeRuahDir();
+    const ws = workspace(["guard"]);
+    const calls: string[] = [];
+    const runner: Runner = async (file, args) => {
+      calls.push(`${file.endsWith("/ruah") ? "ruah" : "direct"} ${args.join(" ")}`);
+      return file.endsWith("/ruah") ? unknown : { code: 0, stdout: JSON.stringify({ summary: { total: 0 } }), stderr: "" };
+    };
+    const deps = { runner, workspaceRoot: ws, env: { PATH: bin } };
+    const out = await runEngineJson("guard", ["scan", "."], { cwd: tmpdir(), deps });
+    expect(out).toMatchObject({ ok: true, data: { summary: { total: 0 } } });
+    expect(calls[0]).toMatch(/^ruah guard scan/);
+    expect(calls[1]).toMatch(/^direct .*scan/);
+    // Learned: the next call goes straight to the engine's CLI.
+    await runEngineJson("guard", ["scan", "."], { cwd: tmpdir(), deps });
+    expect(calls[2]).toMatch(/^direct/);
+  });
+
+  it("never reports the unknown namespace as non-JSON output", async () => {
+    const bin = fakeRuahDir();
+    const runner: Runner = async (file) =>
+      file.endsWith("/ruah") ? unknown : { code: 0, stdout: "{}", stderr: "" };
+    const deps = { runner, env: { PATH: bin } };
+    expect(isUnknownNamespace(unknown.stderr, "guard")).toBe(true);
+    expect(isUnknownNamespace("unknown command 'guardian'", "guard")).toBe(false);
+    const out = await runEngineJson("guard", ["scan", "."], { cwd: tmpdir(), deps });
+    if (resolveEngineInvocation("guard", deps) === null) {
+      // No ruah-guard anywhere: "not installed" with the install command.
+      expect(out).toMatchObject({ ok: false, status: 424, kind: "missing" });
+      if (!out.ok) expect(out.error).toContain("npm i -g");
+      expect(engineStatus(deps, ["guard"]).guard?.installed).toBe(false);
+    } else {
+      expect(out.ok).toBe(true);
+    }
   });
 });

@@ -1,18 +1,22 @@
-// Sidebar project header: the current project as a dropdown switcher (same items as ⌘K).
+// Top-bar project switcher: the current project (tile + name + chevron) opening a compact menu —
+// recent projects with their activity badges and ⌘1–9, "All projects…", open / new project, new
+// system and the system's repo actions.
 import {
   Check,
-  ChevronsUpDown,
+  ChevronDown,
   FolderOpen,
   FolderPlus,
   Home,
   Layers,
+  List,
   Loader2,
-  Search,
   SquareArrowOutUpRight,
 } from "lucide-react";
 import { repoBasename, useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { prettyPath } from "@/lib/time";
+import { openSystemDialog } from "@/lib/system";
+import { prefetchProject } from "@/lib/daemon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,13 +25,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-import { KindBadge, ProjectTile } from "./ProjectBits";
-import { pinnedShortcut } from "./ProjectPalette";
-import { useProjectActions } from "./useProjectActions";
 import { systemMenuActions } from "@/components/system/SystemDialogs";
+import { setShellDialog } from "@/components/shell/shellState";
+import { cn } from "@/lib/utils";
+import { KindBadge, ProjectTile, pinnedShortcut } from "./ProjectBits";
+import { ProjectActivityBadge } from "./ProjectActivityBadge";
+import { useProjectActions } from "./useProjectActions";
 
 const itemClass = "gap-2.5 rounded-md px-2 py-1.5 text-ui";
+const RECENTS = 8;
 
 /** Name + id of what the shell shows as "the project", for every daemon generation. */
 export function useCurrentProjectLabel() {
@@ -39,79 +45,82 @@ export function useCurrentProjectLabel() {
   return { id: "none", name: daemon.source === null ? "Connecting…" : "No project", root: null };
 }
 
-export function ProjectMenu({ dotClass }: { dotClass: string }) {
+export function ProjectMenu() {
   const { daemon } = useWorkspace();
   const wb = useWorkbench();
   const actions = useProjectActions();
   const label = useCurrentProjectLabel();
   const switching = !!daemon.projectSwitch;
   const pinned = daemon.recentProjects.filter((p) => p.pinned);
-  const recents = daemon.recentProjects.slice(0, 8);
+  const recents = daemon.recentProjects.slice(0, RECENTS);
   const bridge = typeof window !== "undefined" ? window.ruah : undefined;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        title={`${label.root ? prettyPath(label.root) : label.name} · switch project (⌘K)`}
-        className="group/pm flex h-row-lg w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent"
+        title={`${label.root ? prettyPath(label.root) : label.name} · switch project`}
+        className="group/pm flex h-[30px] max-w-64 min-w-0 shrink-0 items-center gap-2 rounded-lg px-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent"
       >
-        <span className="relative">
-          <ProjectTile project={{ id: label.id, name: label.name }} className="size-5 text-[10px]" />
-          <span
-            className={cn(
-              "absolute -right-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-surface-1",
-              switching ? "bg-warn animate-pulse" : dotClass,
-            )}
-          />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-ui font-medium text-foreground">{label.name}</span>
+        <ProjectTile project={{ id: label.id, name: label.name }} className="size-5 rounded-md text-[10.5px]" />
+        <span className="min-w-0 truncate text-ui font-semibold text-foreground">{label.name}</span>
+        {daemon.project?.kind === "system" ? <KindBadge kind="system" /> : null}
         {switching ? (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
         ) : (
-          <ChevronsUpDown className="size-3.5 shrink-0 text-faint" />
+          <ChevronDown className="size-3.5 shrink-0 text-faint group-hover/pm:text-muted-foreground" />
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" sideOffset={4} className="w-72 rounded-xl border-hairline p-1">
+      <DropdownMenuContent
+        align="start"
+        sideOffset={6}
+        // Esc closes the menu only (the map would take it as "up one level").
+        onEscapeKeyDown={(e) => e.stopPropagation()}
+        className="w-80 rounded-xl border-hairline p-1"
+      >
         {recents.length ? (
           <>
             <DropdownMenuLabel className="section-label px-2 pt-1.5 pb-1">Recent projects</DropdownMenuLabel>
             {recents.map((p) => {
               const isCurrent = daemon.project?.id === p.id;
-              const pinIndex = pinned.findIndex((x) => x.id === p.id);
-              const shortcut = pinIndex >= 0 ? pinnedShortcut(pinIndex) : null;
+              const shortcut = pinnedShortcut(pinned.findIndex((x) => x.id === p.id));
               return (
                 <DropdownMenuItem
                   key={p.id}
                   className={itemClass}
+                  onFocus={() => !isCurrent && void prefetchProject(p.id)}
                   onSelect={() => !isCurrent && void actions.openRecent(p)}
-                  title={p.root}
+                  title={prettyPath(p.root)}
                 >
                   <ProjectTile project={p} className="size-5 text-[10px]" />
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <span className={cn("min-w-0 flex-1 truncate", isCurrent && "font-medium")}>{p.name}</span>
+                  <ProjectActivityBadge projectId={p.id} />
                   {p.kind === "system" ? <KindBadge kind={p.kind} /> : null}
                   {isCurrent ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
                   {shortcut ? <kbd className="kbd shrink-0">{shortcut}</kbd> : null}
                 </DropdownMenuItem>
               );
             })}
+            <DropdownMenuItem className={itemClass} onSelect={() => setShellDialog("allProjects", true)}>
+              <List className="text-muted-foreground" /> All projects…
+              <span className="ms-auto text-meta text-faint tabular-nums">{daemon.recentProjects.length}</span>
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-hairline" />
           </>
         ) : null}
-        <DropdownMenuItem className={itemClass} onSelect={() => wb.setPaletteOpen(true)}>
-          <Search className="text-muted-foreground" /> Switch project…
-          <kbd className="kbd ms-auto">⌘K</kbd>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className={itemClass}
-          disabled={!actions.connected}
-          onSelect={() => void actions.pickFolder()}
-        >
+        <DropdownMenuItem className={itemClass} disabled={!actions.connected} onSelect={() => void actions.pickFolder()}>
           <FolderOpen className="text-muted-foreground" /> Open folder…
           <kbd className="kbd ms-auto">⌘O</kbd>
         </DropdownMenuItem>
         <DropdownMenuItem className={itemClass} disabled={!actions.connected} onSelect={actions.newProject}>
           <FolderPlus className="text-muted-foreground" /> New project…
           <kbd className="kbd ms-auto">⇧⌘N</kbd>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className={itemClass}
+          disabled={!actions.connected}
+          onSelect={() => openSystemDialog({ kind: "new" })}
+        >
+          <Layers className="text-muted-foreground" /> New system…
         </DropdownMenuItem>
         {actions.connected && !switching
           ? systemMenuActions(daemon.project).map((a) => (

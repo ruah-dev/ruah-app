@@ -198,6 +198,39 @@ describe("provenance through re-scans", () => {
     expect(merged.nodes.map((n) => n.id)).toEqual(["billing", "billing:worker"]);
     expect(merged.edges).toHaveLength(1);
   });
+
+  // Regression: the system merge kept every old workflow whose steps existed, scanned
+  // IaC "Ship X" workflows included, so a changed pipeline never reached a system map.
+  it("system merge replaces scanned workflows and keeps the user's", () => {
+    const nodes: Architecture["nodes"] = [
+      { id: "infra", type: "service", name: "infra", repo: "infra", path: "infra" },
+      { id: "infra:api", type: "service", name: "api", repo: "infra", parent: "infra", path: "infra/api" },
+      { id: "infra:deploy", type: "service", name: "deploy", repo: "infra", parent: "infra", path: "infra/deploy" },
+    ];
+    const existing: Architecture = {
+      version: 1,
+      name: "sys",
+      nodes,
+      edges: [],
+      workflows: [
+        { id: "infra:ship-api", name: "Ship api", steps: ["infra:deploy", "infra:api"], source: "scan" },
+        { id: "infra:gone", name: "Ship old", steps: ["infra:api"], source: "scan" },
+        { id: "mine", name: "Checkout", steps: ["infra:api"] },
+      ],
+    };
+    const scanned: Architecture = {
+      version: 1,
+      name: "sys",
+      nodes,
+      edges: [],
+      workflows: [{ id: "infra:ship-api", name: "Ship api", steps: ["infra:api"], source: "scan" }],
+    };
+    const merged = mergeSystemWithExisting(scanned, existing);
+    expect(merged.workflows.map((w) => [w.id, w.steps])).toEqual([
+      ["mine", ["infra:api"]],
+      ["infra:ship-api", ["infra:api"]],
+    ]);
+  });
 });
 
 describe("revertTurn", () => {

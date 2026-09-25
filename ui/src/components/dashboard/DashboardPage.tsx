@@ -2,7 +2,7 @@
 // (architecture.json over the socket, agent.status, this session's turns, /api/usage).
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Download, Map as MapIcon, RefreshCw } from "lucide-react";
+import { ArrowRight, Check, Download, RefreshCw } from "lucide-react";
 import { downloadDrawio } from "@/lib/export";
 import { kindFor } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
@@ -19,7 +19,8 @@ import {
 import { agentDotClass } from "@/components/agent/AgentPanel";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { kindStyles } from "@/components/explorer/kinds";
-import { PageHeader } from "@/components/shell/AppShell";
+import { PageHeader, PageMenu } from "@/components/shell/AppShell";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { turnStatus, toneDot } from "@/components/shell/SidebarSections";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import { relativeTime } from "@/lib/time";
@@ -223,30 +224,15 @@ export function DashboardPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Dashboard">
         <RescanButton />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={() => void downloadDrawio(daemon.httpOrigin)}
-              disabled={daemon.source !== "daemon"}
-              className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-            >
-              <Download className="size-3.5" />
-              Export draw.io
-            </button>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-80">
-            Download the architecture as a draw.io file: a page per level and workflow, plus a
-            Specifications page with every element's tech, files, links, cloud resources and issues.
-          </TooltipContent>
-        </Tooltip>
-        <Link
-          to="/map"
-          className="flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <MapIcon className="size-3.5" />
-          Open map
-        </Link>
+        <PageMenu>
+          <DropdownMenuItem disabled={daemon.source !== "daemon"} onSelect={() => void downloadDrawio(daemon.httpOrigin)}>
+            <Download className="text-muted-foreground" />
+            <span className="flex flex-col">
+              Export → draw.io
+              <span className="text-meta text-muted-foreground">A page per level and workflow, plus Specifications</span>
+            </span>
+          </DropdownMenuItem>
+        </PageMenu>
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

@@ -6,7 +6,7 @@
 // edges with evidence, "how it ships" workflows; secrets never read; rescans
 // keep hand edits; the CLI, the per-project daemon option, linking, context
 // packs and draw.io; and a performance guard.
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -458,6 +458,32 @@ describe("daemon: per-project scan option", () => {
     const fresh = new ProjectStateStore(home);
     expect(fresh.scanOptions("abcdef012345")).toEqual({ infra: false });
     expect(fresh.activeChat("abcdef012345")).toBe("chat-1");
+  });
+
+  // Regression: one invalid field made the whole state.json count as empty, and the next
+  // write (an unread marker) erased the active chat, the view and scan.infra: false.
+  test("a state.json with one bad field keeps the others (and unknown nested keys)", () => {
+    const home = mkdtempSync(join(tmpdir(), "ruah-home-"));
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+    const id = "abcdef012345";
+    mkdirSync(join(home, "projects", id), { recursive: true });
+    writeFileSync(
+      join(home, "projects", id, "state.json"),
+      JSON.stringify({
+        version: 1,
+        activeChatId: "chat-1",
+        unread: { "chat-1": -1 },
+        scan: { infra: false, future: "x" },
+        view: { tab: "map" },
+        extra: 1,
+      }),
+    );
+    const store = new ProjectStateStore(home);
+    expect(store.activeChat(id)).toBe("chat-1");
+    expect(store.scanOptions(id)).toEqual({ infra: false });
+    store.addUnread(id, "chat-1");
+    const saved = JSON.parse(readFileSync(join(home, "projects", id, "state.json"), "utf8")) as Record<string, unknown>;
+    expect(saved).toMatchObject({ activeChatId: "chat-1", unread: { "chat-1": 1 }, scan: { infra: false, future: "x" }, view: { tab: "map" }, extra: 1 });
   });
 
   test("GET/POST /api/projects/scan-options drive first-open scans and rescans", async () => {
