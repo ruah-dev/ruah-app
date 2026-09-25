@@ -17,6 +17,7 @@ import {
 } from "./Phantom";
 import { POSES, POSE_NAMES, PhantomAgent, PhantomPose, PhantomScene, SCENE_NAMES, sceneRole } from "./PhantomPose";
 import { EmptyState } from "./EmptyState";
+import { AppearanceMenu } from "@/components/settings/AppearanceMenu";
 
 const THEMES = [
   { id: "dark", label: "Dark" },
@@ -179,7 +180,8 @@ export function GhostSheet() {
               19 poses · 8 expressions × 5 sizes · 5 agents · 5 scenes, in each theme of the chosen palette. Dev route, not in the nav.
             </p>
           </div>
-          <div role="radiogroup" aria-label="Palette" className="flex flex-wrap gap-1">
+          <AppearanceMenu />
+          <div role="radiogroup" aria-label="Sheet palette" className="flex flex-wrap gap-1">
             {PALETTE_IDS.map((p) => (
               <button
                 key={p}
