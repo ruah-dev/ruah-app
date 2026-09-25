@@ -314,10 +314,19 @@ function connect() {
       return;
     }
     handle(msg);
+    for (const listener of messageListeners) {
+      try {
+        listener(msg);
+      } catch (err) {
+        console.error(err);
+      }
+    }
   };
   ws.onclose = () => {
     if (socket !== ws) return;
     socket = null;
+    // `pnpm dev` restarts the daemon on every src/ change; it comes back without a project.
+    if (import.meta.env.DEV && state.project) reopenAfterRestart = state.project.root;
     if (draft) {
       // In-flight saves may or may not have landed; resend the draft after reconnecting.
       needsResend = true;
@@ -348,6 +357,19 @@ function connect() {
   };
   ws.onerror = () => {
     /* onclose follows */
+  };
+}
+
+/** Dev only: the project to re-open once the daemon restarted by the watcher answers (scripts/dev.ts). */
+let reopenAfterRestart: string | null = null;
+
+const messageListeners = new Set<(msg: ServerMessage) => void>();
+
+/** Every /ws frame, after the store handled it — for self-contained features (§15 live preview). */
+export function onDaemonMessage(listener: (msg: ServerMessage) => void): () => void {
+  messageListeners.add(listener);
+  return () => {
+    messageListeners.delete(listener);
   };
 }
 
@@ -726,9 +748,14 @@ function handle(msg: ServerMessage) {
       }
       return;
     }
-    case "project":
+    case "project": {
+      const reopen = reopenAfterRestart;
+      reopenAfterRestart = null;
       handleProject(msg.project);
+      // Developing Ruah: re-open the project the restarted daemon forgot (painted from the cache).
+      if (reopen !== null && msg.project === null) void openProject(reopen).catch(() => {});
       return;
+    }
     case "chats":
       handleChats(msg.projectId, msg.chats, msg.activeChatId);
       return;

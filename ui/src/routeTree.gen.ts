@@ -16,6 +16,7 @@ import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as CloudRouteImport } from './routes/cloud'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as MapRouteImport } from './routes/map'
+import { Route as PreviewRouteImport } from './routes/preview'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as UsageRouteImport } from './routes/usage'
@@ -55,6 +56,11 @@ const MapRoute = MapRouteImport.update({
   path: '/map',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreviewRoute = PreviewRouteImport.update({
+  id: '/preview',
+  path: '/preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
+  '/preview': typeof PreviewRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
+  '/preview': typeof PreviewRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
+  '/preview': typeof PreviewRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
   '/usage': typeof UsageRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/integrations'
     | '/map'
+    | '/preview'
     | '/settings'
     | '/tasks'
     | '/usage'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/integrations'
     | '/map'
+    | '/preview'
     | '/settings'
     | '/tasks'
     | '/usage'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/integrations'
     | '/map'
+    | '/preview'
     | '/settings'
     | '/tasks'
     | '/usage'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   CloudRoute: typeof CloudRoute
   IntegrationsRoute: typeof IntegrationsRoute
   MapRoute: typeof MapRoute
+  PreviewRoute: typeof PreviewRoute
   SettingsRoute: typeof SettingsRoute
   TasksRoute: typeof TasksRoute
   UsageRoute: typeof UsageRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MapRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/preview': {
+      id: '/preview'
+      path: '/preview'
+      fullPath: '/preview'
+      preLoaderRoute: typeof PreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   CloudRoute: CloudRoute,
   IntegrationsRoute: IntegrationsRoute,
   MapRoute: MapRoute,
+  PreviewRoute: PreviewRoute,
   SettingsRoute: SettingsRoute,
   TasksRoute: TasksRoute,
   UsageRoute: UsageRoute,

@@ -18,6 +18,8 @@ export interface TerminalInfo {
   status: "running" | "exited";
   exitCode: number | null;
   signal: number | null;
+  /** §15: the live preview's dev server (a command, not a shell). */
+  kind?: "preview";
 }
 
 type ServerMessage =
