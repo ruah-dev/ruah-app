@@ -98,6 +98,11 @@ export const defaultRunner: Runner = (file, args, options = {}) =>
           reject(new CliError(`${label} is not installed`, "missing"));
           return;
         }
+        // Output over maxBuffer also kills the child (killed = true): not a timeout.
+        if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+          reject(new CliError(`${label} printed more than ${Math.round(MAX_BUFFER / 1_048_576)} MiB`, "failed"));
+          return;
+        }
         if (err.killed === true || err.signal === "SIGTERM") {
           reject(new CliError(`${label} timed out after ${Math.round((options.timeoutMs ?? CLI_TIMEOUT_MS) / 1000)} s`, "timeout"));
           return;
