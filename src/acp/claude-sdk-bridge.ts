@@ -773,7 +773,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     const query = session.query as Partial<Query>;
     if (typeof query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== "function") return undefined;
     const response = await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET.call(session.query, { skipBehaviors: true });
-    return { rate_limits_available: response.rate_limits_available, rate_limits: response.rate_limits as Record<string, unknown> | null };
+    return { rate_limits_available: response.rate_limits_available, rate_limits: response.rate_limits as Record<string, unknown> | null, ...(response.subscription_type !== undefined ? { subscription_type: response.subscription_type } : {}) };
   }
 
   // ----- session lifecycle -----

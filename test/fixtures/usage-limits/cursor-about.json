@@ -1,0 +1,13 @@
+{
+  "cliVersion": "2026.09.23-86fc751",
+  "latestStatus": "up_to_date",
+  "latestVersion": "2026.09.23-86fc751",
+  "model": "Grok 4.7 256K High Fast",
+  "subscriptionTier": "Pro+",
+  "osPlatform": "darwin",
+  "osArch": "arm64",
+  "userEmail": "dev@example.com",
+  "terminalProgram": "unknown",
+  "shell": "zsh",
+  "lastRequestId": null
+}

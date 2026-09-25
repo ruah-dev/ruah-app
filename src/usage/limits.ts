@@ -62,6 +62,19 @@ export class UsageLimitsService {
     this.state(limitsKey(agentId)).recordRateLimit(info, new Date(this.now()).toISOString());
   }
 
+  /**
+   * The Claude account's plan reading for the per-agent limits (§15): the
+   * same throttled refresh as limits(), plus the last refresh error.
+   */
+  async claudePlan(): Promise<{ snapshot: ClaudeLimitsSnapshot | undefined; error: string | undefined; canProbe: boolean }> {
+    await this.refreshClaude();
+    return {
+      snapshot: this.states.get(CLAUDE_KEY)?.snapshot(),
+      error: this.lastError,
+      canProbe: this.liveBridge() !== undefined || this.deps.probeClaude !== undefined,
+    };
+  }
+
   async limits(): Promise<UsageLimits> {
     const agents = this.deps.agents();
     if (agents.some((agent) => limitsKey(agent.id) === CLAUDE_KEY && agent.installed)) await this.refreshClaude();

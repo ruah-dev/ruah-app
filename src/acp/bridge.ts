@@ -79,6 +79,8 @@ export interface RateLimitSample {
 export interface ClaudePlanUsage {
   rate_limits_available: boolean;
   rate_limits: Record<string, unknown> | null;
+  /** claude.ai plan ('pro', 'max', 'team', 'enterprise'); null for API key / 3P logins. */
+  subscription_type?: string | null;
 }
 
 export interface TurnHandle { turnId: string; done: Promise<{ stopReason: StopReason; error?: string }> }

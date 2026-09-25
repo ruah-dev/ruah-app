@@ -8,10 +8,13 @@ import type { StopReason } from "../contracts/ws.js";
 import { UsageLog, type UsageRecord } from "./log.js";
 import { summarizeUsage } from "./summary.js";
 import type { UsageLimitsService } from "./limits.js";
+import type { AgentLimitsReport } from "../contracts/agent-limits.js";
+import { AgentLimitsService, defaultProviders } from "./limits/index.js";
 
 export { UsageLog, ruahHome, parseUsageLine, type UsageRecord } from "./log.js";
 export { summarizeUsage } from "./summary.js";
 export { UsageLimitsService, type UsageLimitsDeps, type LimitsAgent } from "./limits.js";
+export { AgentLimitsService, UnknownAgentError } from "./limits/index.js";
 
 export interface FinishedTurn {
   repoRoot: string;
@@ -37,6 +40,8 @@ export interface UsageSink {
 export interface UsageApi {
   summary(range: UsageRange): Promise<UsageSummary>;
   limits(): Promise<UsageLimits>;
+  /** Per-agent plan limits (CONTRACTS §15); optional so older fakes still fit. */
+  agentLimits?(request: { agentId?: string; refresh?: boolean }): Promise<AgentLimitsReport>;
 }
 
 export function usageRecord(turn: FinishedTurn, finishedAt: Date): UsageRecord {
@@ -62,6 +67,9 @@ export function usageRecord(turn: FinishedTurn, finishedAt: Date): UsageRecord {
 }
 
 export class UsageService implements UsageSink, UsageApi {
+  /** Per-agent limits (§15): Claude through limitsService, the other agents through their CLIs. */
+  readonly agentLimitsService: AgentLimitsService;
+
   constructor(
     readonly log: UsageLog,
     readonly limitsService: UsageLimitsService,
@@ -70,8 +78,19 @@ export class UsageService implements UsageSink, UsageApi {
       onError?: (line: string) => void;
       /** Architecture workflows for byWorkflow cost rollups. */
       workflows?: () => Array<{ id: string; steps: string[] }> | undefined;
+      /** Replaces the default per-agent limits service (tests). */
+      agentLimits?: AgentLimitsService;
+      version?: string;
     } = {},
-  ) {}
+  ) {
+    this.agentLimitsService =
+      options.agentLimits ??
+      new AgentLimitsService({
+        providers: defaultProviders(() => limitsService.claudePlan()),
+        records: () => log.records(),
+        context: { ...(options.now !== undefined ? { now: options.now } : {}), version: options.version ?? "0.1.0" },
+      });
+  }
 
   recordTurn(turn: FinishedTurn): void {
     const now = this.options.now?.() ?? Date.now();
@@ -95,5 +114,9 @@ export class UsageService implements UsageSink, UsageApi {
 
   limits(): Promise<UsageLimits> {
     return this.limitsService.limits();
+  }
+
+  agentLimits(request: { agentId?: string; refresh?: boolean }): Promise<AgentLimitsReport> {
+    return this.agentLimitsService.report(request);
   }
 }

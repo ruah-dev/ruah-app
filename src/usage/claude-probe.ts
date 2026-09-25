@@ -65,7 +65,11 @@ export async function probeClaudePlanUsage(cwd: string, queryImpl: typeof sdkQue
       USAGE_TIMEOUT_MS,
       "Claude get_usage",
     );
-    return { rate_limits_available: response.rate_limits_available, rate_limits: response.rate_limits as Record<string, unknown> | null };
+    return {
+      rate_limits_available: response.rate_limits_available,
+      rate_limits: response.rate_limits as Record<string, unknown> | null,
+      ...(response.subscription_type !== undefined ? { subscription_type: response.subscription_type } : {}),
+    };
   } finally {
     if (!abort.signal.aborted) abort.abort();
     try {

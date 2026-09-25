@@ -51,6 +51,10 @@ Usage:
   ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
                                    what agents did across projects (default --since 24h),
                                    unread and waiting-for-permission counts
+  ruah app usage limits [--agent <id>] [--json]
+                                   plan limits per coding agent: Claude windows, Cursor included
+                                   usage + on-demand, Kiro credits, Grok / OpenCode local stats,
+                                   and Ruah's own estimate (no daemon needed)
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -313,6 +317,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "resume": {
       const { runResume } = await import("./resume/run-resume.js");
       return await runResume(rest);
+    }
+    case "usage": {
+      const { runUsage } = await import("./usage/run-usage.js");
+      return await runUsage(rest, pkg.version);
     }
     case "activity": {
       const { runActivity } = await import("./activity/run-activity.js");

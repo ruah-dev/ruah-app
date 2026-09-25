@@ -45,6 +45,33 @@ export interface ClaudeLimitsSnapshot {
   readonly windows: readonly UsageWindow[];
   /** "unsupported": plan limits do not apply (API key, Bedrock, Vertex). */
   readonly unavailable?: { readonly reason: "unsupported" | "probeFailed"; readonly message?: string };
+  /** claude.ai plan from the last get_usage ('pro', 'max', …); absent when not reported. */
+  readonly subscriptionType?: string | null;
+  /** `rate_limits.extra_usage` from the last get_usage (overage spend, minor units). */
+  readonly extraUsage?: ClaudeExtraUsage | null;
+}
+
+/** The plan's extra-usage (overage) block; amounts in minor units of `currency` (cents for USD). */
+export interface ClaudeExtraUsage {
+  readonly is_enabled: boolean;
+  readonly monthly_limit: number | null;
+  readonly used_credits: number | null;
+  readonly utilization: number | null;
+  readonly currency?: string | null;
+}
+
+function readExtraUsage(rateLimits: object | null): ClaudeExtraUsage | null {
+  const raw = (rateLimits as { readonly extra_usage?: unknown } | null)?.extra_usage;
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    is_enabled: r.is_enabled === true,
+    monthly_limit: n(r.monthly_limit),
+    used_credits: n(r.used_credits),
+    utilization: n(r.utilization),
+    currency: typeof r.currency === "string" ? r.currency : null,
+  };
 }
 
 export function clampPercent(value: number): number {
@@ -132,8 +159,9 @@ export function claudeUsageResponseToLimits(input: { readonly response: ClaudePl
   readonly names: ClaudeScopedLimitNames;
 } {
   const { response, checkedAt } = input;
+  const plan = response.subscription_type !== undefined ? { subscriptionType: response.subscription_type } : {};
   if (!response.rate_limits_available || response.rate_limits === null || typeof response.rate_limits !== "object") {
-    return { limits: { checkedAt, windows: [], unavailable: { reason: "unsupported" } }, names: { overageIncluded: undefined } };
+    return { limits: { checkedAt, windows: [], unavailable: { reason: "unsupported" }, ...plan }, names: { overageIncluded: undefined } };
   }
   const windows: UsageWindow[] = [];
   for (const id of Object.keys(WINDOWS)) {
@@ -153,7 +181,11 @@ export function claudeUsageResponseToLimits(input: { readonly response: ClaudePl
     // skipped would let a mid-turn event open a row the probe never showed.
     overageIncluded ??= entry.display_name;
   }
-  return { limits: { checkedAt, windows: sortWindows(windows) }, names: { overageIncluded } };
+  const extraUsage = readExtraUsage(response.rate_limits);
+  return {
+    limits: { checkedAt, windows: sortWindows(windows), ...plan, ...(extraUsage !== null ? { extraUsage } : {}) },
+    names: { overageIncluded },
+  };
 }
 
 /**
@@ -174,7 +206,13 @@ export function applyUsageWindows(previous: ClaudeLimitsSnapshot | undefined, wi
       resetsAt: window.resetsAt ?? existing?.resetsAt ?? null,
     });
   }
-  return { checkedAt, windows: sortWindows(merged.values()) };
+  // Plan and extra usage come only from get_usage; a streamed event keeps them.
+  return {
+    checkedAt,
+    windows: sortWindows(merged.values()),
+    ...(previous?.subscriptionType !== undefined ? { subscriptionType: previous.subscriptionType } : {}),
+    ...(previous?.extraUsage !== undefined ? { extraUsage: previous.extraUsage } : {}),
+  };
 }
 
 /** The Claude account's windows as last seen from either source (t3code's scopedLimitNames Ref + provider snapshot). */
