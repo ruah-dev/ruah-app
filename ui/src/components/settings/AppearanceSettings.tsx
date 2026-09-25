@@ -129,6 +129,7 @@ export function AppearanceSettings() {
                 type="button"
                 role="radio"
                 aria-checked={active}
+                aria-label={`${p.label}: ${p.description}`}
                 onClick={() => setPalette(id)}
                 className={cn(
                   "group/pal flex flex-col gap-2 rounded-xl p-2 text-left transition-colors",

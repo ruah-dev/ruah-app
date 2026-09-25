@@ -17,6 +17,22 @@ type Mode = "dark" | "light" | "contrast";
 
 const KEY = "ruah.theme";
 const PALETTE_KEY = "ruah.palette";
+/** Fired on window when a hook instance changes the theme or palette, so every switcher
+ * (Settings, the shell's appearance menu) shows the same choice; other windows follow through
+ * the storage event. */
+const APPEARANCE_EVENT = "ruah:appearance";
+
+function onAppearanceChange(key: string, sync: () => void): () => void {
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === key) sync();
+  };
+  window.addEventListener(APPEARANCE_EVENT, sync);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(APPEARANCE_EVENT, sync);
+    window.removeEventListener("storage", onStorage);
+  };
+}
 const THEMES: readonly ThemePref[] = ["system", "dark", "light", "contrast"];
 const PALETTES: readonly PalettePref[] = PALETTE_IDS;
 
@@ -85,9 +101,13 @@ export function useColorScheme(): "dark" | "light" {
 export function useTheme() {
   const [pref, setPref] = useState<ThemePref>("dark");
   useEffect(() => {
-    const stored = readTheme();
-    setPref(stored);
-    applyTheme(stored);
+    const sync = () => {
+      const stored = readTheme();
+      setPref(stored);
+      applyTheme(stored);
+    };
+    sync();
+    return onAppearanceChange(KEY, sync);
   }, []);
   useEffect(() => {
     if (pref !== "system") return;
@@ -103,6 +123,7 @@ export function useTheme() {
     write(KEY, next);
     setPref(next);
     applyTheme(next);
+    window.dispatchEvent(new Event(APPEARANCE_EVENT));
   };
   return [pref, set] as const;
 }
@@ -111,14 +132,19 @@ export function useTheme() {
 export function usePalette() {
   const [palette, setPalette] = useState<PalettePref>(DEFAULT_PALETTE);
   useEffect(() => {
-    const stored = readPalette();
-    setPalette(stored);
-    applyPalette(stored);
+    const sync = () => {
+      const stored = readPalette();
+      setPalette(stored);
+      applyPalette(stored);
+    };
+    sync();
+    return onAppearanceChange(PALETTE_KEY, sync);
   }, []);
   const set = (next: PalettePref) => {
     write(PALETTE_KEY, next);
     setPalette(next);
     applyPalette(next);
+    window.dispatchEvent(new Event(APPEARANCE_EVENT));
   };
   return [palette, set] as const;
 }
