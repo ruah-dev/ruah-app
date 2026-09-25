@@ -225,10 +225,12 @@ export const POSES: Record<PhantomPoseName, PoseSpec> = {
     role: "Nothing running — resting",
     render: () => (
       <>
-        <g className="ph-breathe" transform="rotate(-6 300 462)">
-          <Body />
-          <ClosedEyes dy={6} />
-          <Blush dy={10} />
+        <g transform="rotate(-6 300 462)">
+          <g className="ph-breathe">
+            <Body />
+            <ClosedEyes dy={6} />
+            <Blush dy={10} />
+          </g>
         </g>
         <Zs />
       </>
@@ -242,7 +244,11 @@ export const POSES: Record<PhantomPoseName, PoseSpec> = {
         <g className="ph-confetti-group">
           {CONFETTI.map(([x, y, c, shape, rot], i) =>
             shape === "r" ? (
-              <rect key={i} x={x - 8} y={y - 14} width={16} height={28} rx={4} transform={`rotate(${rot} ${x} ${y})`} className={`ph-confetti ${c}`} style={d(i * 0.27)} />
+              // The rotation lives on a wrapper: CSS transform-origin would also move an SVG
+              // transform attribute on the animated element itself.
+              <g key={i} transform={`rotate(${rot} ${x} ${y})`}>
+                <rect x={x - 8} y={y - 14} width={16} height={28} rx={4} className={`ph-confetti ${c}`} style={d(i * 0.27)} />
+              </g>
             ) : (
               <circle key={i} cx={x} cy={y} r={10} className={`ph-confetti ${c}`} style={d(i * 0.27)} />
             ),
@@ -335,9 +341,11 @@ export const POSES: Record<PhantomPoseName, PoseSpec> = {
     role: "Cloud resources",
     render: () => (
       <>
-        <g className="ph-float-soft" transform="translate(0 -34)">
-          <Body />
-          <RoundEyes shine />
+        <g transform="translate(0 -34)">
+          <g className="ph-float-soft">
+            <Body />
+            <RoundEyes shine />
+          </g>
         </g>
         <g className="ph-drift">
           <g className="ph-cloud-shade" transform="translate(0 12)">
@@ -444,9 +452,11 @@ export const POSES: Record<PhantomPoseName, PoseSpec> = {
             <line key={y} x1={x1} y1={y} x2={x2} y2={y} strokeWidth={11} className="ph-speed ph-prop-stroke" style={d(i * 0.25)} />
           ))}
         </g>
-        <g className="ph-bob" transform="rotate(7 300 462)">
-          <Body />
-          <RoundEyes look={[12, 0]} />
+        <g transform="rotate(7 300 462)">
+          <g className="ph-bob">
+            <Body />
+            <RoundEyes look={[12, 0]} />
+          </g>
         </g>
         <g className="ph-swing" style={origin(462, 398)}>
           <path d="M 436 426 v -14 a 12 12 0 0 1 12 -12 h 28 a 12 12 0 0 1 12 12 v 14" strokeWidth={10} fill="none" className="ph-deep-stroke" />

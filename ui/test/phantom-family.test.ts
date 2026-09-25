@@ -13,11 +13,13 @@ import {
   PhantomPose,
   PhantomScene,
   SCENE_NAMES,
+  agentTintFromName,
   agentTintOf,
   canonicalTone,
   toneVar,
 } from "@/components/brand";
 import { AGENT_TINT_IDS, resolveTokens } from "@/design/tokens";
+import { agentColor } from "@/components/usage/usageAgents";
 
 const html = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
 
@@ -99,6 +101,29 @@ describe("agents and scenes", () => {
     expect(agentTintOf("kiro-cli")).toBe("kiro");
     expect(agentTintOf("aider")).toBeUndefined();
     expect(agentTintOf(undefined)).toBeUndefined();
+  });
+
+  it("maps display names onto tints", () => {
+    expect(agentTintFromName("Claude Code")).toBe("claude");
+    expect(agentTintFromName("Cursor Agent")).toBe("cursor");
+    expect(agentTintFromName("Grok Build")).toBe("grok");
+    expect(agentTintFromName("Kiro CLI")).toBe("kiro");
+    expect(agentTintFromName("OpenCode")).toBe("opencode");
+    expect(agentTintFromName("Mock agent")).toBeUndefined();
+  });
+
+  it("usage colours a known agent with its tint, others with the series in order", () => {
+    const active = ["claude", "mock", "cursor", "aider"];
+    expect(agentColor("claude", active)).toBe("var(--agent-claude)");
+    expect(agentColor("cursor", active)).toBe("var(--agent-cursor)");
+    expect(agentColor("mock", active)).toBe("var(--series-1)");
+    expect(agentColor("aider", active)).toBe("var(--series-2)");
+  });
+
+  it("a status keeps its colour on an agent's ghost", () => {
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "idle" }))).toContain('data-tone="claude"');
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "error" }))).toContain('data-tone="bad"');
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "warning" }))).toContain('data-tone="warn"');
   });
 
   it("an agent's ghost wears its tint, and its emblem from 32 px", () => {
