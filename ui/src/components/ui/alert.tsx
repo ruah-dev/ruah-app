@@ -11,6 +11,13 @@ const alertVariants = cva(
         default: "bg-background text-foreground",
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        // Design-system alerts: one per role — a 3 px role-coloured edge on surface-2, the
+        // title and icon in the role colour, the text in the foreground.
+        info: "border-hairline border-l-[3px] border-l-info bg-surface-2 text-foreground [&>svg]:text-info [&_h5]:text-info",
+        ai: "border-hairline border-l-[3px] border-l-ai bg-surface-2 text-foreground [&>svg]:text-ai [&_h5]:text-ai",
+        ok: "border-hairline border-l-[3px] border-l-ok bg-surface-2 text-foreground [&>svg]:text-ok [&_h5]:text-ok",
+        warn: "border-hairline border-l-[3px] border-l-warn bg-surface-2 text-foreground [&>svg]:text-warn [&_h5]:text-warn",
+        bad: "border-hairline border-l-[3px] border-l-bad bg-surface-2 text-foreground [&>svg]:text-bad [&_h5]:text-bad",
       },
     },
     defaultVariants: {

@@ -14,6 +14,13 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80",
         outline: "text-foreground",
+        // Design-system badges: one per semantic role — a pill, the role's colour on its tint.
+        brand: "rounded-pill border-brand/35 bg-brand/12 font-medium text-brand",
+        ai: "rounded-pill border-ai/35 bg-ai/12 font-medium text-ai",
+        ok: "rounded-pill border-ok/35 bg-ok/12 font-medium text-ok",
+        warn: "rounded-pill border-warn/35 bg-warn/12 font-medium text-warn",
+        bad: "rounded-pill border-bad/35 bg-bad/12 font-medium text-bad",
+        info: "rounded-pill border-info/35 bg-info/12 font-medium text-info",
       },
     },
     defaultVariants: {
