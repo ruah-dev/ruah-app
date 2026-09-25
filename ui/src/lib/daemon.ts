@@ -752,8 +752,9 @@ function handle(msg: ServerMessage) {
       const reopen = reopenAfterRestart;
       reopenAfterRestart = null;
       handleProject(msg.project);
-      // Developing Ruah: re-open the project the restarted daemon forgot (painted from the cache).
-      if (reopen !== null && msg.project === null) void openProject(reopen).catch(() => {});
+      // Developing Ruah: re-open the project that was open before the watcher restarted the
+      // daemon (it comes back in the launcher state, or on the repo `pnpm dev` was given).
+      if (reopen !== null && (msg.project === null || !sameRoot(msg.project.root, reopen))) void openProject(reopen).catch(() => {});
       return;
     }
     case "chats":
