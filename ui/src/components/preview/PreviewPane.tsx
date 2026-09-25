@@ -7,7 +7,7 @@
 // for the agent in the composer.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Globe, Loader2, Monitor, Play, RefreshCw, RotateCw, Smartphone, Square, Tablet, X } from "lucide-react";
+import { ExternalLink, Globe, Loader2, Monitor, Play, RefreshCcwDot, RefreshCw, RotateCw, Smartphone, Square, Tablet, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { onDaemonMessage, useDaemonSelector } from "@/lib/daemon";
@@ -257,121 +257,130 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
 
   return (
     <section className={cn("flex min-h-0 flex-1 flex-col bg-background", className)} aria-label="Live preview">
-      <header className={cn("flex flex-wrap items-center gap-1 border-b border-hairline bg-surface-0/50 px-2 py-1.5", variant === "page" && "px-3")}>
-        <PreviewCommandMenu
-          status={status}
-          detection={detection}
-          busy={busy}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          onPick={(c) => startCandidate(c, true)}
-          onCustom={() => setCustomOpen(true)}
-          onForget={() => void previewActions.choose(projectId, { candidate: null, command: null })}
-          onRedetect={() => void previewActions.refresh(projectId)}
-          onShowLogs={showLogs}
-        />
-        <form
-          className="order-last flex h-7 min-w-[180px] flex-1 basis-full items-center gap-1.5 rounded-md bg-surface-2 px-2 ring-hairline focus-within:ring-1 focus-within:ring-ring sm:order-none sm:basis-auto"
-          onSubmit={(e) => {
-            e.preventDefault();
-            navigate();
-          }}
-        >
-          <Globe className={cn("size-3.5 shrink-0", running ? "text-ok" : "text-faint")} />
-          <input
-            aria-label="Preview address"
-            value={running ? draft : ""}
-            placeholder={liveState ? "Waiting for the server…" : "Not running"}
-            disabled={!running}
-            spellCheck={false}
-            onFocus={() => setEditing(true)}
-            onBlur={() => {
-              setEditing(false);
-              setDraft(navUrl ?? "");
-            }}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") (e.target as HTMLInputElement).blur();
-            }}
-            className="min-w-0 flex-1 bg-transparent font-mono text-meta text-foreground outline-none placeholder:font-sans placeholder:text-faint disabled:cursor-default"
-          />
-        </form>
-        <ToolButton label="Reload" onClick={() => setReloadKey((k) => k + 1)} disabled={!running}>
-          <RotateCw className="size-3.5" />
-        </ToolButton>
-        <div className="flex items-center rounded-md bg-surface-2 p-0.5" role="group" aria-label="Device width">
-          {(Object.keys(DEVICES) as Device[]).map((d) => {
-            const Icon = DEVICE_ICONS[d];
-            return (
-              <Tooltip key={d}>
+      {/* One row when the slot is wide; in a side panel: command + run controls, then the address row. */}
+      <header className={cn("@container border-b border-hairline bg-surface-0/50 px-2 py-1.5", variant === "page" && "px-3")}>
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+          <div className="order-1 min-w-0 shrink">
+            <PreviewCommandMenu
+              status={status}
+              detection={detection}
+              busy={busy}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              onPick={(c) => startCandidate(c, true)}
+              onCustom={() => setCustomOpen(true)}
+              onForget={() => void previewActions.choose(projectId, { candidate: null, command: null })}
+              onRedetect={() => void previewActions.refresh(projectId)}
+              onShowLogs={showLogs}
+            />
+          </div>
+          <div className="order-3 flex min-w-0 basis-full items-center gap-1 @2xl:order-2 @2xl:basis-0 @2xl:flex-1">
+            <form
+              className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-surface-2 px-2 focus-within:ring-1 focus-within:ring-ring"
+              onSubmit={(e) => {
+                e.preventDefault();
+                navigate();
+              }}
+            >
+              <Globe className={cn("size-3.5 shrink-0", running ? "text-ok" : "text-faint")} />
+              <input
+                aria-label="Preview address"
+                value={running ? draft : ""}
+                placeholder={liveState ? "Waiting for the server…" : "Not running"}
+                disabled={!running}
+                spellCheck={false}
+                onFocus={() => setEditing(true)}
+                onBlur={() => {
+                  setEditing(false);
+                  setDraft(navUrl ?? "");
+                }}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") (e.target as HTMLInputElement).blur();
+                }}
+                className="min-w-0 flex-1 bg-transparent font-mono text-meta text-foreground outline-none placeholder:font-sans placeholder:text-faint disabled:cursor-default"
+              />
+            </form>
+            <ToolButton label="Reload the page" onClick={() => setReloadKey((k) => k + 1)} disabled={!running}>
+              <RotateCw className="size-3.5" />
+            </ToolButton>
+            <div className="flex shrink-0 items-center rounded-md bg-surface-2 p-0.5" role="group" aria-label="Device width">
+              {(Object.keys(DEVICES) as Device[]).map((d) => {
+                const Icon = DEVICE_ICONS[d];
+                return (
+                  <Tooltip key={d}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={DEVICES[d].label}
+                        aria-pressed={prefs.device === d}
+                        onClick={() => previewActions.setDevice(projectId, d)}
+                        className={cn(
+                          "grid h-6 w-7 place-items-center rounded text-muted-foreground transition-colors hover:text-foreground",
+                          prefs.device === d && "bg-surface-4 text-foreground shadow-sm",
+                        )}
+                      >
+                        <Icon className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">{DEVICES[d].label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+            {!hmr || prefs.autoReload !== undefined ? (
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label={DEVICES[d].label}
-                    aria-pressed={prefs.device === d}
-                    onClick={() => previewActions.setDevice(projectId, d)}
+                    aria-pressed={autoReload}
+                    onClick={() => previewActions.setAutoReload(projectId, !autoReload)}
                     className={cn(
-                      "grid h-6 w-7 place-items-center rounded text-muted-foreground transition-colors hover:text-foreground",
-                      prefs.device === d && "bg-surface-4 text-foreground shadow-sm",
+                      "flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta transition-colors hover:bg-accent",
+                      autoReload ? "text-primary" : "text-faint",
                     )}
                   >
-                    <Icon className="size-3.5" />
+                    <RefreshCw className="size-3" /> Auto
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{DEVICES[d].label}</TooltipContent>
+                <TooltipContent side="bottom">
+                  {autoReload ? "Reloads after each agent turn that edits files (on)" : "Reload after each agent turn that edits files (off)"}
+                </TooltipContent>
               </Tooltip>
-            );
-          })}
+            ) : null}
+            <ToolButton label="Open in browser" onClick={() => navUrl && openInBrowser(navUrl)} disabled={!running || !navUrl}>
+              <ExternalLink className="size-3.5" />
+            </ToolButton>
+          </div>
+          <div className="order-2 ms-auto flex shrink-0 items-center gap-1 @2xl:order-3 @2xl:ms-0">
+            <span className="mx-0.5 hidden h-4 w-px bg-hairline @2xl:block" aria-hidden />
+            {liveState ? (
+              <>
+                <ToolButton label="Restart the dev server" onClick={() => void previewActions.restart(projectId)} disabled={busy}>
+                  {p.pending === "restart" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCcwDot className="size-3.5" />}
+                </ToolButton>
+                <ToolButton label="Stop the dev server" onClick={() => void previewActions.stop(projectId)} disabled={busy}>
+                  {p.pending === "stop" ? <Loader2 className="size-3.5 animate-spin" /> : <Square className="size-3 fill-current" />}
+                </ToolButton>
+              </>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => (selected ? startCandidate(selected, false) : setMenuOpen(true))}
+                    disabled={busy || (detection !== null && detection.candidates.length === 0)}
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {p.pending === "start" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+                    {status?.state === "crashed" ? "Retry" : "Start"}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{selected ? `Run ${selected.command}` : "Choose what to run"}</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         </div>
-        {!hmr || prefs.autoReload !== undefined ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-pressed={autoReload}
-                onClick={() => previewActions.setAutoReload(projectId, !autoReload)}
-                className={cn(
-                  "flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta transition-colors hover:bg-accent",
-                  autoReload ? "text-primary" : "text-faint",
-                )}
-              >
-                <RefreshCw className="size-3" /> Auto
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {autoReload ? "Reloads after each agent turn that edits files (on)" : "Reload after each agent turn that edits files (off)"}
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        <ToolButton label="Open in browser" onClick={() => navUrl && openInBrowser(navUrl)} disabled={!running || !navUrl}>
-          <ExternalLink className="size-3.5" />
-        </ToolButton>
-        <span className="mx-0.5 h-4 w-px shrink-0 bg-hairline" aria-hidden />
-        {liveState ? (
-          <>
-            <ToolButton label="Restart the dev server" onClick={() => void previewActions.restart(projectId)} disabled={busy}>
-              {p.pending === "restart" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-            </ToolButton>
-            <ToolButton label="Stop the dev server" onClick={() => void previewActions.stop(projectId)} disabled={busy}>
-              {p.pending === "stop" ? <Loader2 className="size-3.5 animate-spin" /> : <Square className="size-3.5" />}
-            </ToolButton>
-          </>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => (selected ? startCandidate(selected, false) : setMenuOpen(true))}
-                disabled={busy || (detection !== null && detection.candidates.length === 0)}
-                className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {p.pending === "start" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                {status?.state === "crashed" ? "Retry" : "Start"}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{selected ? `Run ${selected.command}` : "Choose what to run"}</TooltipContent>
-          </Tooltip>
-        )}
       </header>
       {p.error ? (
         <div className="flex items-start gap-2 border-b border-hairline bg-bad/10 px-3 py-1.5 text-ui-sm text-bad" role="alert">
