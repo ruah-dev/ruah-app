@@ -166,6 +166,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   const cloudWatch = process.env.RUAH_CLOUD_WATCH === "0" ? undefined : new CloudWatcher({
     // §14: only the providers (and accounts) of the project's cloud scope when it lists any.
     providers: () => ((hubRef?.store ?? null) !== null ? integrations.watchProviders() : []),
+    // Backoff and next-poll times per project: a switch starts the new project's schedule afresh.
+    key: () => hubRef?.store?.root ?? "",
     sync: async (id) => {
       const result = await integrations.cloudSync({ providers: [id] });
       return { ok: !result.errors.some((e) => e.provider === id) || result.resources.some((r) => r.provider === id) };

@@ -119,7 +119,7 @@ export interface SessionHubOptions {
   /** Agents edit the map through the ruah_* tools (CONTRACTS §1.7): context-pack hint + per-turn undo. */
   mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
   /** §9 cloud watch mode: `cloud.watch` frames (and closed sockets) register viewers; optional. */
-  cloudWatch?: { watch(viewer: unknown, on: boolean): void };
+  cloudWatch?: { watch(viewer: unknown, on: boolean): void; projectChanged?(): void };
   /** §13.2 activity feed: events, live counts, unread markers, snapshot after hello. */
   activity?: ActivityService;
   /** §13.1 turns allowed to keep running outside the open project (default 3; at most maxLiveBridges - 1). */
@@ -334,6 +334,7 @@ export class SessionHub {
       for (const message of this.pendingPermissionMessages()) this.broadcast(message);
     }
     this.broadcastStatus();
+    this.options.cloudWatch?.projectChanged?.();
     if (next !== null) {
       if (this.sockets.size > 0) this.options.activity?.markRead(next.info.id, this.activeChatId);
       this.autoPrewarm = { projectId: next.info.id, timer: undefined };
