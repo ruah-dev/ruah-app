@@ -37,6 +37,7 @@ import { buildViewModel, isGroupNodeId, NO_FILTERS, searchNodes, type CanvasFilt
 import { NodeCard, type NodeHandlers, type NodeTone } from "./canvas/NodeCard";
 import { EdgeLayer } from "./canvas/EdgeLayer";
 import { useDaemonSelector, workingNodeOf } from "@/lib/daemon";
+import { onCamerasReset, recallCamera, rememberCamera } from "@/lib/camera";
 import { useVerifyState } from "@/lib/engines";
 import { Minimap, type MinimapHandle } from "./canvas/Minimap";
 import { FilterMenu, SearchBar, ToolbarButtons, type SearchHit } from "./canvas/CanvasToolbar";
@@ -201,9 +202,13 @@ export function EditorCanvas({
     });
   }, []);
 
+  const levelId = useRef(diagram.id);
+  levelId.current = diagram.id;
   const applyCamera = useCallback(
     (next: Camera) => {
       cam.current = next;
+      // The shell saves it in the project's view state (lib/camera.ts).
+      if (active) rememberCamera(levelId.current, next);
       const world = worldRef.current;
       if (world) {
         world.style.transform = `translate3d(${next.x}px, ${next.y}px, 0) scale(${next.k})`;
@@ -226,7 +231,7 @@ export function EditorCanvas({
       scheduleRecull();
       scheduleMinimap();
     },
-    [scheduleRecull, scheduleMinimap],
+    [scheduleRecull, scheduleMinimap, active],
   );
 
   const stopAnim = () => {
@@ -356,7 +361,7 @@ export function EditorCanvas({
     setHoverEdge(null);
     setMatchIdx(0);
     stopAnim();
-    const saved = cams.current.get(diagram.id);
+    const saved = cams.current.get(diagram.id) ?? recallCamera(diagram.id);
     if (saved && dir !== "in") applyCamera(saved);
     else fitRef.current(false);
     const stage = stageRef.current;
@@ -371,6 +376,19 @@ export function EditorCanvas({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagram.id, hasNodes]);
+
+  // Another project was entered: its saved camera replaces the previous project's (the same
+  // level ids exist in every project); without one, frame the level (lib/camera.ts).
+  useEffect(
+    () =>
+      onCamerasReset(() => {
+        cams.current.clear();
+        const seeded = recallCamera(levelId.current);
+        if (seeded) applyCamera(seeded);
+        else fitRef.current(false);
+      }),
+    [applyCamera],
+  );
 
   // Filters are per level.
   useEffect(() => {

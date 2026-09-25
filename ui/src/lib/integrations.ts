@@ -21,6 +21,7 @@ import type {
   WorkItem,
 } from "./contracts";
 import { setCloudWatch, type DaemonState } from "./daemon";
+import { useViewerPrefs } from "./preferences";
 import type { DiagramEdge, DiagramGroup, DiagramNode, Graph, NodeKind } from "@/data/graphs";
 import { ORIGIN, NODE_W, NODE_H, kindFor, subtitleFor } from "./architecture";
 
@@ -268,13 +269,15 @@ function watchCloud(reason: "page" | "map", on: boolean) {
   setCloudWatch(watchReasons.size > 0);
 }
 
-/** Keeps cloud status live while the calling component (the Cloud page) is mounted. */
+/** Keeps cloud status live while the calling component (the Cloud page) is mounted — unless
+ * Settings → Features & behaviour turned live refresh off. */
 export function useCloudWatch(active = true) {
+  const { cloudLive } = useViewerPrefs();
   useEffect(() => {
-    if (!active) return;
+    if (!active || !cloudLive) return;
     watchCloud("page", true);
     return () => watchCloud("page", false);
-  }, [active]);
+  }, [active, cloudLive]);
 }
 
 /**

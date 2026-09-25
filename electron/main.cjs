@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
@@ -175,6 +175,38 @@ function openInBrowser(url) {
   if (web !== null) shell.openExternal(web).catch(() => {});
 }
 
+// Settings → Features & behaviour: ⌥Space anywhere focuses Ruah and opens the launcher. Off by
+// default; registered only while the renderer asks for it (and released on quit). If another app
+// already owns the accelerator, register() fails and the renderer is told (false).
+const LAUNCHER_ACCELERATOR = "Alt+Space";
+let launcherShortcutOn = false;
+
+function registerLauncherShortcut() {
+  ipcMain.handle("ruah:launcher-shortcut", (_event, on) => {
+    const want = on === true;
+    if (want === launcherShortcutOn) return launcherShortcutOn;
+    if (!want) {
+      globalShortcut.unregister(LAUNCHER_ACCELERATOR);
+      launcherShortcutOn = false;
+      return false;
+    }
+    try {
+      launcherShortcutOn = globalShortcut.register(LAUNCHER_ACCELERATOR, () => {
+        if (win === null || win.isDestroyed()) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        app.focus({ steal: true });
+        win.webContents.send("ruah:launcher");
+      });
+    } catch {
+      launcherShortcutOn = false;
+    }
+    return launcherShortcutOn;
+  });
+  app.on("will-quit", () => globalShortcut.unregisterAll());
+}
+
 function portFree(port) {
   return new Promise((resolve) => {
     const probe = net.createServer();
@@ -205,6 +237,7 @@ async function main() {
   const repoDir = process.env.RUAH_REPO ?? repoFromArgv(process.argv);
   registerIpc();
   registerNotifications();
+  registerLauncherShortcut();
   // Never attach to whatever already listens on the port (a leftover daemon
   // would show another state): start our own on a free port instead.
   if (!(await portFree(PORT))) {

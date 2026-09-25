@@ -5,9 +5,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { CLIENT_ID, setAgent, setDefaults, setFeatureFlags, type DaemonState } from "@/lib/daemon";
-import type { AgentChoiceState, NotificationMode } from "@/lib/contracts";
-import { useActivity } from "@/lib/activity";
+import { CLIENT_ID, setAgent, setDefaults, type DaemonState } from "@/lib/daemon";
+import type { AgentChoiceState } from "@/lib/contracts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
@@ -15,6 +14,7 @@ import { usePalette, useTheme, type PalettePref, type ThemePref } from "@/lib/th
 import { AgentMark, WarmDot, modeLabel, plain } from "@/components/agent/ComposerControls";
 import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
+import { FeaturesSettings } from "./FeaturesSettings";
 import { cn } from "@/lib/utils";
 
 const PALETTES: readonly { value: PalettePref; label: string; swatch: string }[] = [
@@ -232,7 +232,6 @@ function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: A
 export function SettingsPage() {
   const { daemon } = useWorkspace();
   const wb = useWorkbench();
-  const activity = useActivity();
   const [theme, setTheme] = useTheme();
   const [palette, setPalette] = usePalette();
   const [health, setHealth] = useState<{ version?: string; agent?: unknown } | null>(null);
@@ -297,41 +296,7 @@ export function SettingsPage() {
             </Group>
           ) : null}
 
-          {connected && activity.supported ? (
-            <Group
-              title="Background agents"
-              description="Saved in ~/.ruah/settings.json for every window. Background turns keep their chat and wait for your answers."
-            >
-              <Row
-                label="Keep agents running when you switch projects"
-                hint={
-                  activity.maxBackgroundTurns > 0
-                    ? `Up to ${activity.maxBackgroundTurns} at a time; off: switching cancels the running turn.`
-                    : "Off: switching projects cancels the running turn."
-                }
-              >
-                <Segmented
-                  value={activity.settings.backgroundAgents ? "on" : "off"}
-                  onChange={(v: "on" | "off") => setFeatureFlags({ backgroundAgents: v === "on" })}
-                  options={[
-                    { value: "on", label: "On" },
-                    { value: "off", label: "Off" },
-                  ]}
-                />
-              </Row>
-              <Row label="Notifications" hint="When an agent finishes or asks for permission.">
-                <Segmented
-                  value={activity.settings.notifications}
-                  onChange={(v: NotificationMode) => setFeatureFlags({ notifications: v })}
-                  options={[
-                    { value: "background", label: "In the background" },
-                    { value: "always", label: "Always" },
-                    { value: "off", label: "Off" },
-                  ]}
-                />
-              </Row>
-            </Group>
-          ) : null}
+          <FeaturesSettings />
 
           <Group
             title="Integrations"
