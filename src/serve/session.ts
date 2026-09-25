@@ -119,7 +119,7 @@ export interface SessionHubOptions {
   /** Agents edit the map through the ruah_* tools (CONTRACTS §1.7): context-pack hint + per-turn undo. */
   mapOps?: { undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> };
   /** §9 cloud watch mode: `cloud.watch` frames (and closed sockets) register viewers; optional. */
-  cloudWatch?: { watch(viewer: unknown, on: boolean): void };
+  cloudWatch?: { watch(viewer: unknown, on: boolean): void; projectChanged?(): void };
   /** §13.2 activity feed: events, live counts, unread markers, snapshot after hello. */
   activity?: ActivityService;
   /** §13.1 turns allowed to keep running outside the open project (default 3; at most maxLiveBridges - 1). */
@@ -334,6 +334,7 @@ export class SessionHub {
       for (const message of this.pendingPermissionMessages()) this.broadcast(message);
     }
     this.broadcastStatus();
+    this.options.cloudWatch?.projectChanged?.();
     if (next !== null) {
       if (this.sockets.size > 0) this.options.activity?.markRead(next.info.id, this.activeChatId);
       this.autoPrewarm = { projectId: next.info.id, timer: undefined };
@@ -1093,11 +1094,16 @@ export class SessionHub {
       return;
     }
     const arch = open.store.current();
-    if (arch === null) return;
     const nodeId = message.nodeId;
+    // A map that did not load (architecture.error) still allows plain chats; a prompt about an
+    // element gets an answer instead of silence (the composer would wait forever).
+    if (arch === null && nodeId !== undefined) {
+      this.error(socket, "unknown_node", `the map is not loaded, so ${nodeId} has no context; ask without an element or fix architecture.json`, { turnId: message.turnId });
+      return;
+    }
     // Stored nodes, and expanded folders / files / symbols (CONTRACTS §1.6). No nodeId = a plain
     // chat on the project: the agent gets the question as typed, no context pack.
-    const scope = nodeId === undefined ? undefined : resolveNodeScope(open.store, arch, nodeId);
+    const scope = nodeId === undefined || arch === null ? undefined : resolveNodeScope(open.store, arch, nodeId);
     if (scope === null) {
       this.error(socket, "unknown_node", `unknown node: ${nodeId}`, { turnId: message.turnId });
       return;

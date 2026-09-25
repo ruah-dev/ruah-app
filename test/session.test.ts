@@ -180,6 +180,27 @@ async function setup(withSwitcher = true) {
   return { hub, bridge, switcher, socket };
 }
 
+describe("SessionHub: a map that did not load", () => {
+  // Regression: startTurn returned silently when store.current() was null (invalid
+  // architecture.json), so every prompt, even a plain chat, left the composer waiting.
+  it("still runs plain chats and answers element prompts with an error", async () => {
+    const broken = { ...store, current: () => null } as unknown as ArchitectureStore;
+    const bridge = new FakeBridge("alpha");
+    const hub = new SessionHub(broken, bridge, { version: "t", links: false, debug: () => {}, info: () => {}, agentId: "alpha" });
+    await bridge.start();
+    const socket = new FakeSocket();
+    attachSession(hub, socket as unknown as WebSocket);
+    socket.receive({ type: "hello", protocol: 1, client: "test/0" });
+    socket.receive({ type: "prompt", turnId: "t1", text: "hello" });
+    expect(socket.sent.some((m) => m.type === "turn.started" && m.turnId === "t1")).toBe(true);
+    bridge.emit({ type: "turn_finished", turnId: "t1", stopReason: "end_turn" });
+    bridge.state = "idle";
+    bridge.emit({ type: "status", state: "idle" });
+    socket.receive({ type: "prompt", turnId: "t2", text: "and this?", nodeId: "api" });
+    expect(socket.errors().at(-1)).toMatchObject({ turnId: "t2", code: "unknown_node" });
+  });
+});
+
 describe("SessionHub", () => {
   it("replays agent.status after hello with models and agents", async () => {
     const { socket } = await setup();

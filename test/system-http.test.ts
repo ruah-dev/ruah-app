@@ -6,7 +6,7 @@
 // helpers with a mocked `gh`; plus namespaced ids through context, expand and
 // the draw.io export.
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -242,6 +242,19 @@ describe("/api/system (CONTRACTS §12)", () => {
       post(`${d.url}/api/system/create`, { dir: path.join(dir, "platform"), repos: [{ path: path.join(dir, "invoices-api") }, { path: path.join(dir, "infra") }] }),
     );
     expect(merged.body).toMatchObject({ created: false, added: ["infra"] });
+    // Regression: the open system reloads even when the dialog names it through a symlink
+    // (tmpdir() is /var/folders → /private/var/folders on macOS; opened roots are real paths).
+    const viaLink = realpathSync(dir) !== dir ? dir : undefined;
+    const afterMerge = await json<{ repos: { id: string }[] }>(fetch(`${d.url}/api/system`));
+    expect(afterMerge.body.repos.map((r) => r.id)).toContain("infra");
+    if (viaLink === undefined) {
+      // Not a symlinked tmpdir: go through an explicit symlink to the system folder.
+      const link = path.join(realpathSync(tmpdir()), `ruah-link-${Date.now()}`);
+      symlinkSync(path.join(dir, "platform"), link);
+      await post(`${d.url}/api/system/create`, { dir: link, repos: [{ path: path.join(dir, "notify-worker") }] });
+      const again = await json<{ repos: { id: string }[] }>(fetch(`${d.url}/api/system`));
+      expect(again.body.repos.map((r) => r.id)).toContain("notify-worker");
+    }
   });
 
   it("turns an open repo into a system; a single repo project has no system endpoints", async () => {

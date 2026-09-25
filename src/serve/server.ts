@@ -24,7 +24,8 @@ import { handleAttachmentsRequest } from "./attachments-http.js";
 import { handleMapOpsRequest } from "./map-ops-http.js";
 import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js";
 import type { MapOpsService } from "./map-ops.js";
-import type { TerminalGateway } from "../terminal/gateway.js";
+import { hostnameOf, isLoopbackHostName, type TerminalGateway } from "../terminal/gateway.js";
+import { isIP } from "node:net";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
 
 export interface ServeOptions {
@@ -80,6 +81,27 @@ export function originAllowed(origin: string | undefined, allowOrigins: readonly
 }
 
 /**
+ * DNS-rebinding guard: a browser page on evil.example whose name re-resolves
+ * to 127.0.0.1 sends same-origin GETs with no Origin header (originAllowed
+ * lets those through for curl), so the Host header is what tells it apart.
+ * Allowed: no Host (non-browser clients), loopback names, IP literals (they
+ * cannot be rebound), the --host bind name, and hosts an --allow-origin glob
+ * names.
+ */
+export function hostAllowed(hostHeader: string | undefined, bindHost: string, allowOrigins: readonly string[]): boolean {
+  if (hostHeader === undefined || hostHeader.length === 0) return true;
+  const name = hostnameOf(hostHeader);
+  if (name === undefined) return false;
+  if (isLoopbackHostName(name) || isIP(name) !== 0) return true;
+  if (name.toLowerCase() === bindHost.replace(/^\[|\]$/g, "").toLowerCase()) return true;
+  return allowOrigins.some(
+    (glob) =>
+      originMatches(`http://${hostHeader}`, glob) || originMatches(`https://${hostHeader}`, glob) ||
+      originMatches(`http://${name}`, glob) || originMatches(`https://${name}`, glob),
+  );
+}
+
+/**
  * `_store` is kept for callers of the single-repo era; the hub's current
  * project store is what every endpoint serves (null = launcher state, 409).
  */
@@ -89,6 +111,11 @@ export function startServer(
   options: ServeOptions,
 ): Promise<RunningServer> {
   const server = http.createServer((req, res) => {
+    if (!hostAllowed(req.headers.host, options.host, options.allowOrigins)) {
+      options.logger(`rejected request for host ${req.headers.host ?? "(none)"}`);
+      sendJson(res, 403, { error: "host not allowed" });
+      return;
+    }
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     const pathname = url.pathname;
 
@@ -197,6 +224,11 @@ export function startServer(
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1_048_576 });
 
   server.on("upgrade", (req, socket, head) => {
+    if (!hostAllowed(req.headers.host, options.host, options.allowOrigins)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (options.terminal?.handleUpgrade(req, socket, head, url) === true) return;
     if (url.pathname !== "/ws") {

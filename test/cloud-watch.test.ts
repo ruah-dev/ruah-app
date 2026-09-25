@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WebSocket } from "ws";
-import type { CloudResource } from "../src/contracts/integrations.js";
+import type { CloudResource, IntegrationInfo } from "../src/contracts/integrations.js";
 import { ClientMessageSchema, ServerMessageSchema } from "../src/contracts/ws.js";
 import { cloudFingerprint, diffResources, syncProviders } from "../src/integrations/cloud-sync.js";
 import { IntegrationRegistry, IntegrationsService } from "../src/integrations/index.js";
@@ -207,6 +207,38 @@ describe("CloudWatcher", () => {
     w.stop();
   });
 
+  // Regression: the schedule was keyed by provider only, so after a project switch the new
+  // project's providers waited out the previous project's backoff (up to 10 min).
+  test("the schedule is per project: a switch neither inherits backoff nor waits for the old timer", async () => {
+    let root = "/a";
+    const calls: string[] = [];
+    const w = new CloudWatcher({
+      providers: () => ["k8s"],
+      key: () => root,
+      intervalMs: 10_000,
+      maxBackoffMs: 600_000,
+      sync: async () => {
+        calls.push(root);
+        return { ok: root !== "/a" };
+      },
+    });
+    w.watch("v", true);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(calls).toEqual(["/a", "/a", "/a"]);
+    expect(w.state("k8s")?.failures).toBe(3); // next /a poll 80 s out
+    root = "/b";
+    w.projectChanged();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(["/a", "/a", "/a", "/b"]);
+    expect(w.state("k8s")?.failures).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(calls.at(-1)).toBe("/b");
+    expect(calls).toHaveLength(5);
+    w.stop();
+  });
+
   test("providers are re-read on every tick (a provider connected while watching joins)", async () => {
     const ids = ["a"];
     const synced: string[] = [];
@@ -277,6 +309,23 @@ describe("IntegrationsService: cloud.updated events", () => {
     expect(updates[3]).toMatchObject({ failed: ["a"], errors: [{ provider: "a", message: "not logged in" }] });
   });
 
+  // Regression: a sync that failed outright (kubectl timeout) wiped the provider's cached resources,
+  // so the Cloud page and the map's cloud links went empty until the next success.
+  test("a provider whose sync fails outright keeps its last resources", async () => {
+    const { svc, a, b } = setup();
+    a.outcome = { resources: [res("r1", "a", "healthy")], errors: [] };
+    b.outcome = { resources: [res("s1", "b", "healthy")], errors: [] };
+    await svc.cloudSync({});
+    a.outcome = new Error("timed out");
+    const after = await svc.cloudSync({ providers: ["a"] });
+    expect(after.resources.map((r) => r.id).sort()).toEqual(["r1", "s1"]);
+    expect(after.errors).toEqual([{ provider: "a", message: "timed out" }]);
+    expect((await svc.cloudResources()).resources.map((r) => r.id).sort()).toEqual(["r1", "s1"]);
+    // A successful sync that finds nothing still empties it.
+    a.outcome = { resources: [], errors: [] };
+    expect((await svc.cloudSync({ providers: ["a"] })).resources.map((r) => r.id)).toEqual(["s1"]);
+  });
+
   test("sync-all skips providers whose CLI is not installed (and drops their old errors); naming one still tries it", async () => {
     const { svc, a, b } = setup();
     a.outcome = { resources: [res("r1", "a", "healthy")], errors: [] };
@@ -292,6 +341,27 @@ describe("IntegrationsService: cloud.updated events", () => {
     expect(named.errors.map((e) => e.provider)).toEqual(["b"]);
     // The watch loop's per-provider sync of another provider clears it again.
     expect((await svc.cloudSync({ providers: ["a"] })).errors).toEqual([]);
+  });
+
+  // Regression: a list fetched while the user clicked Connect finished afterwards and cached its
+  // pre-connect answer for 15 s, so the refetch after connecting still said "not connected".
+  test("a list that was in flight across a connect is not cached", async () => {
+    const { svc, a } = setup();
+    let status: IntegrationInfo["status"] = "not_connected";
+    const gate = deferred<void>();
+    let calls = 0;
+    (a as { info: () => Promise<IntegrationInfo> }).info = async () => {
+      calls += 1;
+      const seen = status; // what the CLI said when it was asked
+      if (calls === 1) await gate.promise;
+      return { id: a.id, family: a.family, name: a.name, status: seen };
+    };
+    const slow = svc.list();
+    status = "connected";
+    await svc.connect("a", {});
+    gate.resolve();
+    expect((await slow).integrations.find((i) => i.id === "a")?.status).toBe("not_connected");
+    expect((await svc.list()).integrations.find((i) => i.id === "a")?.status).toBe("connected");
   });
 
   test("concurrent syncs of one provider share a single CLI run", async () => {

@@ -179,14 +179,15 @@ export function ChatsPage() {
               r.type === "group" ? (
                 <div className="flex h-full items-end gap-2 px-2 pb-1.5">
                   <ProjectTile project={{ id: r.projectId, name: r.name }} className="size-5 text-[10px]" />
-                  <span className="truncate text-ui font-medium text-foreground">{r.name}</span>
+                  {/* The name keeps its width (up to half the row); the long path is what gets cut. */}
+                  <span className="max-w-[50%] shrink-0 truncate text-ui font-medium text-foreground">{r.name}</span>
                   <KindBadge kind={kindOf(r.projectId)} />
                   {r.projectId === daemon.project?.id ? (
                     <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[10.5px] font-medium text-primary">
                       current
                     </span>
                   ) : null}
-                  <span className="ms-auto truncate font-mono text-meta text-faint">
+                  <span className="ms-auto min-w-0 truncate font-mono text-meta text-faint">
                     {prettyPath(r.root)}
                   </span>
                 </div>

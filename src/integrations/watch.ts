@@ -13,6 +13,11 @@ export interface CloudWatcherOptions {
   providers: () => readonly string[];
   /** One provider's sync; `ok: false` (or a throw) counts as a failure for backoff. */
   sync: (providerId: string) => Promise<{ ok: boolean }>;
+  /**
+   * Whose schedule applies (the open project's root): per-provider backoff and next-sync times are
+   * kept per key, so a project switch does not inherit the previous project's backoff or wait.
+   */
+  key?: () => string;
   intervalMs?: number;
   maxBackoffMs?: number;
   now?: () => number;
@@ -59,6 +64,11 @@ export class CloudWatcher {
     if (wasActive && !this.active) this.clear();
   }
 
+  /** The open project changed: its providers follow their own schedule (fresh ones are due now). */
+  projectChanged(): void {
+    if (this.active) this.schedule();
+  }
+
   /** Stops the loop and forgets every viewer (daemon shutdown). */
   stop(): void {
     this.viewers.clear();
@@ -66,7 +76,7 @@ export class CloudWatcher {
   }
 
   state(providerId: string): ProviderWatchState | undefined {
-    const s = this.states.get(providerId);
+    const s = this.states.get(this.stateKey(providerId));
     return s !== undefined ? { ...s } : undefined;
   }
 
@@ -83,11 +93,17 @@ export class CloudWatcher {
     return failures <= 0 ? this.intervalMs : Math.min(this.maxBackoffMs, this.intervalMs * 2 ** Math.min(failures, 20));
   }
 
+  private stateKey(id: string): string {
+    const key = this.options.key?.();
+    return key === undefined ? id : `${key}\u0000${id}`;
+  }
+
   private stateOf(id: string): ProviderWatchState {
-    let s = this.states.get(id);
+    const key = this.stateKey(id);
+    let s = this.states.get(key);
     if (s === undefined) {
       s = { failures: 0, nextAt: 0, running: false };
-      this.states.set(id, s);
+      this.states.set(key, s);
     }
     return s;
   }
