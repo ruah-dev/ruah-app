@@ -7,6 +7,7 @@
 // 409 unless a system project is open — except POST /api/system/create and
 // the GitHub helpers. Every request passes the Origin check of /ws (403),
 // POST bodies are JSON (≤ 64 KiB) validated by src/contracts/system.ts.
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ProjectInfo } from "../contracts/ws.js";
@@ -122,8 +123,9 @@ export class SystemService {
     const result = initSystem(body.dir, { name: body.name, repos: body.repos, merge: true });
     const dir = result.system.dir;
     const open = this.deps.host.project();
-    if (open !== null && open.kind === "system" && open.root === dir) {
-      await systemHandleFor(dir)?.reload();
+    // Opened projects have real paths (/private/tmp on macOS); the dialog may name a symlinked one.
+    if (open !== null && open.kind === "system" && (open.root === dir || open.root === realOrSame(dir))) {
+      await systemHandleFor(open.root)?.reload();
       return { project: open, created: result.created, added: result.added.map((r) => r.id), dir };
     }
     let project: ProjectInfo | null = null;
@@ -290,6 +292,14 @@ export class SystemService {
 
   clone(repo: string, parentDir: string): Promise<string> {
     return cloneGithubRepo(repo, parentDir, this.deps.ghRunner !== undefined ? { runner: this.deps.ghRunner } : {});
+  }
+}
+
+function realOrSame(dir: string): string {
+  try {
+    return fs.realpathSync(dir);
+  } catch {
+    return dir;
   }
 }
 
