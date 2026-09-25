@@ -1,0 +1,381 @@
+/* ---------------------------------------------------------------------------------------------
+ * Phantom — the mascot (Phantom.tsx, PhantomPose.tsx, phantom-figures.tsx). Body colours are
+ * palette tokens generated from design/tokens.ts (--ph-brand, --ph-ai, … and the agents'
+ * --agent-*): the design system's exact fill where it reaches 3:1 on the page, one step deeper
+ * in light, one lighter in high contrast; eyes stay light on the body (black in high contrast),
+ * pupils are the body's own deep shade (never black, as the design system asks).
+ * Motion is transform / opacity only, per instance phase-shifted (--ph-delay, plus --d per
+ * part); none under reduced motion or in the high-contrast theme (static), paused while the
+ * tab is hidden.
+ * ------------------------------------------------------------------------------------------- */
+
+/* In the components layer, so utilities on a <Phantom className> (absolute, hidden, …) win. */
+@layer components {
+  .phantom {
+    --ph-body: var(--ph-brand);
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    line-height: 0;
+    vertical-align: middle;
+  }
+  :is(.phantom, .phantom-figure)[data-tone="ai"] { --ph-body: var(--ph-ai); }
+  :is(.phantom, .phantom-figure)[data-tone="ok"] { --ph-body: var(--ph-ok); }
+  :is(.phantom, .phantom-figure)[data-tone="warn"] { --ph-body: var(--ph-warn); }
+  :is(.phantom, .phantom-figure)[data-tone="bad"] { --ph-body: var(--ph-bad); }
+  :is(.phantom, .phantom-figure)[data-tone="info"] { --ph-body: var(--ph-info); }
+  :is(.phantom, .phantom-figure)[data-tone="soft"] { --ph-body: var(--ph-brand-soft); }
+  :is(.phantom, .phantom-figure)[data-tone="extra-1"] { --ph-body: var(--ph-extra-1); }
+  :is(.phantom, .phantom-figure)[data-tone="extra-2"] { --ph-body: var(--ph-extra-2); }
+  :is(.phantom, .phantom-figure)[data-tone="extra-3"] { --ph-body: var(--ph-extra-3); }
+  :is(.phantom, .phantom-figure)[data-tone="muted"] { --ph-body: var(--ph-muted); }
+  :is(.phantom, .phantom-figure)[data-tone="cream"] { --ph-body: var(--ph-cream); }
+  :is(.phantom, .phantom-figure)[data-tone="brand"] { --ph-body: var(--ph-brand); }
+  :is(.phantom, .phantom-figure)[data-tone="claude"] { --ph-body: var(--agent-claude); }
+  :is(.phantom, .phantom-figure)[data-tone="cursor"] { --ph-body: var(--agent-cursor); }
+  :is(.phantom, .phantom-figure)[data-tone="grok"] { --ph-body: var(--agent-grok); }
+  :is(.phantom, .phantom-figure)[data-tone="kiro"] { --ph-body: var(--agent-kiro); }
+  :is(.phantom, .phantom-figure)[data-tone="opencode"] { --ph-body: var(--agent-opencode); }
+
+  .phantom-drift,
+  .phantom-body {
+    display: block;
+    position: relative;
+  }
+  .phantom-body {
+    overflow: visible;
+  }
+  .phantom-drift {
+    width: 100%;
+    height: 100%;
+  }
+  .phantom-skin { fill: var(--ph-body); }
+  .phantom-limb { stroke: var(--ph-body); }
+  .phantom-sprite {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: center / 100% 100% no-repeat;
+  }
+  .phantom-fill { fill: var(--ph-eye); }
+  .phantom-stroke { stroke: var(--ph-eye); }
+  .phantom-shine { fill: var(--ph-shine); }
+  .phantom-pupil { fill: color-mix(in oklab, var(--ph-body) 45%, #141413); }
+  /* A radial gradient, not a blur filter: many glows stay cheap. */
+  .phantom-glow {
+    position: absolute;
+    inset: -22%;
+    border-radius: 9999px;
+    pointer-events: none;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--ph-body) 26%, transparent), transparent);
+  }
+  .phantom-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  [data-tracking] .phantom-eye {
+    transition: transform 160ms ease-out;
+  }
+  .phantom-scene {
+    display: inline-block;
+  }
+  .phantom-figure {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+
+  .phantom-float {
+    animation: phantom-float 6s ease-in-out var(--ph-delay, 0s) infinite;
+  }
+  .phantom[data-blink] .phantom-eyes {
+    animation: phantom-blink 5.4s ease-in-out var(--ph-delay, 0s) infinite;
+  }
+  .phantom:not([data-still])[data-expression="thinking"] .phantom-body {
+    animation: phantom-bob 3.2s ease-in-out var(--ph-delay, 0s) infinite;
+  }
+  .phantom:not([data-still])[data-expression="thinking"] .phantom-eyes {
+    animation: phantom-glance 4.2s ease-in-out var(--ph-delay, 0s) infinite;
+  }
+  .phantom:not([data-still])[data-expression="loading"] .phantom-body {
+    animation: phantom-pulse 1.6s ease-in-out var(--ph-delay, 0s) infinite;
+  }
+  .phantom:not([data-still])[data-expression="success"] .phantom-body {
+    animation: phantom-hop 720ms cubic-bezier(0.3, 0.7, 0.4, 1) 1 both;
+  }
+  .phantom:not([data-still])[data-expression="error"] .phantom-body {
+    animation: phantom-shake 460ms ease-in-out 1 both;
+  }
+  /* Easter egg: the sidebar logo blinks when hovered. */
+  .phantom-hoverblink .phantom-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .phantom-hoverblink:hover .phantom-eyes {
+    animation: phantom-blink-once 380ms ease-in-out 2;
+  }
+
+  /* ---- pose props: colours ---------------------------------------------------------------- */
+  .ph-paper { fill: var(--ph-paper); stroke: var(--ph-edge); stroke-width: 4; }
+  .ph-paper-shade { fill: color-mix(in oklab, var(--ph-paper) 84%, var(--ph-prop-deep)); }
+  .ph-paper-fill { fill: var(--ph-paper); }
+  .ph-paper-stroke { stroke: var(--ph-paper); }
+  .ph-ink-fill { fill: var(--ph-ink); }
+  .ph-ink-stroke { stroke: var(--ph-ink); }
+  .ph-prop-fill { fill: var(--ph-prop); }
+  .ph-prop-stroke { stroke: var(--ph-prop); }
+  .ph-deep-fill { fill: var(--ph-prop-deep); }
+  .ph-deep-stroke { stroke: var(--ph-prop-deep); }
+  .ph-screen { fill: var(--ph-screen); }
+  .ph-skin-stroke { stroke: var(--ph-body); }
+  .ph-glass { fill: var(--ph-paper); opacity: 0.22; }
+  .ph-brow { stroke: color-mix(in oklab, var(--ph-body) 50%, #141413); }
+  .ph-hat-dent { stroke: color-mix(in oklab, var(--ph-prop-deep) 70%, #000); }
+  .ph-blush { fill: color-mix(in oklab, var(--ph-bad) 60%, var(--ph-body)); opacity: 0.5; }
+  .ph-cloud { fill: color-mix(in oklab, var(--ph-paper) 90%, var(--ph-info)); }
+  .ph-cloud-shade { fill: var(--ph-prop-deep); opacity: 0.3; }
+  .ph-scanbar { fill: var(--ph-ai); opacity: 0.5; }
+  .ph-c-brand { fill: var(--ph-brand); }
+  .ph-c-ai { fill: var(--ph-ai); }
+  .ph-c-ok { fill: var(--ph-ok); }
+  .ph-c-warn { fill: var(--ph-warn); }
+  .ph-c-bad { fill: var(--ph-bad); }
+  .ph-c-info { fill: var(--ph-info); }
+  .ph-c-soft { fill: var(--ph-brand-soft); }
+  .ph-c-x1 { fill: var(--ph-extra-1); }
+  .ph-c-x2 { fill: var(--ph-extra-2); }
+  .ph-c-x3 { fill: var(--ph-extra-3); }
+  .ph-c-brand-stroke { stroke: var(--ph-brand); }
+  .ph-c-ai-stroke { stroke: var(--ph-ai); }
+  .ph-c-ok-stroke { stroke: var(--ph-ok); }
+  .ph-c-warn-stroke { stroke: var(--ph-warn); }
+
+  /* ---- pose props: motion (transform / opacity; --d staggers parts) ------------------------ */
+  :is(.ph-breathe, .ph-hop, .ph-bob, .ph-bar, .ph-check, .ph-write, .ph-typing, .ph-confetti, .ph-z,
+    .ph-led, .ph-twinkle, .ph-wave, .ph-speed, .ph-crawl, .ph-plug, .ph-spark, .ph-scanbar,
+    .ph-cursor, .ph-drift, .ph-float-soft, .ph-pin) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  :is(.ph-cheer, .ph-wave-arm, .ph-scribble, .ph-sway, .ph-swing, .ph-key, .ph-dab, .ph-bubble) {
+    transform-box: view-box;
+  }
+  .phantom:not([data-still]) {
+    & .ph-breathe { transform-origin: 50% 100%; animation: ph-breathe 4.2s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-z { animation: ph-z 3.3s ease-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-hop { transform-origin: 50% 100%; animation: ph-hop 1.5s cubic-bezier(0.3, 0.7, 0.4, 1) var(--ph-delay, 0s) infinite; }
+    & .ph-cheer { animation: ph-cheer 0.75s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-cheer-r { animation-direction: alternate-reverse; }
+    & .ph-confetti { animation: ph-confetti 2.7s linear calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-bob { animation: ph-bob 3.4s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-scanbar { animation: ph-scan 2.6s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-scribble { animation: ph-scribble 0.9s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-write { animation: ph-write 2.7s steps(9, end) var(--ph-delay, 0s) infinite; transform-origin: 0 50%; }
+    & .ph-sway { animation: ph-sway 4.4s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-drift { animation: ph-drift 5.5s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-float-soft { animation: ph-bob 4.6s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-led { animation: ph-led 1.6s steps(2, jump-none) calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-cursor { animation: ph-cursor 1.05s steps(2, jump-none) infinite; }
+    & .ph-crawl { animation: ph-crawl 2.2s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-speed { animation: ph-speed 1.1s ease-in-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-swing { animation: ph-swing 1.4s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-key { animation: ph-key 2.6s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-twinkle:not(.ph-static) { animation: ph-twinkle 2.2s ease-in-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-wave { animation: ph-wave 1.8s ease-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-wave-arm { animation: ph-wave-arm 0.9s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-bar { transform-box: view-box; animation: ph-bar 3.6s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-plug { animation: ph-plug 2.8s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-spark { animation: ph-spark 2.8s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-dab { animation: ph-dab 1.3s ease-in-out var(--ph-delay, 0s) infinite alternate; }
+    & .ph-check { animation: ph-check 3.2s ease-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-typing { animation: ph-typing 1.2s ease-in-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
+    & .ph-bubble { animation: ph-bubble 3s ease-in-out var(--ph-delay, 0s) infinite; }
+    & .ph-pin { transform-origin: 50% 100%; animation: ph-pin 1.8s cubic-bezier(0.3, 0.7, 0.4, 1) var(--ph-delay, 0s) infinite; }
+  }
+}
+
+@keyframes phantom-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-5%) rotate(1.2deg); }
+  66% { transform: translateY(-2.5%) rotate(-1.2deg); }
+}
+@keyframes phantom-blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  95.5% { transform: scaleY(0.1); }
+}
+@keyframes phantom-blink-once {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.1); }
+}
+@keyframes phantom-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6%); }
+}
+@keyframes phantom-glance {
+  0%, 18%, 100% { transform: translateX(0); }
+  28%, 42% { transform: translateX(-14px); }
+  58%, 72% { transform: translateX(14px); }
+}
+@keyframes phantom-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.92); opacity: 0.72; }
+}
+@keyframes phantom-hop {
+  0% { transform: translateY(0) scaleY(1); }
+  20% { transform: translateY(0) scale(1.06, 0.92); }
+  50% { transform: translateY(-18%) scale(0.97, 1.04); }
+  80% { transform: translateY(0) scale(1.03, 0.97); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes phantom-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-7%) rotate(-4deg); }
+  40% { transform: translateX(6%) rotate(3deg); }
+  60% { transform: translateX(-4%) rotate(-2deg); }
+  80% { transform: translateX(2%) rotate(1deg); }
+}
+@keyframes ph-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.025, 0.975); }
+}
+@keyframes ph-z {
+  0% { transform: translate(-12px, 18px) scale(0.6); opacity: 0; }
+  25% { opacity: 1; }
+  80% { opacity: 0.9; }
+  100% { transform: translate(14px, -22px) scale(1); opacity: 0; }
+}
+@keyframes ph-hop {
+  0%, 55%, 100% { transform: translateY(0) scale(1); }
+  12% { transform: translateY(0) scale(1.04, 0.95); }
+  30% { transform: translateY(-7%) scale(0.98, 1.03); }
+  45% { transform: translateY(0) scale(1.02, 0.98); }
+}
+@keyframes ph-cheer {
+  from { transform: rotate(-8deg); }
+  to { transform: rotate(10deg); }
+}
+@keyframes ph-confetti {
+  0% { transform: translateY(-14px) rotate(0deg); opacity: 0; }
+  15% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateY(46px) rotate(220deg); opacity: 0; }
+}
+@keyframes ph-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.2%); }
+}
+@keyframes ph-scan {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(96px); }
+}
+@keyframes ph-scribble {
+  from { transform: translate(-4px, 2px) rotate(-3deg); }
+  to { transform: translate(6px, -2px) rotate(3deg); }
+}
+@keyframes ph-write {
+  0% { transform: scaleX(0.05); }
+  80%, 100% { transform: scaleX(1); }
+}
+@keyframes ph-sway {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  30% { transform: translateX(-2.5%) rotate(-2deg); }
+  70% { transform: translateX(2.5%) rotate(2deg); }
+}
+@keyframes ph-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3%); }
+}
+@keyframes ph-led {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+@keyframes ph-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes ph-crawl {
+  from { transform: translateX(-6px); }
+  to { transform: translateX(8px); }
+}
+@keyframes ph-speed {
+  0% { transform: translateX(14px); opacity: 0; }
+  40% { opacity: 0.9; }
+  100% { transform: translateX(-18px); opacity: 0; }
+}
+@keyframes ph-swing {
+  from { transform: rotate(-4deg); }
+  to { transform: rotate(4deg); }
+}
+@keyframes ph-key {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-7deg) translateY(-6px); }
+}
+@keyframes ph-twinkle {
+  0%, 100% { transform: scale(0.55) rotate(0deg); opacity: 0.35; }
+  50% { transform: scale(1.1) rotate(45deg); opacity: 1; }
+}
+@keyframes ph-wave {
+  0% { transform: scale(0.7); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: scale(1.15); opacity: 0; }
+}
+@keyframes ph-wave-arm {
+  from { transform: rotate(-12deg); }
+  to { transform: rotate(14deg); }
+}
+@keyframes ph-bar {
+  0% { transform: scaleY(0.2); }
+  30%, 85% { transform: scaleY(1); }
+  100% { transform: scaleY(0.2); }
+}
+@keyframes ph-plug {
+  0%, 20% { transform: translateX(-18px); }
+  45%, 80% { transform: translateX(0); }
+  100% { transform: translateX(-18px); }
+}
+@keyframes ph-spark {
+  0%, 40% { transform: scale(0.2); opacity: 0; }
+  50% { transform: scale(1.1); opacity: 1; }
+  70%, 100% { transform: scale(0.4); opacity: 0; }
+}
+@keyframes ph-dab {
+  from { transform: rotate(-6deg); }
+  to { transform: rotate(9deg) translate(-4px, 4px); }
+}
+@keyframes ph-check {
+  0%, 10% { opacity: 0; transform: scale(0.4); }
+  22%, 88% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes ph-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+  30% { transform: translateY(-9px); opacity: 1; }
+}
+@keyframes ph-bubble {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-2.5deg) translateY(-4px); }
+}
+@keyframes ph-pin {
+  0%, 60%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-14%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phantom *,
+  .phantom-hoverblink * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+html[data-theme="contrast"] .phantom *,
+html[data-theme="contrast"] .phantom-hoverblink *,
+[data-ruah-preview^="contrast:"] .phantom * {
+  animation: none !important;
+  transition: none !important;
+}
+html[data-theme="contrast"] .phantom-pupil,
+[data-ruah-preview^="contrast:"] .phantom-pupil {
+  fill: var(--ph-shine);
+}
+html[data-page-hidden] .phantom * {
+  animation-play-state: paused !important;
+}

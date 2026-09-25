@@ -1,20 +1,24 @@
-// Theme + accent palette (Settings → Appearance), in the Ruah design system.
+// Theme + palette (Settings → Appearance), in the Ruah design system (design/tokens.ts).
 //   theme:   dark (default; the brand's warm charcoal, lifted so it stays clearly visible —
 //            the user asked for "dark, but more visible", 2026-09-23) · light (the brand's warm
 //            light) · contrast (the brand's high-contrast theme) · system (follows the OS).
-//   palette: teal (default brand accent) · dusk · sunrise — swaps only the interactive accent.
+//   palette: teal = "Teal + Indigo" (default: teal brand, indigo for agents / AI) · dusk =
+//            "Indigo" (the design system's Dusk) · sunrise · classic (the design system's
+//            default, teal + lavender). A palette recolours every role, not just the accent.
 // The root element carries `class="dark|light"` (Tailwind `dark:` variants), `data-theme` and
-// `data-palette`. THEME_BOOT in routes/__root.tsx applies the same before first paint.
+// `data-palette` (absent for the default). THEME_BOOT in routes/__root.tsx applies the same
+// before first paint; it must accept every id in PALETTE_BOOT_IDS (design/tokens.ts).
 import { useEffect, useState } from "react";
+import { DEFAULT_PALETTE, PALETTE_IDS, type PaletteId } from "@/design/tokens";
 
 export type ThemePref = "system" | "dark" | "light" | "contrast";
-export type PalettePref = "teal" | "dusk" | "sunrise";
+export type PalettePref = PaletteId;
 type Mode = "dark" | "light" | "contrast";
 
 const KEY = "ruah.theme";
 const PALETTE_KEY = "ruah.palette";
 const THEMES: readonly ThemePref[] = ["system", "dark", "light", "contrast"];
-const PALETTES: readonly PalettePref[] = ["teal", "dusk", "sunrise"];
+const PALETTES: readonly PalettePref[] = PALETTE_IDS;
 
 function read<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
@@ -38,7 +42,7 @@ export function readTheme(): ThemePref {
 }
 
 export function readPalette(): PalettePref {
-  return read(PALETTE_KEY, PALETTES, "teal");
+  return read(PALETTE_KEY, PALETTES, DEFAULT_PALETTE);
 }
 
 function resolve(pref: ThemePref): Mode {
@@ -59,7 +63,7 @@ export function applyTheme(pref: ThemePref) {
 
 export function applyPalette(palette: PalettePref) {
   const root = document.documentElement;
-  if (palette === "teal") delete root.dataset["palette"];
+  if (palette === DEFAULT_PALETTE) delete root.dataset["palette"];
   else root.dataset["palette"] = palette;
 }
 
@@ -103,9 +107,9 @@ export function useTheme() {
   return [pref, set] as const;
 }
 
-/** The accent palette (Teal · Dusk · Sunrise). */
+/** The palette (Teal + Indigo · Indigo · Sunrise · Classic teal). */
 export function usePalette() {
-  const [palette, setPalette] = useState<PalettePref>("teal");
+  const [palette, setPalette] = useState<PalettePref>(DEFAULT_PALETTE);
   useEffect(() => {
     const stored = readPalette();
     setPalette(stored);
