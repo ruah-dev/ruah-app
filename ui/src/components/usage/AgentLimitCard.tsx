@@ -122,9 +122,9 @@ export function LimitMeterRow({ meter, thresholds, now }: { meter: LimitMeter; t
 
 function Row({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
   return (
-    <div className="flex items-baseline gap-3 text-[12.5px]" title={hint}>
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12.5px]" title={hint}>
       <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className="ms-auto min-w-0 truncate text-end tabular-nums text-foreground">{children}</span>
+      <span className="ms-auto min-w-0 text-end tabular-nums text-foreground [overflow-wrap:anywhere]">{children}</span>
     </div>
   );
 }

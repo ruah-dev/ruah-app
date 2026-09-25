@@ -3,7 +3,7 @@
 // page (Usage → Limits, /limits) or a shell panel slot; it fetches GET /api/usage/agents itself
 // and degrades to a quiet explanation without a daemon or on an older one.
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { BellRing, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Bell, BellRing, RefreshCw } from "lucide-react";
 import { Phantom } from "@/components/brand/Phantom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -63,7 +63,7 @@ export function LimitSettingsPopover({ settings, onChange }: { settings: LimitSe
           title="Limit warnings"
           className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
-          <SlidersHorizontal className="size-3.5" />
+          <Bell className="size-3.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64">
