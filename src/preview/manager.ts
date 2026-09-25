@@ -110,6 +110,7 @@ function emptyStatus(project: PreviewProject): PreviewStatus {
   return {
     projectId: project.id,
     root: project.root,
+    rev: 0,
     state: "stopped",
     candidate: null,
     command: null,
@@ -140,6 +141,8 @@ export class PreviewManager {
   private readonly sweepTimer: NodeJS.Timeout | undefined;
   private readonly processRunner = new ProcessRunner();
   private closing = false;
+  /** Status revisions start at the clock so a restarted daemon's pushes outrank the old one's. */
+  private rev = Date.now();
 
   constructor(private readonly options: PreviewManagerOptions) {
     this.timing = { ...DEFAULT_TIMING, ...(options.timing ?? {}) };
@@ -348,6 +351,8 @@ export class PreviewManager {
   private emit(entry: Entry, immediate = true): void {
     const send = (): void => {
       entry.emitTimer = undefined;
+      this.rev += 1;
+      entry.status = { ...entry.status, rev: this.rev };
       this.options.onStatus?.(this.snapshot(entry));
     };
     if (immediate) {

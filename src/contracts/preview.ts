@@ -81,6 +81,8 @@ export type PreviewDetection = z.infer<typeof PreviewDetectionSchema>;
 export const PreviewStatusSchema = z.object({
   projectId: z.string(),
   root: z.string(),
+  /** Grows with every pushed change (0 = never started): a viewer keeps the highest it saw, so an HTTP answer that raced a newer push is ignored. */
+  rev: z.number().int(),
   state: PreviewStateSchema,
   /** What runs (or ran): a candidate, or the custom command as a `custom` candidate. */
   candidate: PreviewCandidateSchema.nullable(),
