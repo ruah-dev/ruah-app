@@ -52,6 +52,8 @@ ruah app cloud list | watch   # the repo's resources · live health changes (--r
 ruah app cloud scope          # the repo's accounts, resources with why they belong, "looks related" (--json)
 ruah app cloud scope add|remove|reset <resource-id>…      # edit .ruah/cloud.json (committable)
 ruah app cloud scope accounts add|remove <provider> [<account>] [--whole]
+ruah app design check         # WCAG contrast of every colour token, every palette × theme (docs/design)
+ruah app design tokens --palette dusk --theme light [--json]
 ruah app help
 ```
 

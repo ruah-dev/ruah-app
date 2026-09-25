@@ -1824,3 +1824,48 @@ syncing; the page and the CLI still show only the scope.
 
 Exit codes as §9.6; `scope` edits exit 1 on an invalid file (never overwritten) and 2 on usage
 errors (unknown provider, not inside a repo without `--repo`).
+
+## 15. Design tokens and palettes (2026-09-25)
+
+The viewer's colours come from one module, `ui/src/design/tokens.ts` (the Ruah Design System
+v1.0 values verbatim + the app's mapping; `docs/design/README.md`). No daemon API: this section
+fixes the storage / DOM contract the shell's first-paint script shares with `lib/theme.ts`, the
+preview scope, and the `ruah app design` CLI.
+
+### 15.1 Palette and theme storage
+
+| Key (`localStorage`) | Values | Default |
+| --- | --- | --- |
+| `ruah.theme` | `dark` · `light` · `contrast` · `system` | `dark` |
+| `ruah.palette` | `teal` (**Teal + Indigo**) · `dusk` (**Indigo**, the design system's Dusk) · `sunrise` · `classic` (the design system's default, teal + lavender) | `teal` |
+
+`<html>` carries `data-theme="dark|light|contrast"` (always), `class="dark|light"` and
+`data-palette="<id>"` for every palette except the default (absent = Teal + Indigo). Unknown stored
+values fall back to the defaults. The first-paint script (`THEME_BOOT`, routes/__root.tsx) must set
+`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`). A stored `dusk`
+now renders the indigo palette (it was a lavender accent swap before).
+
+### 15.2 Preview scope
+
+Any element with `data-ruah-preview="<theme>:<palette>"` (e.g. `light:dusk`) re-declares every
+token for its subtree, so a component renders exactly as the app would in that palette × theme.
+
+### 15.3 Tokens
+
+Generated into `ui/src/design/tokens.css` (`pnpm design:tokens`); the test suite fails while it
+is stale. Semantic tokens as before (`--background` … `--primary`, `--ai`, `--ok`, `--warn`,
+`--bad`, `--info`, `--node-*`, `--term-*`), plus: `--cat-1…6` (categorical; `--series-1…6` alias
+them), `--agent-claude|cursor|grok|kiro|opencode` (agent identity tints), `--ph-*` (Phantom bodies
+and props), `--ds-r-*` (the design system's radii). Tailwind colours: `cat-1…6`, `series-6`,
+`agent-*`.
+
+### 15.4 CLI (`ruah app design`, no daemon)
+
+| Command | Behaviour |
+| --- | --- |
+| `palettes` | palettes with their six role colours, and the themes |
+| `tokens [--palette <p>] [--theme <t>] [--json]` | every resolved token for one palette × theme (default `teal` × `dark`); JSON `{ palette, theme, tokens: Record<name, value> }` |
+| `check [--palette <p>] [--theme <t>] [--json] [--all]` | WCAG 2.x contrast of every pair in `CONTRAST_PAIRS` — text ≥ 4.5:1 (7:1 in `contrast`), UI ≥ 3:1; JSON `{ pairs, checked, failed, results: { fg, bg, kind, tint?, palette, theme, ratio, min, pass }[] }` (failures only unless `--all`); exit 1 when a pair fails |
+| `css [--out <file>] [--check <file>]` | the generated stylesheet to stdout or `--out`; `--check` exits 1 when `<file>` differs |
+
+Usage errors (unknown palette / theme / command) exit 2.

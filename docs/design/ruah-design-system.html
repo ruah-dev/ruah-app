@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-palette="default"><head>
+<meta charset="UTF-8">
+<title>Ruah Design System</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<!-- Reference copy of the "Ruah Design System" v1.0 (Claude Design, standalone export), kept in
+     the repo as the source the app's tokens are mapped from (ui/src/design/tokens.ts; mapping
+     explained in docs/design/README.md). The export's embedded font files are left out: the
+     page loads DM Sans, Geist Mono and Instrument Serif from Google Fonts when online and falls
+     back to system fonts offline. Everything else is unchanged. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+/* ===========================================================
+   RUAH DESIGN SYSTEM — v1.0
+   Single source of truth for tokens, type, components.
+   Drop-in: import as CSS layer, then override brand tokens via
+   [data-palette="…"] attribute on <html>.
+=========================================================== */
+
+/* ---------- Type & global ---------- */
+:root {
+  --serif: "Instrument Serif", Georgia, serif;
+  --sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Radii */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  /* Spacing — 4px base scale */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+  --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;
+
+  /* Shadows — tuned for the warm charcoal background */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px -4px rgba(0,0,0,0.4);
+  --shadow-lg: 0 20px 60px -20px rgba(0,0,0,0.6);
+}
+
+/* ===========================================================
+   BRAND PALETTE — "default"  (current Ruah palette)
+=========================================================== */
+[data-palette="default"] {
+  --teal-200: #88e6d7;
+  --teal-300: #4dd9c5;
+  --teal-400: #00d2b9;   /* brand */
+  --teal-500: #00bea8;
+  --lavender-300: #cfb9f9;
+  --lavender-400: #b594f5;  /* ai/agent */
+  --lavender-500: #9b7ae0;
+  --sage-300: #a3c892;
+  --sage-400: #7fb069;   /* success */
+  --sage-500: #5d9149;
+  --amber-400: #e5a84b;  /* warning */
+  --coral-400: #f07068;  /* error */
+  --slate-300: #8a97b0;
+  --slate-400: #5b6b88;  /* info */
+  --slate-500: #465068;
+}
+
+/* Alt palette 1 — "dusk"
+   Indigo primary KEPT (per Levi). Supporters tuned DOWN from neon:
+   dusty rose AI, sage-lime success, amber warn, coral error.
+   Confident but not vibrating. */
+[data-palette="dusk"] {
+  --teal-200: #c2cfff;
+  --teal-300: #9aabff;
+  --teal-400: #6578ff;   /* indigo — kept, Levi's ask */
+  --teal-500: #4d5ee5;
+  --lavender-300: #f0c2d8;
+  --lavender-400: #d983b0;   /* dusty rose */
+  --lavender-500: #b0638a;
+  --sage-300: #cde39a;
+  --sage-400: #9dc061;       /* sage lime */
+  --sage-500: #7a9b43;
+  --amber-400: #d9963d;      /* amber */
+  --coral-400: #d96056;      /* soft coral */
+  --slate-300: #a8adb8;
+  --slate-400: #6b7080;
+  --slate-500: #4a4f5c;
+}
+
+/* Alt palette — "sunrise"
+   Warm coral primary, peach accents, teal flips to success.
+   Heretical inversion — what if brand weren't teal? */
+[data-palette="sunrise"] {
+  --teal-200: #ffd4c4;
+  --teal-300: #ff9d82;
+  --teal-400: #ff6b47;   /* coral becomes brand */
+  --teal-500: #e24f2d;
+  --lavender-300: #ffd9a8;
+  --lavender-400: #ffa94d;
+  --lavender-500: #e08728;
+  --sage-300: #8fe6d2;    /* teal becomes success */
+  --sage-400: #00d2b9;
+  --sage-500: #00a890;
+  --amber-400: #ffc94d;
+  --coral-400: #c94062;
+  --slate-300: #c4a9a1;
+  --slate-400: #8a6f67;
+  --slate-500: #5d483f;
+}
+
+
+/* ===========================================================
+   THEME — "dark" (default)
+=========================================================== */
+[data-theme="dark"] {
+  --bg: #111110;
+  --surface-1: #191918;
+  --surface-2: #222221;
+  --surface-3: #2a2a28;
+  --surface-4: #333331;
+  --fg: #f0eee9;
+  --fg-muted: #b8b3a8;
+  --fg-subtle: #8f8a7e;
+  --fg-dim: #706b60;
+  --border: #2a2a28;
+  --border-strong: #333331;
+}
+
+/* THEME — "light" */
+[data-theme="light"] {
+  --bg: #faf9f7;
+  --surface-1: #f0eee9;
+  --surface-2: #e7e3dc;
+  --surface-3: #dedad3;
+  --surface-4: #b8b3a8;
+  --fg: #191918;
+  --fg-muted: #565248;
+  --fg-subtle: #706b60;
+  --fg-dim: #8f8a7e;
+  --border: #dedad3;
+  --border-strong: #b8b3a8;
+}
+
+/* THEME — "contrast" (pure B/W, WCAG AAA) */
+[data-theme="contrast"] {
+  --bg: #000000;
+  --surface-1: #0a0a0a;
+  --surface-2: #141414;
+  --surface-3: #1e1e1e;
+  --surface-4: #2a2a2a;
+  --fg: #ffffff;
+  --fg-muted: #e0e0e0;
+  --fg-subtle: #b0b0b0;
+  --fg-dim: #858585;
+  --border: #2a2a2a;
+  --border-strong: #484848;
+}
+
+
+/* ===========================================================
+   BASE
+=========================================================== */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+  font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+::selection { background: color-mix(in oklab, var(--teal-400) 30%, transparent); }
+
+h1, h2, h3, h4 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.02em; margin: 0; }
+a { color: inherit; }
+.mono { font-family: var(--mono); }
+
+/* ===========================================================
+   PAGE CHROME
+=========================================================== */
+.ds-nav {
+  position: sticky; top: 0; z-index: 100;
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+}
+.ds-nav h1 {
+  font-family: var(--serif); font-size: 20px; margin: 0;
+  display: flex; align-items: center; gap: 10px;
+}
+.ds-nav h1 em { color: var(--teal-400); font-style: italic; }
+.ds-nav .right { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+
+/* Dropdown-style pickers */
+.picker {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--fg-dim);
+}
+.picker select {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--surface-1); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  padding: 6px 10px; cursor: pointer;
+}
+.picker select:focus-visible { outline: 2px solid var(--teal-400); outline-offset: 2px; }
+
+/* Section intros */
+.section {
+  max-width: 1300px; margin: 0 auto;
+  padding: 72px 28px 24px;
+}
+.section .kicker {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--fg-dim); margin: 0 0 10px;
+}
+.section h2 {
+  font-size: 38px; line-height: 1.05; margin: 0 0 10px;
+}
+.section h2 em { color: var(--teal-400); font-style: italic; }
+.section > p.intro {
+  max-width: 680px; color: var(--fg-muted); font-size: 15px; margin: 0;
+}
+
+.block {
+  max-width: 1300px; margin: 0 auto; padding: 0 28px 16px;
+}
+
+/* ===========================================================
+   COLOR TOKENS — swatches
+=========================================================== */
+.swatch-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+}
+@media (max-width: 1000px) { .swatch-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .swatch-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.sw {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow: hidden; background: var(--surface-1);
+  display: flex; flex-direction: column;
+}
+.sw .chip {
+  aspect-ratio: 1.4 / 1;
+  display: flex; align-items: flex-end; padding: 12px;
+  position: relative;
+}
+.sw .chip .role {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em;
+  text-transform: uppercase; font-weight: 600;
+  padding: 4px 8px; border-radius: var(--r-xs);
+  background: rgba(0,0,0,0.75); color: #fff;
+}
+[data-theme="light"] .sw .chip .role { background: rgba(255,255,255,0.85); color: #191918; }
+.sw .meta { padding: 12px 14px; border-top: 1px solid var(--border); }
+.sw .meta .name { font-family: var(--serif); font-size: 17px; margin: 0 0 2px; }
+.sw .meta .hex { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); }
+.sw .meta .usage { font-size: 11px; color: var(--fg-subtle); margin-top: 6px; line-height: 1.5; }
+.sw .meta .var { font-family: var(--mono); font-size: 10px; color: var(--fg-dim); margin-top: 4px; }
+
+/* Scale row — 200/300/400/500 */
+.scale-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: 120px 1fr 1fr 1fr 1fr;
+  align-items: stretch; margin-top: 16px;
+}
+@media (max-width: 700px) { .scale-grid { grid-template-columns: 1fr; } }
+.scale-grid .label {
+  font-family: var(--mono); font-size: 11px; color: var(--fg-muted);
+  display: flex; align-items: center;
+}
+.scale-grid .shade {
+  height: 56px; border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  display: flex; align-items: flex-end; padding: 6px 8px;
+  font-family: var(--mono); font-size: 9px; color: rgba(0,0,0,0.7);
+}
+
+/* ===========================================================
+   PALETTE ALTERNATIVES — preview cards
+=========================================================== */
+.palette-alts {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+}
+@media (max-width: 1000px) { .palette-alts { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .palette-alts { grid-template-columns: 1fr; } }
+.palette-card {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface-1); overflow: hidden;
+  cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.palette-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.palette-card.active { border-color: var(--teal-400); box-shadow: 0 0 0 1px var(--teal-400); }
+.palette-card .stripe {
+  height: 64px; display: grid; grid-template-columns: repeat(6, 1fr);
+}
+.palette-card .stripe > span { display: block; }
+.palette-card .body { padding: 14px 16px; }
+.palette-card .body h4 {
+  font-family: var(--serif); font-size: 18px; margin: 0 0 4px; letter-spacing: -0.01em;
+}
+.palette-card .body h4 .mood {
+  font-family: var(--mono); font-size: 10px; color: var(--fg-dim);
+  letter-spacing: 0.12em; text-transform: uppercase; margin-left: 8px; font-weight: 400;
+}
+.palette-card .body p { margin: 0; font-size: 12px; color: var(--fg-muted); line-height: 1.5; }
+
+/* ===========================================================
+   TYPE SCALE
+=========================================================== */
+.type-stack { display: flex; flex-direction: column; gap: 18px; }
+.type-row {
+  display: grid; grid-template-columns: 120px 1fr;
+  align-items: baseline; gap: 20px;
+  padding: 14px 0; border-bottom: 1px dashed var(--border);
+}
+.type-row .specs {
+  font-family: var(--mono); font-size: 10px; color: var(--fg-dim);
+  letter-spacing: 0.1em; line-height: 1.7;
+}
+.type-row .sample { color: var(--fg); letter-spacing: -0.02em; }
+.t-display  { font-family: var(--serif); font-size: 72px; line-height: 1.02; }
+.t-display em { color: var(--teal-400); font-style: italic; }
+.t-h1       { font-family: var(--serif); font-size: 48px; line-height: 1.05; }
+.t-h2       { font-family: var(--serif); font-size: 32px; line-height: 1.1; }
+.t-h3       { font-family: var(--serif); font-size: 22px; line-height: 1.15; }
+.t-body     { font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+.t-small    { font-family: var(--sans); font-size: 13px; line-height: 1.55; color: var(--fg-muted); }
+.t-eyebrow  { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--fg-dim); }
+.t-mono     { font-family: var(--mono); font-size: 13px; }
+
+/* ===========================================================
+   COMPONENTS
+=========================================================== */
+.component-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+}
+@media (max-width: 820px) { .component-grid { grid-template-columns: 1fr; } }
+.comp {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface-1); padding: 22px;
+}
+.comp .comp-label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--fg-dim); margin-bottom: 14px;
+}
+.comp .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+
+/* Buttons */
+.btn {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  padding: 10px 18px; border-radius: var(--r-md);
+  border: 1px solid transparent; cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex; align-items: center; gap: 8px;
+  text-decoration: none;
+}
+.btn:focus-visible { outline: 2px solid var(--teal-400); outline-offset: 2px; }
+.btn.primary { background: var(--fg); color: var(--bg); }
+.btn.primary:hover { background: color-mix(in oklab, var(--fg) 90%, var(--teal-400)); }
+.btn.teal { background: var(--teal-400); color: var(--bg); }
+.btn.teal:hover { background: var(--teal-500); }
+.btn.ghost { background: transparent; color: var(--fg); border-color: var(--border-strong); }
+.btn.ghost:hover { border-color: var(--fg-subtle); }
+.btn.danger { background: var(--coral-400); color: #fff; }
+.btn.sm { padding: 7px 12px; font-size: 11px; }
+
+/* Badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid currentColor;
+}
+.badge .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.badge.teal { color: var(--teal-400); }
+.badge.lavender { color: var(--lavender-400); }
+.badge.sage { color: var(--sage-400); }
+.badge.amber { color: var(--amber-400); }
+.badge.coral { color: var(--coral-400); }
+.badge.slate { color: var(--slate-400); }
+
+/* Inputs */
+.input {
+  font-family: var(--sans); font-size: 13px;
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  padding: 10px 14px; width: 100%; max-width: 320px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input:focus-visible {
+  outline: none; border-color: var(--teal-400);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--teal-400) 22%, transparent);
+}
+.input::placeholder { color: var(--fg-dim); }
+
+/* Card */
+.card {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 20px;
+}
+.card h4 { font-size: 20px; margin: 0 0 4px; }
+.card p { color: var(--fg-muted); font-size: 13px; margin: 0; }
+.card .meta {
+  font-family: var(--mono); font-size: 10px; color: var(--fg-dim);
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;
+}
+
+/* Alerts (use all 5 semantic slots) */
+.alert {
+  display: flex; gap: 12px; padding: 12px 14px;
+  border-radius: var(--r-md);
+  border-left: 3px solid;
+  font-size: 13px; line-height: 1.5; color: var(--fg);
+  background: var(--surface-2);
+  margin-bottom: 10px;
+}
+.alert strong { font-weight: 600; }
+.alert.info   { border-color: var(--slate-400); }
+.alert.ai     { border-color: var(--lavender-400); }
+.alert.ok     { border-color: var(--sage-400); }
+.alert.warn   { border-color: var(--amber-400); }
+.alert.error  { border-color: var(--coral-400); }
+.alert.info strong { color: var(--slate-400); }
+.alert.ai strong { color: var(--lavender-400); }
+.alert.ok strong { color: var(--sage-400); }
+.alert.warn strong { color: var(--amber-400); }
+.alert.error strong { color: var(--coral-400); }
+
+/* Code block */
+pre.code {
+  background: var(--surface-2); color: var(--fg-muted);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 12px 14px; font-family: var(--mono); font-size: 12px;
+  overflow-x: auto; margin: 0; line-height: 1.7;
+}
+pre.code .cm { color: var(--fg-dim); }
+pre.code .kw { color: var(--lavender-400); }
+pre.code .str { color: var(--sage-400); }
+pre.code .num { color: var(--amber-400); }
+
+/* ===========================================================
+   SPACING / RADII / SHADOWS — visual refs
+=========================================================== */
+.ref-row {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.ref {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-1); padding: 14px;
+  font-family: var(--mono); font-size: 10px; color: var(--fg-muted);
+  letter-spacing: 0.08em;
+  display: flex; flex-direction: column; gap: 8px; min-height: 100px;
+}
+.ref .tok { color: var(--fg); }
+.ref .hex { color: var(--fg-dim); }
+.ref .vis { background: var(--teal-400); height: 28px; border-radius: var(--r-xs); }
+.ref.radii .vis { height: 44px; border-radius: var(--r); }
+.ref.shadow .vis { background: var(--surface-2); height: 44px; border-radius: var(--r-md); }
+
+/* ===========================================================
+   PHANTOM
+=========================================================== */
+.phantom-showcase {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 860px) { .phantom-showcase { grid-template-columns: repeat(2, 1fr); } }
+.ph-card {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface-1); padding: 20px 14px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.ph-card svg { width: 84px; height: 84px; }
+.ph-card .t-eyebrow { margin: 0; }
+.ph-card .desc { font-size: 11px; color: var(--fg-muted); line-height: 1.45; }
+
+/* ===========================================================
+   SKILL / HANDOFF
+=========================================================== */
+.skill-block {
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--r-lg); overflow: hidden;
+}
+.skill-block .head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.skill-block .head .title {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--fg-muted);
+}
+.skill-block .head button {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; background: var(--teal-400); color: var(--bg);
+  border: none; border-radius: var(--r-md); padding: 6px 12px; cursor: pointer;
+}
+.skill-block pre {
+  margin: 0; padding: 18px 20px; font-family: var(--mono); font-size: 12px;
+  line-height: 1.7; color: var(--fg-muted); overflow-x: auto;
+  max-height: 520px; overflow-y: auto;
+}
+.skill-block pre .h { color: var(--teal-400); }
+.skill-block pre .sub { color: var(--fg); }
+
+.download-row {
+  display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;
+}
+
+/* Footer */
+.ds-footer {
+
+/* ===========================================================
+   WEBSITE & DOCS patterns
+=========================================================== */
+}
+.docs-mock{display:grid;grid-template-columns:230px 1fr 160px;gap:0;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--surface-1)}
+@media(max-width:900px){.docs-mock{grid-template-columns:1fr}.dm-toc{display:none}}
+.dm-side{border-right:1px solid var(--border);padding:16px 14px;display:flex;flex-direction:column;gap:2px}
+.dm-toc{border-left:1px solid var(--border);padding:16px 14px;display:flex;flex-direction:column;gap:2px}
+.dm-search{font-family:var(--mono);font-size:10px;color:var(--fg-dim);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:7px 10px;margin-bottom:12px}
+.dm-group{font-family:var(--mono);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--fg-dim);padding:10px 8px 4px}
+.dm-link{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-muted);padding:6px 8px;border-radius:var(--r-sm);cursor:pointer}
+.dm-link:hover{background:var(--surface-2)}
+.dm-link.active{background:var(--surface-2);color:var(--fg)}
+.dm-dot{width:8px;height:8px;border-radius:3px;flex-shrink:0}
+.dm-article{padding:22px 26px}
+.dm-crumb{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--fg-dim);margin-bottom:10px}
+.dm-crumb span{color:var(--teal-400)}
+.dm-h{font-size:26px;margin:0 0 8px}
+.dm-p{font-size:13px;color:var(--fg-muted);margin:0 0 12px}
+.dm-table{width:100%;border-collapse:collapse;font-size:12px;margin:14px 0}
+.dm-table th{text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-dim);padding:8px 10px;border-bottom:1px solid var(--border-strong)}
+.dm-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--fg-muted)}
+.dm-table td.mono{color:var(--teal-400);font-size:11px}
+.dm-pager{display:flex;justify-content:space-between;margin-top:16px;font-size:12px;color:var(--fg-subtle)}
+.toolhead{display:grid;grid-template-columns:96px 1fr auto;gap:20px;align-items:center;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-1);padding:22px 24px}
+@media(max-width:800px){.toolhead{grid-template-columns:72px 1fr}.th-install{grid-column:2}}
+.th-ph{width:96px;height:96px}
+.th-install{font-size:12px;color:var(--fg-muted);background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:10px 14px}
+.ds-footer {
+  max-width: 1300px; margin: 80px auto 0; padding: 28px; border-top: 1px solid var(--border);
+  color: var(--fg-dim); font-size: 12px; text-align: center;
+}
+</style>
+
+</head>
+
+<body>
+
+<!-- ========== NAV ========== -->
+<div class="ds-nav">
+  <h1><span class="phantom-logo">
+    <svg width="22" height="22" viewBox="0 0 600 600">
+      <path fill="currentColor" style="color: var(--teal-400);" d="M 468.0,380.4 L 466.8,388.4 L 464.5,396.0 L 461.1,403.1 L 456.8,409.9 L 451.5,416.2 L 445.3,422.2 L 438.4,427.7 L 430.6,432.8 L 422.2,437.5 L 413.1,441.8 L 403.5,445.7 L 393.3,449.2 L 382.7,452.3 L 371.6,454.9 L 360.2,457.2 L 348.5,459.0 L 336.6,460.5 L 324.5,461.5 L 312.3,462.1 L 300.0,462.3 L 287.7,462.1 L 275.5,461.5 L 263.4,460.5 L 251.5,459.0 L 239.8,457.2 L 228.4,454.9 L 217.3,452.3 L 206.7,449.2 L 196.5,445.7 L 186.9,441.8 L 177.8,437.5 L 169.4,432.8 L 161.6,427.7 L 154.7,422.2 L 148.5,416.2 L 143.2,409.9 L 138.9,403.1 L 135.5,396.0 L 133.2,388.4 L 132.0,380.4 L 132.0,380.4 L 130.9,371.6 L 130.0,362.9 L 129.4,354.3 L 129.1,345.7 L 129.0,337.2 L 129.3,328.8 L 129.9,320.6 L 130.7,312.4 L 131.9,304.3 L 133.5,296.4 L 135.3,288.6 L 137.6,280.9 L 140.1,273.4 L 143.1,266.0 L 146.4,258.7 L 150.1,251.6 L 154.2,244.7 L 158.7,238.0 L 163.6,231.4 L 169.0,225.0 L 169.0,225.0 L 170.3,216.2 L 172.2,208.1 L 174.6,200.9 L 177.4,194.6 L 180.7,189.1 L 184.4,184.5 L 188.3,180.8 L 192.5,178.1 L 196.9,176.3 L 201.4,175.5 L 206.1,175.8 L 210.7,177.0 L 215.4,179.3 L 220.0,182.7 L 224.4,187.2 L 224.4,187.2 L 228.7,193.9 L 233.2,199.5 L 237.7,203.9 L 242.3,207.1 L 246.9,209.2 L 251.5,210.3 L 255.9,210.3 L 260.2,209.3 L 264.3,207.3 L 268.2,204.3 L 271.7,200.4 L 274.8,195.6 L 274.8,195.6 L 277.7,186.2 L 280.7,177.6 L 283.8,169.7 L 287.1,162.6 L 290.4,156.3 L 293.8,150.8 L 297.2,146.1 L 300.7,142.1 L 304.2,138.9 L 307.7,136.5 L 311.2,134.9 L 314.6,134.0 L 318.0,133.9 L 321.3,134.6 L 324.6,136.1 L 327.7,138.4 L 330.7,141.4 L 333.6,145.2 L 333.6,145.2 L 338.6,154.5 L 343.7,162.4 L 348.7,168.7 L 353.8,173.7 L 358.8,177.2 L 363.8,179.4 L 368.9,180.2 L 373.9,179.6 L 379.0,177.7 L 384.0,174.6 L 384.0,174.6 L 387.5,169.2 L 391.1,164.8 L 394.9,161.3 L 398.8,158.7 L 402.7,157.0 L 406.6,156.1 L 410.4,156.0 L 414.2,156.6 L 417.9,158.0 L 421.3,160.0 L 424.6,162.6 L 427.5,165.9 L 430.2,169.7 L 432.5,174.0 L 434.4,178.8 L 434.4,178.8 L 438.8,185.3 L 441.8,191.3 L 443.9,196.8 L 445.0,201.8 L 445.4,206.2 L 445.2,210.0 L 444.6,213.2 L 443.9,215.7 L 443.1,217.5 L 442.5,218.6 L 442.2,219.0 L 442.4,218.6 L 443.3,217.4 L 445.1,215.3 L 447.8,212.4 L 447.8,212.4 L 451.7,206.1 L 455.4,201.1 L 458.9,197.5 L 462.3,195.0 L 465.5,193.8 L 468.4,193.7 L 471.0,194.7 L 473.4,196.8 L 475.6,199.8 L 477.4,203.8 L 478.8,208.6 L 479.9,214.3 L 480.7,220.7 L 481.0,227.9 L 481.0,235.7 L 480.5,244.2 L 479.5,253.2 L 478.1,262.8 L 478.1,262.8 L 477.4,272.8 L 476.8,282.5 L 476.2,292.0 L 475.7,301.2 L 475.1,310.1 L 474.5,318.7 L 474.0,327.0 L 473.4,335.0 L 472.8,342.6 L 472.1,349.9 L 471.4,356.8 L 470.7,363.3 L 469.8,369.4 L 469.0,375.1 L 468.0,380.4 Z"></path>
+      <ellipse cx="237" cy="355" rx="24" ry="31" fill="var(--bg)"></ellipse>
+      <ellipse cx="363" cy="355" rx="24" ry="31" fill="var(--bg)"></ellipse>
+    </svg>
+  </span>Ruah <em>Design System</em></h1>
+  <div class="right">
+    <div class="picker">
+      <span>Palette</span>
+      <select id="palette-select">
+        <option value="default">default (teal)</option>
+        <option value="dusk">dusk (indigo)</option>
+        <option value="sunrise">sunrise (coral-primary)</option>
+      </select>
+    </div>
+    <div class="picker">
+      <span>Theme</span>
+      <select id="theme-select">
+        <option value="dark">dark</option>
+        <option value="light">light</option>
+        <option value="contrast">contrast (B/W)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Overview ========== -->
+<div class="section" id="overview">
+  <p class="kicker">00 · Overview</p>
+  <h2>A <em>system,</em> not a mood board.</h2>
+  <p class="intro">Ruah's visual language in 6 semantic colors, 3 themes, 1 type family trio, and a mascot with personality. Everything here is a CSS token you can copy into Tailwind, Radix, Panda, or plain vars. Scroll through to preview; hit <strong>Export</strong> at the bottom to take it to Claude Code.</p>
+</div>
+
+
+<!-- ========== SECTION: Colors ========== -->
+<div class="section" id="colors">
+  <p class="kicker">01 · Colors</p>
+  <h2>Six roles. <em>Every signal has a home.</em></h2>
+  <p class="intro">Each color owns a single semantic role — brand, ai, success, warning, error, info. Each exposes a 4-step scale (200/300/400/500) for hover and emphasis states.</p>
+</div>
+
+<div class="block">
+  <div class="swatch-grid">
+    <div class="sw">
+      <div class="chip" style="background:var(--teal-400);"><span class="role">brand</span></div>
+      <div class="meta"><p class="name">Teal</p><div class="hex mono" data-hex="--teal-400"></div><p class="usage">Primary brand, active states, default Phantom body, primary buttons.</p><div class="var">--teal-400</div></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:var(--lavender-400);"><span class="role">ai / agent</span></div>
+      <div class="meta"><p class="name">Lavender</p><div class="hex mono" data-hex="--lavender-400"></div><p class="usage">Agent activity, AI-generated content, thinking states, experimental flags.</p><div class="var">--lavender-400</div></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:var(--sage-400);"><span class="role">success</span></div>
+      <div class="meta"><p class="name">Sage</p><div class="hex mono" data-hex="--sage-400"></div><p class="usage">Merged, passed CI, green builds, verified — without overloading teal.</p><div class="var">--sage-400</div></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:var(--amber-400);"><span class="role">warning</span></div>
+      <div class="meta"><p class="name">Amber</p><div class="hex mono" data-hex="--amber-400"></div><p class="usage">Destructive confirmations, stale branches, deprecation notices.</p><div class="var">--amber-400</div></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:var(--coral-400);"><span class="role">error</span></div>
+      <div class="meta"><p class="name">Coral</p><div class="hex mono" data-hex="--coral-400"></div><p class="usage">Failures, 4xx/5xx, merge conflicts, destructive button backgrounds.</p><div class="var">--coral-400</div></div>
+    </div>
+    <div class="sw">
+      <div class="chip" style="background:var(--slate-400);"><span class="role">info</span></div>
+      <div class="meta"><p class="name">Slate</p><div class="hex mono" data-hex="--slate-400"></div><p class="usage">Metadata, inactive/queued states, code annotations, muted UI chrome.</p><div class="var">--slate-400</div></div>
+    </div>
+  </div>
+
+  <!-- Scale row -->
+  <div style="margin-top: 40px;">
+    <p class="t-eyebrow" style="margin-bottom:10px;">4-step scale · example: teal</p>
+    <div class="scale-grid">
+      <div class="label">--teal-200 → 500</div>
+      <div class="shade" style="background:var(--teal-200);">200</div>
+      <div class="shade" style="background:var(--teal-300);">300</div>
+      <div class="shade" style="background:var(--teal-400);">400 <strong style="margin-left:4px;">base</strong></div>
+      <div class="shade" style="background:var(--teal-500);">500</div>
+    </div>
+    <div class="scale-grid">
+      <div class="label">--lavender-300 → 500</div>
+      <div class="shade" style="background:var(--lavender-300);">300</div>
+      <div class="shade" style="background:var(--lavender-400);">400</div>
+      <div class="shade" style="background:var(--lavender-500);">500</div>
+      <div></div>
+    </div>
+    <div class="scale-grid">
+      <div class="label">--sage-300 → 500</div>
+      <div class="shade" style="background:var(--sage-300);">300</div>
+      <div class="shade" style="background:var(--sage-400);">400</div>
+      <div class="shade" style="background:var(--sage-500);">500</div>
+      <div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Alternative palettes ========== -->
+<div class="section" id="alternatives">
+  <p class="kicker">02 · Alternative palettes</p>
+  <h2>Six alternates. <em>Try one on.</em></h2>
+  <p class="intro">Click any card to swap the entire system — all swatches, components, and the Phantom update in place. Useful for comparing brand directions or generating theme variants.</p>
+</div>
+
+<div class="block">
+  <div class="palette-alts" id="palette-alts"></div>
+</div>
+
+
+<!-- ========== SECTION: Typography ========== -->
+<div class="section" id="type">
+  <p class="kicker">03 · Typography</p>
+  <h2>Serif display. <em>Sans body. Mono details.</em></h2>
+  <p class="intro">Instrument Serif for voice + elegance. DM Sans for workhorse UI. Geist Mono for everything technical. Italics of the serif are the single typographic gesture reserved for emphasis — don't mix with bold in prose.</p>
+</div>
+
+<div class="block">
+  <div class="type-stack">
+    <div class="type-row">
+      <div class="specs">display<br>72/76<br>serif · 400<br>-0.02em</div>
+      <div class="sample t-display">Zero <em>conflicts.</em></div>
+    </div>
+    <div class="type-row">
+      <div class="specs">h1<br>48/52<br>serif · 400</div>
+      <div class="sample t-h1">Three agents. One repo.</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">h2<br>32/36<br>serif · 400</div>
+      <div class="sample t-h2">Run workflows in parallel</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">h3<br>22/26<br>serif · 400</div>
+      <div class="sample t-h3">File claims prevent collisions</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">body<br>15/24<br>sans · 400</div>
+      <div class="sample t-body">Ruah runs each coding agent in its own git worktree, locks the files they touch, and merges results in dependency order. Agents ship features in parallel — and stop stepping on each other.</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">small<br>13/20<br>sans · 400</div>
+      <div class="sample t-small">Ships as an MIT-licensed CLI. Runs on Node 18+. No telemetry; everything runs locally against your configured executors.</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">eyebrow<br>11<br>mono · 500<br>0.16em · uppercase</div>
+      <div class="sample t-eyebrow">Claude Code · Aider · Codex — in parallel</div>
+    </div>
+    <div class="type-row">
+      <div class="specs">mono<br>13/20<br>geist mono</div>
+      <div class="sample t-mono">$ ruah workflow run feature.md</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Spacing · Radii · Shadows ========== -->
+<div class="section" id="tokens">
+  <p class="kicker">04 · Spacing · Radii · Shadows</p>
+  <h2>4-px grid. <em>Pill, squircle, or sharp.</em></h2>
+  <p class="intro">Spacing uses a 4px base with a named scale 1–24. Radii snap to xs/sm/md/lg/xl/pill. Shadows are a three-tier set tuned for warm charcoal backgrounds.</p>
+</div>
+
+<div class="block">
+  <p class="t-eyebrow" style="margin-bottom:10px;">spacing</p>
+  <div class="ref-row">
+    <div class="ref"><span class="tok">--sp-1</span><span class="hex">4px</span><div class="vis" style="width:4px;"></div></div>
+    <div class="ref"><span class="tok">--sp-2</span><span class="hex">8px</span><div class="vis" style="width:8px;"></div></div>
+    <div class="ref"><span class="tok">--sp-4</span><span class="hex">16px</span><div class="vis" style="width:16px;"></div></div>
+    <div class="ref"><span class="tok">--sp-6</span><span class="hex">24px</span><div class="vis" style="width:24px;"></div></div>
+    <div class="ref"><span class="tok">--sp-8</span><span class="hex">32px</span><div class="vis" style="width:32px;"></div></div>
+    <div class="ref"><span class="tok">--sp-12</span><span class="hex">48px</span><div class="vis" style="width:48px;"></div></div>
+    <div class="ref"><span class="tok">--sp-16</span><span class="hex">64px</span><div class="vis" style="width:64px;"></div></div>
+    <div class="ref"><span class="tok">--sp-24</span><span class="hex">96px</span><div class="vis" style="width:96px;"></div></div>
+  </div>
+
+  <p class="t-eyebrow" style="margin: 28px 0 10px;">radii</p>
+  <div class="ref-row">
+    <div class="ref radii" style="--r: var(--r-xs)"><span class="tok">--r-xs</span><span class="hex">4px</span><div class="vis"></div></div>
+    <div class="ref radii" style="--r: var(--r-sm)"><span class="tok">--r-sm</span><span class="hex">6px</span><div class="vis"></div></div>
+    <div class="ref radii" style="--r: var(--r-md)"><span class="tok">--r-md</span><span class="hex">10px</span><div class="vis"></div></div>
+    <div class="ref radii" style="--r: var(--r-lg)"><span class="tok">--r-lg</span><span class="hex">16px</span><div class="vis"></div></div>
+    <div class="ref radii" style="--r: var(--r-xl)"><span class="tok">--r-xl</span><span class="hex">24px</span><div class="vis"></div></div>
+    <div class="ref radii" style="--r: var(--r-pill)"><span class="tok">--r-pill</span><span class="hex">999px</span><div class="vis"></div></div>
+  </div>
+
+  <p class="t-eyebrow" style="margin: 28px 0 10px;">shadows</p>
+  <div class="ref-row">
+    <div class="ref shadow"><span class="tok">--shadow-sm</span><div class="vis" style="box-shadow:var(--shadow-sm);"></div></div>
+    <div class="ref shadow"><span class="tok">--shadow-md</span><div class="vis" style="box-shadow:var(--shadow-md);"></div></div>
+    <div class="ref shadow"><span class="tok">--shadow-lg</span><div class="vis" style="box-shadow:var(--shadow-lg);"></div></div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Components ========== -->
+<div class="section" id="components">
+  <p class="kicker">05 · Components</p>
+  <h2>A small kit. <em>Copy, paste, ship.</em></h2>
+  <p class="intro">Buttons, badges, inputs, cards, alerts, code — the atomic pieces every Ruah surface needs. Each component uses only the tokens above so palette swaps are free.</p>
+</div>
+
+<div class="block">
+  <div class="component-grid">
+    <div class="comp">
+      <div class="comp-label">Buttons</div>
+      <div class="row">
+        <button class="btn primary">Start in 60s →</button>
+        <button class="btn teal">Teal accent</button>
+        <button class="btn ghost">Ghost</button>
+        <button class="btn danger">Destructive</button>
+      </div>
+      <div class="row">
+        <button class="btn primary sm">Small</button>
+        <button class="btn ghost sm">Ghost sm</button>
+      </div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-label">Badges — one per semantic role</div>
+      <div class="row">
+        <span class="badge teal"><span class="dot"></span>Brand</span>
+        <span class="badge lavender"><span class="dot"></span>Agent</span>
+        <span class="badge sage"><span class="dot"></span>Success</span>
+        <span class="badge amber"><span class="dot"></span>Warning</span>
+        <span class="badge coral"><span class="dot"></span>Error</span>
+        <span class="badge slate"><span class="dot"></span>Queued</span>
+      </div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-label">Inputs</div>
+      <div class="row"><input class="input" placeholder="user@example.com"></div>
+      <div class="row"><input class="input" value="npm i -g @ruah-dev/cli"></div>
+    </div>
+
+    <div class="comp">
+      <div class="comp-label">Card</div>
+      <div class="card">
+        <div class="meta">claude-code · owner</div>
+        <h4>Authentication flow</h4>
+        <p>Generates Passkeys + WebAuthn scaffolding. Owns <span class="mono" style="color:var(--teal-400);">src/auth/**</span>.</p>
+      </div>
+    </div>
+
+    <div class="comp" style="grid-column: 1 / -1;">
+      <div class="comp-label">Alerts — one per role</div>
+      <div class="alert info"><strong>Info.</strong> 3 agents queued. Estimated 48s to completion.</div>
+      <div class="alert ai"><strong>Agent.</strong> Aider is composing changes to <span class="mono">src/ui/onboarding/</span>.</div>
+      <div class="alert ok"><strong>Merged.</strong> All 2 tasks completed. 0 conflicts.</div>
+      <div class="alert warn"><strong>Heads up.</strong> The stale branch <span class="mono">feat/legacy-auth</span> hasn't been updated in 14 days.</div>
+      <div class="alert error"><strong>Failed.</strong> <span class="mono">codex</span> returned exit 1 — see logs.</div>
+    </div>
+
+    <div class="comp" style="grid-column: 1 / -1;">
+      <div class="comp-label">Code block — tokens drive syntax colors</div>
+<pre class="code"><span class="cm"># feature.md</span>
+<span class="kw">tasks:</span>
+  <span class="kw">- id:</span> <span class="str">auth</span>
+    <span class="kw">owner:</span> <span class="str">claude-code</span>
+    <span class="kw">claims:</span> [<span class="str">"src/auth/**"</span>]
+  <span class="kw">- id:</span> <span class="str">ui</span>
+    <span class="kw">owner:</span> <span class="str">aider</span>
+    <span class="kw">claims:</span> [<span class="str">"src/ui/**"</span>]
+    <span class="kw">depends_on:</span> [<span class="str">auth</span>]
+<span class="kw">timeout:</span> <span class="num">300</span>s</pre>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Phantom ========== -->
+<div class="section" id="phantom">
+  <p class="kicker">06 · Phantom</p>
+  <h2>The <em>mascot.</em> A character, not a logo.</h2>
+  <p class="intro">Ruah's Phantom is a rendered SVG character with expression states tied to product events. Body color comes from the palette (<span class="mono">--teal-400</span> by default, swappable per state). Pupils are <span class="mono">--teal-500</span> — never black. Reduced-motion: keep visible, disable animation.</p>
+</div>
+
+<div class="block">
+  <div class="phantom-showcase" id="phantom-showcase">
+    <!-- injected by JS so we can swap with palette -->
+  </div>
+
+  <p class="t-eyebrow" style="margin:32px 0 10px;">the phantom team — one character per tool</p>
+  <div class="phantom-showcase">
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="#dedad3"></use><ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"></ellipse><ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"></ellipse></svg>
+      <p class="t-eyebrow" style="color:#dedad3">cli · The Face</p>
+      <p class="desc">The router. Cream — neutral, it's all of them at once. Plain eyes, no pupils.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--teal-400)"></use><ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"></ellipse><ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"></ellipse><circle cx="237" cy="350" r="7" fill="var(--teal-500)"></circle><circle cx="363" cy="350" r="7" fill="var(--teal-500)"></circle></svg>
+      <p class="t-eyebrow" style="color:var(--teal-400)">orch · The Conductor</p>
+      <p class="desc">Parallel agents, zero collisions. Brand teal — the core.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--coral-400)"></use><path d="M 208 330 L 262 344" stroke="#c94a42" stroke-width="10" stroke-linecap="round"></path><path d="M 392 330 L 338 344" stroke="#c94a42" stroke-width="10" stroke-linecap="round"></path><ellipse cx="237" cy="368" rx="20" ry="18" fill="#fff"></ellipse><ellipse cx="363" cy="368" rx="20" ry="18" fill="#fff"></ellipse><circle cx="237" cy="370" r="7" fill="#c94a42"></circle><circle cx="363" cy="370" r="7" fill="#c94a42"></circle></svg>
+      <p class="t-eyebrow" style="color:var(--coral-400)">guard · The Bodyguard</p>
+      <p class="desc">Blocks dangerous commands &amp; secrets. Furrowed brow, always on duty.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--sage-400)"></use><path d="M 216 355 L 233 372 L 262 338" stroke="#fff" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M 342 355 L 359 372 L 388 338" stroke="#fff" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <p class="t-eyebrow" style="color:var(--sage-400)">verify · The Referee</p>
+      <p class="desc">Done means proven. Checkmark eyes — evidence or nothing.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--amber-400)"></use><ellipse cx="237" cy="360" rx="23" ry="10" fill="#fff"></ellipse><ellipse cx="363" cy="360" rx="23" ry="10" fill="#fff"></ellipse><circle cx="237" cy="360" r="6" fill="#8a6118"></circle><circle cx="363" cy="360" r="6" fill="#8a6118"></circle></svg>
+      <p class="t-eyebrow" style="color:var(--amber-400)">opt · The Accountant</p>
+      <p class="desc">Every token itemized. Squinting at the ledger, always.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--lavender-400)"></use><ellipse cx="237" cy="352" rx="29" ry="36" fill="#fff"></ellipse><ellipse cx="363" cy="352" rx="29" ry="36" fill="#fff"></ellipse><circle cx="237" cy="356" r="10" fill="#7c5bb5"></circle><circle cx="363" cy="356" r="10" fill="#7c5bb5"></circle><circle cx="233" cy="350" r="3.5" fill="#fff"></circle><circle cx="359" cy="350" r="3.5" fill="#fff"></circle></svg>
+      <p class="t-eyebrow" style="color:var(--lavender-400)">watch · The Storyteller</p>
+      <p class="desc">Sessions become shareable replays. Big wide eyes — sees everything.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="var(--slate-400)"></use><ellipse cx="237" cy="348" rx="24" ry="31" fill="#fff"></ellipse><ellipse cx="363" cy="362" rx="24" ry="31" fill="#fff"></ellipse><circle cx="237" cy="352" r="7" fill="#3d4a63"></circle><circle cx="363" cy="366" r="7" fill="#3d4a63"></circle></svg>
+      <p class="t-eyebrow" style="color:var(--slate-300)">eval · The Judge</p>
+      <p class="desc">Same task, N agents, one table. Asymmetric eyes — always weighing.</p>
+    </div>
+    <div class="ph-card">
+      <svg viewBox="0 0 600 600"><use href="#phantom-body" fill="#88e6d7"></use><ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"></ellipse><ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"></ellipse><path d="M 237 344 A 11 11 0 1 1 226 355" stroke="#00a890" stroke-width="6" fill="none" stroke-linecap="round"></path><path d="M 363 344 A 11 11 0 1 1 352 355" stroke="#00a890" stroke-width="6" fill="none" stroke-linecap="round"></path></svg>
+      <p class="t-eyebrow" style="color:#88e6d7">conv · The Shapeshifter</p>
+      <p class="desc">Any API becomes agent tools. Spiral eyes — mid-transformation.</p>
+    </div>
+  </div>
+</div>
+
+
+<!-- ========== SECTION: Website & Docs ========== -->
+<div class="section" id="webdocs">
+  <p class="kicker">07 · Website &amp; docs</p>
+  <h2>One system for <em>every page.</em></h2>
+  <p class="intro">Marketing pages, tool pages, and docs share the same tokens. Docs get their own patterns — sidebar nav grouped by role, callouts, command tables, pagers — and every tool page opens with its Phantom.</p>
+</div>
+
+<div class="block">
+  <p class="t-eyebrow" style="margin-bottom:10px;">docs layout — 3-column</p>
+  <div class="docs-mock">
+    <div class="dm-side">
+      <div class="dm-search">⌘K · Search docs…</div>
+      <div class="dm-group">Build</div>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--teal-200)"></span>conv — Shapeshifter</a>
+      <div class="dm-group">Run</div>
+      <a class="dm-link"><span class="dm-dot" style="background:#dedad3"></span>cli — The Face</a>
+      <a class="dm-link active"><span class="dm-dot" style="background:var(--teal-400)"></span>orch — Conductor</a>
+      <div class="dm-group">Trust</div>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--coral-400)"></span>guard — Bodyguard</a>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--sage-400)"></span>verify — Referee</a>
+      <div class="dm-group">Understand</div>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--amber-400)"></span>opt — Accountant</a>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--lavender-400)"></span>watch — Storyteller</a>
+      <a class="dm-link"><span class="dm-dot" style="background:var(--slate-400)"></span>eval — Judge</a>
+    </div>
+    <div class="dm-article">
+      <div class="dm-crumb">Docs / Run / <span>orch</span></div>
+      <h3 class="dm-h">Task workflows</h3>
+      <p class="dm-p">Each task gets an isolated git worktree. Claims prevent two agents touching the same file.</p>
+      <div class="alert warn" style="margin:12px 0"><strong>Heads up.</strong> Merging requires a clean gate run.</div>
+      <pre class="code"><span class="cm"># run a workflow</span>
+$ ruah workflow run feature.md</pre>
+      <table class="dm-table">
+        <tbody><tr><th>Command</th><th>Does</th></tr>
+        <tr><td class="mono">ruah task create</td><td>Create task + worktree</td></tr>
+        <tr><td class="mono">ruah task merge</td><td>Merge with governance gates</td></tr>
+      </tbody></table>
+      <div class="dm-pager">
+        <span>← Getting started</span>
+        <span>File claims →</span>
+      </div>
+    </div>
+    <div class="dm-toc">
+      <div class="dm-group">On this page</div>
+      <a class="dm-link active">Task workflows</a>
+      <a class="dm-link">Claims</a>
+      <a class="dm-link">Merging</a>
+    </div>
+  </div>
+
+  <p class="t-eyebrow" style="margin:28px 0 10px;">tool-page header template — phantom leads</p>
+  <div class="toolhead">
+    <svg viewBox="0 0 600 600" class="th-ph"><use href="#phantom-body" fill="var(--coral-400)"></use><ellipse cx="237" cy="368" rx="20" ry="18" fill="#fff"></ellipse><ellipse cx="363" cy="368" rx="20" ry="18" fill="#fff"></ellipse></svg>
+    <div>
+      <div class="t-eyebrow" style="color:var(--coral-400)">Trust · @ruah-dev/guard</div>
+      <h3 style="font-size:30px;margin:6px 0">guard — <em style="color:var(--coral-400)">The Bodyguard</em></h3>
+      <p style="color:var(--fg-muted);font-size:14px;margin:0">Blocks dangerous commands and leaked secrets before the agent executes them.</p>
+    </div>
+    <div class="th-install mono">$ ruah guard check</div>
+  </div>
+</div>
+
+<!-- ========== SECTION: Claude Code skill ========== -->
+<div class="section" id="skill">
+  <p class="kicker">08 · Claude Code skill</p>
+  <h2>Drop this into <em>CLAUDE.md.</em></h2>
+  <p class="intro">Copy the block below into your repo's <span class="mono">CLAUDE.md</span> at the project root. Any Claude Code session inherits the Ruah brand system automatically — tokens, conventions, component primitives, and do's/don'ts.</p>
+</div>
+
+<div class="block">
+  <div class="skill-block">
+    <div class="head">
+      <div class="title">CLAUDE.md · Ruah brand system</div>
+      <button id="copy-skill">Copy skill</button>
+    </div>
+<pre id="skill-text"><span class="h"># Ruah Brand System</span>
+
+You are designing and building UI for <span class="sub">Ruah</span> — an open-source CLI that orchestrates parallel coding agents (Claude Code, Aider, Codex). Adhere to the system below for every new surface, page, and component. When in doubt, copy existing patterns rather than invent.
+
+<span class="h">## Voice</span>
+
+- <span class="sub">Concrete over abstract.</span> Name the agents, name the outcome ("zero merge conflicts"), show the diff.
+- Italicized serif carries emphasis. Never bold inside a serif headline.
+- Eyebrows (mono, uppercase, 0.16em tracking) orient the user. Use at most one per section.
+- No emoji. No exclamation points. No "unleash", "supercharge", "revolutionize".
+
+<span class="h">## Typography</span>
+
+- Display/headings: <span class="sub">Instrument Serif</span>, weight 400, letter-spacing -0.02em.
+- Body/UI: <span class="sub">DM Sans</span>, 15/1.6 default, 13/1.55 small.
+- Mono/technical: <span class="sub">Geist Mono</span>, 11–13px, uppercase for eyebrows (letter-spacing 0.16em).
+- Scale (px/line-height): 72/76 display · 48/52 h1 · 32/36 h2 · 22/26 h3 · 15/24 body · 13/20 small · 11 eyebrow.
+
+<span class="h">## Colors — 6 semantic roles</span>
+
+Each role owns one hue. Never reuse a semantic color for an unrelated purpose.
+
+- <span class="sub">--teal-400 #00d2b9</span> — brand, primary actions, default Phantom body.
+- <span class="sub">--lavender-400 #b594f5</span> — AI / agent activity, thinking states, experimental.
+- <span class="sub">--sage-400 #7fb069</span> — success, merged, passing CI.
+- <span class="sub">--amber-400 #e5a84b</span> — warnings, stale branches, deprecation.
+- <span class="sub">--coral-400 #f07068</span> — errors, failures, destructive actions.
+- <span class="sub">--slate-400 #5b6b88</span> — info, metadata, queued/inactive.
+
+Each has a 4-step scale: -200 (tint), -300, -400 (base), -500 (shade). Use -300/-500 for hover states.
+
+<span class="h">## Themes</span>
+
+Three themes, all built from the same neutral surface tokens:
+
+- <span class="sub">dark</span> (default): bg #111110, fg #f0eee9. Warm charcoal, cream text.
+- <span class="sub">light</span>: bg #faf9f7, fg #191918. Same cream family.
+- <span class="sub">contrast</span>: bg #000, fg #fff. WCAG AAA. For accessibility mode.
+
+Theme tokens: --bg, --surface-1/2/3/4, --fg, --fg-muted/subtle/dim, --border, --border-strong.
+
+<span class="h">## Spacing / Radii / Shadows</span>
+
+- 4px base scale: --sp-1 (4) through --sp-24 (96).
+- Radii: --r-xs (4), --r-sm (6), --r-md (10), --r-lg (16), --r-xl (24), --r-pill (999).
+- Shadows: --shadow-sm, --shadow-md, --shadow-lg.
+
+<span class="h">## Phantom mascot</span>
+
+The Phantom is a rendered SVG character — body color from palette, white eyes with teal pupils (never black). Expressions are product-event-driven:
+
+- <span class="sub">idle</span> — floating, blinking. Default.
+- <span class="sub">thinking</span> — horizontal squint eyes.
+- <span class="sub">tracking</span> — pupils follow cursor.
+- <span class="sub">loading</span> — mint body, pupils bounce.
+- <span class="sub">success</span> — sage body, sparkle-star eyes.
+- <span class="sub">warning</span> — amber body, ! emblem.
+- <span class="sub">error</span> — coral body, X eyes.
+
+Under prefers-reduced-motion, keep Phantom visible but static. Never remove him. Eyes are ALWAYS white with no black — pupils, when present, use the character's -500 shade; The Face (cli) has plain white eyes with NO pupils.
+
+<span class="h">## Phantom family — one character per tool</span>
+
+Every tool is a Phantom with a fixed color and personality. Use them on tool pages, docs sidebars, and error/empty states:
+
+- <span class="sub">cli — The Face</span> — cream #dedad3. The router; neutral because it's all of them at once. Plain white eyes, no pupils.
+- <span class="sub">orch — The Conductor</span> — teal-400. Parallel agents, zero collisions.
+- <span class="sub">guard — The Bodyguard</span> — coral-400. Blocks dangerous commands/secrets. Furrowed coral-dark brows.
+- <span class="sub">verify — The Referee</span> — sage-400. Proves work is done. Checkmark eyes.
+- <span class="sub">opt — The Accountant</span> — amber-400. Token/cost analysis. Squinting eyes.
+- <span class="sub">watch — The Storyteller</span> — lavender-400. Session → shareable HTML replay. Big wide eyes.
+- <span class="sub">eval — The Judge</span> — slate-400. N-agent comparison. Asymmetric weighing eyes.
+- <span class="sub">conv — The Shapeshifter</span> — mint #88e6d7. API → MCP tools. Spiral eyes.
+
+Nav groups: Build (conv) · Run (cli, orch) · Trust (guard, verify) · Understand (opt, watch, eval).
+
+<span class="h">## Docs rules</span>
+
+- 3-column layout: grouped sidebar (role groups above) / article max 720px / on-page TOC.
+- Every sidebar tool link carries its character's color dot; every tool page opens with its Phantom + role eyebrow + install command.
+- Callouts use the alert component (role-colored 3px left border). Command references are tables, not prose.
+- Breadcrumbs mono 10px; current page in teal. Prev/next pager at article foot.
+
+<span class="h">## Component rules</span>
+
+- Buttons: <span class="sub">primary</span> (fg on bg), <span class="sub">teal</span> (brand accent), <span class="sub">ghost</span> (outline), <span class="sub">danger</span> (coral). Radius --r-md, 10px 18px padding. Always include focus-visible ring in --teal-400.
+- Badges: pill, mono 10px uppercase, border-matching-color. One per semantic role.
+- Inputs: --surface-1 background, --border-strong border. Focus: teal border + 3px soft teal ring.
+- Cards: --surface-1 bg, --border border, --r-lg radius.
+- Alerts: 3px left border in role color, --surface-2 bg, bold colored strong text.
+
+<span class="h">## Don'ts</span>
+
+- No gradients on backgrounds. Solid surfaces only.
+- No rounded-left-border accent cards (overused AI slop).
+- No purple-pink gradient buttons. Use solid teal-400 or solid --fg.
+- No emoji in marketing copy.
+- No versioning before trust (don't show "v1.1.1" near CTAs).
+- No uppercase-eyebrow monopoly — allow serif italic subheads to vary rhythm.
+
+<span class="h">## Files</span>
+
+- <span class="sub">ruah-tokens.css</span> — drop-in CSS variables (all palettes + themes).
+- <span class="sub">ruah-tailwind.config.js</span> — Tailwind v3 preset mapping tokens.
+- <span class="sub">ruah-phantom.svg</span> — SVG symbol with expression variants.
+
+Import tokens with:
+<span class="sub">@import "./ruah-tokens.css";</span>
+<span class="sub">&lt;html data-theme="dark" data-palette="default"&gt;</span>
+
+When building a new surface: start from <span class="sub">:root</span> tokens, reach for the component primitives, only invent when the system genuinely doesn't cover the case — and then add the new primitive back to the system.</pre>
+  </div>
+
+  <div class="download-row">
+    <button class="btn teal" id="dl-tokens">↓ ruah-tokens.css</button>
+    <button class="btn ghost" id="dl-tailwind">↓ tailwind.config.js</button>
+    <button class="btn ghost" id="dl-skill">↓ CLAUDE.md</button>
+  </div>
+</div>
+
+
+<div class="ds-footer">
+  Ruah Design System v1 · One source of truth for tokens, type, components, and handoff.
+</div>
+
+
+<!-- ========== PHANTOM SVG SYMBOL ========== -->
+<svg width="0" height="0" style="position:absolute;" aria-hidden="true">
+  <defs>
+    <symbol id="phantom-body" viewBox="0 0 600 600">
+      <path d="M 468.0,380.4 L 466.8,388.4 L 464.5,396.0 L 461.1,403.1 L 456.8,409.9 L 451.5,416.2 L 445.3,422.2 L 438.4,427.7 L 430.6,432.8 L 422.2,437.5 L 413.1,441.8 L 403.5,445.7 L 393.3,449.2 L 382.7,452.3 L 371.6,454.9 L 360.2,457.2 L 348.5,459.0 L 336.6,460.5 L 324.5,461.5 L 312.3,462.1 L 300.0,462.3 L 287.7,462.1 L 275.5,461.5 L 263.4,460.5 L 251.5,459.0 L 239.8,457.2 L 228.4,454.9 L 217.3,452.3 L 206.7,449.2 L 196.5,445.7 L 186.9,441.8 L 177.8,437.5 L 169.4,432.8 L 161.6,427.7 L 154.7,422.2 L 148.5,416.2 L 143.2,409.9 L 138.9,403.1 L 135.5,396.0 L 133.2,388.4 L 132.0,380.4 L 132.0,380.4 L 130.9,371.6 L 130.0,362.9 L 129.4,354.3 L 129.1,345.7 L 129.0,337.2 L 129.3,328.8 L 129.9,320.6 L 130.7,312.4 L 131.9,304.3 L 133.5,296.4 L 135.3,288.6 L 137.6,280.9 L 140.1,273.4 L 143.1,266.0 L 146.4,258.7 L 150.1,251.6 L 154.2,244.7 L 158.7,238.0 L 163.6,231.4 L 169.0,225.0 L 169.0,225.0 L 170.3,216.2 L 172.2,208.1 L 174.6,200.9 L 177.4,194.6 L 180.7,189.1 L 184.4,184.5 L 188.3,180.8 L 192.5,178.1 L 196.9,176.3 L 201.4,175.5 L 206.1,175.8 L 210.7,177.0 L 215.4,179.3 L 220.0,182.7 L 224.4,187.2 L 224.4,187.2 L 228.7,193.9 L 233.2,199.5 L 237.7,203.9 L 242.3,207.1 L 246.9,209.2 L 251.5,210.3 L 255.9,210.3 L 260.2,209.3 L 264.3,207.3 L 268.2,204.3 L 271.7,200.4 L 274.8,195.6 L 274.8,195.6 L 277.7,186.2 L 280.7,177.6 L 283.8,169.7 L 287.1,162.6 L 290.4,156.3 L 293.8,150.8 L 297.2,146.1 L 300.7,142.1 L 304.2,138.9 L 307.7,136.5 L 311.2,134.9 L 314.6,134.0 L 318.0,133.9 L 321.3,134.6 L 324.6,136.1 L 327.7,138.4 L 330.7,141.4 L 333.6,145.2 L 333.6,145.2 L 338.6,154.5 L 343.7,162.4 L 348.7,168.7 L 353.8,173.7 L 358.8,177.2 L 363.8,179.4 L 368.9,180.2 L 373.9,179.6 L 379.0,177.7 L 384.0,174.6 L 384.0,174.6 L 387.5,169.2 L 391.1,164.8 L 394.9,161.3 L 398.8,158.7 L 402.7,157.0 L 406.6,156.1 L 410.4,156.0 L 414.2,156.6 L 417.9,158.0 L 421.3,160.0 L 424.6,162.6 L 427.5,165.9 L 430.2,169.7 L 432.5,174.0 L 434.4,178.8 L 434.4,178.8 L 438.8,185.3 L 441.8,191.3 L 443.9,196.8 L 445.0,201.8 L 445.4,206.2 L 445.2,210.0 L 444.6,213.2 L 443.9,215.7 L 443.1,217.5 L 442.5,218.6 L 442.2,219.0 L 442.4,218.6 L 443.3,217.4 L 445.1,215.3 L 447.8,212.4 L 447.8,212.4 L 451.7,206.1 L 455.4,201.1 L 458.9,197.5 L 462.3,195.0 L 465.5,193.8 L 468.4,193.7 L 471.0,194.7 L 473.4,196.8 L 475.6,199.8 L 477.4,203.8 L 478.8,208.6 L 479.9,214.3 L 480.7,220.7 L 481.0,227.9 L 481.0,235.7 L 480.5,244.2 L 479.5,253.2 L 478.1,262.8 L 478.1,262.8 L 477.4,272.8 L 476.8,282.5 L 476.2,292.0 L 475.7,301.2 L 475.1,310.1 L 474.5,318.7 L 474.0,327.0 L 473.4,335.0 L 472.8,342.6 L 472.1,349.9 L 471.4,356.8 L 470.7,363.3 L 469.8,369.4 L 469.0,375.1 L 468.0,380.4 Z"></path>
+    </symbol>
+  </defs>
+</svg>
+
+
+<script>
+/* ===========================================================
+   INTERACTIONS
+=========================================================== */
+
+// ---- palette + theme switchers ----
+const paletteSel = document.getElementById('palette-select');
+const themeSel = document.getElementById('theme-select');
+const htmlEl = document.documentElement;
+
+function setPalette(v) { htmlEl.setAttribute('data-palette', v); paletteSel.value = v; updateHexReadouts(); renderPaletteCards(); renderPhantoms(); }
+function setTheme(v) { htmlEl.setAttribute('data-theme', v); themeSel.value = v; }
+
+paletteSel.addEventListener('change', e => setPalette(e.target.value));
+themeSel.addEventListener('change', e => setTheme(e.target.value));
+
+// ---- read computed hex from CSS var ----
+function getHex(varName) {
+  const v = getComputedStyle(htmlEl).getPropertyValue(varName).trim();
+  return v || '';
+}
+function updateHexReadouts() {
+  document.querySelectorAll('[data-hex]').forEach(el => {
+    el.textContent = getHex(el.getAttribute('data-hex'));
+  });
+}
+
+// ---- alternative palette cards ----
+const PALETTES = [
+  { id:'default',    name:'Default',    mood:'teal / calm',      desc:'The current Ruah brand. Teal + desaturated supporters.' },
+  { id:'dusk',       name:'Dusk',       mood:'indigo / confident',desc:'Indigo primary (kept). Dusty rose, sage-lime, amber, soft coral. Rich but calm.' },
+  { id:'sunrise',    name:'Sunrise',    mood:'coral / brave',    desc:'Coral primary, teal demoted to success. What-if brand were warm?' },
+];
+
+function renderPaletteCards() {
+  const host = document.getElementById('palette-alts');
+  const current = htmlEl.getAttribute('data-palette');
+  host.innerHTML = '';
+  PALETTES.forEach(p => {
+    const temp = document.createElement('div');
+    temp.setAttribute('data-palette', p.id);
+    document.body.appendChild(temp);
+    const cs = getComputedStyle(temp);
+    const colors = ['--teal-400','--lavender-400','--sage-400','--amber-400','--coral-400','--slate-400']
+      .map(v => cs.getPropertyValue(v).trim());
+    document.body.removeChild(temp);
+
+    const card = document.createElement('div');
+    card.className = 'palette-card' + (p.id === current ? ' active' : '');
+    card.innerHTML = `
+      <div class="stripe">
+        ${colors.map(c => `<span style="background:${c};"></span>`).join('')}
+      </div>
+      <div class="body">
+        <h4>${p.name}<span class="mood">${p.mood}</span></h4>
+        <p>${p.desc}</p>
+      </div>
+    `;
+    card.addEventListener('click', () => setPalette(p.id));
+    host.appendChild(card);
+  });
+}
+
+// ---- phantom gallery ----
+const PHANTOM_STATES = [
+  { name: 'Idle', desc: 'Default. Floats, blinks.', body: '--teal-400',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <circle cx="237" cy="358" r="7" fill="var(--teal-500)"/>
+           <circle cx="363" cy="358" r="7" fill="var(--teal-500)"/>` },
+  { name: 'Thinking', desc: 'Horizontal squint while reading.', body: '--teal-400',
+    eyes: `<ellipse cx="237" cy="360" rx="22" ry="6" fill="#fff"/>
+           <ellipse cx="363" cy="360" rx="22" ry="6" fill="#fff"/>` },
+  { name: 'Tracking', desc: 'Pupils follow cursor.', body: '--teal-400',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <circle cx="247" cy="358" r="8" fill="var(--teal-500)"/>
+           <circle cx="373" cy="358" r="8" fill="var(--teal-500)"/>` },
+  { name: 'Agent', desc: 'Lavender. AI is working.', body: '--lavender-400',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <circle cx="237" cy="358" r="6" fill="var(--lavender-500)"><animate attributeName="r" values="6;9;6" dur="1.8s" repeatCount="indefinite"/></circle>
+           <circle cx="363" cy="358" r="6" fill="var(--lavender-500)"><animate attributeName="r" values="6;9;6" dur="1.8s" repeatCount="indefinite"/></circle>` },
+  { name: 'Success', desc: 'Sage body, sparkle eyes.', body: '--sage-400',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <path d="M 237 338 L 240 353 L 255 355 L 240 357 L 237 372 L 234 357 L 219 355 L 234 353 Z" fill="var(--sage-500)"/>
+           <path d="M 363 338 L 366 353 L 381 355 L 366 357 L 363 372 L 360 357 L 345 355 L 360 353 Z" fill="var(--sage-500)"/>` },
+  { name: 'Loading', desc: 'Pupils bounce.', body: '--teal-300',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <circle cx="237" cy="355" r="5" fill="var(--teal-500)"><animate attributeName="cy" values="345;365;345" dur="1.2s" repeatCount="indefinite"/></circle>
+           <circle cx="363" cy="355" r="5" fill="var(--teal-500)"><animate attributeName="cy" values="365;345;365" dur="1.2s" repeatCount="indefinite"/></circle>` },
+  { name: 'Warning', desc: 'Amber body, alert mark.', body: '--amber-400',
+    eyes: `<ellipse cx="237" cy="355" rx="24" ry="31" fill="#fff"/>
+           <ellipse cx="363" cy="355" rx="24" ry="31" fill="#fff"/>
+           <circle cx="237" cy="358" r="7" fill="var(--amber-400)" style="filter:brightness(0.55);"/>
+           <circle cx="363" cy="358" r="7" fill="var(--amber-400)" style="filter:brightness(0.55);"/>` },
+  { name: 'Error', desc: 'Coral body, X eyes.', body: '--coral-400',
+    eyes: `<path d="M 215 340 L 260 370 M 215 370 L 260 340" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+           <path d="M 340 340 L 385 370 M 340 370 L 385 340" stroke="#fff" stroke-width="8" stroke-linecap="round"/>` },
+];
+
+function renderPhantoms() {
+  const host = document.getElementById('phantom-showcase');
+  host.innerHTML = '';
+  PHANTOM_STATES.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'ph-card';
+    card.innerHTML = `
+      <svg viewBox="0 0 600 600">
+        <use href="#phantom-body" fill="var(${s.body})"/>
+        ${s.eyes}
+      </svg>
+      <p class="t-eyebrow">${s.name}</p>
+      <p class="desc">${s.desc}</p>
+    `;
+    host.appendChild(card);
+  });
+}
+
+// ---- skill copy + downloads ----
+function plainSkillText() {
+  return document.getElementById('skill-text').innerText;
+}
+
+document.getElementById('copy-skill').addEventListener('click', async () => {
+  const btn = document.getElementById('copy-skill');
+  await navigator.clipboard.writeText(plainSkillText());
+  const orig = btn.textContent;
+  btn.textContent = 'Copied ✓';
+  setTimeout(() => btn.textContent = orig, 1400);
+});
+
+function download(filename, content, mime = 'text/plain') {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 400);
+}
+
+function buildTokensCss() {
+  // Grab all the palettes + themes from the current stylesheet
+  let out = `/* Ruah Design System — tokens.css\n   v1.0 — generated from design system\n*/\n\n`;
+  out += `:root {\n  --serif: "Instrument Serif", Georgia, serif;\n  --sans: "DM Sans", system-ui, sans-serif;\n  --mono: "Geist Mono", ui-monospace, monospace;\n`;
+  out += `  --r-xs: 4px; --r-sm: 6px; --r-md: 10px; --r-lg: 16px; --r-xl: 24px; --r-pill: 999px;\n`;
+  out += `  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;\n  --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;\n`;
+  out += `  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);\n  --shadow-md: 0 4px 16px -4px rgba(0,0,0,0.4);\n  --shadow-lg: 0 20px 60px -20px rgba(0,0,0,0.6);\n}\n\n`;
+
+  PALETTES.forEach(p => {
+    const temp = document.createElement('div');
+    temp.setAttribute('data-palette', p.id);
+    document.body.appendChild(temp);
+    const cs = getComputedStyle(temp);
+    const vars = ['--teal-200','--teal-300','--teal-400','--teal-500',
+      '--lavender-300','--lavender-400','--lavender-500',
+      '--sage-300','--sage-400','--sage-500',
+      '--amber-400','--coral-400',
+      '--slate-300','--slate-400','--slate-500'];
+    out += `[data-palette="${p.id}"] {\n`;
+    vars.forEach(v => { out += `  ${v}: ${cs.getPropertyValue(v).trim()};\n`; });
+    out += `}\n\n`;
+    document.body.removeChild(temp);
+  });
+
+  ['dark','light','contrast'].forEach(t => {
+    const temp = document.createElement('div');
+    temp.setAttribute('data-theme', t);
+    document.body.appendChild(temp);
+    const cs = getComputedStyle(temp);
+    const vars = ['--bg','--surface-1','--surface-2','--surface-3','--surface-4','--fg','--fg-muted','--fg-subtle','--fg-dim','--border','--border-strong'];
+    out += `[data-theme="${t}"] {\n`;
+    vars.forEach(v => {
+      const val = cs.getPropertyValue(v).trim();
+      if (val) out += `  ${v}: ${val};\n`;
+    });
+    out += `}\n\n`;
+    document.body.removeChild(temp);
+  });
+
+  return out;
+}
+
+function buildTailwindConfig() {
+  return `// tailwind.config.js — Ruah preset
+// Import this into your project and set \`presets: [require('./ruah-preset')]\`
+module.exports = {
+  theme: {
+    extend: {
+      colors: {
+        teal:     { 200:'#88e6d7', 300:'#4dd9c5', 400:'#00d2b9', 500:'#00bea8' },
+        lavender: { 300:'#cfb9f9', 400:'#b594f5', 500:'#9b7ae0' },
+        sage:     { 300:'#a3c892', 400:'#7fb069', 500:'#5d9149' },
+        amber:    { 400:'#e5a84b' },
+        coral:    { 400:'#f07068' },
+        slate:    { 300:'#8a97b0', 400:'#5b6b88', 500:'#465068' },
+        surface: {
+          0: 'var(--bg)',
+          1: 'var(--surface-1)',
+          2: 'var(--surface-2)',
+          3: 'var(--surface-3)',
+          4: 'var(--surface-4)',
+        },
+        fg: {
+          DEFAULT: 'var(--fg)',
+          muted:   'var(--fg-muted)',
+          subtle:  'var(--fg-subtle)',
+          dim:     'var(--fg-dim)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          strong:  'var(--border-strong)',
+        },
+      },
+      fontFamily: {
+        serif: ['Instrument Serif', 'Georgia', 'serif'],
+        sans:  ['DM Sans', 'system-ui', 'sans-serif'],
+        mono:  ['Geist Mono', 'ui-monospace', 'monospace'],
+      },
+      borderRadius: {
+        xs: '4px', sm: '6px', md: '10px', lg: '16px', xl: '24px',
+      },
+      boxShadow: {
+        sm: '0 1px 2px rgba(0,0,0,0.3)',
+        md: '0 4px 16px -4px rgba(0,0,0,0.4)',
+        lg: '0 20px 60px -20px rgba(0,0,0,0.6)',
+      },
+    },
+  },
+};
+`;
+}
+
+document.getElementById('dl-tokens').addEventListener('click', () =>
+  download('ruah-tokens.css', buildTokensCss(), 'text/css'));
+document.getElementById('dl-tailwind').addEventListener('click', () =>
+  download('ruah.tailwind.config.js', buildTailwindConfig(), 'text/javascript'));
+document.getElementById('dl-skill').addEventListener('click', () =>
+  download('CLAUDE.md', plainSkillText(), 'text/markdown'));
+
+// ---- init ----
+updateHexReadouts();
+renderPaletteCards();
+renderPhantoms();
+</script>
+
+
+
+</body></html>
