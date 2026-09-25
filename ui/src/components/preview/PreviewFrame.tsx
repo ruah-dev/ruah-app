@@ -32,31 +32,51 @@ type WebviewElement = HTMLElement & { reload?: () => void; getURL?: () => string
 
 function Webview({ url, reloadKey, onNavigate }: { url: string; reloadKey: number; onNavigate?: ((url: string) => void) | undefined }) {
   const host = useRef<HTMLDivElement>(null);
+  const view = useRef<WebviewElement | null>(null);
   const navigate = useRef(onNavigate);
   navigate.current = onNavigate;
   useEffect(() => {
     const el = host.current;
     if (!el) return;
-    const wv = document.createElement("webview") as WebviewElement;
-    // Its own persistent session: the previewed app never shares cookies or storage with Ruah.
-    wv.setAttribute("partition", "persist:ruah-preview");
-    wv.setAttribute("src", url);
-    wv.style.width = "100%";
-    wv.style.height = "100%";
-    wv.style.display = "flex";
+    let wv: WebviewElement | null = null;
     const onNav = (e: Event) => {
       const next = (e as Event & { url?: string }).url;
       if (typeof next === "string") navigate.current?.(next);
     };
-    wv.addEventListener("did-navigate", onNav);
-    wv.addEventListener("did-navigate-in-page", onNav);
-    el.appendChild(wv);
+    // Created a tick later: a webview removed before it attached (StrictMode's double effect)
+    // makes Electron throw "Invalid guestInstanceId".
+    const timer = setTimeout(() => {
+      wv = document.createElement("webview") as WebviewElement;
+      // Its own persistent session: the previewed app never shares cookies or storage with Ruah.
+      wv.setAttribute("partition", "persist:ruah-preview");
+      wv.setAttribute("src", url);
+      wv.style.width = "100%";
+      wv.style.height = "100%";
+      wv.style.display = "flex";
+      wv.addEventListener("did-navigate", onNav);
+      wv.addEventListener("did-navigate-in-page", onNav);
+      el.appendChild(wv);
+      view.current = wv;
+    }, 0);
     return () => {
-      wv.removeEventListener("did-navigate", onNav);
-      wv.removeEventListener("did-navigate-in-page", onNav);
-      wv.remove();
+      clearTimeout(timer);
+      if (wv) {
+        wv.removeEventListener("did-navigate", onNav);
+        wv.removeEventListener("did-navigate-in-page", onNav);
+        wv.remove();
+      }
+      view.current = null;
     };
-  }, [url, reloadKey]);
+  }, [url]);
+  const firstKey = useRef(reloadKey);
+  useEffect(() => {
+    if (reloadKey === firstKey.current) return;
+    try {
+      view.current?.reload?.();
+    } catch {
+      /* not attached yet */
+    }
+  }, [reloadKey]);
   return <div ref={host} className="flex size-full bg-white" />;
 }
 

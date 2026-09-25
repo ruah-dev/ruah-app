@@ -6,6 +6,8 @@ const version = process.env.npm_package_version ?? "0.1.0";
 // only gets these functions, which forward to ipcMain handlers in main.cjs.
 contextBridge.exposeInMainWorld("ruah", {
   version,
+  /** §15.6: <webview> is enabled (locked down in main.cjs) for previews that refuse iframes. */
+  previewWebview: true,
   /** Native folder picker; resolves to the chosen absolute path or null. */
   pickFolder: (opts) =>
     ipcRenderer.invoke("ruah:pick-folder", opts !== null && typeof opts === "object" && typeof opts.title === "string" ? { title: opts.title } : {}),
