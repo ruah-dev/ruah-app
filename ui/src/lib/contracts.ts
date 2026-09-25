@@ -504,6 +504,11 @@ export interface RuahDesktopBridge {
   notify?(opts: NotificationRequest): Promise<boolean>;
   /** §13.3: a notification was clicked (the window is already focused); returns an unsubscribe function. */
   onNotificationClick?(callback: (target: NotificationTarget) => void): () => void;
+  /** ⌥Space anywhere focuses Ruah and opens the launcher (Settings; off by default). Resolves
+   * whether the shortcut is registered (false: off, or another app owns it). Older builds lack it. */
+  setLauncherShortcut?(on: boolean): Promise<boolean>;
+  /** The global launcher shortcut was pressed (the window is already focused). */
+  onLauncherShortcut?(callback: () => void): () => void;
 }
 
 export interface NotificationTarget {
