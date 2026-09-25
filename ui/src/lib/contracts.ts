@@ -504,6 +504,8 @@ export interface RuahDesktopBridge {
   notify?(opts: NotificationRequest): Promise<boolean>;
   /** §13.3: a notification was clicked (the window is already focused); returns an unsubscribe function. */
   onNotificationClick?(callback: (target: NotificationTarget) => void): () => void;
+  /** §15.4: application-menu commands ("settings"); subscribing replaces the preload's default (routing to /settings). Returns an unsubscribe function. */
+  onMenuCommand?(callback: (command: string) => void): () => void;
 }
 
 export interface NotificationTarget {

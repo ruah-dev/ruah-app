@@ -1,6 +1,31 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-const version = process.env.npm_package_version ?? "0.1.0";
+// main.cjs passes the app version (package.json) as an argument; `pnpm desktop` also has it in env.
+const versionArg = process.argv.find((a) => typeof a === "string" && a.startsWith("--ruah-version="));
+const version = versionArg !== undefined ? versionArg.slice("--ruah-version=".length) : (process.env.npm_package_version ?? "0.0.0");
+
+// CONTRACTS §15.4: application-menu commands main.cjs forwards to the page. A
+// command nobody subscribed to gets a default: "settings" routes to /settings.
+const menuListeners = new Set();
+ipcRenderer.on("ruah:menu-command", (_event, payload) => {
+  const command = payload !== null && typeof payload === "object" && typeof payload.command === "string" ? payload.command : "";
+  if (command.length === 0) return;
+  if (menuListeners.size > 0) {
+    for (const listener of menuListeners) {
+      try {
+        listener(command);
+      } catch {
+        // one broken subscriber must not stop the others
+      }
+    }
+    return;
+  }
+  if (command === "settings" && window.location.pathname !== "/settings") {
+    // The router listens to popstate (TanStack Router's browser history).
+    window.history.pushState(window.history.state, "", "/settings");
+    window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+  }
+});
 
 // CONTRACTS §5.4: the desktop bridge. contextIsolation stays on; the renderer
 // only gets these functions, which forward to ipcMain handlers in main.cjs.
@@ -29,6 +54,13 @@ contextBridge.exposeInMainWorld("ruah", {
           silent: opts.silent === true,
         })
       : Promise.resolve(false),
+  /** Called with the command ("settings") when the user picks it in the application menu; returns an unsubscribe function. Subscribing replaces the default handling. */
+  onMenuCommand: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (command) => callback(command);
+    menuListeners.add(listener);
+    return () => menuListeners.delete(listener);
+  },
   /** Called with { projectId, chatId, projectRoot } when the user clicks a notification; returns an unsubscribe function. */
   onNotificationClick: (callback) => {
     if (typeof callback !== "function") return () => {};
