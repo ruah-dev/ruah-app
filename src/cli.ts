@@ -51,6 +51,12 @@ Usage:
   ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
                                    what agents did across projects (default --since 24h),
                                    unread and waiting-for-permission counts
+  ruah app ext <cmd> ...            skills, MCP servers, Kiro powers, plugins and rules for the
+                                   agents (no daemon needed; \`ruah app ext help\` for all):
+    list | featured | discover [--json]     installed (global + project) · catalog · agents' own config
+    add <folder|git-url|featured:<id>> [--project] [--agent <id>]...   (nothing runs on add)
+    enable | disable <id> [--agent <id>]... [--project]
+    remove <id> [--project]                 also undoes "install into" writes
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -317,6 +323,11 @@ async function main(argv: readonly string[]): Promise<number> {
     case "activity": {
       const { runActivity } = await import("./activity/run-activity.js");
       return await runActivity(rest);
+    }
+    case "ext":
+    case "extensions": {
+      const { runExt } = await import("./extensions/cli.js");
+      return await runExt(rest);
     }
     default:
       process.stdout.write(USAGE);

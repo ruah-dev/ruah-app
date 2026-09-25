@@ -26,6 +26,8 @@ import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js
 import type { MapOpsService } from "./map-ops.js";
 import type { TerminalGateway } from "../terminal/gateway.js";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
+import { handleExtensionsRequest } from "../extensions/http.js";
+import type { ExtensionsService } from "../extensions/service.js";
 
 export interface ServeOptions {
   host: string;
@@ -51,6 +53,8 @@ export interface ServeOptions {
   system?: SystemService;
   /** CONTRACTS §13 /api/activity*, /api/projects/:id/{resume,view}; answered 503 when absent. */
   activity?: ActivityHttpDeps;
+  /** CONTRACTS §15 /api/extensions/* (skills, MCP servers, powers, plugins, rules); answered 503 when absent. */
+  extensions?: ExtensionsService;
 }
 
 export interface RunningServer {
@@ -117,6 +121,13 @@ export function startServer(
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
     if (handleEnginesRequest(req, res, url, options.engines, options.allowOrigins)) return;
+    // Agent extensions (§15); project-scoped entries follow the hub's open project.
+    if (
+      handleExtensionsRequest(req, res, url, options.extensions, () => hub.project() ?? undefined, (origin) =>
+        originAllowed(origin, options.allowOrigins),
+      )
+    )
+      return;
     // GET /api/export/drawio (409 when no project is open).
     if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
 

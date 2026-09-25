@@ -50,7 +50,7 @@ import {
   type SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import type { AcpBridge, AgentMapTools, BridgeEvent, BridgeOptions, ClaudePlanUsage, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
+import type { AcpBridge, AgentExtensions, AgentMapTools, BridgeEvent, BridgeOptions, ClaudePlanUsage, RateLimitSample, SessionExtensions, TurnHandle, TurnUsage } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import { resolveClaudeSdkExecutablePath } from "./claude-executable.js";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "./claude-home.js";
@@ -529,6 +529,8 @@ export class ClaudeSdkBridge implements AcpBridge {
   private readonly onStderr: ((chunk: string) => void) | undefined;
   /** The ruah_* map tools (CONTRACTS §1.7): an in-process MCP server on every query(). */
   private readonly mapTools: AgentMapTools | undefined;
+  /** Extensions enabled for Claude (CONTRACTS §15): MCP servers, plugins, rules — resolved at every session open. */
+  private readonly extensions: AgentExtensions | undefined;
   private readonly queryImpl: typeof sdkQuery;
   private readonly cancelTimeoutMs: number;
   private readonly startTimeoutMs: number;
@@ -562,6 +564,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     this.modelId = envModel !== undefined && envModel.length > 0 ? envModel : undefined;
     this.onStderr = options.onStderr;
     this.mapTools = options.mapTools;
+    this.extensions = options.extensions;
     this.queryImpl = deps.queryImpl ?? sdkQuery;
     this.cancelTimeoutMs = deps.cancelTimeoutMs ?? 15_000;
     this.startTimeoutMs = deps.startTimeoutMs ?? 60_000;
@@ -797,7 +800,30 @@ export class ClaudeSdkBridge implements AcpBridge {
     }
   }
 
+  /** §15: the enabled extensions for this session (none when resolving fails). */
+  private async sessionExtensions(): Promise<SessionExtensions["sdk"]> {
+    if (this.extensions === undefined) return undefined;
+    try {
+      const resolved = await this.extensions.resolve();
+      for (const note of resolved.notes) this.onStderr?.(`ruah extensions: ${note}\n`);
+      return resolved.sdk;
+    } catch (cause) {
+      this.onStderr?.(`ruah extensions unavailable: ${toMessage(cause, "unknown error")}\n`);
+      return undefined;
+    }
+  }
+
   private async openSession(): Promise<SessionRuntime> {
+    const extensions = this.extensions !== undefined ? await this.sessionExtensions() : undefined;
+    const mcpServers: Record<string, unknown> = {
+      ...(extensions?.mcpServers ?? {}),
+      // The ruah_* map tools, in-process. They run without a permission prompt
+      // (canUseTool allows them: they only touch architecture.json, validated by
+      // the daemon, and the user can undo a turn's map changes). Not through
+      // `allowedTools`: that would shadow canUseTool and the SDK warns on every query.
+      ...(this.mapTools !== undefined ? { ruah: this.mapTools.sdkServer() } : {}),
+    };
+    const append = [this.mapTools?.instructions, extensions?.append].filter((part): part is string => part !== undefined && part.length > 0).join("\n\n");
     const resume = this.hasHistory;
     const prompts = new PromptQueue();
     const executable = this.env.CLAUDE_CODE_EXECUTABLE;
@@ -810,15 +836,13 @@ export class ClaudeSdkBridge implements AcpBridge {
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        ...(this.mapTools !== undefined ? { append: this.mapTools.instructions } : {}),
+        ...(append.length > 0 ? { append } : {}),
       },
       settingSources: [...CLAUDE_SETTING_SOURCES],
-      // The ruah_* map tools, in-process. They run without a permission prompt
-      // (canUseTool allows them: they only touch architecture.json, validated by
-      // the daemon, and the user can undo a turn's map changes). Not through
-      // `allowedTools`: that would shadow canUseTool and the SDK warns on every query.
-      ...(this.mapTools !== undefined
-        ? { mcpServers: { ruah: this.mapTools.sdkServer() as NonNullable<ClaudeQueryOptions["mcpServers"]>[string] } }
+      ...(Object.keys(mcpServers).length > 0 ? { mcpServers: mcpServers as NonNullable<ClaudeQueryOptions["mcpServers"]> } : {}),
+      // §15: plugin folders (Ruah's generated skills plugin + plugin extensions).
+      ...(extensions !== undefined && extensions.plugins.length > 0
+        ? { plugins: extensions.plugins.map((path) => ({ type: "local" as const, path })) }
         : {}),
       permissionMode: this.mode,
       // Lets setMode() switch into bypassPermissions later; the mode itself
