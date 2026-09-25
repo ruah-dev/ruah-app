@@ -283,7 +283,8 @@ export function cursorProvider(): LimitsProvider {
   return {
     id: CURSOR_ID,
     name: CURSOR_NAME,
-    ttlMs: 2 * 60_000,
+    // Included usage moves slowly; an explicit refresh still reads at once.
+    ttlMs: 5 * 60_000,
     async read(ctx): Promise<AgentLimits> {
       const checkedAt = new Date(ctx.now()).toISOString();
       const bin = resolveAgentBinary("cursor-agent", "RUAH_CURSOR_BIN", [".cursor/bin"], ctx.env);

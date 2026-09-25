@@ -213,7 +213,8 @@ export function kiroProvider(options: { spawner?: Spawner } = {}): LimitsProvide
   return {
     id: KIRO_ID,
     name: KIRO_NAME,
-    ttlMs: 5 * 60_000,
+    // Each read starts `kiro-cli acp`; credits move slowly.
+    ttlMs: 10 * 60_000,
     async read(ctx): Promise<AgentLimits> {
       const checkedAt = new Date(ctx.now()).toISOString();
       const bin = resolveAgentBinary("kiro-cli", "RUAH_KIRO_BIN", [], ctx.env);

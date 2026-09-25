@@ -1891,7 +1891,7 @@ interface ModelUsage { model: string; turns?: number; inputTokens; outputTokens;
 | Grok Build | `grok models` ("You are logged in with grok.com.") | none: the allowance is only in grok's TUI (`/usage`) — status `partial` with that reason | — | `grok usage <id>` for sessions touched in 30 days (ids from `$GROK_HOME/sessions/<cwd>/<id>/` names + mtimes; fallback `grok sessions list`), turns filtered by `endedAt`, cost = `costUsdTicks / 1e10` |
 | OpenCode | — | none: status `unsupported` (bills through connected providers) | — | `opencode stats --days 30 --models` (rounded: `approximate: true`) |
 
-Caching (service): Cursor 2 min, Kiro / Grok / OpenCode 5 min, Claude per §2.3's own throttle;
+Caching (service): Cursor 5 min, Kiro / Grok / OpenCode 10 min, Claude per §2.3's own throttle;
 `refresh` bypasses the cache but not a 15 s floor; a provider read is capped at 60 s (then
 `error`); an `error` after a good reading returns the good one with `stale: true`.
 Estimates cover the agent's current period: the weekly window (Claude), the billing period

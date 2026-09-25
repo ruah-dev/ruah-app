@@ -178,7 +178,8 @@ export function grokProvider(): LimitsProvider {
   return {
     id: GROK_ID,
     name: GROK_NAME,
-    ttlMs: 5 * 60_000,
+    // Local stats only (one `grok usage` per recent session).
+    ttlMs: 10 * 60_000,
     async read(ctx): Promise<AgentLimits> {
       const now = ctx.now();
       const checkedAt = new Date(now).toISOString();
