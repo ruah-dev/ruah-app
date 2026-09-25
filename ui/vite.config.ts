@@ -6,7 +6,23 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Developing Ruah (`pnpm dev`, scripts/dev.ts): the daemon runs separately under a watcher;
+// the dev server proxies its HTTP API and WebSockets so the viewer stays same-origin (the
+// terminal token needs that, CONTRACTS §7.1). Unset (Lovable, `vite build`): no proxy.
+const daemon = process.env["RUAH_DEV_DAEMON_URL"];
+const devServer = daemon
+  ? {
+      server: {
+        proxy: {
+          "/api": { target: daemon },
+          "^/ws(/|$)": { target: daemon.replace(/^http/, "ws"), ws: true },
+        },
+      },
+    }
+  : {};
+
 export default defineConfig({
+  vite: devServer,
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
