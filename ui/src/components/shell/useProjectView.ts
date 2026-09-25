@@ -19,6 +19,7 @@ import {
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { panelWidth, setPanelWidth, usePanelWidth } from "./RightPanel";
+import { takeChatIntent } from "./shellState";
 
 export function useProjectView(): { saved: ShellView | null; projectId: string | null } {
   const ws = useWorkspace();
@@ -51,7 +52,9 @@ export function useProjectView(): { saved: ShellView | null; projectId: string |
     const first = firstEntry.current;
     firstEntry.current = false;
     const project = daemon.project;
-    const viaChat = !!chatSwitchTo.current && (chatSwitchTo.current === projectId || chatSwitchTo.current === project?.root);
+    const viaChat =
+      takeChatIntent(projectId) ||
+      (!!chatSwitchTo.current && (chatSwitchTo.current === projectId || chatSwitchTo.current === project?.root));
     chatSwitchTo.current = null;
     setEntry({ projectId, view: saved });
     resetCameras(saved?.diagramId && saved.camera ? { diagramId: saved.diagramId, camera: saved.camera } : null);

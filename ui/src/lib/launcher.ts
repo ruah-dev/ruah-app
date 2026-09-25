@@ -70,19 +70,23 @@ export function fuzzyScore(query: string, text: string): number | null {
     const wordStart = WORD.test(t[at - 1]!);
     return (wordStart ? 800 : 600) - Math.min(100, at);
   }
-  // Subsequence: every query letter in order; reward consecutive runs and word starts.
+  // Subsequence: every query letter in order, not spread too thin ("wrk" finds "worker", "work"
+  // does not find "sWitch tO gRoK"); reward consecutive runs and word starts.
   let score = 300;
   let ti = 0;
   let prev = -2;
+  let first = -1;
   for (const ch of query) {
     const found = t.indexOf(ch, ti);
     if (found === -1) return null;
+    if (first === -1) first = found;
     if (found === prev + 1) score += 8;
     else score -= Math.min(20, found - ti);
     if (found === 0 || WORD.test(t[found - 1]!)) score += 6;
     prev = found;
     ti = found + 1;
   }
+  if (prev - first + 1 > query.length * 2 + 3) return null;
   return Math.max(1, score);
 }
 

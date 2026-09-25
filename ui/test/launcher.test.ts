@@ -33,9 +33,11 @@ describe("fuzzyScore", () => {
     expect(subseq).toBeGreaterThan(0);
   });
 
-  it("returns null when the letters are not all there in order", () => {
+  it("returns null when the letters are not all there in order, or spread too thin", () => {
     expect(fuzzyScore("xyz", "payments")).toBeNull();
     expect(fuzzyScore("tsp", "stop")).toBeNull();
+    expect(fuzzyScore("work", "switch agent to grok build")).toBeNull();
+    expect(fuzzyScore("wrk", "worker")).not.toBeNull();
   });
 
   it("is case-insensitive on the text (queries are lowercased by scoreItem)", () => {

@@ -1,8 +1,9 @@
 // Pages of the shell and every keyboard shortcut, in one place: the icon rail, "G then a letter",
 // the launcher's Pages group and its "Keyboard shortcuts" sheet all read from here.
 //
-// Rail decisions (2026-09-25 relayout): Map, Agent, Cloud, Tasks on top; Usage, Integrations and
-// Settings at the bottom. Integrations stays its own page (not merged into Settings): it is a full
+// Rail decisions (2026-09-25 relayout): Map, Agent, Cloud, Tasks on top; Usage, Integrations,
+// Extensions (reserved: shown once its route exists) and Settings at the bottom. Integrations
+// stays its own page (not merged into Settings): it is a full
 // page of providers and accounts, and Settings links to it. There is no "Infra" entry: IaC shows
 // on the Map (its infra layer) and there is no separate page or filter for it. Dashboard is the
 // Ruah mark at the top of the rail; Chats (the full list) is reached from the agent panel's chat

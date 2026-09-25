@@ -2,7 +2,7 @@
 // ⌘K launcher), the cross-project activity bell, the terminal toggle and the agent pill (toggles
 // the right agent panel).
 import { useState } from "react";
-import { useRouterState } from "@tanstack/react-router";
+import { useRouter, useRouterState } from "@tanstack/react-router";
 import { Bell, CheckCheck, GitBranch, MonitorPlay, Search } from "lucide-react";
 import type { ActivityEvent, ResumeInfo } from "@/lib/contracts";
 import { useActivity } from "@/lib/activity";
@@ -185,6 +185,7 @@ export function ActivityBell() {
         sideOffset={6}
         // Esc closes the popover only (the map would take it as "up one level").
         onEscapeKeyDown={(e) => e.stopPropagation()}
+        onOpenAutoFocus={(e) => e.preventDefault()}
         className="w-[340px] rounded-xl border-hairline p-2"
       >
         <div className="flex items-center gap-2 px-2 pt-1 pb-1.5">
@@ -235,9 +236,10 @@ function agentWord(expression: string, daemon: ReturnType<typeof useWorkspace>["
   }
 }
 
-export function AgentPill() {
+export function AgentPill({ mobile = false }: { mobile?: boolean }) {
   const { daemon } = useWorkspace();
   const wb = useWorkbench();
+  const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const expression = useAgentExpression(daemon);
   const agents = daemon.agent?.agents;
@@ -261,7 +263,12 @@ export function AgentPill() {
           aria-pressed={onAgentPage ? undefined : pressed}
           onClick={() => {
             if (onAgentPage) requestModelPicker();
-            else wb.setShowPanel((v) => !v);
+            else if (!mobile) wb.setShowPanel((v) => !v);
+            // Phones: the Map's agent sheet, or the Agent page.
+            else if (pathname === "/map") {
+              wb.setPanelView("agent");
+              wb.setSheetOpen(true);
+            } else void router.navigate({ to: "/agent" });
           }}
           className={cn(
             "flex h-7 max-w-52 min-w-0 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] text-foreground transition-colors",

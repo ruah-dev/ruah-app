@@ -375,7 +375,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Search className="size-4" />
           </button>
           <ActivityBell />
-          <AgentPill />
+          <AgentPill mobile />
         </header>
         <main className="flex min-h-0 flex-1 flex-col">{content}</main>
         <Sheet open={wb.mobileNavOpen} onOpenChange={wb.setMobileNavOpen}>

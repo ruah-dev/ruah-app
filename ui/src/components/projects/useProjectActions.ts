@@ -16,6 +16,7 @@ import {
 } from "@/lib/daemon";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
+import { markChatIntent } from "@/components/shell/shellState";
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -117,6 +118,8 @@ export function useProjectActions() {
     ) => {
       closeOverlays();
       revealChat();
+      // The switch shows this chat: the project's saved page is not restored over it.
+      if (chat.projectId !== daemon.project?.id) markChatIntent(chat.projectId);
       try {
         if ("projectRoot" in chat) await openChatAnywhere(chat);
         else openChat(chat.id);
@@ -124,7 +127,7 @@ export function useProjectActions() {
         toast.error("Couldn't open that chat", { description: message(err) });
       }
     },
-    [closeOverlays, revealChat],
+    [closeOverlays, revealChat, daemon.project?.id],
   );
 
   return useMemo(

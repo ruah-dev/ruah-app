@@ -28,3 +28,18 @@ const INITIAL = state;
 export function useShellDialogs(): ShellDialogs {
   return useSyncExternalStore(subscribe, () => state, () => INITIAL);
 }
+
+// A project switch made to show a chat (Chats page, launcher, activity): the view restore then
+// keeps the chat in front instead of reopening the project's saved page.
+let chatIntent: { projectId: string; at: number } | null = null;
+
+export function markChatIntent(projectId: string) {
+  chatIntent = { projectId, at: Date.now() };
+}
+
+/** True (once) when the switch into `projectId` was made to show a chat, in the last 30 s. */
+export function takeChatIntent(projectId: string): boolean {
+  const hit = !!chatIntent && chatIntent.projectId === projectId && Date.now() - chatIntent.at < 30_000;
+  if (hit) chatIntent = null;
+  return hit;
+}

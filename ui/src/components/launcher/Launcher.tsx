@@ -220,7 +220,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
 
   return (
     <div className="grain flex h-dvh flex-col overflow-y-auto bg-background text-foreground">
-      <header className="flex h-bar shrink-0 items-center gap-2 px-5 max-md:px-4">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-hairline px-4 max-md:px-3">
         <RuahLogo size="sm" className="me-2" />
         {overlay && backLabel ? (
           <button
@@ -390,7 +390,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
             <kbd className="kbd">↵</kbd> open
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="kbd">⌘K</kbd> switch project anywhere
+            <kbd className="kbd">⌘K</kbd> search, jump, run — anywhere
           </span>
           <span className="flex items-center gap-1">
             <kbd className="kbd">⌘.</kbd> agent · model

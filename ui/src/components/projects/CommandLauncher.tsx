@@ -236,7 +236,15 @@ function LauncherBody() {
 
     // Recent: the project you came from, then the chats you visited (any project).
     const previous = projectRows[0];
-    if (previous && projects[0]?.id !== current?.id) rows.push({ ...previous, id: `recent-${previous.id}`, group: "Recent" });
+    const last = projects[0];
+    if (previous && last && last.id !== current?.id)
+      rows.push({
+        ...previous,
+        id: `recent-${previous.id}`,
+        group: "Recent",
+        sub: `${last.kind === "system" ? "system" : "project"} · last opened ${relativeTime(last.lastOpenedAt)}`,
+        keywords: [...(previous.keywords ?? []), prettyPath(last.root)],
+      });
     const activeChat = daemon.activeChatId;
     for (const c of mru.filter((m) => m.chatId !== activeChat).slice(0, 4)) {
       rows.push({
@@ -479,7 +487,10 @@ function LauncherBody() {
     ];
     for (const t of themes) {
       if (t.value === theme) continue;
-      more(`theme-${t.value}`, `Theme: ${t.label}`, Moon, () => setTheme(t.value), { keywords: ["theme", "appearance", "color"] });
+      more(`theme-${t.value}`, `Theme: ${t.label}`, Moon, () => {
+        close();
+        setTheme(t.value);
+      }, { keywords: ["theme", "appearance", "color"] });
     }
     // Agents and their models.
     const agents = daemon.agent?.agents;

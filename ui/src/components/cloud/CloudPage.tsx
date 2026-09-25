@@ -33,17 +33,18 @@ import {
 } from "@/lib/integrations";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
-import { PageHeader } from "@/components/shell/AppShell";
+import { PageHeader, PageMenu } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
+
 import {
   Notice,
   ProviderGlyph,
@@ -340,21 +341,16 @@ export function CloudPage() {
               ? `Synced ${timeAgo(snapshot.syncedAt, now)}`
               : "Never synced"}
         </span>
-        <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-          <Switch
-            checked={s.showCloudOnMap}
-            onCheckedChange={setShowCloudOnMap}
-            aria-label="Show on map"
-            className="scale-90"
-          />
-          Show on map
-        </label>
-        {s.showCloudOnMap ? (
-          <button type="button" className={quietButton} onClick={() => wb.openDiagram(CLOUD_DIAGRAM_ID)}>
-            <MapIcon className="size-3.5" /> Open
-          </button>
-        ) : null}
         <SyncMenu providers={cloudProviders} syncing={s.syncing} onSync={(o) => void sync(o)} />
+        {/* Secondary: the map's Cloud level (one row of controls; the rest in ⋯). */}
+        <PageMenu>
+          <DropdownMenuCheckboxItem checked={s.showCloudOnMap} onCheckedChange={(on) => setShowCloudOnMap(on === true)}>
+            Show on the map
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuItem disabled={!s.showCloudOnMap} onSelect={() => wb.openDiagram(CLOUD_DIAGRAM_ID)}>
+            <MapIcon className="text-muted-foreground" /> Open the cloud level on the map
+          </DropdownMenuItem>
+        </PageMenu>
       </PageHeader>
 
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
