@@ -308,7 +308,11 @@ export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Pr
         if (wanted.length === 0) {
           const current = (await service.list(project)).installed.find((v) => v.id === id && v.scope === scope);
           if (current === undefined) return err(`ruah app ext: no ${scope} extension "${id}"`), 1;
-          wanted = EXTENSION_AGENTS.filter((a) => supportFor(current.kind, a, current.runs).delivery !== "none");
+          // Every agent that gets it per session (install-only agents need `install-into`).
+          wanted = EXTENSION_AGENTS.filter((a) => {
+            const delivery = supportFor(current.kind, a, current.runs).delivery;
+            return delivery === "session" || delivery === "partial";
+          });
         }
         const view = await service.enable(id, scope, wanted, project);
         if (json) return print(view), 0;

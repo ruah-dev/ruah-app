@@ -231,7 +231,7 @@ export class ExtensionsService {
         const inspection = inspectPath(abs, body.kind);
         draft = {
           kind: inspection.kind,
-          name: body.name ?? inspection.name ?? path.basename(inspection.root),
+          name: body.name ?? inspection.name ?? path.basename(inspection.root).replace(/\.(md|mdc|txt)$/i, ""),
           ...(inspection.description !== undefined ? { description: inspection.description.slice(0, 2000) } : {}),
           source: { type: "local", path: this.store.storedLocalPath(abs, scope, root) },
         };
