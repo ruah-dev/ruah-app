@@ -1824,3 +1824,110 @@ syncing; the page and the CLI still show only the scope.
 
 Exit codes as §9.6; `scope` edits exit 1 on an invalid file (never overwritten) and 2 on usage
 errors (unknown provider, not inside a repo without `--repo`).
+
+## 15. Per-agent usage limits (2026-09-25)
+
+Usage & limits for **every** coding agent, not only Claude: one reading per agent with its
+plan, a meter per limit window with reset times, on-demand spend, what the agent's own CLI
+recorded locally, and Ruah's own estimate. Code: `src/usage/limits/` (a standalone library:
+one provider per agent, a caching service, the CLI's text rendering), used by the daemon
+(`UsageService.agentLimitsService`, built by default — `run-serve.ts` is unchanged) and by
+`ruah app usage limits` (no daemon). Nothing is invented: a source that cannot be read says
+why (`reason`) and what to do (`action`). §2.3 `GET /api/usage/limits` is unchanged.
+
+### 15.1 Types (`src/contracts/agent-limits.ts`; viewer copy in `ui/src/components/usage/agentLimitsModel.ts`)
+
+```ts
+interface AgentLimitsReport { checkedAt: string; agents: AgentLimits[] }   // signed-in agents first
+
+interface AgentLimits {
+  agentId: "claude" | "cursor" | "kiro" | "grok" | "opencode";           // claude-acp reads as claude
+  name: string;
+  installed: boolean;
+  loggedIn: boolean | null;              // null: unknown / not applicable (OpenCode)
+  plan: string | null;                   // "Max", "Pro+", "Kiro Pro"
+  status: "ok" | "partial" | "not_installed" | "not_logged_in" | "unsupported" | "error";
+  reason?: string;                       // set for every status but ok (and for a stale ok)
+  action?: string;                       // "Run `kiro-cli login`." — backticks mark commands
+  meters: LimitMeter[];
+  onDemand?: { enabled: boolean; used: number | null; limit: number | null; currency: string;
+               scope?: "personal" | "team"; note?: string };            // major units (dollars)
+  local?: LocalUsage;                    // the agent CLI's own records (grok usage, opencode stats)
+  estimate?: UsageEstimate;              // Ruah's usage.jsonl, labelled "estimate"
+  source: string;                        // where the numbers came from (card footer)
+  checkedAt: string;
+  stale?: boolean;                       // last good reading; the refresh failed (see reason)
+  dashboardUrl?: string;
+}
+
+interface LimitMeter {
+  id: string;                            // five_hour, seven_day, seven_day_<model>, included, auto, api, credits, bonus:<code>, trial
+  label: string;
+  kind: "session" | "weekly" | "monthly" | "credits" | "other";
+  usedPercent: number | null;            // 0–100 (2 decimals); null = no limit to measure against
+  used?: number | null; limit?: number | null; unit?: "usd" | "credits" | "requests" | "tokens";
+  resetsAt: string | null;               // ISO reset (or expiry, when detail starts with "Expires")
+  periodStart?: string | null;           // ISO window start: drives the even-pace mark
+  detail?: string;                       // "Unlimited", "Expires instead of resetting", …
+}
+
+interface LocalUsage { source: string; since: string | null; sessions?: number; inputTokens; outputTokens;
+  cacheReadTokens; cacheWriteTokens; costUsd: number | null; approximate: boolean; byModel: ModelUsage[] }
+interface UsageEstimate { label: "estimate"; since: string; until: string;
+  basis: string;                         // "this weekly window" | "this billing period" | "last 30 days"
+  turns; inputTokens; outputTokens; cacheReadTokens; cacheWriteTokens;
+  costUsd: number | null;                // sum of agent-reported costs
+  costedTurns: number; byModel: ModelUsage[] }
+interface ModelUsage { model: string; turns?: number; inputTokens; outputTokens; cacheReadTokens?; cacheWriteTokens?; costUsd: number | null }
+```
+
+### 15.2 Sources (read-only; no model requests; tokens never logged or persisted)
+
+| Agent | Plan / sign-in | Meters | On-demand | Local |
+| --- | --- | --- | --- | --- |
+| Claude Code | `get_usage` `subscription_type` | `five_hour` (Session · 5h), `seven_day`, model-scoped weekly — the §2.3 windows (live query ≤ 60 s, else probe ≤ 5 min, plus streamed `rate_limit_event`s); `periodStart` = reset − window length | `rate_limits.extra_usage` (cents → dollars) | — |
+| Cursor | `cursor-agent about --format json` (tier; no email = not signed in) | `GET https://cursor.com/api/usage-summary` with the **Cursor app's** login (`state.vscdb` `cursorAuth/accessToken`, read with `sqlite3 -readonly`; cookie `WorkosCursorSessionToken=<userId>::<jwt>`): `included` (total %, $ used of $ limit), `auto` (Auto + Composer %), `api` (API models %), all resetting at `billingCycleEnd`. Not read when the app is signed in to another account than cursor-agent, or its token is expired (JWT `exp`, checked locally). | `individualUsage.onDemand` (else `teamUsage.onDemand`), cents → dollars | — |
+| Kiro CLI | `kiro-cli whoami --format json` (`{"account":null}` = signed out) | Kiro's own `/usage` over ACP: `kiro-cli acp` → `initialize` → `session/new` (cwd: an empty Ruah temp folder, no MCP servers) → `_kiro.dev/commands/execute {sessionId, command:{command:"usage",args:{}}}`; parses the GetUsageLimits shape (`usageBreakdownList[].currentUsage(WithPrecision)/usageLimit(WithPrecision)/nextDateReset`, active `bonuses`/`freeTrialInfo` as expiring meters, `subscriptionInfo.subscriptionTitle`), else Kiro's text ("… 42.5 of 50 … (85% used) … resets on Oct 01, 2026"), else shows Kiro's message | `overageConfiguration.overageStatus` + `overageCharges` / `overageCap` | — |
+| Grok Build | `grok models` ("You are logged in with grok.com.") | none: the allowance is only in grok's TUI (`/usage`) — status `partial` with that reason | — | `grok usage <id>` for sessions touched in 30 days (ids from `$GROK_HOME/sessions/<cwd>/<id>/` names + mtimes; fallback `grok sessions list`), turns filtered by `endedAt`, cost = `costUsdTicks / 1e10` |
+| OpenCode | — | none: status `unsupported` (bills through connected providers) | — | `opencode stats --days 30 --models` (rounded: `approximate: true`) |
+
+Caching (service): Cursor 2 min, Kiro / Grok / OpenCode 5 min, Claude per §2.3's own throttle;
+`refresh` bypasses the cache but not a 15 s floor; a provider read is capped at 60 s (then
+`error`); an `error` after a good reading returns the good one with `stale: true`.
+Estimates cover the agent's current period: the weekly window (Claude), the billing period
+(Cursor, Kiro), else the last 30 days; installed agents with at least one turn only.
+
+Environment: `RUAH_CLAUDE_USAGE_PROBE=0` (no Claude probe, as §2.3),
+`RUAH_USAGE_READ_LOGINS=0` (do not read the Cursor app's login: Cursor shows its tier only),
+`RUAH_CURSOR_STATE_DB` (another `state.vscdb`), `GROK_HOME`, and the `RUAH_*_BIN` overrides.
+
+### 15.3 HTTP
+
+| Method + path | Response | Notes |
+| --- | --- | --- |
+| `GET /api/usage/agents[?agent=<id>][&refresh=1]` | `AgentLimitsReport` (with `agent`: that agent only) | 400 unknown agent (`{ error }`), 405 other methods, 503 without usage tracking, 404 when the daemon's `UsageApi` has no `agentLimits` (older fakes). `claude-acp` is accepted for `claude`. |
+
+### 15.4 CLI (no daemon)
+
+`ruah app usage limits [--agent <id>] [--json] [--refresh]` — the same report (`--json`: the
+`AgentLimitsReport`), text: one block per agent with a bar per window, "resets in 3d 4h (Mon
+9:00 AM)", on-demand, local stats, Ruah estimate, source. Exit 0; 2 on usage errors and unknown
+agents; 1 when `--agent` names an agent whose reading is `error`. `ruah app usage help`.
+
+### 15.5 Viewer (self-contained, `ui/src/components/usage/`)
+
+- `AgentLimitsPanel` — cards (signed-in first), a bell popover with the warning / critical
+  thresholds (default 80 / 95 %, `localStorage` `ruah.usage.limit-settings.v1`) and a
+  "Toast when crossed" switch (default on), refresh-all. Used by Usage → Limits and `/limits`
+  (`AgentLimitsPage`); mountable in any panel slot.
+- `AgentLimitCard` — plan pill, status pill, a meter per window (amber / red past the
+  thresholds, a tick at the even-pace point, reset countdown with the absolute time on hover),
+  on-demand, "Recorded locally", "Ruah estimate" (plus the viewer's model-price overrides for
+  turns without a reported cost), reason + action, source · checked · refresh · Dashboard ↗.
+- `AgentLimitHint agentId` — "62% left · resets 4h" for the tightest window (tie → shorter
+  window), for the top-bar agent pill; renders nothing without a percentage.
+- `AgentLimitToasts` — one toast per agent, window, level and reset (remembered in
+  `localStorage` `ruah.usage.limit-announced.v1`); the panel mounts it, the shell may instead.
+- One shared reading (`agentLimitsStore.ts`): fetched when the daemon origin appears, polled
+  every 3 min while mounted and visible, refreshed per agent or all; an older daemon (404 /
+  HTML) shows "Limits need a newer daemon".
