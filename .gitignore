@@ -6,3 +6,4 @@ viewer/
 ui/node_modules
 ui/.output
 .claude/worktrees/
+release/

@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "ui:build": "cd ui && bun run build && cd .. && rm -rf viewer && cp -R ui/.output/public viewer",
-    "app": "pnpm build && pnpm ui:build && pnpm desktop"
+    "app": "pnpm build && pnpm ui:build && pnpm desktop",
+    "dist": "pnpm build && pnpm ui:build && electron-builder --mac --arm64 --config electron-builder.config.cjs",
+    "dist:app": "pnpm build && pnpm ui:build && electron-builder --mac --arm64 --dir --config electron-builder.config.cjs"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.81.0",
@@ -30,6 +32,7 @@
     "@types/node": "^22.20.3",
     "@types/ws": "^8.18.1",
     "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
@@ -46,6 +49,9 @@
       "electron",
       "esbuild",
       "node-pty"
+    ],
+    "ignoredBuiltDependencies": [
+      "electron-winstaller"
     ]
   }
 }

@@ -1,0 +1,15 @@
+#!/bin/sh
+# ruah-app — the `ruah app …` CLI from inside Ruah.app, on the app's own runtime
+# (the app binary as Node: no system Node needed). Put it on your PATH with
+#   ln -s /Applications/Ruah.app/Contents/Resources/bin/ruah-app /usr/local/bin/ruah-app
+set -e
+self="$0"
+while [ -h "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+contents="$(cd "$(dirname "$self")/../.." && pwd)"
+ELECTRON_RUN_AS_NODE=1 exec "$contents/MacOS/Ruah" "$contents/Resources/app/dist/cli.js" "$@"
