@@ -14,6 +14,7 @@ import { Route as GhostsRouteImport } from './routes/[_]ghosts'
 import { Route as AgentRouteImport } from './routes/agent'
 import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as CloudRouteImport } from './routes/cloud'
+import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -43,6 +44,11 @@ const ChatsRoute = ChatsRouteImport.update({
 const CloudRoute = CloudRouteImport.update({
   id: '/cloud',
   path: '/cloud',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExtensionsRoute = ExtensionsRouteImport.update({
+  id: '/extensions',
+  path: '/extensions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IntegrationsRoute = IntegrationsRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
+  '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
+  '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/agent': typeof AgentRoute
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
+  '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/agent'
     | '/chats'
     | '/cloud'
+    | '/extensions'
     | '/integrations'
     | '/map'
     | '/settings'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/agent'
     | '/chats'
     | '/cloud'
+    | '/extensions'
     | '/integrations'
     | '/map'
     | '/settings'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/agent'
     | '/chats'
     | '/cloud'
+    | '/extensions'
     | '/integrations'
     | '/map'
     | '/settings'
@@ -153,6 +165,7 @@ export interface RootRouteChildren {
   AgentRoute: typeof AgentRoute
   ChatsRoute: typeof ChatsRoute
   CloudRoute: typeof CloudRoute
+  ExtensionsRoute: typeof ExtensionsRoute
   IntegrationsRoute: typeof IntegrationsRoute
   MapRoute: typeof MapRoute
   SettingsRoute: typeof SettingsRoute
@@ -195,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: '/cloud'
       fullPath: '/cloud'
       preLoaderRoute: typeof CloudRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/extensions': {
+      id: '/extensions'
+      path: '/extensions'
+      fullPath: '/extensions'
+      preLoaderRoute: typeof ExtensionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/integrations': {
@@ -241,6 +261,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentRoute: AgentRoute,
   ChatsRoute: ChatsRoute,
   CloudRoute: CloudRoute,
+  ExtensionsRoute: ExtensionsRoute,
   IntegrationsRoute: IntegrationsRoute,
   MapRoute: MapRoute,
   SettingsRoute: SettingsRoute,
