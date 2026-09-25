@@ -52,7 +52,7 @@ export function isLoopbackHostName(host: string): boolean {
 }
 
 /** Hostname of a Host header value ("127.0.0.1:4177", "[::1]:80", "localhost"). */
-function hostnameOf(hostHeader: string | undefined): string | undefined {
+export function hostnameOf(hostHeader: string | undefined): string | undefined {
   if (hostHeader === undefined || hostHeader.length === 0) return undefined;
   try {
     return new URL(`http://${hostHeader}`).hostname.replace(/^\[|\]$/g, "");

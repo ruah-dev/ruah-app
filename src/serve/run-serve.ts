@@ -85,6 +85,12 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   }
   const t0 = Date.now();
 
+  // The desktop app pipes our stdout / stderr. Once it is gone, a log line (e.g. "desktop app is
+  // gone; stopping") hits a closed pipe: the EPIPE, unhandled, crashed the daemon in the middle
+  // of its shutdown (agents and terminals not stopped). Logging is best effort.
+  for (const stream of [process.stdout, process.stderr]) {
+    if (stream.listenerCount("error") === 0) stream.on("error", () => {});
+  }
   const info = (line: string): void => {
     process.stdout.write(`${line}\n`);
   };
@@ -168,6 +174,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   const cloudWatch = process.env.RUAH_CLOUD_WATCH === "0" ? undefined : new CloudWatcher({
     // §14: only the providers (and accounts) of the project's cloud scope when it lists any.
     providers: () => ((hubRef?.store ?? null) !== null ? integrations.watchProviders() : []),
+    // Backoff and next-poll times per project: a switch starts the new project's schedule afresh.
+    key: () => hubRef?.store?.root ?? "",
     sync: async (id) => {
       const result = await integrations.cloudSync({ providers: [id] });
       return { ok: !result.errors.some((e) => e.provider === id) || result.resources.some((r) => r.provider === id) };

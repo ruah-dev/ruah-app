@@ -214,3 +214,42 @@ Keep adding entries as work lands.
 - **Flow control by acknowledgement.** Each viewer acks the characters xterm has rendered; the PTY is paused while any attached viewer is 100 000 characters behind and resumed under 5 000 (the VS Code watermarks; t3code's OutputProtocol windows its RPC stream the same way). Without it a `cat` of a big file queues megabytes in the socket and freezes the tab.
 - **xterm.js over t3code's Ghostty WASM renderer.** xterm 6 brings search, link providers, OSC 8 hyperlinks, themes and a WebGL renderer as maintained addons, all loaded on first use (dynamic import). Porting t3code's Ghostty surface (~170 KB of TypeScript coupled to its runtime) would mean owning a renderer.
 - **Keys belong to whoever has focus.** While the terminal is focused, plain and Ctrl keys go to the shell (a keydown listener on the terminal stops them before the app's window listeners: Ctrl-B/Ctrl-K/Ctrl-J, Esc, Backspace/arrows on the map, Enter on a permission card); the terminal owns ⌘K (clear), ⌘F, ⌘T, ⌘± / ⌘0 and lets the app keep ⌘P, ⌘B, ⌘J, ⌘1…9. ⌃` toggles the panel everywhere.
+
+## Shell relayout: icon rail + command bar (`ui/src/components/shell/*`, 2026-09-25)
+
+The left sidebar had grown to ten nav items plus Projects, Chats, Outline and an agent footer, and
+pages carried many buttons. Option A of the clickable mockups replaced it:
+
+| Before | Now |
+| --- | --- |
+| Sidebar nav (10 items, collapsible) | 56px icon rail: Ruah mark = Dashboard; Map, Agent, Cloud, Tasks; Usage, Integrations, (Extensions slot), Settings. Status dots: agent working / waiting, unhealthy cloud of this project, running ruah tasks |
+| Sidebar project header menu | Top bar project switcher (recent projects with activity badges and ⌘1–9, All projects…, Open folder, New project, New system, Add another repo / Repos / Suggest connections, Start screen) |
+| Sidebar "Projects" tree (chats per project) | Launcher (Projects, Chats of every project, Recent) + the activity bell |
+| Sidebar "Chats" | The agent panel's chat switcher (recent chats, New chat, All chats…); the Chats page for the full list |
+| Sidebar Map outline / workflows / files / Edit palette | The Map's left drawer (⌘B, toggle in the Map's control row; Edit mode shows the palette there) |
+| Sidebar "In this chat" (Agent page) | The Agent page's left drawer (⌘B) |
+| ⌘K project palette + "/" element search (two palettes) | One Raycast-style launcher (`projects/CommandLauncher.tsx`, ranking in `lib/launcher.ts`): Needs you, Recent, Projects, Chats, Elements, Cloud, Pages, Actions; Tab asks the agent, ⌘Enter acts in the background |
+| Agent footer + "Getting started" | Agent pill in the top bar (toggles the right panel, ⌘I); Getting started in the launcher and Settings |
+| Map-only agent side panel | Right panel on every page but Agent (resizable, width remembered per project) |
+
+Decisions:
+- **Integrations stays its own rail entry**, not merged into Settings: it is a full page of
+  providers and accounts; Settings links to it. **No "Infra" entry**: infrastructure-as-code lives
+  on the Map (its infra layer) and there is no page or filter to point at.
+- **One row of page controls.** Pages keep a single header row; secondary actions go into a ⋯ menu
+  (`PageMenu`): the Map's canvas options and draw.io export, Cloud's "Show on the map", the
+  Dashboard's export. Everything is also a launcher action.
+- **View state per project (§13.5)**: `lib/view-restore.ts` stores the page, the map level and its
+  camera, the drawer and the agent panel under the `shell` key. The URL wins on the first load of a
+  window, and a switch made to show a chat keeps the chat in front.
+- **"Where you left off"** (§13.4) shows only when entering a project that has news since the last
+  visit (never on a first open), once per visit (`lib/resume-card.ts`).
+- **Every feature stays optional** (Settings → Features & behaviour): background agents,
+  notifications, the project's IaC scan option, live cloud status, the resume card, and the ⌥Space
+  global launcher shortcut (desktop only, off by default).
+- **Integration slots** (`shell/slots.ts`): the Extensions rail entry appears once `/extensions`
+  is routed; `registerPreviewPane(Component)` adds the top bar's Preview toggle and an
+  "Agent | Preview" tab on the right; `setAgentLimitHint(agentId, text)` shows a "remaining" hint in
+  the agent pill.
+- **Shortcuts in one place**: `shell/nav.ts` `SHORTCUTS`, listed by the launcher's "Keyboard
+  shortcuts" item.

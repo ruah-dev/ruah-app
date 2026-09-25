@@ -38,4 +38,13 @@ contextBridge.exposeInMainWorld("ruah", {
     ipcRenderer.on("ruah:notification-click", listener);
     return () => ipcRenderer.removeListener("ruah:notification-click", listener);
   },
+  /** Registers (true) or releases (false) ⌥Space as a global "open the launcher" shortcut; resolves whether it is registered. */
+  setLauncherShortcut: (on) => ipcRenderer.invoke("ruah:launcher-shortcut", on === true),
+  /** Called when the global launcher shortcut is pressed (the window is focused first); returns an unsubscribe function. */
+  onLauncherShortcut: (callback) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = () => callback();
+    ipcRenderer.on("ruah:launcher", listener);
+    return () => ipcRenderer.removeListener("ruah:launcher", listener);
+  },
 });

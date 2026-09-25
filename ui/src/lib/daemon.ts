@@ -1646,6 +1646,17 @@ export function saveViewState(projectId: string, view: ViewState, opts: { immedi
   return true;
 }
 
+/** §11.8 per-project scan options (the next rescan uses them). */
+export interface ScanOptions {
+  infra: boolean;
+}
+export function fetchScanOptions(projectId?: string): Promise<{ projectId: string; options: ScanOptions }> {
+  return api(`/api/projects/scan-options${projectId ? `?id=${encodeURIComponent(projectId)}` : ""}`);
+}
+export function setScanOptions(patch: Partial<ScanOptions> & { id?: string }): Promise<{ projectId: string; options: ScanOptions }> {
+  return api("/api/projects/scan-options", patch);
+}
+
 /** Feature flags in ~/.ruah/settings.json (§13.6); every viewer gets a new activity.snapshot. */
 export function setFeatureFlags(patch: Partial<AppFeatures>): boolean {
   return send({ type: "settings.set", ...patch });

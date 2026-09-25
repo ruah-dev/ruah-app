@@ -270,7 +270,7 @@ export function TerminalPanel() {
 }
 
 /** Sidebar footer button: toggles the panel. */
-export function TerminalToggleButton({ side = "top" }: { side?: "top" | "right" }) {
+export function TerminalToggleButton({ side = "top" }: { side?: "top" | "right" | "bottom" }) {
   const t = useTerminal();
   return (
     <Tooltip>

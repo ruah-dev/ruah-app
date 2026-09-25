@@ -1,10 +1,11 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const net = require("node:net");
+const { sameOrigin, webUrl } = require("./links.cjs");
 
 // 4177 when it is free (keeps the viewer's saved preferences, which are per
 // origin); otherwise any free port, so a second window or a leftover process
@@ -50,11 +51,20 @@ function startDaemon(repoDir) {
   );
   daemon.stdout.on("data", (c) => process.stdout.write(`[daemon] ${c}`));
   daemon.stderr.on("data", (c) => process.stderr.write(`[daemon] ${c}`));
-  daemon.on("exit", (code) => {
+  // A bad RUAH_NODE (spawn failure) is an "error" event: without a handler it is an uncaught
+  // exception in main, and `daemon` stayed set so waitForDaemon waited its full minute.
+  daemon.on("error", (err) => {
+    process.stderr.write(`[ruah] backend failed to start: ${err.message}\n`);
     daemon = null;
-    if (code !== null && code !== 0 && win !== null && !win.isDestroyed()) {
+  });
+  daemon.on("exit", (code, signal) => {
+    daemon = null;
+    // Killed by a signal (OOM, a native crash) has code null: say so too, not only non-zero codes.
+    const failed = (code !== null && code !== 0) || (code === null && signal !== null && !quitting);
+    if (failed && win !== null && !win.isDestroyed()) {
+      const why = code !== null ? `with code ${code}` : `on ${signal}`;
       win.webContents.executeJavaScript(
-        `document.body.innerHTML = '<p style="font:13px ui-monospace;padding:2rem">backend exited with code ${code}</p>'`,
+        `document.body.innerHTML = '<p style="font:13px ui-monospace;padding:2rem">backend exited ${why}</p>'`,
       ).catch(() => {});
     }
   });
@@ -164,6 +174,43 @@ function registerNotifications() {
   });
 }
 
+function openInBrowser(url) {
+  const web = webUrl(url);
+  if (web !== null) shell.openExternal(web).catch(() => {});
+}
+
+// Settings → Features & behaviour: ⌥Space anywhere focuses Ruah and opens the launcher. Off by
+// default; registered only while the renderer asks for it (and released on quit). If another app
+// already owns the accelerator, register() fails and the renderer is told (false).
+const LAUNCHER_ACCELERATOR = "Alt+Space";
+let launcherShortcutOn = false;
+
+function registerLauncherShortcut() {
+  ipcMain.handle("ruah:launcher-shortcut", (_event, on) => {
+    const want = on === true;
+    if (want === launcherShortcutOn) return launcherShortcutOn;
+    if (!want) {
+      globalShortcut.unregister(LAUNCHER_ACCELERATOR);
+      launcherShortcutOn = false;
+      return false;
+    }
+    try {
+      launcherShortcutOn = globalShortcut.register(LAUNCHER_ACCELERATOR, () => {
+        if (win === null || win.isDestroyed()) return;
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+        app.focus({ steal: true });
+        win.webContents.send("ruah:launcher");
+      });
+    } catch {
+      launcherShortcutOn = false;
+    }
+    return launcherShortcutOn;
+  });
+  app.on("will-quit", () => globalShortcut.unregisterAll());
+}
+
 // CONTRACTS §15.6: the live preview shows pages that refuse iframes in a <webview>. Every
 // webview is locked down here: no preload, no Node, sandboxed, its own session
 // (persist:ruah-preview), http(s) only; its popups open in the default browser. Frames and
@@ -171,15 +218,6 @@ function registerNotifications() {
 // without asking); the viewer itself is unaffected.
 const PREVIEW_PARTITION = "persist:ruah-preview";
 const FRAME_PERMISSIONS = new Set(["clipboard-sanitized-write", "fullscreen"]);
-
-function httpUrl(value) {
-  try {
-    const u = new URL(value);
-    return u.protocol === "http:" || u.protocol === "https:" ? u : null;
-  } catch {
-    return null;
-  }
-}
 
 function registerPreviewGuards() {
   app.on("web-contents-created", (_event, contents) => {
@@ -191,15 +229,15 @@ function registerPreviewGuards() {
       webPreferences.sandbox = true;
       webPreferences.webSecurity = true;
       params.partition = PREVIEW_PARTITION;
-      if (httpUrl(params.src) === null) event.preventDefault();
+      if (webUrl(params.src) === null) event.preventDefault();
     });
     if (contents.getType() === "webview") {
       contents.setWindowOpenHandler(({ url }) => {
-        if (httpUrl(url) !== null) void shell.openExternal(url);
+        openInBrowser(url);
         return { action: "deny" };
       });
       contents.on("will-navigate", (event, url) => {
-        if (httpUrl(url) === null) event.preventDefault();
+        if (webUrl(url) === null) event.preventDefault();
       });
     }
   });
@@ -238,7 +276,10 @@ function freePort() {
   });
 }
 
+let quitting = false;
+
 function stopDaemon() {
+  quitting = true;
   if (daemon !== null && daemon.exitCode === null) daemon.kill("SIGTERM");
 }
 
@@ -246,6 +287,7 @@ async function main() {
   const repoDir = process.env.RUAH_REPO ?? repoFromArgv(process.argv);
   registerIpc();
   registerNotifications();
+  registerLauncherShortcut();
   registerPreviewGuards();
   if (EXTERNAL_DAEMON !== undefined) {
     // `pnpm dev`: the dev script runs (and restarts) the daemon; the viewer reconnects by itself.
@@ -275,10 +317,21 @@ async function main() {
       webviewTag: true,
     },
   });
-  // Dropping a file (e.g. a screenshot from Finder) outside the chat's drop zone makes Chromium
-  // navigate the window to that file://…; the viewer handles drops itself, so never leave the app.
+  // The window only ever shows the daemon's viewer. Dropping a file (e.g. a screenshot from
+  // Finder) outside the chat's drop zone makes Chromium navigate to that file://…, and a plain
+  // link (agent Markdown, a cloud resource URL) would load an outside page that still gets
+  // window.ruah from the preload: web links go to the default browser, everything else stays.
   win.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith("file:")) event.preventDefault();
+    if (sameOrigin(url, BASE)) return;
+    // `pnpm dev` serves the viewer from the Vite dev server (RUAH_VIEWER_URL), not the daemon.
+    if (VIEWER_URL !== undefined && sameOrigin(url, VIEWER_URL)) return;
+    event.preventDefault();
+    openInBrowser(url);
+  });
+  // target="_blank" links and window.open: never a child BrowserWindow (it would inherit the preload).
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openInBrowser(url);
+    return { action: "deny" };
   });
 
   // Downloads (e.g. Export → draw.io): always ask where to save, starting in
