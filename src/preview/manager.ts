@@ -143,6 +143,8 @@ export class PreviewManager {
   private closing = false;
   /** Status revisions start at the clock so a restarted daemon's pushes outrank the old one's. */
   private rev = Date.now();
+  /** PATH of the dev servers' environment, once read (detection's "is pnpm installed"). */
+  private shellPath: string | undefined;
 
   constructor(private readonly options: PreviewManagerOptions) {
     this.timing = { ...DEFAULT_TIMING, ...(options.timing ?? {}) };
@@ -180,9 +182,28 @@ export class PreviewManager {
     return entry === undefined ? [] : entry.logs.slice(-Math.max(1, Math.min(PREVIEW_LOG_LINES, lines)));
   }
 
-  detect(project: PreviewProject | null = this.options.project()): PreviewDetection {
+  /** Detection with the PATH known so far (the daemon's until the shell environment is read). */
+  detect(project: PreviewProject | null = this.options.project(), pathEnv?: string): PreviewDetection {
     if (project === null) throw new PreviewError(409, "open a project first");
-    return detectPreview(project.root, { pathEnv: this.options.pathEnv?.() ?? process.env.PATH, ...(project.repos !== undefined ? { repos: project.repos } : {}) });
+    return detectPreview(project.root, {
+      pathEnv: pathEnv ?? this.options.pathEnv?.() ?? this.shellPath ?? process.env.PATH,
+      ...(project.repos !== undefined ? { repos: project.repos } : {}),
+    });
+  }
+
+  /**
+   * Detection with the dev servers' PATH (the user's shell environment, read once): Ruah
+   * started from the Dock only has the system PATH, which would call pnpm or python3 missing.
+   */
+  async detectFresh(project: PreviewProject | null = this.options.project()): Promise<PreviewDetection> {
+    if (project === null) throw new PreviewError(409, "open a project first");
+    if (this.options.pathEnv === undefined && this.shellPath === undefined) {
+      this.shellPath = await this.envFor(project).then(
+        (env) => env.PATH,
+        () => undefined,
+      );
+    }
+    return this.detect(project);
   }
 
   // ------------------------------------------------------------ actions
@@ -212,7 +233,7 @@ export class PreviewManager {
   async start(body: PreviewStartBody = {}, opts: { allowCommand?: boolean } = {}): Promise<PreviewStatus> {
     if (this.closing) throw new PreviewError(503, "the daemon is shutting down");
     const project = this.requireProject();
-    const detection = this.detect(project);
+    const detection = await this.detectFresh(project);
     let candidate: PreviewCandidate;
     if (body.command !== undefined) {
       if (opts.allowCommand !== true) throw new PreviewError(403, "a custom command needs the terminal token");
@@ -269,7 +290,7 @@ export class PreviewManager {
       const detection = this.detect(project);
       return this.launch(this.entryFor(project), previous, detection.choice?.url);
     }
-    const detection = this.detect(project);
+    const detection = await this.detectFresh(project);
     const fresh = detection.candidates.find((c) => c.id === previous.id) ?? previous;
     if (entry !== undefined) await this.stopEntry(entry);
     return this.launch(this.entryFor(project), fresh, detection.choice?.url);

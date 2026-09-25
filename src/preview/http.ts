@@ -96,7 +96,7 @@ export function handlePreviewRequest(
           return;
         }
         case "/api/preview/detect":
-          sendJson(res, 200, manager.detect());
+          sendJson(res, 200, await manager.detectFresh());
           return;
         case "/api/preview/logs": {
           if (manager.currentProject() === null) throw new PreviewError(409, "open a project first");

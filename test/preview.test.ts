@@ -460,6 +460,18 @@ describe("preview manager", () => {
     expect(m.status()).toBeNull();
   });
 
+  test("tool availability comes from the dev servers' PATH (the shell environment), not the daemon's", async () => {
+    const root = tempDir();
+    write(root, "package.json", pkg({ dev: "vite" }));
+    write(root, "pnpm-lock.yaml", "");
+    const bin = tempDir();
+    write(bin, "pnpm", "#!/bin/sh\n");
+    chmodSync(join(bin, "pnpm"), 0o755);
+    const { m } = managerFor(root, { env: async () => ({ PATH: bin }) });
+    expect(m.detect(undefined, "").candidates[0]?.available).toBe(false);
+    expect((await m.detectFresh()).candidates[0]?.available).toBe(true);
+  });
+
   test("folders are resolved inside the project", async () => {
     const root = tempDir();
     const { m } = managerFor(root);
