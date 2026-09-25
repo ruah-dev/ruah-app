@@ -83,6 +83,12 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   }
   const t0 = Date.now();
 
+  // The desktop app pipes our stdout / stderr. Once it is gone, a log line (e.g. "desktop app is
+  // gone; stopping") hits a closed pipe: the EPIPE, unhandled, crashed the daemon in the middle
+  // of its shutdown (agents and terminals not stopped). Logging is best effort.
+  for (const stream of [process.stdout, process.stderr]) {
+    if (stream.listenerCount("error") === 0) stream.on("error", () => {});
+  }
   const info = (line: string): void => {
     process.stdout.write(`${line}\n`);
   };
