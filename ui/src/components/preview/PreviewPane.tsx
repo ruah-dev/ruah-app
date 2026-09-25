@@ -114,7 +114,8 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
   const busy = p?.pending !== null && p?.pending !== undefined;
 
   const [reloadKey, setReloadKey] = useState(0);
-  const [navUrl, setNavUrl] = useState<string | null>(null);
+  // Where the user navigated (URL bar), tied to the server address it was typed against.
+  const [nav, setNav] = useState<{ base: string | null; url: string | null }>({ base: null, url: null });
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -122,11 +123,9 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
   const [logsOpen, setLogsOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
-  // A new server address (start, restart, another command) resets the page.
+  // A new server address (start, restart, another command) resets the page — in the same render.
   const baseUrl = status?.url ?? null;
-  useEffect(() => {
-    setNavUrl(baseUrl);
-  }, [baseUrl]);
+  const navUrl = nav.base === baseUrl && nav.url !== null ? nav.url : baseUrl;
   useEffect(() => {
     if (!editing) setDraft(navUrl ?? "");
   }, [navUrl, editing]);
@@ -208,7 +207,7 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
       toast.error("That is not an address the preview can open");
       return;
     }
-    setNavUrl(next);
+    setNav({ base: baseUrl, url: next });
     setReloadKey((k) => k + 1);
   };
 

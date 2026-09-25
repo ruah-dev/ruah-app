@@ -5,10 +5,13 @@
 //   POST /api/preview/start   { candidate? | command?, dir?, remember? }
 //   POST /api/preview/stop | /api/preview/restart
 //   POST /api/preview/choice  { candidate?, command?, dir?, url? }   → .ruah/preview.json
-// POSTs pass the /ws Origin rule (403) and come from a loopback peer (a remote
-// daemon runs dev servers only with --allow-remote-terminal). Running your own
-// command is arbitrary code execution, so `command` also needs the per-daemon
-// terminal token (§7.1) in `x-ruah-token` — only the same-origin viewer can read it.
+// POSTs pass the /ws Origin rule (403), are not cross-site browser requests
+// (Sec-Fetch-Site, when sent, is same-origin or none: the previewed app itself, on
+// another localhost port, cannot drive its own dev server) and come from a loopback
+// peer (a remote daemon runs dev servers only with --allow-remote-terminal). Running
+// your own command is arbitrary code execution, so `command` also needs the
+// per-daemon terminal token (§7.1) in `x-ruah-token` — only the same-origin viewer
+// can read it.
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { PreviewChoiceBodySchema, PreviewStartBodySchema } from "../contracts/preview.js";
@@ -71,6 +74,11 @@ export function handlePreviewRequest(
   if (post) {
     if (!originOk(req.headers.origin)) {
       sendJson(res, 403, { error: "origin not allowed" });
+      return true;
+    }
+    const site = req.headers["sec-fetch-site"];
+    if (typeof site === "string" && site !== "same-origin" && site !== "none") {
+      sendJson(res, 403, { error: "cross-site request" });
       return true;
     }
     if (!isLoopbackAddress(req.socket.remoteAddress) && !deps.allowRemote) {

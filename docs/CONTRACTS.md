@@ -1945,7 +1945,9 @@ never overwritten: edits answer 409.
 | `POST /api/preview/restart` | → `PreviewStatus` (the same command, re-detected) |
 | `POST /api/preview/choice` | `{ candidate?, command?, dir?, url? }` (null clears) → `PreviewDetection` |
 
-POSTs: the `/ws` Origin rule (403) and a loopback peer (403 unless `--allow-remote-terminal`).
+POSTs: the `/ws` Origin rule (403); `Sec-Fetch-Site`, when sent, is `same-origin` or `none`
+(403 — the previewed app on another localhost port passes the Origin rule but must not drive
+its own server); a loopback peer (403 unless `--allow-remote-terminal`).
 `command` (your own command, on start or choice) is a shell command, so it also needs the
 terminal token (§7.1) in `x-ruah-token` (403 without); the saved command of `.ruah/preview.json`
 runs without it (it is the repo's own, like its package.json scripts).

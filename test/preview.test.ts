@@ -625,6 +625,9 @@ describe("preview HTTP", () => {
     expect(detect.selected).toBe(".#static");
     const cross = await fetch(`${base}/api/preview/start`, { method: "POST", headers: { origin: "https://evil.example" }, body: "{}" });
     expect(cross.status).toBe(403);
+    // A page on another localhost port (the previewed app itself) passes the Origin rule but is cross-site.
+    const sibling = await fetch(`${base}/api/preview/stop`, { method: "POST", headers: { origin: "http://localhost:5173", "sec-fetch-site": "same-site" }, body: "{}" });
+    expect(sibling.status).toBe(403);
     const noToken = await fetch(`${base}/api/preview/start`, { method: "POST", body: JSON.stringify({ command: "echo hi" }) });
     expect(noToken.status).toBe(403);
     const badToken = await fetch(`${base}/api/preview/choice`, { method: "POST", headers: { "x-ruah-token": "nope" }, body: JSON.stringify({ command: "echo hi" }) });
