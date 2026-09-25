@@ -51,6 +51,10 @@ Usage:
   ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
                                    what agents did across projects (default --since 24h),
                                    unread and waiting-for-permission counts
+  ruah app preview [<repo>] [--detect] [--json] [--pick <id>] [--command <cmd>] [--remember] [--open]
+                                   live preview: how the repo's dev server runs (--detect, --json) or
+                                   run it in the foreground and print its URL (no daemon needed;
+                                   \`ruah app preview --help\` for options)
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -317,6 +321,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "activity": {
       const { runActivity } = await import("./activity/run-activity.js");
       return await runActivity(rest);
+    }
+    case "preview": {
+      const { runPreview } = await import("./preview/cli.js");
+      return await runPreview(rest, pkg.version);
     }
     default:
       process.stdout.write(USAGE);

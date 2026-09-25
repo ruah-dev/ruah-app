@@ -68,6 +68,10 @@ export interface CreateTerminalRequest {
   rows: number;
   title?: string | undefined;
   input?: string | undefined;
+  /** Run this program instead of the login shell (the live preview's dev server, §15); `env` is added to the terminal environment. */
+  exec?: { file: string; args: string[]; env?: Record<string, string> | undefined } | undefined;
+  /** Shown on the tab (§15: "preview"). */
+  kind?: "preview" | undefined;
 }
 
 function modeAfter(current: boolean, data: string, mode: string): boolean {
@@ -132,7 +136,7 @@ export class TerminalManager {
     const max = this.options.maxSessions ?? 32;
     if (this.sessions.size >= max) throw new TerminalError(`too many terminals (${max}); close one first`, 429);
     const cwd = resolveTerminalCwd(project, { cwd: request.cwd, nodeId: request.nodeId });
-    const shell = this.shell();
+    const shell = request.exec !== undefined ? { shell: request.exec.file, args: request.exec.args } : this.shell();
     let pty: PtyProcess;
     try {
       pty = loaded.backend.spawn({
@@ -142,7 +146,11 @@ export class TerminalManager {
         cols: request.cols,
         rows: request.rows,
         // PWD: shells keep a logical $PWD (symlinked folders) when it names the cwd.
-        env: { ...terminalEnv(this.options.env ?? process.env, { projectRoot: project.root, version: this.options.version }), PWD: cwd },
+        env: {
+          ...terminalEnv(this.options.env ?? process.env, { projectRoot: project.root, version: this.options.version }),
+          ...(request.exec?.env ?? {}),
+          PWD: cwd,
+        },
       });
     } catch (err) {
       throw new TerminalError(`could not start ${shell.shell}: ${err instanceof Error ? err.message : String(err)}`, 500);
@@ -163,6 +171,7 @@ export class TerminalManager {
         status: "running",
         exitCode: null,
         signal: null,
+        ...(request.kind !== undefined ? { kind: request.kind } : {}),
       },
       pty,
       history: new ScrollbackBuffer(this.options.scrollbackBytes ?? DEFAULT_SCROLLBACK_BYTES),

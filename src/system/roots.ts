@@ -19,3 +19,8 @@ export function systemRepoRoot(systemRoot: string, repoId: string): string | und
   const hit = repoRoots.get(systemRoot)?.get(repoId);
   return hit === undefined || hit === "" ? undefined : hit;
 }
+
+/** The repos (id + folder) of the system open at `systemRoot`; [] for a plain repo. */
+export function systemReposFor(systemRoot: string): { id: string; root: string }[] {
+  return [...(repoRoots.get(systemRoot) ?? new Map<string, string>())].filter(([, root]) => root !== "").map(([id, root]) => ({ id, root }));
+}

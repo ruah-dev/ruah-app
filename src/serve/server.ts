@@ -26,6 +26,7 @@ import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js
 import type { MapOpsService } from "./map-ops.js";
 import type { TerminalGateway } from "../terminal/gateway.js";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
+import { handlePreviewRequest, type PreviewHttpDeps } from "../preview/http.js";
 
 export interface ServeOptions {
   host: string;
@@ -51,6 +52,8 @@ export interface ServeOptions {
   system?: SystemService;
   /** CONTRACTS §13 /api/activity*, /api/projects/:id/{resume,view}; answered 503 when absent. */
   activity?: ActivityHttpDeps;
+  /** CONTRACTS §15 /api/preview* (live preview of the project's dev server); answered 503 when absent. */
+  preview?: PreviewHttpDeps;
 }
 
 export interface RunningServer {
@@ -117,6 +120,7 @@ export function startServer(
     // Integrations resolve the current project themselves (409 when none is open).
     if (handleIntegrationsRequest(req, res, url, options.integrations, options.allowOrigins)) return;
     if (handleEnginesRequest(req, res, url, options.engines, options.allowOrigins)) return;
+    if (handlePreviewRequest(req, res, url, options.preview, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // GET /api/export/drawio (409 when no project is open).
     if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
 
