@@ -1824,3 +1824,155 @@ syncing; the page and the CLI still show only the scope.
 
 Exit codes as §9.6; `scope` edits exit 1 on an invalid file (never overwritten) and 2 on usage
 errors (unknown provider, not inside a repo without `--repo`).
+
+## 15. Agent extensions: skills, MCP servers, powers, plugins, rules (2026-09-25)
+
+One place to give every agent Ruah runs (Claude Code over the Claude Agent SDK; Cursor Agent,
+Grok Build, Kiro CLI and OpenCode over ACP) more tools and knowledge. An extension is added once,
+from a local folder, a git repository or the curated catalog, and turned on **per agent**; Ruah
+hands it to the agent **when a session starts** (Agent SDK options, ACP `session/new`
+`mcpServers`, per-process plugin folders) instead of editing the agents' own configuration.
+Writing into Claude Code / Cursor / Kiro themselves happens only through an explicit, per-action
+"Also install into". Code: `src/extensions/` (standalone library + `ruah app ext` CLI, works
+without the daemon), `src/contracts/extensions.ts`, the viewer's `/extensions` route.
+
+### 15.1 Model and files
+
+```ts
+interface Extension {                        // zod: ExtensionSchema (src/contracts/extensions.ts)
+  id: string;                                // /^[a-z0-9][a-z0-9._-]{0,62}$/, not "ruah"; also the MCP server name
+  kind: "skill" | "mcp" | "power" | "plugin" | "rule";
+  name: string;
+  description?: string;
+  source:
+    | { type: "local"; path: string }        // absolute; in a project file relative to the repo root when inside it
+    | { type: "git"; url: string; ref?: string; subdir?: string }   // clone: $RUAH_HOME/extensions/src/<slug>-<sha1(url#ref)[0:8]>
+    | { type: "featured"; id: string }       // catalog entry; runs/env/notes copied at add time
+    | { type: "inline" };                    // an MCP server defined by `runs` only
+  enabledFor: string[];                      // agent ids: claude | cursor | grok | kiro | opencode (claude-acp uses claude's)
+  runs?:                                     // kind "mcp" (inline / featured)
+    | { type: "stdio"; command: string; args: string[] }   // no shell; `${project}` / `${home}` expanded at session start
+    | { type: "http" | "sse"; url: string; headers?: string[] }  // https (http only on loopback); header NAMES
+  env?: string[];                            // env var NAMES (values: Keychain, else the daemon's environment)
+  notes?: string; homepage?: string;
+  addedAt: string;
+  installedInto?: { target: "claude-code" | "cursor" | "kiro"; scope: "global" | "project"; path: string;
+                    type: "json-key" | "copy" | "claude-cli"; key?: string[]; sha256?: string; at: string }[];
+}
+```
+
+| File | Content |
+| --- | --- |
+| `$RUAH_HOME/extensions.json` | `{ version: 1, extensions: Extension[] }` — global (this machine), mode 0600 |
+| `<repo>/.ruah/extensions.json` | same shape — the project's, committable: sorted by id, pretty, no secrets, no file written for an untouched project |
+| `$RUAH_HOME/extensions-trust.json` | `{ version: 1, approved: { "<scopeKey>/<id>": fingerprint } }` — scopeKey = `global` or the project id (§5.1) |
+| `$RUAH_HOME/extensions/src/` | git clones (fetched, never executed) |
+| `$RUAH_HOME/extensions/runtime/<agent>-<hash>/` | generated plugin `ruah-ext` (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `skills/<name>` → symlinks); content-addressed, pruned after 7 days |
+
+- An unreadable file (bad JSON, schema error, > 1 MiB) is reported (`errors[]`) and never
+  overwritten; writes answer 409 until it is fixed. Duplicate ids: the first wins.
+- A folder is recognised by its layout (read only, ≤ 256 KiB per file): `SKILL.md` → skill;
+  `POWER.md` (+ `mcp.json`, `steering/*.md`) → power; `.claude-plugin/plugin.json` or
+  `.cursor-plugin/plugin.json` (or a `skills/*/SKILL.md` folder) → plugin (`.mcp.json` / manifest
+  `mcpServers`, `hooks/hooks.json`); `.mcp.json` / `mcp.json` → mcp; `.md` / `.mdc` files → rule.
+- Secrets: macOS Keychain, service `ruah`, account `ext:<scopeKey>:<id>:<NAME>` (§6 Keychain
+  helper). Nothing else stores a value.
+
+### 15.2 What each agent gets
+
+| Kind | Claude (Agent SDK) | Cursor (ACP) | Grok (ACP) | Kiro (ACP) | OpenCode (ACP) |
+| --- | --- | --- | --- | --- | --- |
+| mcp | `options.mcpServers` | `session/new` `mcpServers` | same | same | same |
+| skill | skill of the generated `ruah-ext` plugin (`options.plugins`; invoked as `ruah-ext:<name>`) | `cursor-agent --plugin-dir <dir> acp` | `grok agent --plugin-dir <dir> stdio` | install only (`.kiro/skills`) | `OPENCODE_CONFIG_CONTENT` `skills.paths` |
+| power | its MCP servers + POWER.md as a skill | same | same | its MCP servers; POWER.md via install | same as Claude |
+| plugin | `options.plugins` (skills, commands, agents, hooks, MCP) | `--plugin-dir` | `--plugin-dir` | its MCP servers only | its MCP servers + skills |
+| rule | appended to the system prompt (≤ 64 KiB) | install only (`.cursor/rules/<id>.mdc`) | none (AGENTS.md / CLAUDE.md) | install only (`.kiro/steering`) | `OPENCODE_CONFIG_CONTENT` `instructions` |
+
+- Remote (http / sse) servers go to an ACP agent only when its `initialize` advertises
+  `agentCapabilities.mcpCapabilities.http` / `.sse`; otherwise they are skipped with a note.
+- ACP stdio servers get an absolute `command` (PATH + Homebrew lookup, as ACP requires).
+- Project entries win over global ones with the same id. Server names are unique per session;
+  `ruah` stays the map tools' server (§1.7).
+- `OPENCODE_CONFIG_CONTENT` is merged with an existing value of the daemon's environment.
+
+### 15.3 HTTP (`/api/extensions`)
+
+Every POST passes the `/ws` Origin check (403). Bodies: JSON ≤ 64 KiB, zod-validated; errors
+`{ error }` never echo received values. Project-scoped calls use the daemon's open project (409
+without one).
+
+| Endpoint | Body / query → answer |
+| --- | --- |
+| `GET /api/extensions` | → `{ project, agents: {id,name,installed}[], installed: ExtensionView[], errors, keychain }` |
+| `GET /api/extensions/featured` | → `{ featured: FeaturedExtension[] }` (`added` set) |
+| `GET /api/extensions/discover[?agent=a,b]` | → `{ agents: AgentDiscovery[] }` — read-only, names / commands / URLs / env NAMES; secret-looking args masked |
+| `GET /api/extensions/preview?agent=<id>` | → `SessionPreview` — what a session of that agent receives now |
+| `POST /api/extensions/add` | `{ scope, source, id?, name?, kind?, enableFor? }` (`source.inline = { runs, env? }`; local paths absolute) → `{ extension }`; nothing runs (git: clone only) |
+| `POST /api/extensions/enable` | `{ id, scope, agents[] }` → `{ extension }`; records the approval; 422 for an agent that cannot use the kind |
+| `POST /api/extensions/disable` | `{ id, scope, agents? }` (absent = all) → `{ extension }` |
+| `POST /api/extensions/remove` | `{ id, scope, uninstall? }` → `{ ok, notes }` — undoes install records, deletes its Keychain items and approval, removes an unused clone |
+| `POST /api/extensions/fetch` | `{ id, scope }` → `{ extension }` — clones a git source missing on this machine |
+| `POST /api/extensions/secret` | `{ id, scope, name, value }` → `{ ok: true }` (name must be declared; value → Keychain only) |
+| `POST /api/extensions/secret/delete` | `{ id, scope, name }` → `{ ok, deleted }` |
+| `POST /api/extensions/install-into` | `{ id, scope, target: "claude-code"\|"cursor"\|"kiro", targetScope }` → `{ extension, written[], notes[] }` |
+
+`ExtensionView` = `Extension` + `{ scope, path?, status: "ready"|"missing"|"review"|"invalid",
+statusDetail?, what: { servers: ServerPreview[], hooks: string[], files: string[], launcher },
+secrets: { name, set, fromEnv }[], support: Record<agent, { delivery: "session"|"install"|
+"partial"|"none", note }> }`; `ServerPreview = { name, transport, command?, args?, url?, env:
+string[], headers?: string[] }`.
+
+### 15.4 Security rules
+
+- **Nothing runs on add.** A git source is cloned `--depth 1 --single-branch
+  --no-recurse-submodules` with `core.hooksPath=/dev/null`, `protocol.file|ext.allow=never`,
+  `GIT_TERMINAL_PROMPT=0`, args array, URL after `--`; https / ssh / `git@host:path` only;
+  `subdir` must stay inside the clone.
+- **Explicit enable per agent, tied to what runs.** Enabling records a fingerprint (sha256 of
+  kind, source, server definitions incl. bundled `.mcp.json` servers, env names and plugin hook
+  commands). An extension whose fingerprint differs (edited folder, pulled commit, a teammate's
+  project file) is `review`: shown with what it runs, **not injected** until approved again. A
+  project file from the repo is never trusted until approved on this machine.
+- **What it runs is shown first** — command + args or URL, env var / header NAMES, hooks, files —
+  on the card, in the add dialog and in the enable confirmation.
+- **Secrets**: stdio servers that need values start through `ruah app ext exec --secrets
+  <scopeKey>:<id> --env NAME… -- <command> <args…>`, which reads the Keychain in its own process
+  and passes stdio through — values never appear in argv, config files, the agent's environment
+  or logs. Header secrets of remote servers are the exception: they are in the MCP config given to
+  the agent at session start (ACP: the `session/new` message; Claude SDK: its CLI's
+  `--mcp-config` argument).
+- **Other tools' configs** are written only by "Also install into", per extension and target:
+  MCP entries merged into `.mcp.json` / `.cursor/mcp.json` / `.kiro/settings/mcp.json` (secrets as
+  `${NAME}` / `${env:NAME}` references; an existing entry not added by Ruah → 409), Claude Code user
+  scope through `claude mcp add-json -s user` (never `~/.claude.json` directly), skills copied with
+  a `.ruah-installed.json` marker, rules written with a recorded sha256. Remove undoes exactly
+  those writes (unchanged files only).
+- URLs: https (http only for loopback), no credentials in URLs. Commands are one executable (no
+  shell line). `RUAH_EXTENSIONS=0` turns injection and the endpoints off.
+
+### 15.5 Session injection
+
+`AgentCatalog` gets `extensions(agentId, root)`; bridges receive `BridgeOptions.extensions:
+{ resolve(preset?) }` (src/acp/bridge.ts) and call it at every process start (ACP: before the
+spawn — the returned `acp.preset` replaces the launch) and session open (Claude: every
+`query()`; ACP: `session/new` and `session/load`). A failure resolves to "no extensions" plus a
+note in the debug log; a changed switch applies to the next session, no restart.
+
+### 15.6 CLI (`ruah app ext`, no daemon)
+
+`list | featured | discover [--agent] | show <id> | preview --agent <id>` (all `--json`),
+`add <folder|git-url|featured:<id>> [--kind --id --name --ref --subdir]`,
+`add --mcp <name> [--env NAME]… -- <command> [args…]`, `add --url <https://…> [--sse] [--header
+NAME]…`, `enable|disable <id> [--agent <id>]…`, `remove <id> [--keep-installs]`, `fetch <id>`,
+`secret set|delete <id> <NAME>` (value from stdin, hidden on a TTY), `install-into <id> --target
+claude-code|cursor|kiro [--global]`; `--project` = the repo's file (`--repo <dir>`, default: the
+git repo around the cwd). Exit 0 ok, 1 not found / failure, 2 usage.
+
+### 15.7 Featured catalog (`src/extensions/featured.json`, metadata only)
+
+Claude Design (remote `https://api.anthropic.com/v1/design/mcp`; sign-in through `/design-login`
+in Claude Code or the OAuth prompt — Ruah stores no credentials), Filesystem, GitHub (Docker,
+`GITHUB_PERSONAL_ACCESS_TOKEN`), Playwright, Chrome DevTools, Context7, Sentry, Linear, Figma,
+Notion, Supabase, Terraform, AWS Documentation, Cloudflare Docs, Kubernetes (read-only), Memory,
+Sequential Thinking, Fetch. Adding one copies its `runs` / `env` into the extension (what the
+user approved is what runs).
