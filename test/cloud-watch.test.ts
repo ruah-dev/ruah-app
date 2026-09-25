@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WebSocket } from "ws";
-import type { CloudResource } from "../src/contracts/integrations.js";
+import type { CloudResource, IntegrationInfo } from "../src/contracts/integrations.js";
 import { ClientMessageSchema, ServerMessageSchema } from "../src/contracts/ws.js";
 import { cloudFingerprint, diffResources, syncProviders } from "../src/integrations/cloud-sync.js";
 import { IntegrationRegistry, IntegrationsService } from "../src/integrations/index.js";
@@ -341,6 +341,27 @@ describe("IntegrationsService: cloud.updated events", () => {
     expect(named.errors.map((e) => e.provider)).toEqual(["b"]);
     // The watch loop's per-provider sync of another provider clears it again.
     expect((await svc.cloudSync({ providers: ["a"] })).errors).toEqual([]);
+  });
+
+  // Regression: a list fetched while the user clicked Connect finished afterwards and cached its
+  // pre-connect answer for 15 s, so the refetch after connecting still said "not connected".
+  test("a list that was in flight across a connect is not cached", async () => {
+    const { svc, a } = setup();
+    let status: IntegrationInfo["status"] = "not_connected";
+    const gate = deferred<void>();
+    let calls = 0;
+    (a as { info: () => Promise<IntegrationInfo> }).info = async () => {
+      calls += 1;
+      const seen = status; // what the CLI said when it was asked
+      if (calls === 1) await gate.promise;
+      return { id: a.id, family: a.family, name: a.name, status: seen };
+    };
+    const slow = svc.list();
+    status = "connected";
+    await svc.connect("a", {});
+    gate.resolve();
+    expect((await slow).integrations.find((i) => i.id === "a")?.status).toBe("not_connected");
+    expect((await svc.list()).integrations.find((i) => i.id === "a")?.status).toBe("connected");
   });
 
   test("concurrent syncs of one provider share a single CLI run", async () => {

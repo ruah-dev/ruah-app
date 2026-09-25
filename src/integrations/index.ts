@@ -138,6 +138,8 @@ export class IntegrationsService implements IntegrationsApi {
   private readonly cloudCache: CloudCacheStore;
   private readonly now: () => Date;
   private listCache: { at: number; root: string | null; value: { integrations: IntegrationInfo[] } } | undefined;
+  /** Bumped by connect / disconnect: a list fetched across one is not cached (it may predate it). */
+  private listGeneration = 0;
   private readonly inflight = new Map<string, Promise<CloudSyncOutcome>>();
   private readonly cloudListeners = new Set<(update: CloudUpdate) => void>();
   private readonly cloudFingerprints = new Map<string, string>();
@@ -200,8 +202,9 @@ export class IntegrationsService implements IntegrationsApi {
     const root = this.options.project()?.root ?? null;
     const cached = this.listCache;
     if (cached !== undefined && cached.root === root && this.now().getTime() - cached.at < LIST_CACHE_MS) return cached.value;
+    const generation = this.listGeneration;
     const value = await this.listFresh();
-    this.listCache = { at: this.now().getTime(), root, value };
+    if (generation === this.listGeneration) this.listCache = { at: this.now().getTime(), root, value };
     return value;
   }
 
@@ -216,13 +219,26 @@ export class IntegrationsService implements IntegrationsApi {
   }
 
   async connect(id: string, body: ConnectBody): Promise<IntegrationInfo> {
-    this.listCache = undefined;
-    return this.integration(id).connect(body, this.context());
+    this.invalidateList();
+    try {
+      return await this.integration(id).connect(body, this.context());
+    } finally {
+      this.invalidateList();
+    }
   }
 
   async disconnect(id: string): Promise<IntegrationInfo> {
+    this.invalidateList();
+    try {
+      return await this.integration(id).disconnect(this.context());
+    } finally {
+      this.invalidateList();
+    }
+  }
+
+  private invalidateList(): void {
     this.listCache = undefined;
-    return this.integration(id).disconnect(this.context());
+    this.listGeneration += 1;
   }
 
   // ---- cloud --------------------------------------------------------------------
