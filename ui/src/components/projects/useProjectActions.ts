@@ -93,14 +93,16 @@ export function useProjectActions() {
     }
   }, []);
 
-  /** Show the conversation: the Map's side panel, else the Agent page. */
+  /** Show the conversation: the agent panel on the Map (or wherever it is open), else the
+   * Agent page. */
   const revealChat = useCallback(() => {
     const pathname = router.state.location.pathname;
-    if (pathname === "/map") {
+    if (pathname === "/agent") return;
+    if (pathname === "/map" || (wb.showPanel && pathname !== "/chats")) {
       // setPanelView also shows the side panel when it was hidden.
       wb.setPanelView("agent");
       wb.setSheetOpen(true);
-    } else if (pathname !== "/agent") void router.navigate({ to: "/agent" });
+    } else void router.navigate({ to: "/agent" });
   }, [router, wb]);
 
   const startChat = useCallback(() => {

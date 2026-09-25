@@ -12,6 +12,11 @@ const TILE_TINTS = [
   "bg-warm-400/18 text-warm-200 [html.light_&]:text-warm-600",
 ] as const;
 
+/** ⌘1…⌘9 for the first nine pinned projects. */
+export function pinnedShortcut(index: number) {
+  return index >= 0 && index < 9 ? `⌘${index + 1}` : null;
+}
+
 /** Initial tile for a project: a warm tint derived from the id so rows differ. */
 export function ProjectTile({
   project,

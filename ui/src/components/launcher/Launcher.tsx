@@ -26,9 +26,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { RuahLogo } from "@/components/brand/RuahLogo";
 import { PhantomCompanion } from "@/components/brand/Phantom";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
-import { KindBadge, ProjectTile } from "@/components/projects/ProjectBits";
-import { pinnedShortcut } from "@/components/projects/ProjectPalette";
+import { KindBadge, ProjectTile, pinnedShortcut } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
+import { setShellDialog, useShellDialogs } from "@/components/shell/shellState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { openSystemDialog } from "@/lib/system";
@@ -172,7 +172,8 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const router = useRouter();
   const actions = useProjectActions();
   const [active, setActive] = useState(0);
-  const [allOpen, setAllOpen] = useState(false);
+  const allOpen = useShellDialogs().allProjects;
+  const setAllOpen = (open: boolean) => setShellDialog("allProjects", open);
   const sample = daemon.source === "sample";
 
   const recents = useMemo(() => daemon.recentProjects.slice(0, LAUNCHER_RECENTS), [daemon.recentProjects]);
@@ -189,7 +190,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   }, [recents.length]);
 
   // ↑↓ Enter on the whole screen (not while a dialog or menu is open).
-  const dialogsOpen = allOpen || wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen || wb.searchOpen;
+  const dialogsOpen = allOpen || wb.openFolderOpen || wb.newProjectOpen || wb.paletteOpen;
   useEffect(() => {
     if (dialogsOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -380,16 +381,6 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           </div>
         </div>
 
-        <AllProjectsDialog
-          open={allOpen}
-          onOpenChange={setAllOpen}
-          projects={daemon.recentProjects}
-          currentId={daemon.project?.id}
-          onOpen={openProject}
-          onPin={(p) => void actions.togglePin(p)}
-          onForget={(p) => void actions.forget(p)}
-        />
-
         <footer className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-10 text-meta text-faint max-md:hidden">
           <span className="flex items-center gap-1">
             <kbd className="kbd">↑</kbd>
@@ -407,6 +398,29 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         </footer>
       </main>
     </div>
+  );
+}
+
+/** "All projects" for every entry point (start screen, top-bar project menu, launcher). */
+export function AllProjectsHost() {
+  const { daemon } = useWorkspace();
+  const wb = useWorkbench();
+  const actions = useProjectActions();
+  const open = useShellDialogs().allProjects;
+  return (
+    <AllProjectsDialog
+      open={open}
+      onOpenChange={(v) => setShellDialog("allProjects", v)}
+      projects={daemon.recentProjects}
+      currentId={daemon.project?.id}
+      onOpen={(p) => {
+        setShellDialog("allProjects", false);
+        if (daemon.project?.id === p.id) wb.setLauncherOpen(false);
+        else void actions.openRecent(p);
+      }}
+      onPin={(p) => void actions.togglePin(p)}
+      onForget={(p) => void actions.forget(p)}
+    />
   );
 }
 
