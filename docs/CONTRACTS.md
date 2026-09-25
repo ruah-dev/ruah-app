@@ -1824,3 +1824,189 @@ syncing; the page and the CLI still show only the scope.
 
 Exit codes as §9.6; `scope` edits exit 1 on an invalid file (never overwritten) and 2 on usage
 errors (unknown provider, not inside a repo without `--repo`).
+
+## 15. Live preview of the project's dev server (2026-09-25)
+
+The open project's dev server, run by Ruah and shown next to the agent, so the agent's edits
+appear as they are saved. Code: `src/preview/*` (a standalone library: detection, the
+remembered choice, URL discovery, probes, runners, a static server, the process manager, the
+HTTP endpoints, the `ruah app preview` CLI; no daemon needed), types in
+`src/contracts/preview.ts`, viewer `ui/src/lib/preview.ts` + `ui/src/components/preview/*`
+(`<PreviewPane/>`, the `/preview` route). Nothing starts on its own: a dev server runs only
+after an explicit start.
+
+### 15.1 Types
+
+```ts
+type PreviewState = "stopped" | "starting" | "running" | "crashed";
+type PreviewKind = "script" | "python" | "ruby" | "go" | "compose" | "deno" | "static" | "custom";
+
+interface PreviewCandidate {
+  id: string;           // "<dir>#<name>": ".#dev", "apps/web#dev", "api#django", ".#static"; "custom" = your command
+  title: string;        // "Vite", "Next.js", "Django", "Static site", "Your command"
+  command: string;      // as shown ("pnpm run dev"); "{port}" is filled in at start
+  dir: string;          // repo-relative folder ("." = root; a system: "<repoId>/<rel>")
+  framework: string;    // vite | next | remix | astro | sveltekit | nuxt | expo | storybook | cra | angular | … | django | flask | fastapi | streamlit | rails | jekyll | go | hugo | compose | deno | static | node | monorepo | custom
+  kind: PreviewKind;
+  port?: number;        // expected (default) port; what the server prints wins
+  hmr: boolean;         // the server reloads the page itself (HMR, live reload)
+  reason: string;       // "package.json scripts.dev: vite", "manage.py", "index.html"
+  score: number;        // higher = better default
+  workspace?: string;   // package name (monorepos)
+  env?: Record<string, string>;   // extra environment ("{port}" filled in), e.g. PORT for Rails' bin/dev
+  needs?: string;       // program it needs on PATH ("pnpm", "python3", "docker")
+  available?: boolean;  // false: `needs` is not on PATH (shown with `install`; a start is still allowed)
+  install?: string;     // how to get it
+  setup?: string;       // dependencies look missing (no node_modules): "pnpm install" — shown, never run by Ruah
+}
+
+interface PreviewDetection {
+  root: string;
+  candidates: PreviewCandidate[];   // best first
+  monorepo: boolean;                // candidates come from more than one folder
+  packageManager?: "pnpm" | "yarn" | "npm" | "bun";
+  selected: string | null;          // what a start without arguments runs; null = the user picks
+  choice: PreviewFile | null;       // the saved choice
+  configError?: string;             // .ruah/preview.json is invalid (never overwritten then)
+  truncated: boolean;
+}
+
+interface PreviewStatus {
+  projectId: string; root: string;
+  rev: number;                  // grows with every push (starts at the daemon's clock; 0 = never started)
+  state: PreviewState;
+  candidate: PreviewCandidate | null;   // what runs / ran (your command as a "custom" candidate)
+  command: string | null;       // after {port} substitution
+  cwd: string | null;
+  url: string | null; port: number | null;
+  healthy: boolean;             // the URL answered HTTP at the last check
+  framing: "ok" | "blocked" | "unknown"; // "blocked": X-Frame-Options DENY/SAMEORIGIN or CSP frame-ancestors without * / localhost
+  hmr: boolean;
+  runner: "pty" | "process" | "static" | null;
+  terminalId: string | null;    // the "preview" tab (§7, TerminalInfo.kind = "preview") when runner = "pty"
+  pid: number | null; startedAt: string | null;
+  exitCode: number | null; signal: number | null;
+  error?: string;               // one line: why it crashed / could not start
+  logs: string[];               // last ≤ 40 output lines, ANSI stripped
+}
+```
+
+`TerminalInfo` (§7.2) gains `kind?: "preview"` (additive): the tab runs the dev server, not a shell.
+
+### 15.2 Detection (deterministic, no network, bounded)
+
+Folders: the root, workspace globs (`pnpm-workspace.yaml`, package.json `workspaces`,
+`lerna.json`), top-level folders and `apps|packages|services|sites|web|frontend|backend|client|
+server|src/*` — only folders with a marker file, at most 150. A multi-repo system (§12) adds
+each repo under `<repoId>/`. Per folder:
+
+| Source | Candidate |
+| --- | --- |
+| package.json scripts `dev`, `develop`, `dev:web`, `start:web`, `web`, `start`, `serve`, `storybook` | `<pm> run <script>` (npm: extra args after `--`); pm = the nearest lockfile up to the root (pnpm-lock.yaml, bun.lock(b), yarn.lock, package-lock.json), else `packageManager`, else npm. The framework comes from the script (vite, next dev / start, nuxt, astro, remix, react-router, expo start, ng serve, storybook, react-scripts, webpack serve, parcel, gatsby, docusaurus, vitepress, eleventy, wrangler dev, nodemon / tsx watch …) and the dependencies (SvelteKit, TanStack Start, SolidStart … on Vite). Build watchers, test runners and linters (tsc, tsup, rollup, jest, vitest, eslint, `vite build`) are not servers. `turbo`/`nx`/`lerna run dev` is offered last ("every app"). Expo: `--web` is added when react-native-web is a dependency; native-only apps are skipped. |
+| deno.json(c) tasks `dev`, `start` | `deno task <name>` |
+| `manage.py` | `<py> manage.py runserver 127.0.0.1:{port}` (Django) |
+| `X = FastAPI(` / `X = Flask(` / `create_app` / `import streamlit` in app.py, main.py, … | `<py> -m uvicorn <module>:X --reload --port {port}`, `<py> -m flask --app <module> run --debug --port {port}`, `<py> -m streamlit run <file> --server.port {port} --server.headless true`. `<py>`: `./.venv/bin/python` (or venv, env), else `uv run python` (uv.lock), `poetry run python`, `pipenv run python`, else `python3` |
+| Gemfile with rails + bin/rails | `bin/dev` (env `PORT={port}`) when present, and `bin/rails server -p {port}`; Jekyll: `bundle exec jekyll serve --livereload --port {port}` |
+| go.mod | `air` with `.air.toml` / `air.toml`; `go run .` with main.go |
+| hugo.toml / hugo.yaml / hugo.json (or config.toml with baseURL + content/) | `hugo server --port {port}` |
+| compose.yaml / docker-compose.yml | `docker compose up` (`--watch` with `develop:`); port = the first published host port, web / app / frontend services first |
+| index.html without package.json (at the root also public/, docs/, site/, www/) | the built-in static server with live reload |
+
+Selection: the saved choice wins (a saved command is the `custom` candidate); else the best
+candidate when only one folder has any, or when it beats every other folder's best by ≥ 5;
+else `selected: null` and the viewer / CLI asks.
+
+### 15.3 `<repo>/.ruah/preview.json` (committable, no secrets)
+
+```ts
+interface PreviewFile {
+  version: 1;
+  candidate?: string;   // a candidate id
+  command?: string;     // your own command ({port} allowed) — replaces `candidate`
+  dir?: string;         // its folder (default ".")
+  url?: string;         // fixed preview URL (default: what the server prints)
+}
+```
+
+Written only by an explicit choice (the command picker with "Remember", `ruah app preview
+--pick|--command … --remember`), only when the content changes, pretty-printed with a stable
+key order; an empty choice deletes the file. An invalid file is reported (`configError`) and
+never overwritten: edits answer 409.
+
+### 15.4 HTTP (409 without an open project)
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/preview` | `PreviewStatus` of the open project (`state: "stopped"`, `rev: 0` when it never ran) |
+| `GET /api/preview/detect` | `PreviewDetection` |
+| `GET /api/preview/logs?lines=` | `{ lines }` — the last ≤ 500 output lines |
+| `POST /api/preview/start` | `{ candidate? , command?, dir?, remember? }` → `PreviewStatus`. Nothing: the saved / selected candidate (409 `{ error, detection }` when the user must pick or nothing was found); the same command already running: its status; something else running: stopped first. Unknown candidate 404, folder outside the project 400. |
+| `POST /api/preview/stop` | → `PreviewStatus` (Ctrl+C, 3 s, hang up, 3 s; a crashed preview goes back to "stopped") |
+| `POST /api/preview/restart` | → `PreviewStatus` (the same command, re-detected) |
+| `POST /api/preview/choice` | `{ candidate?, command?, dir?, url? }` (null clears) → `PreviewDetection` |
+
+POSTs: the `/ws` Origin rule (403) and a loopback peer (403 unless `--allow-remote-terminal`).
+`command` (your own command, on start or choice) is a shell command, so it also needs the
+terminal token (§7.1) in `x-ruah-token` (403 without); the saved command of `.ruah/preview.json`
+runs without it (it is the repo's own, like its package.json scripts).
+
+### 15.5 Push (`/ws`, every viewer)
+
+`{ type: "preview", status: PreviewStatus }` on every state change and at most every 250 ms
+while output arrives; filter by `status.projectId`. A viewer keeps the status with the highest
+`rev` (an HTTP answer may arrive after a newer push) and replaces it unconditionally after a
+(re)connect (a new daemon counts from its own clock). `ServerMessageSchema` includes it.
+
+### 15.6 Runtime
+
+- **Runner.** A PTY from the terminal manager (§7): `/bin/sh -c "<command>"` in a tab titled
+  `preview · <title>` (`kind: "preview"`), output acknowledged at once so flow control never
+  pauses the server; stop = Ctrl+C. Without node-pty (or when the PTY is refused): a child
+  process in its own process group (SIGINT, SIGTERM, SIGKILL). The static server runs in the
+  daemon (127.0.0.1, paths confined to the folder, `no-store`, an EventSource script injected
+  into HTML: CSS changes restyle, other changes reload).
+- **Environment.** The user's login + interactive shell environment, read once (`$SHELL -i -l -c
+  env` without a TTY, 8 s timeout; `RUAH_PREVIEW_SHELL_ENV=0` uses the daemon's), so PATH
+  from ~/.zshrc works when Ruah started from the Dock; the terminal's rules drop daemon
+  plumbing (§7.4); `BROWSER=none`. `{port}` = the first free port at or above the candidate's
+  (a connect test on 127.0.0.1 and ::1, then a bind).
+- **URL.** The first local URL the server prints (ANSI stripped; "Local" beats "Network";
+  0.0.0.0 / :: → localhost; remote hosts, debugger and HMR sockets ignored; "listening on port
+  N" counts), else — after 2.5 s — the expected ports that were not open before the start are
+  probed; `.ruah/preview.json` `url` overrides both. **Running** = the URL answered HTTP (any
+  status); checked every 400 ms while starting and every 5 s while running (`healthy`).
+- **Crash.** An exit that was not asked for → `crashed` with `exitCode` / `signal`, the last
+  lines, and `error` = the last error-looking line. Closing the preview tab counts as a crash.
+- **Lifetime.** One server per project. It keeps running while you switch projects and is
+  stopped once its project has not been open for `RUAH_PREVIEW_IDLE_MS` (default 10 min; 0 =
+  at the next sweep, ≤ 2 s), and every server is stopped when the daemon exits (Ctrl+C, short
+  grace). `RUAH_PREVIEW=0` turns the feature off (endpoints 503).
+- **Viewer.** An iframe sandboxed without top navigation (`allow-scripts allow-same-origin
+  allow-forms allow-popups allow-modals allow-downloads allow-pointer-lock allow-presentation`,
+  permissions clipboard-write + fullscreen only). `framing: "blocked"` → in the desktop app a
+  `<webview>` (`window.ruah.previewWebview === true`, §5.4 addition): main.cjs enables
+  `webviewTag` and locks every webview down (no preload, no Node, sandbox, contextIsolation,
+  http(s) only, partition `persist:ruah-preview`, popups → the default browser); in a browser:
+  "Open in browser". Frames and webviews get no camera / microphone / location / notification
+  permissions. Without HMR the page reloads after each agent turn whose `activity`
+  `turn.finished` event (§13.2) lists edited files (a per-project toggle, stored in the
+  viewer). A crash offers "Ask agent to fix": the command, folder, exit and the last ≤ 60
+  lines are drafted into the composer (`requestComposerDraft`), never sent.
+
+### 15.7 CLI (`ruah app preview`, no daemon)
+
+| Command | Behaviour |
+| --- | --- |
+| `ruah app preview [<repo>]` | runs the selected candidate in the foreground (output passed through, colours kept), prints `ruah ▸ preview at <url>` once it answers; Ctrl+C stops it. Exit 0 stopped by you, 1 crashed / nothing found, 2 a pick is needed or bad arguments. |
+| `--detect` · `--json` | print the candidates (▸ = what would run) · the `PreviewDetection` as JSON; nothing runs |
+| `--pick <id>` · `--command "<cmd>" [--dir <folder>]` | run that candidate · your own command; `--remember` saves it in `.ruah/preview.json` |
+| `--open` | open the URL in the default browser once it answers |
+
+### 15.8 Developing Ruah itself (`pnpm dev`)
+
+`scripts/dev.ts`: the daemon under `tsx watch` (restarts on `src/` changes), the viewer on the
+Vite dev server with HMR (proxying `/api` and `/ws*` to the daemon when `RUAH_DEV_DAEMON_URL`
+is set, ui/vite.config.ts), and Electron with `RUAH_VIEWER_URL` (load the viewer from that URL)
+and `RUAH_DAEMON_URL` (attach to that daemon, start none) — both electron/main.cjs additions,
+unset in normal runs. The viewer reconnects after a daemon restart; in dev builds
+(`import.meta.env.DEV`) it re-opens the project it had open.
