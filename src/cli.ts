@@ -330,7 +330,7 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "doctor": {
       const { runDoctor } = await import("./desktop/doctor.js");
-      return await runDoctor(rest, pkg.version);
+      return await runDoctor(rest, pkg.version, dirname(dirname(fileURLToPath(import.meta.url))));
     }
     case "cloud": {
       const { runCloud } = await import("./integrations/cloud-cli.js");

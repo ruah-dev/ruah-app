@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 import { resolveAgentBinary } from "../acp/presets.js";
 import { resolveBin } from "../integrations/exec.js";
 import { ruahHome } from "../usage/log.js";
-import { findInstalledApp } from "./launch.js";
+import { enclosingAppBundle, findInstalledApp } from "./launch.js";
 import { loginShell, mergePaths, readLoginPath, type LoginPathResult } from "./login-path.js";
 
 export type ToolGroup = "agent" | "source" | "cloud";
@@ -80,6 +80,8 @@ export interface DoctorOptions {
   loginShell?: boolean;
   timeoutMs?: number;
   version: string;
+  /** The package root this CLI runs from: inside Ruah.app, `ruah app` opens that bundle. */
+  packageRoot?: string;
   /** Test seam: the login shell's answer. */
   readLogin?: (shell: string, env: NodeJS.ProcessEnv) => Promise<LoginPathResult>;
 }
@@ -113,7 +115,10 @@ export async function runDoctorReport(options: DoctorOptions): Promise<DoctorRep
     path: searchPath,
     tools,
     home: ruahHome(env),
-    app: process.platform === "darwin" ? (findInstalledApp(env, existsSync) ?? null) : null,
+    app:
+      process.platform === "darwin" && env.RUAH_APP_DEV !== "1"
+        ? ((options.packageRoot !== undefined ? enclosingAppBundle(options.packageRoot) : undefined) ?? findInstalledApp(env, existsSync) ?? null)
+        : null,
   };
 }
 
@@ -144,7 +149,7 @@ export function formatDoctorReport(report: DoctorReport): string {
   return `${lines.join("\n")}\n`;
 }
 
-export async function runDoctor(argv: readonly string[], version: string): Promise<number> {
+export async function runDoctor(argv: readonly string[], version: string, packageRoot?: string): Promise<number> {
   let values;
   try {
     ({ values } = parseArgs({
@@ -157,7 +162,11 @@ export async function runDoctor(argv: readonly string[], version: string): Promi
     process.stderr.write(`ruah app doctor: ${(err as Error).message}\n`);
     return 2;
   }
-  const report = await runDoctorReport({ version, loginShell: values["no-login-shell"] !== true });
+  const report = await runDoctorReport({
+    version,
+    loginShell: values["no-login-shell"] !== true,
+    ...(packageRoot !== undefined ? { packageRoot } : {}),
+  });
   process.stdout.write(values.json === true ? `${JSON.stringify(report, null, 2)}\n` : formatDoctorReport(report));
   return 0;
 }

@@ -119,7 +119,8 @@ function startDaemon(repoDir) {
       daemonReady = false;
     }
     log(`[ruah] backend exited (${code ?? signal})`);
-    if (!quitting && code !== 0 && daemonReadyOnce) void offerRestart(code ?? signal);
+    // Any exit we did not ask for (a crash, or a kill from outside) leaves a dead window: offer a restart.
+    if (!quitting && daemonReadyOnce && daemon === null) void offerRestart(code ?? signal);
   });
 }
 

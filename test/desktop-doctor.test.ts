@@ -54,6 +54,17 @@ describe("ruah app doctor", () => {
     expect(text).toContain("Cloud CLIs");
   });
 
+  test("inside Ruah.app the app it reports is that bundle", async () => {
+    const report = await runDoctorReport({
+      version: "1",
+      env: { HOME: "/nonexistent", PATH: "/usr/bin", SHELL: "/bin/sh" },
+      loginShell: false,
+      packageRoot: "/Applications/Ruah.app/Contents/Resources/app",
+    });
+    expect(report.app).toBe(process.platform === "darwin" ? "/Applications/Ruah.app" : null);
+    expect(report.loginShell).toEqual({ ok: false, skipped: true });
+  });
+
   test("a failing login shell falls back to this process's PATH and says so", async () => {
     const report = await runDoctorReport({
       version: "1",
