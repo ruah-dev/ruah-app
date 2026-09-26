@@ -28,6 +28,7 @@ import { answerPermissionAnywhere, fetchOverview, prefetchProject } from "@/lib/
 import {
   greeting,
   groupOf,
+  groupSpellings,
   homeCard,
   homeFilters,
   homeSummary,
@@ -149,11 +150,11 @@ function QuickButton({ children, onClick, primary, title }: { children: ReactNod
   );
 }
 
-function ProjectCard({ card, onChanged }: { card: HomeCard; onChanged: () => void }) {
+function ProjectCard({ card, onChanged, spellings }: { card: HomeCard; onChanged: () => void; spellings: ReadonlyMap<string, string> }) {
   const actions = useProjectActions();
   const o = card.overview;
   const p = o.project;
-  const group = groupOf(p);
+  const group = groupOf(p, spellings);
   const bridge = typeof window !== "undefined" ? window.ruah : undefined;
   const hover = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(hover.current), []);
@@ -341,6 +342,8 @@ export function HomePage({ header }: { header: ReactNode }) {
     [daemon.agent?.agents?.available],
   );
   const filters = useMemo(() => homeFilters(daemon.recentProjects), [daemon.recentProjects]);
+  // Cards name a group the way its filter chip does ("Job", not one project's "job").
+  const spellings = useMemo(() => groupSpellings(daemon.recentProjects), [daemon.recentProjects]);
   const activeFilter = filters.some((f) => f.id === filter) ? filter : "all";
 
   const cards = useMemo(() => {
@@ -452,7 +455,7 @@ export function HomePage({ header }: { header: ReactNode }) {
           {data && allCards > 0 ? (
             <div className="grid grid-cols-1 gap-3.5 @xl:grid-cols-2 @5xl:grid-cols-3">
               {cards.map((c) => (
-                <ProjectCard key={c.id} card={c} onChanged={reload} />
+                <ProjectCard key={c.id} card={c} onChanged={reload} spellings={spellings} />
               ))}
               {cards.length === 0 ? (
                 <p className="col-span-full py-6 text-center text-ui-sm text-muted-foreground">

@@ -250,10 +250,20 @@ export function matchesFilter(p: ProjectInfo, filter: string): boolean {
   return true;
 }
 
-/** A project's group: its first tag (cards' meta line, the rail's grouping). */
-export function groupOf(p: Pick<ProjectInfo, "tags">): string | null {
-  const first = p.tags?.find((t) => t.trim().length > 0);
-  return first ? first.trim() : null;
+/**
+ * A project's group: its first tag (cards' meta line, the rail's grouping), spelled the way the
+ * filter chip spells it when `spellings` (from groupSpellings) is given — "Job", not this
+ * project's "job".
+ */
+export function groupOf(p: Pick<ProjectInfo, "tags">, spellings?: ReadonlyMap<string, string>): string | null {
+  const first = p.tags?.find((t) => t.trim().length > 0)?.trim();
+  if (!first) return null;
+  return spellings?.get(first.toLowerCase()) ?? first;
+}
+
+/** Lower-case tag → the spelling most projects use (the one homeFilters shows). */
+export function groupSpellings(projects: readonly ProjectInfo[]): Map<string, string> {
+  return new Map(tagCounts(projects).map((t) => [t.tag.trim().toLowerCase(), t.tag]));
 }
 
 /** "Good afternoon" by the local hour. */
@@ -265,12 +275,18 @@ export function greeting(date = new Date()): string {
   return "Good evening";
 }
 
-/** "2 need you · 1 working · 5 quiet" for the Home header. */
+/** "2 need you · 1 working · 1 with changes · 5 quiet" for the Home header (a card with a pill is never "quiet"). */
 export function homeSummary(cards: readonly HomeCard[]): string {
   const needs = cards.filter((c) => c.attention).length;
   const working = cards.filter((c) => !c.attention && c.status === "running").length;
-  const rest = cards.length - needs - working;
-  const parts = [needs ? `${needs} need${needs === 1 ? "s" : ""} you` : "", working ? `${working} working` : "", rest > 0 ? `${rest} quiet` : ""];
+  const changes = cards.filter((c) => !c.attention && c.status === "changes").length;
+  const rest = cards.length - needs - working - changes;
+  const parts = [
+    needs ? `${needs} need${needs === 1 ? "s" : ""} you` : "",
+    working ? `${working} working` : "",
+    changes ? `${changes} with changes` : "",
+    rest > 0 ? `${rest} quiet` : "",
+  ];
   return parts.filter(Boolean).join(" · ") || "No projects yet";
 }
 

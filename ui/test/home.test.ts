@@ -2,7 +2,7 @@
 // (a waiting permission first, quiet last), the filters (All · Pinned · tags) and tag parsing.
 import { describe, expect, it } from "vitest";
 import type { ProjectInfo, ProjectOverview } from "@/lib/contracts";
-import { gitFoot, greeting, groupOf, homeCard, homeFilters, homeSummary, leftOffLine, matchesFilter, parseTags, sortCards, tagCounts, tagKey } from "@/lib/home";
+import { gitFoot, greeting, groupOf, groupSpellings, homeCard, homeFilters, homeSummary, leftOffLine, matchesFilter, parseTags, sortCards, tagCounts, tagKey } from "@/lib/home";
 
 const NOW = Date.parse("2026-09-26T12:00:00.000Z");
 const project = (id: string, over: Partial<ProjectInfo> = {}): ProjectInfo => ({ id, name: id, root: `/r/${id}`, kind: "repo", lastOpenedAt: "2026-09-26T10:00:00.000Z", ...over });
@@ -111,6 +111,11 @@ describe("filters and tags", () => {
     expect(list.filter((p) => matchesFilter(p, "all"))).toHaveLength(5);
     expect(groupOf(list[0]!)).toBe("Freelance");
     expect(groupOf(list[4]!)).toBeNull();
+    // A card names its group like the chip: "Freelance" (the majority), not b's own "freelance".
+    const spellings = groupSpellings(list);
+    expect(groupOf(list[1]!)).toBe("freelance");
+    expect(groupOf(list[1]!, spellings)).toBe("Freelance");
+    expect(groupOf(project("z", { tags: ["Solo"] }), spellings)).toBe("Solo");
   });
   it("parses the tag field", () => {
     expect(parseTags(" Freelance ,acme  studio,, freelance, Job")).toEqual(["Freelance", "acme studio", "Job"]);
@@ -122,6 +127,10 @@ describe("filters and tags", () => {
     expect(greeting(new Date(2026, 8, 26, 21))).toBe("Good evening");
     const cards = [homeCard(overview("w", { live: { running: 1, waitingPermission: 1 } })), homeCard(overview("r", { live: { running: 1, waitingPermission: 0 } })), homeCard(overview("q"))];
     expect(homeSummary(cards)).toBe("1 needs you · 1 working · 1 quiet");
+    // Uncommitted / unpushed cards carry a pill: they are never counted as quiet.
+    const dirty = homeCard(overview("d", { git: { available: true, branch: "main", head: "abc", upstream: "origin/main", ahead: 0, behind: 0, dirty: 2, dirtyPaths: [], lastCommit: null } }));
+    const unpushed = homeCard(overview("u", { git: { available: true, branch: "main", head: "abc", upstream: "origin/main", ahead: 1, behind: 0, dirty: 0, dirtyPaths: [], lastCommit: null } }));
+    expect(homeSummary([...cards, dirty, unpushed])).toBe("1 needs you · 1 working · 2 with changes · 1 quiet");
     expect(homeSummary([])).toBe("No projects yet");
   });
 });
