@@ -86,7 +86,8 @@ describe("nothing lands in a repo that never opted in (§21.3)", () => {
     const home = tmp("ruah-home-");
     const service = engines({ root: () => repo, home });
     const state = await service.runVerify("api");
-    expect(state).toMatchObject({ badge: "unverifiable", detail: expect.stringContaining("Sync criteria") });
+    // The fix it names must exist (there is no "Sync criteria" button in the viewer).
+    expect(state).toMatchObject({ badge: "unverifiable", detail: expect.stringContaining("ruah verify init") });
     expect(existsSync(path.join(repo, ".ruah"))).toBe(false);
     // The badge is cached in Ruah's home.
     expect(JSON.parse(readFileSync(path.join(projectCacheDir(home, repo), "verify-nodes.json"), "utf8"))).toMatchObject({ api: { badge: "unverifiable" } });

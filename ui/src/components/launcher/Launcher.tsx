@@ -519,6 +519,17 @@ function AllProjectsDialog({
                 setActive(0);
               }}
               onKeyDown={(e) => {
+                // Alt+↑/↓ reorders the highlighted pinned project (the focus stays in this field,
+                // so the row's own handler never sees the key). Not while filtering: the order
+                // on screen is then not the pin order.
+                if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                  e.preventDefault();
+                  const p = matches[active];
+                  const delta = e.key === "ArrowUp" ? -1 : 1;
+                  if (!query.trim() && p && reorder.move(p.id, delta))
+                    setActive((a) => Math.min(Math.max(a + delta, 0), pinned.length - 1));
+                  return;
+                }
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
                   setActive((a) => Math.min(a + 1, matches.length - 1));

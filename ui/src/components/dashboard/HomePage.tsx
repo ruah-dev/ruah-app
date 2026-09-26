@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useSegmentedKeys } from "@/components/ui/segmented";
 
 const FILTER_KEY = "ruah.home.filter.v1";
 const POLL_MS = 30_000;
@@ -345,6 +346,8 @@ export function HomePage({ header }: { header: ReactNode }) {
   // Cards name a group the way its filter chip does ("Job", not one project's "job").
   const spellings = useMemo(() => groupSpellings(daemon.recentProjects), [daemon.recentProjects]);
   const activeFilter = filters.some((f) => f.id === filter) ? filter : "all";
+  // The filter pills are one radio group: one Tab stop, arrows change the filter.
+  const filterKeys = useSegmentedKeys(filters.map((f) => f.id), activeFilter, setFilter);
 
   const cards = useMemo(() => {
     if (!data) return [];
@@ -396,13 +399,12 @@ export function HomePage({ header }: { header: ReactNode }) {
           </div>
 
           {filters.length > 1 ? (
-            <div role="tablist" aria-label="Filter projects" className="flex flex-wrap items-center gap-1.5">
-              {filters.map((f) => (
+            <div {...filterKeys.groupProps} aria-label="Filter projects" className="flex flex-wrap items-center gap-1.5">
+              {filters.map((f, i) => (
                 <button
                   key={f.id}
                   type="button"
-                  role="tab"
-                  aria-selected={activeFilter === f.id}
+                  {...filterKeys.itemProps(i)}
                   onClick={() => setFilter(f.id)}
                   className={cn(
                     "flex h-7 items-center gap-1.5 rounded-pill border px-3 text-ui-sm transition-colors",

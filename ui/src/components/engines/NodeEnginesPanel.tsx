@@ -1,7 +1,8 @@
-// Inspector actions: eval scorecard + convert OpenAPI via engine CLIs.
+// Inspector actions: verify, eval scorecard + convert OpenAPI via engine CLIs.
 import { useEffect, useState } from "react";
-import { detectConv, runConv, runEval } from "@/lib/engines";
+import { detectConv, runConv, runEval, runVerify, type NodeVerifyState } from "@/lib/engines";
 import { GuardCard } from "@/components/engines/GuardCard";
+import { VerifyBadgeChip } from "@/components/engines/VerifyBadge";
 import { Button } from "@/components/ui/button";
 
 export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; defaultPrompt?: string }) {
@@ -11,11 +12,14 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
   const [specs, setSpecs] = useState<Array<{ path: string; kind: string }>>([]);
   const [convBusy, setConvBusy] = useState(false);
   const [convResult, setConvResult] = useState<unknown>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<NodeVerifyState | { error: string } | null>(null);
 
   useEffect(() => {
     setPrompt(defaultPrompt ?? "");
     setEvalResult(null);
     setConvResult(null);
+    setVerifyResult(null);
     void detectConv(nodeId)
       .then((r) => setSpecs(r.specs ?? []))
       .catch(() => setSpecs([]));
@@ -23,6 +27,36 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
 
   return (
     <div className="flex flex-col gap-4 border-t border-hairline pt-3">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-label font-medium text-foreground">Verify</h3>
+        <p className="text-caption text-muted-foreground">
+          Checks this element&apos;s acceptance criteria (<code>.ruah/verify.json</code>, e.g. from <code>ruah verify init</code>) with{" "}
+          <code>ruah verify</code>. It also runs after each agent turn once the repo has criteria. Writes nothing into the repo.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={verifyBusy}
+            onClick={() => {
+              setVerifyBusy(true);
+              void runVerify(nodeId)
+                .then(setVerifyResult)
+                .catch((err: Error) => setVerifyResult({ error: err.message }))
+                .finally(() => setVerifyBusy(false));
+            }}
+          >
+            {verifyBusy ? "Verifying…" : "Verify"}
+          </Button>
+          {verifyResult !== null && !("error" in verifyResult) ? <VerifyBadgeChip badge={verifyResult.badge} detail={verifyResult.detail} /> : null}
+        </div>
+        {verifyResult !== null ? (
+          <p className={"error" in verifyResult ? "text-caption text-bad" : "text-caption text-muted-foreground"}>
+            {"error" in verifyResult ? verifyResult.error : (verifyResult.verdict ?? verifyResult.detail ?? "")}
+          </p>
+        ) : null}
+      </div>
+
       <div className="flex flex-col gap-2">
         <h3 className="text-label font-medium text-foreground">Eval scorecard</h3>
         <p className="text-caption text-muted-foreground">

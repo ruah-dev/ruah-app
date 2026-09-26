@@ -33,7 +33,7 @@ import {
 } from "@/lib/architecture";
 import type { ArchNode } from "@/lib/contracts";
 import { asExpanded, invalidateExpansions, requestExpansion } from "@/lib/expand";
-import { dismissError, rescan } from "@/lib/daemon";
+import { daemonActions, dismissError, rescan } from "@/lib/daemon";
 import { downloadDrawio } from "@/lib/export";
 import { toast } from "sonner";
 import { isCloudDiagramId } from "@/lib/integrations";
@@ -299,8 +299,12 @@ function PaletteTray() {
   );
 }
 
-/** A new project (or a repo the scanner found nothing in): scan it, or start drawing. */
-function EmptyMap() {
+/**
+ * A new project (or a repo the scanner found nothing in): scan it, or start drawing.
+ * `besidePalette`: Edit mode's element palette sits at the top left (w-56); centre the card in
+ * the space right of it, or the palette covers the card's text and buttons.
+ */
+function EmptyMap({ besidePalette = false }: { besidePalette?: boolean }) {
   const ws = useWorkspace();
   const wb = useWorkbench();
   const [scanning, setScanning] = useState(false);
@@ -322,7 +326,7 @@ function EmptyMap() {
     }
   };
   return (
-    <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
+    <div className={cn("pointer-events-none absolute inset-0 grid place-items-center p-6", besidePalette && "ps-[15.5rem]")}>
       <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
         <PhantomPose pose={scanning ? "reading" : "mapping"} size={96} lively={scanning} label={scanning ? "Scanning the repo" : undefined} />
         <div className="space-y-1.5">
@@ -365,6 +369,7 @@ function EmptyMap() {
 /** Loading / live-from-disk / truncated notice for on-demand levels. */
 function LevelNotice({ diagram }: { diagram: Diagram }) {
   const ws = useWorkspace();
+  const wb = useWorkbench();
   const ref = parseDiagramId(diagram.id);
   if (ref?.mode !== "architecture" || ref.parentId === null) return null;
   const entry = ws.expansions.entries.get(ref.parentId);
@@ -389,6 +394,8 @@ function LevelNotice({ diagram }: { diagram: Diagram }) {
       {t.children ? ` · showing ${exp.architecture.nodes.length} of ${exp.total.children}` : ""}
       {t.edges ? ` · strongest ${exp.architecture.edges.length} of ${exp.total.edges} links` : ""}
       {entry.status === "loading" ? <Phantom expression="loading" size={13} label="Loading" /> : null}
+      {/* Edit mode shows no palette here: say why, and how to edit this level. */}
+      {wb.editing ? <span className="text-foreground/80">· pin it to the map (⋯ menu) to edit</span> : null}
     </span>
   );
 }
@@ -404,6 +411,13 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
   const derived = isCloudDiagramId(diagram.id);
   const index = useMemo(() => indexArchitecture(ws.mapArchitecture), [ws.mapArchitecture]);
   const ref = parseDiagramId(diagram.id);
+  // A level read from disk on demand (§1.6) takes no new elements until it is pinned to the map:
+  // no palette there (it offered one, then refused the drop with a truncated notice).
+  const readFromDisk =
+    ref?.mode === "architecture" &&
+    ref.parentId !== null &&
+    ws.expansions.entries.has(ref.parentId) &&
+    !ws.architecture.nodes.some((n) => n.parent === ref.parentId);
   const depth = ref?.mode === "architecture" && ref.parentId !== null ? ancestry(index, ref.parentId).length : 0;
   const searchIndex = useMemo<SearchHit[]>(
     () =>
@@ -436,9 +450,13 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
         onRenameNode={(id, label) => ws.updateNode(diagram.id, id, { label })}
         onConnect={(from, to) => ws.addEdge(diagram.id, from, to)}
         onDeleteNode={(id) => {
-          ws.deleteNode(diagram.id, id);
-          wb.clearSelection();
+          void ws.deleteNode(diagram.id, id).then((deleted) => deleted && wb.clearSelection());
         }}
+        deleteKey={wb.editing}
+        onUndo={() => {
+          if (!daemonActions.undoEdit() && ws.editable) toast("Nothing to undo on the map", { id: "map-undo", description: "Agent changes are undone from their chat turn." });
+        }}
+        onRedo={() => void daemonActions.redoEdit()}
         onDrill={wb.drill}
         onOpenCode={(node) => {
           wb.selectNode(node.id);
@@ -451,8 +469,8 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
         onAsk={(node) => wb.ask(node)}
         onCopyContext={wb.copyContext}
       />
-      {showTray && !derived ? <PaletteTray /> : null}
-      {emptyProject ? <EmptyMap /> : null}
+      {showTray && !derived && !readFromDisk ? <PaletteTray /> : null}
+      {emptyProject ? <EmptyMap besidePalette={showTray && !derived && !readFromDisk} /> : null}
       {ws.daemon.source === null ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <p className="flex items-center gap-2 text-ui-sm text-muted-foreground">
@@ -654,8 +672,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
               }
               onDeleteNode={() => {
                 if (!node) return;
-                ws.deleteNode(wb.activeDiagram.id, node.id);
-                wb.clearSelection();
+                void ws.deleteNode(wb.activeDiagram.id, node.id).then((deleted) => deleted && wb.clearSelection());
               }}
               onDeleteEdge={() => {
                 if (!wb.selectedEdge) return;

@@ -62,7 +62,15 @@ type Props = {
   onPickContext?: (() => void) | undefined;
   /** This composer owns the global ⌘. shortcut (only one mounted composer should). */
   keyboard?: boolean;
+  /**
+   * The project this composer writes for. Unsent text and images belong to it: AgentPanel
+   * remounts the composer per project, which parks them and restores the next project's own.
+   */
+  scope?: string | undefined;
 };
+
+/** Unsent composer text per project (see `scope`); memory only. */
+const parkedDrafts = new Map<string, string>();
 
 /** Why images cannot be attached right now, or null. */
 export function imageBlockedReason(daemon: DaemonState): string | null {
@@ -90,10 +98,21 @@ function blockedReason(daemon: DaemonState): string | null {
 }
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
-  { node, contextPath, daemon, running, onSend, onStop, onClearContext, onPickContext, keyboard = true },
+  { node, contextPath, daemon, running, onSend, onStop, onClearContext, onPickContext, keyboard = true, scope },
   ref,
 ) {
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => (scope !== undefined ? (parkedDrafts.get(scope) ?? "") : ""));
+  // Park the text for this project when the composer goes (a project switch remounts it).
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  useEffect(() => {
+    if (scope === undefined) return;
+    parkedDrafts.delete(scope);
+    return () => {
+      if (draftRef.current.trim().length > 0) parkedDrafts.set(scope, draftRef.current);
+      else parkedDrafts.delete(scope);
+    };
+  }, [scope]);
   const [pendingAgent, setPendingAgent] = useState<{ agentId: string; modelId: string | null } | null>(
     null,
   );
@@ -107,7 +126,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   }, [keyboard]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const attachments = useComposerAttachments();
+  const attachments = useComposerAttachments(scope);
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const [queued, setQueued] = useState(false);

@@ -103,7 +103,8 @@ export function summarizeSince(events: readonly ActivityEvent[], from: string | 
   const files: string[] = [];
   for (const event of [...events].reverse()) {
     if (event.kind === "turn.finished") {
-      if (event.stopReason === "error") turnsFailed += 1;
+      // A cancelled turn did not finish: it is "failed or stopped", not "Agents finished 1 turn".
+      if (event.stopReason === "error" || event.stopReason === "cancelled") turnsFailed += 1;
       else turnsFinished += 1;
       for (const file of event.files ?? []) if (!files.includes(file)) files.push(file);
     } else if (event.kind === "permission.requested") permissionsRequested += 1;

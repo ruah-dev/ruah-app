@@ -1,6 +1,6 @@
 // src/projects/repo-files.ts — what Ruah may write into a user's repository
 // (CONTRACTS §21.3). Only committable files, and only on an explicit user
-// action: `.ruah/verify.json` (Sync criteria), `.ruah/cloud.json`,
+// action: `.ruah/verify.json` (POST /api/engines/verify/sync), `.ruah/cloud.json`,
 // `.ruah/extensions.json`, `.ruah/preview.json`, `.ruah/links.json`. Caches
 // and run outputs live in $RUAH_HOME/projects/<id>/cache instead. Whenever
 // Ruah writes into a repo's `.ruah/`, it makes sure `.ruah/.gitignore`

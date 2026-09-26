@@ -1,10 +1,10 @@
 # CONTRACTS.md — ruah coupling contracts
 
-These three contracts are the only coupling between the Lovable viewer ("Architect's Canvas") and the daemon (`ruah`). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
+These contracts are the only coupling between the viewer and the daemon (`ruah app`). It started with three (§1 `architecture.json`, §2 the WebSocket protocol, §3 the context pack); every later section adds one area, numbered in the order it was written (there is no §4). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
 
 Written 2026-09-16 against ACP `protocolVersion: 1`, `@agentclientprotocol/sdk` 1.4.0, `@agentclientprotocol/claude-agent-acp` 0.78.0.
 
-Conventions that apply to all three contracts:
+Conventions that apply to every section:
 
 - Paths are repo-relative, POSIX separators, no leading `./`, no trailing `/`. The only absolute path on the wire is `root` in the `architecture` message. ACP itself requires absolute paths; the daemon converts in both directions.
 - IDs match `^[a-z0-9][a-z0-9._-]{0,63}$`. Node ids in a system architecture (§1.5) may carry one repo namespace: `^([a-z0-9][a-z0-9-]{0,62}:)?[a-z0-9][a-z0-9._-]{0,63}$` (e.g. `invoices-api:routes`).
@@ -413,7 +413,6 @@ export type ErrorCode =
 | `GET /api/architecture` | current `Architecture` JSON | same payload as the WS message |
 | `GET /api/context/:nodeId` | `text/plain` context pack for the node | used by "Copy context" in the node popover |
 | `GET /api/file?path=<rel>` | `{ path, lang, content }` | inside root only; max 512 KiB; binary → 415; missing → 404 |
-| `PUT /api/architecture` | Phase 3, same as `architecture.save` | body validated, written atomically |
 | `GET /api/expand/:nodeId` | `Expansion` (§1.6): the level below a stored or expanded element | `nodeId` URL-encoded; 404 unknown element or path, 422 not expandable (no path, a symbol, a file without an outline); Origin checked like `/ws` (403) |
 | `GET /api/expand-peek?id=<id>&id=<id>…` | `{ counts: { [id]: number \| null } }` direct child counts for "N inside" chips, without expanding (null = not expandable) | max 200 ids; Origin checked (403) |
 | `POST /api/rescan` | re-run the scanner on the served repo, merging hand edits; `{ ok, nodes, edges, layers, ms }` | Origin checked like `/ws` (403 otherwise); result is broadcast as `architecture` reason `saved`; 422 if the result fails validation |
@@ -423,6 +422,7 @@ export type ErrorCode =
 | `GET /api/usage/summary?range=24h\|7d\|30d` | `{ range, totals: { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd: number\|null, turns }, series: { t, agentId, model, inputTokens, outputTokens, costUsd\|null }[], byModel: { agentId, model, turns, inputTokens, outputTokens, costUsd\|null }[] }` | per-turn usage recorded by the daemon in `~/.ruah/usage.jsonl` (all repos); `t` = ISO bucket start (hourly for 24h, daily otherwise); `costUsd` only when the agent reports it |
 | `GET /api/arch`, `POST /api/arch/ops` | map ops for `ruah app mcp` (§1.7) | loopback + capability token only; no Origin allowed |
 | `GET /api/usage/limits` | `{ providers: { agentId, name, status: "available"\|"unavailable"\|"unknown", windows: { id, label, kind: "session"\|"weekly"\|"other", usedPercent: number\|null, resetsAt: string\|null }[], note? }[] }` | Claude: SDK `get_usage` + streamed `rate_limit_event` (port of t3code `claudeUsageLimits.ts`); other agents `unknown` unless their ACP usage updates say otherwise |
+| any other `/api/*` path or method | `404 { error }` (2026-09-26) | never the SPA fallback: a client calling an endpoint this daemon lacks (e.g. an older daemon) gets an error, not `index.html` with 200. Map edits go through `architecture.save` on the WebSocket (there is no `PUT /api/architecture`) |
 
 ### 2.4 Example: one complete turn
 
@@ -658,7 +658,7 @@ export interface TurnRecord {    // what the viewer needs to redraw a past turn
 - daemon → viewer `{ type: "chats", projectId, chats: ChatInfo[], activeChatId: string | null }` — after `hello`, on switch, and whenever the list changes.
 - daemon → viewer `{ type: "chat.history", chatId, turns: TurnRecord[] }` — reply to `chat.open` (and after `hello` for the active chat).
 - viewer → daemon `{ type: "chat.new" }`, `{ type: "chat.open", chatId }`, `{ type: "chat.rename", chatId, title }`, `{ type: "chat.delete", chatId }`.
-- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1).
+- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1). The viewer therefore asks before it opens another chat of the project (or a new one) while a turn runs in the chat in front ("Stop the agent?", 2026-09-26); the recent-chats strip shows which chat is working.
 
 ### 5.3 HTTP additions
 | Method + path | Body / result |
@@ -1552,7 +1552,7 @@ interface ActivityEvent {
   stopReason?: StopReason;    // turn.finished
   error?: string;             // turn.finished (error / limit), agent.error
   requestId?: string;         // permission.*
-  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + diffs; ≤ 20)
+  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + their diffs that completed — a denied or cancelled edit is not listed; ≤ 20)
   mapChanges?: number;        // turn.finished, map.changed
 }
 interface ProjectActivity {
@@ -1633,8 +1633,9 @@ interface ResumeInfo {
               lastPrompt: string | null; lastReply: string | null } | null;  // active chat (else newest); ≤ 200 chars each
   lastFocus: { nodeId: string; name: string; at?: string } | null;           // last focus.set; name from architecture.json
   since: { from: string | null;  // = lastViewedAt (null: everything logged)
-           turnsFinished; turnsFailed; permissionsRequested;
-           files: string[]; filesTotal;   // files agents edited, most recent first (≤ 20)
+           turnsFinished; turnsFailed;    // turnsFailed: stopReason error or cancelled
+           permissionsRequested;
+           files: string[]; filesTotal;   // files agents edited (completed edit tool calls only), most recent first (≤ 20)
            mapChanges;                    // sum of map.changed
            events: ActivityEvent[] };     // the last 20
   unread: number;
@@ -1686,6 +1687,12 @@ or null), at most **16 KB** serialized (UTF-8), nested at most 16 levels.
 | --- | --- | --- |
 | WebSocket | `{ type: "view.save", projectId, view }` (any project, not only the open one); a refused view → `error{bad_message, "view.save: view is N bytes (max 16384)"}` / `"… must be a JSON object"` | — |
 | HTTP | `POST /api/projects/:id/view` `{ view }` → `{ ok: true, updatedAt }`; 413 over 16 KB, 400 not an object / bad id, 403 Origin | `GET /api/projects/:id/view` → `{ view: object \| null, updatedAt: string \| null }` |
+
+The shell's part (`view.shell`, `ui/src/lib/view-restore.ts`) stores only a **project page**
+(`/map`, `/agent`, `/tasks`, `/cloud`, `/preview`, `/?view=project`): while an app-wide page is
+open (Home `/`, Chats, Usage, Integrations, Settings, Extensions) the project keeps the project page it
+had, and an app-wide page stored by an older viewer restores as `/map` (2026-09-26 — a switch
+back to a project used to land on Home or Settings).
 
 The viewer helpers (`ui/src/lib/daemon.ts` `saveViewState` — debounced 400 ms
 per project over the socket, HTTP when it is down, refuses > 16 KB —
@@ -1889,8 +1896,8 @@ preview scope, and the `ruah app design` CLI.
 `<html>` carries `data-theme="dark|light|contrast"` (always), `class="dark|light"` and
 `data-palette="<id>"` for every palette except the default (absent = Teal + Indigo). Unknown stored
 values fall back to the defaults. The first-paint script (`THEME_BOOT`, routes/__root.tsx) must set
-`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`); until it accepts
-`classic`, that palette appears only once the viewer's JS has run. A stored `dusk` now renders the
+`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`), so every palette
+is right from the first paint. A stored `dusk` now renders the
 indigo palette (it was a lavender accent swap before); when `ruah.palette.v` is absent, Settings →
 Appearance says so once. The viewer keeps the session's choice in memory: storage only persists it
 (a choice holds when storage is unavailable) and other windows follow through the `storage` event.
@@ -2031,8 +2038,9 @@ folder; open such a folder with `ruah app open usage` or `ruah app ./usage`).
   on-demand, "Recorded locally", "Ruah estimate" (plus the viewer's model-price overrides for
   turns without a reported cost; "(1/2 turns)" when the cost covers only some turns), reason +
   action, source · checked · refresh · Dashboard ↗.
-- `AgentLimitHint agentId` — "62% left · resets 4h" for the tightest window (tie → shorter
-  window), for the top-bar agent pill; renders nothing without a percentage.
+- The top-bar agent pill's hint — "62% left · resets 4h" for the tightest window (tie →
+  shorter window), nothing without a percentage — is fed by `usage/register.tsx` through
+  `shell/slots.ts` `setAgentLimitHint` (the standalone `AgentLimitHint` component is gone).
 - `AgentLimitToasts` — one toast per agent, window, level and reset (the reset rounded to the
   minute, so two sources a second apart are one window; remembered in `localStorage`
   `ruah.usage.limit-announced.v1`); the panel mounts it, the shell may instead. It fetches
@@ -2063,7 +2071,7 @@ interface Extension {                        // zod: ExtensionSchema (src/contra
   name: string;
   description?: string;
   source:
-    | { type: "local"; path: string }        // absolute; in a project file relative to the repo root when inside it
+    | { type: "local"; path: string }        // absolute; in a project file relative to the repo root (a folder outside the repo is refused for project scope, 422: the committed file would carry this machine's path)
     | { type: "git"; url: string; ref?: string; subdir?: string }   // clone: $RUAH_HOME/extensions/src/<slug>-<sha1(url#ref)[0:8]>
     | { type: "featured"; id: string }       // catalog entry; runs/env/notes copied at add time
     | { type: "inline" };                    // an MCP server defined by `runs` only
@@ -2764,7 +2772,7 @@ permission, 500 write / scan / git init failed.
 | `empty` | Empty | README, `.gitignore`, an empty `architecture.json` (the viewer opens it in Edit mode) | — |
 | `web-vite-react` | Web app (Vite + React + TS) | Vite + React 19 + strict TS app | `pnpm install && pnpm dev` |
 | `node-api-ts` | Node API (TypeScript) | Node 22 `http` API with a tiny router, `node:test` tests | `pnpm install && pnpm dev` |
-| `static-site` | Static site | HTML, CSS, JS, no build step | `open index.html (or Ruah's Preview)` |
+| `static-site` | Static site | HTML, CSS, JS, no build step | `open index.html` (the hints also offer Ruah's Preview, which serves it as is) |
 | `pnpm-monorepo` | Monorepo (pnpm workspaces) | an API app + a shared package, one tsconfig base | `pnpm install && pnpm dev` |
 | `infra-terraform` | Infra (Terraform + GitHub Actions) | Terraform with dev / prod variables, a workflow that fmt-checks, validates and plans (never applies) | `cd terraform && terraform init && terraform plan` |
 
@@ -2869,11 +2877,14 @@ behind), 2 bad arguments.
   already has projects shows no card. Only dismissing the card sets `ruah.onboarded.v1`. With
   no daemon (the bundled sample) a first run opens the start screen with the card over the
   sample.
-- **Permission shortcut** (every PermissionCard): Enter = allow once and Esc = dismiss only
+- **Permission shortcut** (every PermissionCard): Enter = allow once only
   when the key can't mean anything else — it lands on `<body>`, a disabled field (the composer
   while the agent works) or a non-interactive part of the card. A key on any button, link,
   tab, option, field, editor, dialog or menu belongs to that control (Enter on a Home card or
-  its "Reject" quick action clicks it); an already-handled key is ignored.
+  its "Reject" quick action clicks it); an already-handled key is ignored. Esc answers nothing
+  (2026-09-26: it sent `cancelled`, which stops the whole turn, and a stray second Esc killed the
+  agent's work). Every "Reject" — the card, Home, the bell — sends the `reject_once` option
+  (this call is declined, the agent carries on); only the composer's Stop cancels a turn.
 - **Wizard** (⇧⌘N; ⌘N on the start screen): name + location (live check, final path shown) →
   starting point → options (git + first commit on; GitHub off, private, only with gh logged
   in, the exact command shown; add to a system when one is known; ask the agent with an
@@ -2963,7 +2974,7 @@ Only committable files, and only on an explicit user action:
 
 | File | Written by |
 | --- | --- |
-| `.ruah/verify.json` | Sync criteria (never by a verify run) |
+| `.ruah/verify.json` | `ruah verify init` / by hand, or `POST /api/engines/verify/sync` with ruah workflow tasks that carry acceptance criteria (never by a verify run; the viewer has no sync button — its element inspector has **Verify**) |
 | `.ruah/cloud.json` | cloud scope changes (§14) |
 | `.ruah/extensions.json` | enabling / editing a project extension (§17) |
 | `.ruah/preview.json` | "Save to the repo" in the Preview (off by default; §18) |
@@ -2983,7 +2994,8 @@ Only committable files, and only on an explicit user action:
   --remember` keeps the pick in `$RUAH_HOME`, `--save-to-repo` writes the repo file.
 - Verify after an agent turn runs only when the repo has criteria (`.ruah/verify.json` with
   more than the placeholder older versions wrote) and `ruah verify` is installed. An explicit
-  Verify without criteria answers `unverifiable` with the fix and writes nothing. Sync
+  Verify (the element inspector's **Verify**, `POST /api/engines/verify/run`) without criteria
+  answers `unverifiable` with the fix (`ruah verify init`) and writes nothing. Sync
   criteria with nothing to sync writes nothing either: `POST /api/engines/verify/sync` →
   `{ path, criteriaCount: 0, written: false }` (`written: true` otherwise).
 - Whenever Ruah writes a committable file into a repo's `.ruah/`, it makes sure

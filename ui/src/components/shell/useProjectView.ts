@@ -11,7 +11,8 @@ import { useViewState } from "@/lib/view-state";
 import {
   decodeShellView,
   encodeShellView,
-  isShellPage,
+  pageOf,
+  projectPageToStore,
   restorePage,
   sameShellView,
   type ShellView,
@@ -27,6 +28,8 @@ export function useProjectView(): { saved: ShellView | null; projectId: string |
   const wb = useWorkbench();
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Home "/" vs the project dashboard "/?view=project" differ only in the search.
+  const viewParam = useRouterState({ select: (s) => (s.location.search as Record<string, unknown>)["view"] });
   const projectId = daemon.projectSwitch || !daemon.project ? null : daemon.project.id;
   const { view, loaded, save } = useViewState(projectId);
   const width = usePanelWidth();
@@ -77,14 +80,17 @@ export function useProjectView(): { saved: ShellView | null; projectId: string |
           });
       }
     }
-    const page = restorePage(saved, router.state.location.pathname, first || viaChat);
-    if (page) void router.navigate({ to: page });
+    const location = router.state.location;
+    const page = restorePage(saved, pageOf(location.pathname, location.search as Record<string, unknown>), first || viaChat);
+    if (page === "/?view=project") void router.navigate({ to: "/", search: { view: "project" } });
+    else if (page) void router.navigate({ to: page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, loaded, view]);
 
   // Save what changed (saveViewState debounces per project).
   const snapshot = (): ShellView => ({
-    page: isShellPage(router.state.location.pathname) ? router.state.location.pathname : "/map",
+    // Only project pages: Home, Chats, Settings… keep the project page stored before.
+    page: projectPageToStore(pageOf(router.state.location.pathname, router.state.location.search as Record<string, unknown>), decodeShellView(view)),
     diagramId: wb.activeDiagram.id,
     camera: recallCamera(wb.activeDiagram.id) ?? null,
     drawerOpen: wb.outlineOpen,
@@ -110,7 +116,7 @@ export function useProjectView(): { saved: ShellView | null; projectId: string |
     }
     persist();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, loaded, pathname, wb.activeDiagram.id, wb.outlineOpen, wb.showPanel, wb.panelView, width]);
+  }, [projectId, loaded, pathname, viewParam, wb.activeDiagram.id, wb.outlineOpen, wb.showPanel, wb.panelView, width]);
 
   useEffect(() => onCameraSettled(persist), []);
 

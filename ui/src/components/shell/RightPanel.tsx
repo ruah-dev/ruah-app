@@ -14,6 +14,7 @@ import { useWorkbench } from "@/lib/workbench";
 import { PANEL_DEFAULT, PANEL_MAX, PANEL_MIN, clampPanelWidth } from "@/lib/view-restore";
 import { SidePanel } from "@/components/map/MapPage";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 import type { PreviewSlotProps } from "./slots";
 
 const KEY = "ruah.agentPanel.width";
@@ -134,22 +135,17 @@ export function RightPanel({ agent, Preview }: { agent: boolean; Preview: Compon
         )}
       />
       {both ? (
-        <div role="tablist" aria-label="Right side" className="flex h-9 shrink-0 items-center gap-1 border-b border-hairline px-2">
-          {(["agent", "preview"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={cn(
-                "h-7 rounded-md px-2.5 text-ui-sm transition-colors",
-                tab === t ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t === "agent" ? "Agent" : "Preview"}
-            </button>
-          ))}
+        <div className="flex h-9 shrink-0 items-center gap-1 border-b border-hairline px-2">
+          <Segmented
+            kind="tabs"
+            label="Right side"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "agent", label: "Agent" },
+              { value: "preview", label: "Preview" },
+            ]}
+          />
         </div>
       ) : null}
       {shown === "preview" && Preview ? (

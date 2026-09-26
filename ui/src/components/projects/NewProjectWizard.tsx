@@ -59,6 +59,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 import { canManageProjects } from "./useProjectActions";
 import { queueFirstPrompt, setFirstRunHints } from "./firstRun";
 
@@ -330,11 +331,14 @@ export function NewProjectWizard() {
         report?.github?.url ? "on GitHub" : "",
       ].filter(Boolean);
       const bridge = typeof window !== "undefined" ? window.ruah : undefined;
+      // Top centre (like the update toast): the new project opens with the agent panel, and a
+      // bottom-right toast covered the composer's Send button for seconds.
       toast.success(`Created ${result.name}`, {
+        position: "top-center",
         description: bits.join(" · "),
         ...(bridge ? { action: { label: "Reveal", onClick: () => bridge.revealInFinder(result.root) } } : {}),
       });
-      for (const w of report?.warnings ?? []) toast.warning(w);
+      for (const w of report?.warnings ?? []) toast.warning(w, { position: "top-center" });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -568,23 +572,16 @@ export function NewProjectWizard() {
                 {ghReady && state.git ? (
                   <div className="space-y-2.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div role="radiogroup" aria-label="Visibility" className="flex rounded-lg bg-surface-2 p-0.5">
-                        {(["private", "public"] as const).map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            role="radio"
-                            aria-checked={state.visibility === v}
-                            onClick={() => patch({ visibility: v })}
-                            className={cn(
-                              "h-7 rounded-md px-2.5 text-ui-sm capitalize transition-colors",
-                              state.visibility === v ? "bg-popover text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                            )}
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
+                      <Segmented
+                        label="Visibility"
+                        value={state.visibility}
+                        options={[
+                          { value: "private", label: "Private" },
+                          { value: "public", label: "Public" },
+                        ]}
+                        onChange={(v) => patch({ visibility: v })}
+                        className="h-8"
+                      />
                       <Input
                         aria-label="Repository name"
                         value={state.repoName}

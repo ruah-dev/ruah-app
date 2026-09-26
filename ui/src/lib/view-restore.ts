@@ -4,7 +4,18 @@
 // Pure; unit-tested in ui/test/view-restore.test.ts.
 import type { ViewState } from "./contracts";
 
-export const SHELL_PAGES = ["/", "/map", "/agent", "/chats", "/tasks", "/cloud", "/usage", "/integrations", "/settings"] as const;
+/**
+ * The pages of one project: the ones a project's view remembers and a switch back returns to.
+ * "/?view=project" is the project's dashboard ("/" alone is the global Home, §20).
+ */
+export const PROJECT_PAGES = ["/map", "/agent", "/tasks", "/cloud", "/preview", "/?view=project"] as const;
+export type ProjectPage = (typeof PROJECT_PAGES)[number];
+/**
+ * Everything an older view may hold. Home, Chats, Usage, Integrations and Settings are app-wide:
+ * storing one as a project's page made a later switch back land there (Home looks the same for
+ * every project, so the switch seemed to do nothing). They are read, never restored.
+ */
+export const SHELL_PAGES = [...PROJECT_PAGES, "/", "/chats", "/usage", "/integrations", "/settings"] as const;
 export type ShellPage = (typeof SHELL_PAGES)[number];
 
 export type PanelViewName = "agent" | "details" | "code" | "properties";
@@ -52,6 +63,25 @@ export function clampPanelWidth(w: number): number {
 
 export function isShellPage(v: unknown): v is ShellPage {
   return typeof v === "string" && (SHELL_PAGES as readonly string[]).includes(v);
+}
+
+export function isProjectPage(v: unknown): v is ProjectPage {
+  return typeof v === "string" && (PROJECT_PAGES as readonly string[]).includes(v);
+}
+
+/** The page a location shows, as stored ("/" with ?view=project is the project dashboard). */
+export function pageOf(pathname: string, search: Record<string, unknown> = {}): string {
+  return pathname === "/" && search["view"] === "project" ? "/?view=project" : pathname;
+}
+
+/**
+ * The page to store for a project: the current one when it is a project page, else the project
+ * page stored before (a visit to Home or Settings does not replace it), else the map.
+ */
+export function projectPageToStore(current: string, previous: ShellView | null): ProjectPage {
+  if (isProjectPage(current)) return current;
+  if (previous && isProjectPage(previous.page)) return previous.page;
+  return "/map";
 }
 
 function finite(v: unknown): v is number {
@@ -117,9 +147,13 @@ export function sameShellView(a: ShellView | null, b: ShellView | null): boolean
   return JSON.stringify(encodeShellView(a)) === JSON.stringify(encodeShellView(b));
 }
 
-/** The page to open when entering a project: the saved one, unless the user asked for a page. */
-export function restorePage(saved: ShellView | null, current: string, explicit: boolean): ShellPage | null {
+/**
+ * The page to open when entering a project: its saved project page (an app-wide page stored by an
+ * older viewer counts as the map), unless the user asked for a page. `current` is pageOf(location).
+ */
+export function restorePage(saved: ShellView | null, current: string, explicit: boolean): ProjectPage | null {
   if (!saved || explicit) return null;
-  if (saved.page === current) return null;
-  return saved.page;
+  const target = isProjectPage(saved.page) ? saved.page : "/map";
+  if (target === current) return null;
+  return target;
 }

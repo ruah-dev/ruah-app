@@ -38,6 +38,15 @@ export function shouldOnboard(s: { onboarded: boolean; projectsLoaded: boolean; 
 }
 
 /**
+ * Whether a "Getting started" card this window opened (a first run) still belongs on the start
+ * screen: not once the profile holds more than one project — §20.7, "a profile with projects
+ * shows no card" — even though the verdict was taken once, when the list was empty.
+ */
+export function keepOnboardingCard(recentCount: number): boolean {
+  return recentCount <= 1;
+}
+
+/**
  * What the onboarding rule sees. Without a daemon (the bundled sample) there is no list to wait
  * for and no project: a first run shows the card (the sample opens it over the start screen).
  */

@@ -19,8 +19,6 @@ import { normalizeLimitHint, type LimitHint } from "@/lib/status-chips";
 
 export type { LimitHint } from "@/lib/status-chips";
 
-export const EXTENSIONS_ROUTE = "/extensions";
-
 /** Props the right panel gives a registered preview pane. */
 export interface PreviewSlotProps {
   /** A prompt was drafted into the composer: show the agent (its tab, or the agent panel). */

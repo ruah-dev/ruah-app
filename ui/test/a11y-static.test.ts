@@ -30,21 +30,11 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Folders another track owns this wave (the shell); held to these rules once they adopt them. */
-const NOT_YET = [
-  "components/shell/",
-  "components/launcher/",
-  "components/projects/",
-  "components/workspace/",
-  "components/dashboard/",
-  "routes/__root.tsx",
-  "routes/index.tsx",
-];
-
+// Every track is merged: the whole viewer is held to these rules (the shell, launcher, projects,
+// workspace and dashboard folders used to be exempt while another track owned them).
 const files = walk(join(SRC, "components"))
   .concat(walk(join(SRC, "routes")), walk(join(SRC, "lib")))
   .map((file) => ({ file, rel: relative(SRC, file).split("\\").join("/") }))
-  .filter(({ rel }) => !NOT_YET.some((p) => rel.startsWith(p)))
   .map(({ file, rel }) => ({ rel, text: readFileSync(file, "utf8") }));
 
 const lineOf = (text: string, index: number) => text.slice(0, index).split("\n").length;
@@ -97,6 +87,22 @@ describe("accessible names", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("choice groups and tab lists are the kit Segmented, or handle the arrow keys themselves", () => {
+    // Regression: Home's "All projects | <project>" tab list and the new project wizard's
+    // Private / Public radio group were hand-rolled: no arrow keys, every item a Tab stop.
+    const offenders: string[] = [];
+    for (const { rel, text } of files) {
+      if (!rel.endsWith(".tsx") || rel === "components/ui/segmented.tsx") continue;
+      for (const m of text.matchAll(/role=["'](radiogroup|tablist)["']/g)) {
+        // The container's own keyboard handling must be right there (a grid of cards, a Radix list).
+        const around = text.slice(m.index ?? 0, (m.index ?? 0) + 900);
+        if (/onKeyDown=/.test(around) && /Arrow/.test(around)) continue;
+        offenders.push(`${rel}:${lineOf(text, m.index ?? 0)} ${m[1]}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("pages use the kit Segmented (its `label` is required), not the shell's unnamed fallback", () => {
     const offenders = files
       .filter(({ rel }) => rel !== "components/map/MapPage.tsx")
@@ -109,6 +115,8 @@ describe("accessible names", () => {
     const EXPLAINED = new Set([
       // Clicking the composer's padding focuses its textarea (which is itself focusable).
       "components/agent/Composer.tsx",
+      // Same for the tag box of "Group <project>": a click on its padding focuses its input.
+      "components/projects/TagsDialog.tsx",
     ]);
     const re = new RegExp(String.raw`<(div|span|li|p|section|header|td|tr)\b${ATTRS}>`, "g");
     const offenders: string[] = [];
@@ -267,7 +275,7 @@ describe("page-wide shortcuts leave keys to menus, dialogs and handled events", 
     expect(permissionKeyAllowed({ defaultPrevented: true, target: where.body }, where)).toBe(false);
     expect(permissionKeyAllowed({ defaultPrevented: false, target: fake(menuItem) }, where)).toBe(false);
     expect(permissionKeyAllowed({ defaultPrevented: false, target: fake(inPopover) }, where)).toBe(false);
-    // Nothing else had the key: Esc dismisses, Enter allows.
+    // Nothing else had the key: Enter allows (Esc answers nothing since it stopped whole turns).
     expect(permissionKeyAllowed({ defaultPrevented: false, target: where.body }, where)).toBe(true);
   });
 });

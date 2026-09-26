@@ -11,13 +11,17 @@ const cwd = mkdtempSync(join(tmpdir(), "ruah-cli-help-"));
 afterAll(() => rmSync(cwd, { recursive: true, force: true }));
 
 describe("help flags on subcommands without their own help", () => {
-  for (const args of [["serve", "--help"], ["serve", ".", "-h"], ["scan", "--help"], ["export", "-h"], ["mcp", "--help"]]) {
+  for (const args of [
+    ["serve", "--help"], ["serve", ".", "-h"], ["scan", "--help"], ["export", "-h"], ["mcp", "--help"],
+    // Added in later merges: they exited 2 ("Unknown option '--help'", `unknown subcommand "--help"`).
+    ["doctor", "--help"], ["resume", "--help"], ["activity", "-h"], ["system", "--help"], ["system", "help"],
+  ]) {
     it(`${args.join(" ")} prints the usage and exits 0 without running`, () => {
       const out = execFileSync(process.execPath, [cli, ...args], {
         cwd,
         encoding: "utf8",
         timeout: 10_000,
-        env: { ...process.env, RUAH_HOME: join(cwd, "home"), RUAH_PORT: "1" },
+        env: { ...process.env, RUAH_HOME: join(cwd, "home"), RUAH_PORT: "1", RUAH_DAEMON_URL: "http://127.0.0.1:9" },
       });
       expect(out).toContain("ruah app serve [<repo>]");
     });
@@ -29,5 +33,6 @@ describe("the main help lists the daily-driver options (CONTRACTS §21)", () => 
     const out = execFileSync(process.execPath, [cli, "help"], { cwd, encoding: "utf8", timeout: 10_000, env: { ...process.env, RUAH_HOME: join(cwd, "home") } });
     expect(out).toContain("ruah app usage settings [--read-app-logins on|off]");
     expect(out).toContain("rename <id> <new-id> [--offline]");
+    expect(out).toContain("scope [add|remove|reset|accounts]");
   });
 });

@@ -84,7 +84,9 @@ export function originAllowed(origin: string | undefined, allowOrigins: readonly
   } catch {
     return false;
   }
-  if (host === "localhost" || host === "127.0.0.1") return true;
+  // Same loopback rule as hostAllowed and the terminal: localhost, *.localhost,
+  // 127.x and IPv6 ::1 (a viewer opened at http://[::1]:<port>).
+  if (isLoopbackHostName(host.replace(/^\[|\]$/g, ""))) return true;
   return allowOrigins.some((glob) => originMatches(origin, glob));
 }
 
@@ -236,6 +238,12 @@ export function startServer(
       return;
     }
 
+    // No handler above took it: an unknown /api path (or a method the path does not
+    // take, e.g. PUT /api/architecture) is an error, never the SPA's index.html with 200.
+    if (pathname === "/api" || pathname.startsWith("/api/")) {
+      sendJson(res, 404, { error: `no such endpoint: ${req.method ?? "GET"} ${pathname}` });
+      return;
+    }
     const staticResult = serveStatic(options.viewerDir, pathname);
     res.writeHead(staticResult.status, {
       ...(staticResult.contentType !== undefined ? { "content-type": staticResult.contentType } : {}),

@@ -85,6 +85,14 @@ type Props = {
   onReveal?: ((id: string) => void) | undefined;
   /** Overlay at the bottom centre (loading / truncated notices). */
   notice?: ReactNode;
+  /**
+   * Delete / ⌘⌫ removes the selection only when true (the Map's Edit mode): in View mode a stray
+   * key press must not delete anything. Default true (standalone editor).
+   */
+  deleteKey?: boolean;
+  /** ⌘Z / ⇧⌘Z while the map has the keyboard: take back / redo the last map edit. */
+  onUndo?: (() => void) | undefined;
+  onRedo?: (() => void) | undefined;
 };
 
 const GRID = 8;
@@ -122,6 +130,9 @@ export function EditorCanvas({
   searchIndex,
   onReveal,
   notice,
+  deleteKey = true,
+  onUndo,
+  onRedo,
 }: Props) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
@@ -666,8 +677,11 @@ export function EditorCanvas({
     onDeleteNode,
     onAddNode,
     mode: diagram.mode,
+    deleteKey,
+    onUndo,
+    onRedo,
   });
-  keys.current = { selectedNodeId, nodes: vm.nodes, editable, searchOpen, linkFrom, onGoUp, onDeleteNode, onAddNode, mode: diagram.mode };
+  keys.current = { selectedNodeId, nodes: vm.nodes, editable, searchOpen, linkFrom, onGoUp, onDeleteNode, onAddNode, mode: diagram.mode, deleteKey, onUndo, onRedo };
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
@@ -684,7 +698,18 @@ export function EditorCanvas({
         setSearchOpen(true);
         return;
       }
-      if (typing || mod) return;
+      // ⌘Z / ⇧⌘Z (Ctrl on other systems): the map's own edit history. Text fields keep theirs.
+      if (mod && !e.altKey && !typing && e.key.toLowerCase() === "z") {
+        if (!shellRef.current?.isConnected || shellRef.current.offsetParent === null) return;
+        const run = e.shiftKey ? K.onRedo : K.onUndo;
+        if (!run) return;
+        e.preventDefault();
+        run();
+        return;
+      }
+      // Backspace alone goes up a level (below); ⌘⌫ deletes like Delete does.
+      const deleteCombo = e.key === "Delete" || (e.key === "Backspace" && mod && !e.altKey && !e.shiftKey);
+      if (typing || (mod && !deleteCombo)) return;
       // Only when the map is on screen (the canvas may be mounted behind another page).
       if (!shellRef.current?.isConnected || shellRef.current.offsetParent === null) return;
       const sel = K.selectedNodeId && K.nodes.some((n) => n.id === K.selectedNodeId) ? K.selectedNodeId : null;
@@ -708,9 +733,10 @@ export function EditorCanvas({
         return;
       }
       // Backspace always goes up a level (never deletes: View mode is editable and
-      // Backspace was the documented "up" key). Delete (fn+⌫) or ⌘⌫ removes the selection.
-      if (e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey))) {
-        if (K.editable && sel && !isGroupNodeId(sel)) {
+      // Backspace was the documented "up" key). Delete (fn+⌫) removes the selection, in Edit
+      // mode only (a stray key in View mode deleted elements with everything inside them).
+      if (deleteCombo) {
+        if (K.editable && K.deleteKey && sel && !isGroupNodeId(sel)) {
           e.preventDefault();
           K.onDeleteNode(sel);
         }

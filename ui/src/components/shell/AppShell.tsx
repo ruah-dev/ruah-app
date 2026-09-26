@@ -33,7 +33,7 @@ import { reportSwitchPainted, switchPending } from "@/lib/switch-timing";
 import { sameRoot, type DaemonState } from "@/lib/daemon";
 import type { ResumeInfo } from "@/lib/contracts";
 import { shouldShowResumeCard } from "@/lib/resume-card";
-import { takeBuildReloadResume } from "@/lib/build-reload";
+import { markReloadResume, takeBuildReloadResume } from "@/lib/build-reload";
 import { useViewerPrefs } from "@/lib/preferences";
 import { TerminalPanel } from "@/components/terminal/TerminalPanel";
 import { useTerminal } from "@/lib/terminal";
@@ -275,6 +275,14 @@ function useResumeDismissal(projectId: string | null) {
  */
 function useSkipResumeAfterBuildReload(entry: ResumeInfo | null, projectId: string | null, dismiss: (lastViewedAt: string | null) => void) {
   const [reloadedIn, setReloadedIn] = useState<string | null>(takeBuildReloadResume);
+  // A manual reload (⌘R) counts too: the page going away marks the project open now.
+  const openNow = useRef(projectId);
+  openNow.current = projectId;
+  useEffect(() => {
+    const onHide = () => markReloadResume(openNow.current);
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
   useLayoutEffect(() => {
     if (reloadedIn === null) return;
     if (projectId && projectId !== reloadedIn) {

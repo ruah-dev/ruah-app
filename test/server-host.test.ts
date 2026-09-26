@@ -2,9 +2,13 @@
 // told about are refused before any route (GETs carry no Origin header, so the
 // Origin check alone let a rebound page read /api/file, /api/architecture, …).
 import * as http from "node:http";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { hostAllowed, startServer } from "../src/serve/server.js";
+import { hostAllowed, originAllowed, startServer } from "../src/serve/server.js";
 import { SessionHub } from "../src/serve/session.js";
+import { createArchitectureStore } from "../src/serve/architecture-store.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -60,5 +64,51 @@ describe("Host check", () => {
       req.end();
     });
     expect(upgrade).toBe(403);
+  });
+});
+
+// Regression: originAllowed only knew "localhost" and "127.0.0.1", so a viewer
+// opened at http://[::1]:<port> had its /ws upgrade refused while the Host
+// check (and the terminal) accepted IPv6 loopback.
+describe("Origin check", () => {
+  it("uses the same loopback names as the Host check", () => {
+    expect(originAllowed(undefined, [])).toBe(true);
+    expect(originAllowed("http://localhost:4177", [])).toBe(true);
+    expect(originAllowed("http://127.0.0.1:4177", [])).toBe(true);
+    expect(originAllowed("http://[::1]:4177", [])).toBe(true);
+    expect(originAllowed("http://app.localhost:5173", [])).toBe(true);
+    expect(originAllowed("https://evil.example", [])).toBe(false);
+    expect(originAllowed("http://[::2]:4177", [])).toBe(false);
+    expect(originAllowed("http://127.0.0.1.evil.example", [])).toBe(false);
+    expect(originAllowed("not a url", [])).toBe(false);
+    expect(originAllowed("https://x.lovable.app", ["https://*.lovable.app"])).toBe(true);
+  });
+});
+
+// Regression: any unhandled /api path, with any method, fell through to the SPA fallback and
+// got 200 index.html, so PUT /api/architecture (documented, never implemented) looked saved.
+describe("unknown /api paths", () => {
+  it("answer 404 JSON instead of the SPA fallback", async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "ruah-api404-"));
+    cleanups.push(async () => rmSync(repo, { recursive: true, force: true }));
+    writeFileSync(path.join(repo, "architecture.json"), JSON.stringify({ version: 1, name: "fixture", nodes: [], edges: [], workflows: [] }));
+    const store = createArchitectureStore(path.join(repo, "architecture.json"), { watch: false });
+    await store.load();
+    const hub = new SessionHub(store, null, { version: "0.0.0-test", links: false, debug: () => {}, info: () => {}, agentId: "mock" });
+    const server = await startServer(null, hub, { host: "127.0.0.1", port: 0, allowOrigins: [], logger: () => {} });
+    cleanups.push(async () => {
+      await hub.shutdown();
+      await server.close();
+    });
+    for (const [method, route] of [["GET", "/api/nonexistent"], ["PUT", "/api/architecture"], ["DELETE", "/api/file"], ["GET", "/api"]] as const) {
+      const r = await fetch(`${server.url}${route}`, { method, ...(method === "PUT" ? { headers: { "content-type": "application/json" }, body: "{}" } : {}) });
+      expect(r.status, `${method} ${route}`).toBe(404);
+      expect(r.headers.get("content-type")).toContain("application/json");
+      expect(((await r.json()) as { error: string }).error).toContain("no such endpoint");
+    }
+    expect((await fetch(`${server.url}/api/architecture`)).status).toBe(200);
+    const spa = await fetch(`${server.url}/map`);
+    expect(spa.status).toBe(200);
+    await spa.text();
   });
 });

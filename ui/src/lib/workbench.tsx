@@ -36,7 +36,7 @@ import { fetchContext, setFocus } from "./daemon";
 import { quickAddPosition } from "./architecture-edit";
 import { isCloudNodeId } from "./integrations";
 import { isExpandedId, requestExpansion, requestPeek } from "./expand";
-import { onboardingInput, shouldOnboard } from "./start-screen";
+import { keepOnboardingCard, onboardingInput, shouldOnboard } from "./start-screen";
 
 export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
@@ -205,6 +205,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [projectsLoaded, recentCount, openProjectInfo, daemonSource, projectsSupported]);
+  // Decided once per window, but a first-run window whose user has since created or opened more
+  // projects no longer greets them with "Getting started · 1 of 3" (after a daemon restart, or
+  // the Start screen). Closing is not dismissing: only the user's dismiss marks the profile.
+  useEffect(() => {
+    if (onboardingOpen && daemonSource === "daemon" && !keepOnboardingCard(recentCount)) setOnboardingOpen(false);
+  }, [onboardingOpen, recentCount, daemonSource]);
 
   // Project changed: reset what the user was looking at. A new, empty project starts in Edit
   // mode so the element palette is right there.

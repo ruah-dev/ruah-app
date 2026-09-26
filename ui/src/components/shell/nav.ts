@@ -59,8 +59,8 @@ export const NAV: readonly NavItemDef[] = [
   { to: "/chats", label: "Chats", icon: MessagesSquare, key: "c", rail: null },
   { to: "/usage", label: "Usage", icon: BarChart3, key: "u", rail: "bottom" },
   { to: "/integrations", label: "Integrations", icon: Plug, key: "i", rail: "bottom" },
-  // Skills, MCP servers, Kiro powers, plugins: appears once routes/extensions.tsx exists.
-  { to: "/extensions", label: "Extensions", icon: Puzzle, key: "e", rail: "bottom", optional: true },
+  // Skills, MCP servers, Kiro powers, plugins (routes/extensions.tsx).
+  { to: "/extensions", label: "Extensions", icon: Puzzle, key: "e", rail: "bottom" },
   { to: "/settings", label: "Settings", icon: Settings, key: "s", rail: "bottom" },
 ];
 
@@ -78,6 +78,8 @@ export function isActivePath(pathname: string, to: string) {
 }
 
 export function pageLabel(pathname: string): string {
+  // A stored project view names the project's dashboard "/?view=project" (lib/view-restore.ts).
+  if (pathname === "/?view=project") return "Project overview";
   return NAV.find((n) => isActivePath(pathname, n.to))?.label ?? "Ruah";
 }
 
@@ -111,9 +113,10 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { keys: "+ · −", label: "Zoom in · out", group: "Map" },
   { keys: "F2", label: "Rename the selected element", group: "Map" },
   { keys: "N", label: "New element", group: "Map" },
-  { keys: "Del · ⌘⌫", label: "Remove the selected element", group: "Map" },
+  { keys: "Del · ⌘⌫", label: "Remove the selected element (Edit mode)", group: "Map" },
+  { keys: "⌘Z · ⇧⌘Z", label: "Undo · redo your map edits", group: "Map" },
   { keys: "Enter", label: "Send (Shift+Enter: new line)", group: "Agent" },
-  { keys: "Enter / Esc", label: "Allow once / deny a permission request", group: "Agent" },
+  { keys: "Enter", label: "Allow a waiting permission request once (Reject and Stop are buttons)", group: "Agent" },
   { keys: "↑ ↓ · Enter", label: "Move · open", group: "Launcher" },
   { keys: "⌘Enter", label: "Open in the background (warm a project, ask without showing the chat)", group: "Launcher" },
   { keys: "Tab", label: "Ask the agent what you typed", group: "Launcher" },

@@ -7,6 +7,7 @@ import * as RadioGroup from "@radix-ui/react-radio-group";
 import { PALETTES, PALETTE_IDS, type PaletteId } from "@/design/tokens";
 import { readPalette } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { useSegmentedKeys } from "@/components/ui/segmented";
 import {
   PHANTOM_EXPRESSIONS,
   PHANTOM_SIZES,
@@ -168,6 +169,7 @@ function param<T extends string>(name: string, allowed: readonly T[], fallback: 
 export function GhostSheet() {
   const [palette, setPalette] = useState<PaletteId>(() => param("palette", PALETTE_IDS, typeof window === "undefined" ? "teal" : readPalette()));
   const [section, setSection] = useState<Section>(() => param("section", SECTIONS.map((s) => s.id), "poses"));
+  const sectionKeys = useSegmentedKeys(SECTIONS.map((s) => s.id), section, setSection, "tabs");
   const [poseSize, setPoseSize] = useState(() => Number(param("size", ["72", "96", "144", "200"], "96")));
   const [columns, setColumns] = useState<"all" | "dark" | "light" | "contrast">(() => param("theme", ["all", "dark", "light", "contrast"] as const, "all"));
   return (
@@ -202,13 +204,12 @@ export function GhostSheet() {
             ))}
           </RadioGroup.Root>
         </div>
-        <div role="tablist" aria-label="Section" className="flex flex-wrap gap-1 border-b border-hairline pb-2">
-          {SECTIONS.map((s) => (
+        <div {...sectionKeys.groupProps} aria-label="Section" className="flex flex-wrap gap-1 border-b border-hairline pb-2">
+          {SECTIONS.map((s, i) => (
             <button
               key={s.id}
               type="button"
-              role="tab"
-              aria-selected={section === s.id}
+              {...sectionKeys.itemProps(i)}
               onClick={() => setSection(s.id)}
               className={cn(
                 "h-7 rounded-md px-2.5 text-ui-sm transition-colors",

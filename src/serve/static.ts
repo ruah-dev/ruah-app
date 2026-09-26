@@ -72,7 +72,8 @@ export function serveStatic(viewerDir: string | undefined, urlPath: string): Sta
   try {
     stat = fs.statSync(abs);
   } catch {
-    // SPA fallback: extension-less, non-/api paths fall back to index.html.
+    // SPA fallback: extension-less paths fall back to index.html (server.ts
+    // answers unknown /api paths with 404 before they get here).
     if (!path.extname(rel).includes(".")) {
       const indexAbs = path.join(rootAbs, "index.html");
       try {

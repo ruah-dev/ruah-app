@@ -1,7 +1,7 @@
 // ui/test/start-screen.test.ts — when the start screen and the first-run card show
 // (ui/src/lib/start-screen.ts): never over an open project on load; the card only on a true first run.
 import { describe, expect, it } from "vitest";
-import { onboardingInput, shouldOnboard, startScreenMode } from "@/lib/start-screen";
+import { keepOnboardingCard, onboardingInput, shouldOnboard, startScreenMode } from "@/lib/start-screen";
 
 describe("start screen", () => {
   it("covers the shell only without a project, or when asked", () => {
@@ -39,5 +39,16 @@ describe("start screen", () => {
     expect(shouldOnboard(onboardingInput({ source: "sample", projectsLoaded: false, recentCount: 0, projectOpen: false }, true))).toBe("skip");
     // Still connecting: wait for the list.
     expect(shouldOnboard(onboardingInput({ source: null, projectsLoaded: false, recentCount: 0, projectOpen: false }, false))).toBe("wait");
+  });
+});
+
+// Regression: a window that started as a first run showed "Getting started · 1 of 3" again whenever
+// the start screen came back (daemon restart), after the user had created and opened 8 projects.
+describe("keepOnboardingCard", () => {
+  it("keeps the first-run card only while the profile has at most one project", () => {
+    expect(keepOnboardingCard(0)).toBe(true);
+    expect(keepOnboardingCard(1)).toBe(true);
+    expect(keepOnboardingCard(2)).toBe(false);
+    expect(keepOnboardingCard(8)).toBe(false);
   });
 });

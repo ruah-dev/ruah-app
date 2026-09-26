@@ -8,6 +8,7 @@ import {
   hasComposerPending,
   hasOpenOverlay,
   hasUnsavedInput,
+  markReloadResume,
   reloadAttempted,
   reloadDecision,
   reloadForBuild,
@@ -103,6 +104,23 @@ describe("the one-reload guard", () => {
     // No project open: no mark (and an old one goes).
     store.set("ruah.buildReload.resumed", "stale");
     reloadForBuild("b3", 0, null);
+    expect(takeBuildReloadResume()).toBeNull();
+  });
+
+  // Regression: a manual reload (⌘R) of the project in front showed "Welcome back … 1 permission
+  // request waiting, 1 agent still working" — things that happened in front of the user.
+  it("a manual reload marks the open project too (the page going away)", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    markReloadResume("proj-2");
+    expect(takeBuildReloadResume()).toBe("proj-2");
+    expect(takeBuildReloadResume()).toBeNull();
+    store.set("ruah.buildReload.resumed", "stale");
+    markReloadResume(null);
     expect(takeBuildReloadResume()).toBeNull();
   });
 

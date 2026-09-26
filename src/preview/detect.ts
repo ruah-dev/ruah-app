@@ -413,7 +413,10 @@ function nodeCandidates(ctx: DirContext): PreviewCandidate[] {
   const pm = packageManagerFor(ctx.root, ctx.dir);
   const name = typeof pkg.name === "string" ? pkg.name : undefined;
   const out: PreviewCandidate[] = [];
-  const setup = nodeModulesMissing(ctx) ? `${pm} install` : undefined;
+  // Only a package with something to install needs `install` first: a package.json with just
+  // scripts (`node server.js`) has no node_modules and needs none.
+  const needsInstall = Object.keys(deps).length > 0 || pkg.workspaces !== undefined;
+  const setup = needsInstall && nodeModulesMissing(ctx) ? `${pm} install` : undefined;
   for (const [script, base] of SCRIPT_SCORE) {
     const body = scripts[script];
     if (typeof body !== "string") continue;

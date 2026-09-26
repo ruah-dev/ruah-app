@@ -339,6 +339,20 @@ describe("ExtensionsService", () => {
     await expect(svc.enable(added.id, "global", ["claude"], project)).rejects.toThrow(/https/);
   });
 
+  // Regression: a folder outside the repo added for "This project" wrote its absolute path
+  // (/Users/<name>/…) into the committable .ruah/extensions.json.
+  it("refuses a project extension from a folder outside the repo", async () => {
+    const svc = service();
+    const outside = makeSkill(path.join(scratch, "elsewhere", "skills", "review"), "review");
+    await expect(svc.add({ scope: "project", source: { type: "local", path: outside }, enableFor: ["claude"] }, project)).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringMatching(/outside this project.*All projects/),
+    });
+    expect(fs.existsSync(path.join(repo, ".ruah", "extensions.json"))).toBe(false);
+    // The same folder is fine for all projects (this machine's file).
+    await expect(svc.add({ scope: "global", source: { type: "local", path: outside } }, project)).resolves.toMatchObject({ scope: "global" });
+  });
+
   it("stores project extensions in the repo (relative paths, no secrets) and does not trust a committed file", async () => {
     const svc = service();
     const skillDir = makeSkill(path.join(repo, "tools", "skills", "release"), "release");

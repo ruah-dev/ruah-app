@@ -289,6 +289,10 @@ export function AgentPanel({
 
       <div className={cn("mx-auto w-full max-w-[46rem] shrink-0 px-3 pb-3", turns.length ? "pt-1" : "")}>
         <Composer
+          // One composer per project: switching parks this project's unsent text and images
+          // (they must never be sent to the next project's agent) and restores that one's.
+          key={daemon.project?.id ?? "none"}
+          scope={daemon.project?.id}
           ref={composerRef}
           node={node}
           contextPath={contextPath}

@@ -32,20 +32,17 @@ export function PermissionCard({
   useEffect(() => {
     if (!keyboard) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" && e.key !== "Escape") return;
+      // Enter only. Esc is not an answer: it used to send "cancelled", which stops the whole turn,
+      // and a stray second Esc (after closing a popover or a card) killed the agent's work. Reject
+      // declines one call with its button; stopping the agent is the composer's Stop.
+      if (e.key !== "Enter") return;
       // Only when the key can't mean anything else (lib/permission-keys.ts): Enter on a button —
       // Home's "Open …" or "Reject", a dialog, a menu, a field — is that control's, never an answer.
       if (!permissionKeyAllowed(e, { body: document.body, root: document.documentElement, card: cardRef.current })) return;
-      if (e.key === "Enter") {
-        const allow = request.options.find((o) => o.kind === "allow_once");
-        if (!allow) return;
-        e.preventDefault();
-        answerPermission(request.requestId, allow.optionId);
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        answerPermission(request.requestId, "cancel");
-      }
+      const allow = request.options.find((o) => o.kind === "allow_once");
+      if (!allow) return;
+      e.preventDefault();
+      answerPermission(request.requestId, allow.optionId);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -74,7 +71,7 @@ export function PermissionCard({
         </p>
         {keyboard ? (
           <span className="ms-auto hidden shrink-0 items-center gap-1 text-caption text-faint sm:flex">
-            <kbd className="kbd">⏎</kbd> allow <kbd className="kbd ms-1">esc</kbd> dismiss
+            <kbd className="kbd">⏎</kbd> allow
           </span>
         ) : null}
       </div>

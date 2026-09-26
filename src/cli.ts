@@ -52,6 +52,8 @@ Usage:
   ruah app cloud <cmd> [options]    cloud resources + live status without the app (no daemon):
     providers                      each provider: connected / not logged in / not installed + fix
     list | status | watch          resources · health summary (exit 1 when down) · live changes
+    scope [add|remove|reset|accounts]  the repo's resources and why each belongs to it; edit
+                                   which resources and accounts are the repo's
                                    (\`ruah app cloud help\` for options)
   ruah app resume [<repo-or-id>] [--json]
                                    where you left off: last chat, focus, agent activity since
@@ -327,21 +329,48 @@ async function openDesktop(repo: string | undefined): Promise<number> {
   return 0;
 }
 
-/** The subcommands; a folder with one of these names opens only as `open <dir>` or `./<dir>`. */
-const COMMANDS = new Set(["serve", "scan", "infra", "system", "export", "mcp", "cloud", "resume", "usage", "activity", "new"]);
+type Handler = (rest: readonly string[]) => Promise<number>;
+
+/**
+ * Every subcommand, in one table: the dispatch below and the folder guard in
+ * opensDesktop both read it, so a new command cannot open a same-named folder
+ * in the desktop app instead of running (design/, preview/, extensions/ did).
+ */
+export const SUBCOMMANDS: Readonly<Record<string, Handler>> = {
+  serve: (rest) => serve(rest),
+  scan: (rest) => scan(rest),
+  new: async (rest) => (await import("./projects/run-new.js")).runNew(rest, pkg.version),
+  infra: (rest) => infra(rest),
+  system: async (rest) => (await import("./system/run-system.js")).runSystem(rest, pkg.version),
+  export: async (rest) => (await import("./export/run-export.js")).runExport(rest, pkg.version),
+  mcp: (rest) => mcp(rest),
+  doctor: async (rest) => (await import("./desktop/doctor.js")).runDoctor(rest, pkg.version, dirname(dirname(fileURLToPath(import.meta.url)))),
+  cloud: async (rest) => (await import("./integrations/cloud-cli.js")).runCloud(rest),
+  resume: async (rest) => (await import("./resume/run-resume.js")).runResume(rest),
+  usage: async (rest) => (await import("./usage/run-usage.js")).runUsage(rest, pkg.version),
+  activity: async (rest) => (await import("./activity/run-activity.js")).runActivity(rest),
+  design: async (rest) => (await import("./design/run-design.js")).runDesign(rest),
+  ext: async (rest) => (await import("./extensions/cli.js")).runExt(rest),
+  extensions: async (rest) => (await import("./extensions/cli.js")).runExt(rest),
+  preview: async (rest) => (await import("./preview/cli.js")).runPreview(rest, pkg.version),
+};
 
 /**
  * Whether argv[0] opens the desktop app: nothing, `open`, or a directory that
- * is not a subcommand's name (a `usage/` folder must not swallow `ruah app usage`).
+ * is not a subcommand's name (a `usage/` folder must not swallow `ruah app usage`;
+ * such a folder opens as `open <dir>` or `./<dir>`).
  */
 export function opensDesktop(cmd: string | undefined, isDir: (p: string) => boolean = isDirectory): boolean {
   if (cmd === undefined || cmd === "open") return true;
-  if (cmd.startsWith("-") || COMMANDS.has(cmd)) return false;
+  if (cmd.startsWith("-") || Object.hasOwn(SUBCOMMANDS, cmd)) return false;
   return isDir(cmd);
 }
 
-/** Subcommands without a help of their own (a help flag must not run them). */
-const NO_OWN_HELP = new Set(["serve", "scan", "infra", "export", "mcp"]);
+/**
+ * Subcommands without a help of their own: a help flag right after them (or
+ * anywhere, for the ones that run on their own) prints the usage and runs nothing.
+ */
+export const NO_OWN_HELP = new Set(["serve", "scan", "infra", "export", "mcp", "doctor", "resume", "activity", "system"]);
 
 async function main(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv;
@@ -360,72 +389,16 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   // `serve --help` used to start a daemon (and `scan --help` to scan): these commands have no
   // help of their own, so a help flag anywhere prints the usage and does nothing else.
-  if (cmd !== undefined && NO_OWN_HELP.has(cmd) && rest.some((a) => a === "--help" || a === "-h")) {
+  if (cmd !== undefined && NO_OWN_HELP.has(cmd) && (rest.some((a) => a === "--help" || a === "-h") || (cmd === "system" && rest[0] === "help"))) {
     process.stdout.write(USAGE);
     return 0;
   }
-  switch (cmd) {
-    case "serve": {
-      return await serve(rest);
-    }
-    case "scan": {
-      return await scan(rest);
-    }
-    case "new": {
-      const { runNew } = await import("./projects/run-new.js");
-      return await runNew(rest, pkg.version);
-    }
-    case "infra": {
-      return await infra(rest);
-    }
-    case "system": {
-      const { runSystem } = await import("./system/run-system.js");
-      return await runSystem(rest, pkg.version);
-    }
-    case "export": {
-      const { runExport } = await import("./export/run-export.js");
-      return await runExport(rest, pkg.version);
-    }
-    case "mcp": {
-      return await mcp(rest);
-    }
-    case "doctor": {
-      const { runDoctor } = await import("./desktop/doctor.js");
-      return await runDoctor(rest, pkg.version, dirname(dirname(fileURLToPath(import.meta.url))));
-    }
-    case "cloud": {
-      const { runCloud } = await import("./integrations/cloud-cli.js");
-      return await runCloud(rest);
-    }
-    case "resume": {
-      const { runResume } = await import("./resume/run-resume.js");
-      return await runResume(rest);
-    }
-    case "usage": {
-      const { runUsage } = await import("./usage/run-usage.js");
-      return await runUsage(rest, pkg.version);
-    }
-    case "activity": {
-      const { runActivity } = await import("./activity/run-activity.js");
-      return await runActivity(rest);
-    }
-    case "design": {
-      const { runDesign } = await import("./design/run-design.js");
-      return await runDesign(rest);
-    }
-    case "ext":
-    case "extensions": {
-      const { runExt } = await import("./extensions/cli.js");
-      return await runExt(rest);
-    }
-    case "preview": {
-      const { runPreview } = await import("./preview/cli.js");
-      return await runPreview(rest, pkg.version);
-    }
-    default:
-      process.stdout.write(USAGE);
-      return 2;
+  const handler = cmd !== undefined && Object.hasOwn(SUBCOMMANDS, cmd) ? SUBCOMMANDS[cmd] : undefined;
+  if (handler === undefined) {
+    process.stdout.write(USAGE);
+    return 2;
   }
+  return await handler(rest);
 }
 
 const isDirectRun =

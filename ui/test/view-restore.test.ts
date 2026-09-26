@@ -8,6 +8,8 @@ import {
   PANEL_MIN,
   decodeShellView,
   encodeShellView,
+  pageOf,
+  projectPageToStore,
   restorePage,
   sameShellView,
   type ShellView,
@@ -96,5 +98,29 @@ describe("restorePage", () => {
   it("does nothing when already there or when nothing is saved", () => {
     expect(restorePage(saved, "/cloud", false)).toBeNull();
     expect(restorePage(null, "/map", false)).toBeNull();
+  });
+  // Regression: Home, Settings, Usage, Integrations and Chats were stored as the project's page,
+  // so switching back to a project landed on the global Home (looked like nothing happened).
+  it("never restores an app-wide page: an older view holding one opens the map", () => {
+    for (const page of ["/", "/settings", "/usage", "/integrations", "/chats"] as const) {
+      expect(restorePage({ ...view, page }, "/", false), page).toBe("/map");
+    }
+    expect(restorePage({ ...view, page: "/settings" }, "/map", false)).toBeNull();
+    expect(restorePage({ ...view, page: "/?view=project" }, "/", false)).toBe("/?view=project");
+    expect(restorePage({ ...view, page: "/?view=project" }, pageOf("/", { view: "project" }), false)).toBeNull();
+  });
+});
+
+describe("projectPageToStore", () => {
+  it("stores the current page only when it is a project page", () => {
+    const prev = { ...view, page: "/cloud" as const };
+    expect(projectPageToStore("/agent", prev)).toBe("/agent");
+    expect(projectPageToStore(pageOf("/", { view: "project" }), prev)).toBe("/?view=project");
+    // On Home / Settings / Chats the project keeps the project page it had.
+    for (const global of ["/", "/settings", "/usage", "/integrations", "/chats", "/extensions"]) {
+      expect(projectPageToStore(global, prev), global).toBe("/cloud");
+    }
+    expect(projectPageToStore("/settings", null)).toBe("/map");
+    expect(projectPageToStore("/settings", { ...view, page: "/" })).toBe("/map");
   });
 });

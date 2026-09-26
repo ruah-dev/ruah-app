@@ -428,7 +428,7 @@ describe("ClaudeSdkBridge usage", () => {
     const second = events.find((e) => e.type === "turn_finished" && e.turnId === "t2");
     expect(second).toMatchObject({ usage: { model: "claude-opus-5-5", inputTokens: 4, outputTokens: 7, cacheReadTokens: 30, cacheWriteTokens: 0, costUsd: 0.03, durationMs: 700 } });
 
-    // The plan (subscription_type) rides along for the per-agent limits (§15).
+    // The plan (subscription_type) rides along for the per-agent limits (§16).
     await expect(bridge.claudePlanUsage()).resolves.toEqual({ ...GET_USAGE, subscription_type: "max" });
     await bridge.stop();
     await expect(bridge.claudePlanUsage()).resolves.toBeUndefined();

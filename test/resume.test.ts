@@ -255,7 +255,7 @@ describe("ruah app resume / activity (CLI, no daemon)", () => {
     expect(text).toContain(`billing  (${root})  [1 unread]`);
     expect(text).toContain('chat        "Fix invoice rounding" · 1 turn');
     expect(text).toContain("focus       Billing API (api)");
-    expect(text).toContain("since then  1 turn finished · 1 failed · 1 permission request · 2 files edited (a.ts, b.ts) · 2 map changes");
+    expect(text).toContain("since then  1 turn finished · 1 failed or stopped · 1 permission request · 2 files edited (a.ts, b.ts) · 2 map changes");
     expect(text).toMatch(/git {9}feature · 3 dirty: .* · last commit [0-9a-f]+ "Initial billing service"/);
 
     const missing = captureIo(home);

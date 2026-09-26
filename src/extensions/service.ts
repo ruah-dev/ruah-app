@@ -247,12 +247,21 @@ export class ExtensionsService {
       case "local": {
         const abs = path.resolve(options.cwd ?? process.cwd(), src.path);
         if (!path.isAbsolute(src.path) && options.cwd === undefined) throw new ExtensionError(400, "path must be absolute");
+        const storedPath = this.store.storedLocalPath(abs, scope, root);
+        // The project file is committable: a folder outside the repo would put this machine's
+        // absolute path (user name, home layout) into the client's repo, broken for teammates.
+        if (scope === "project" && path.isAbsolute(storedPath)) {
+          throw new ExtensionError(
+            422,
+            "That folder is outside this project, so it cannot be a project extension: .ruah/extensions.json is committed with the repo and would carry this computer's path. Add it for All projects instead, or move the folder into the repo.",
+          );
+        }
         const inspection = inspectPath(abs, body.kind);
         draft = {
           kind: inspection.kind,
           name: body.name ?? inspection.name ?? path.basename(inspection.root).replace(/\.(md|mdc|txt)$/i, ""),
           ...(inspection.description !== undefined ? { description: inspection.description.slice(0, 2000) } : {}),
-          source: { type: "local", path: this.store.storedLocalPath(abs, scope, root) },
+          source: { type: "local", path: storedPath },
         };
         break;
       }

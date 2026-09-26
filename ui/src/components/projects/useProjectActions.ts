@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { ProjectInfo, RecentChat } from "@/lib/contracts";
 import {
   basename,
+  daemonSnapshot,
   forgetProject,
   newChat,
   openChat,
@@ -17,8 +18,30 @@ import {
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { markChatIntent } from "@/components/shell/shellState";
+import { confirmAction } from "@/lib/confirm";
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** The agent is working in the chat in front (a turn without a stop reason, maybe waiting for a permission). */
+export function activeTurnRunning(daemon: Pick<DaemonState, "turns">): boolean {
+  return daemon.turns.some((t) => !t.stopReason);
+}
+
+/**
+ * Opening another chat of the same project (or a new one) stops a running turn (§5.2), unlike a
+ * project switch, which keeps it running. Ask first instead of cancelling the agent's work
+ * silently. Resolves true when the switch may go ahead.
+ */
+async function okToLeaveRunningChat(): Promise<boolean> {
+  if (!activeTurnRunning(daemonSnapshot())) return true;
+  return confirmAction({
+    title: "Stop the agent?",
+    description:
+      "The agent is still working in this chat. Opening another chat of this project stops it (switching to another project keeps it running).",
+    confirmLabel: "Stop and switch",
+    destructive: true,
+  });
+}
 
 export function canManageProjects(daemon: DaemonState) {
   return daemon.source !== "sample" && daemon.connection === "open" && !!daemon.httpOrigin;
@@ -49,7 +72,25 @@ export function useProjectActions() {
         await openProject(path, { ...(name ? { name } : {}), ...(projectId ? { projectId } : {}) });
         return true;
       } catch (err) {
-        toast.error(`Couldn't open ${name ?? basename(path)}`, { description: message(err) });
+        const label = name ?? basename(path);
+        // A recent project whose folder was moved or deleted: offer to drop it from the list
+        // (it stayed in the launcher, failing the same way on every click).
+        const missing = projectId !== undefined && /folder not found|no such file|ENOENT/i.test(message(err));
+        toast.error(`Couldn't open ${label}`, {
+          description: missing ? `${message(err)} — moved or deleted? Remove it from the recent list, or open it again from its new place (⌘O).` : message(err),
+          ...(missing
+            ? {
+                action: {
+                  label: "Remove from recents",
+                  onClick: () =>
+                    void forgetProject(projectId).then(
+                      () => toast(`Removed ${label} from recent projects`, { description: "The folder itself is untouched." }),
+                      (e: unknown) => toast.error(`Couldn't remove ${label}`, { description: message(e) }),
+                    ),
+                },
+              }
+            : {}),
+        });
         return false;
       }
     },
@@ -108,7 +149,9 @@ export function useProjectActions() {
 
   const startChat = useCallback(() => {
     closeOverlays();
-    if (newChat()) revealChat();
+    void okToLeaveRunningChat().then((ok) => {
+      if (ok && newChat()) revealChat();
+    });
   }, [closeOverlays, revealChat]);
 
   /** Open a chat (from any project) and show it. */
@@ -117,9 +160,11 @@ export function useProjectActions() {
       chat: Pick<RecentChat, "id" | "projectId" | "projectRoot" | "projectName"> | { id: string; projectId: string },
     ) => {
       closeOverlays();
+      const sameProject = chat.projectId === daemonSnapshot().project?.id;
+      if (sameProject && chat.id !== daemonSnapshot().activeChatId && !(await okToLeaveRunningChat())) return;
       revealChat();
       // The switch shows this chat: the project's saved page is not restored over it.
-      if (chat.projectId !== daemon.project?.id) markChatIntent(chat.projectId);
+      if (!sameProject) markChatIntent(chat.projectId);
       try {
         if ("projectRoot" in chat) await openChatAnywhere(chat);
         else openChat(chat.id);
@@ -127,7 +172,7 @@ export function useProjectActions() {
         toast.error("Couldn't open that chat", { description: message(err) });
       }
     },
-    [closeOverlays, revealChat, daemon.project?.id],
+    [closeOverlays, revealChat],
   );
 
   return useMemo(

@@ -24,15 +24,27 @@ export const NO_CHAT_KEY = "none";
 /** Tool kinds whose locations count as "files the agent edited". */
 const EDIT_KINDS = new Set(["edit", "delete", "move"]);
 const MAX_EDITED_FILES = 20;
-/** Files a turn's tool calls and diffs touched (edit / delete / move), in order, at most 20. */
+/**
+ * Files a turn's edit / delete / move tool calls changed, in order, at most 20.
+ * Only tool calls that completed count: a proposed edit (its diff is streamed
+ * with the permission request) that was denied, failed or never ran because the
+ * turn was cancelled leaves the file untouched, so it is not an "edited file".
+ * A diff counts when its tool call completed.
+ */
 export function editedFiles(record: TurnRecord): string[] {
+  const finalStatus = new Map<string, string>();
+  for (const event of record.events) {
+    if (event.kind === "tool_call" || event.kind === "tool_result") finalStatus.set(event.toolCall.toolCallId, event.toolCall.status);
+  }
+  const completed = (toolCallId: string): boolean => finalStatus.get(toolCallId) === "completed";
   const out: string[] = [];
   const add = (file: string): void => {
     if (file.length > 0 && !out.includes(file) && out.length < MAX_EDITED_FILES) out.push(file);
   };
   for (const event of record.events) {
-    if (event.kind === "diff") add(event.path);
-    else if ((event.kind === "tool_call" || event.kind === "tool_result") && EDIT_KINDS.has(event.toolCall.kind)) {
+    if (event.kind === "diff") {
+      if (completed(event.toolCallId)) add(event.path);
+    } else if ((event.kind === "tool_call" || event.kind === "tool_result") && EDIT_KINDS.has(event.toolCall.kind) && completed(event.toolCall.toolCallId)) {
       for (const location of event.toolCall.locations) add(location.path);
     }
   }

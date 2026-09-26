@@ -144,6 +144,9 @@ export interface DaemonState {
   save: SaveState;
   /** Epoch ms of the last architecture.json write confirmed by the daemon (this session). */
   lastSavedAt: number | null;
+  /** This viewer's map edits that Cmd+Z can take back / Shift+Cmd+Z can redo (see undoEdit). */
+  undoDepth: number;
+  redoDepth: number;
   agentSwitch: AgentSwitch | null;
   wsUrl: string | null;
   httpOrigin: string | null;
@@ -182,6 +185,8 @@ const INITIAL: DaemonState = {
   lastError: null,
   save: "idle",
   lastSavedAt: null,
+  undoDepth: 0,
+  redoDepth: 0,
   agentSwitch: null,
   wsUrl: null,
   httpOrigin: null,
@@ -265,6 +270,28 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let savesInFlight = 0;
 let needsResend = false;
 
+// User-edit undo (Cmd+Z / Shift+Cmd+Z, the "Undo" of a delete toast): the map before each of
+// this viewer's edits, newest last. Only edits since the last change from elsewhere (an agent,
+// a scan, a file edit, another window, another project): stepping back past one of those would
+// silently revert it, so any of them clears the history. Rapid edits of one thing (a drag, typing
+// a description) coalesce into one step.
+const UNDO_MAX = 100;
+const COALESCE_MS = 1500;
+let undoStack: Architecture[] = [];
+let redoStack: Architecture[] = [];
+let lastCoalesce: { key: string; at: number } | null = null;
+
+function undoDepths(): Pick<DaemonState, "undoDepth" | "redoDepth"> {
+  return { undoDepth: undoStack.length, redoDepth: redoStack.length };
+}
+
+function clearUndo(): Pick<DaemonState, "undoDepth" | "redoDepth"> {
+  undoStack = [];
+  redoStack = [];
+  lastCoalesce = null;
+  return undoDepths();
+}
+
 function send(message: ClientMessage): boolean {
   if (!socket || socket.readyState !== WebSocket.OPEN) return false;
   socket.send(JSON.stringify(message));
@@ -276,6 +303,7 @@ function fallBackToSample() {
   serverArchitecture = null;
   draft = null;
   set({
+    ...clearUndo(),
     source: "sample",
     architecture: sampleArchitecture,
     root: null,
@@ -653,7 +681,7 @@ function handleProject(project: ProjectInfo | null) {
     savesInFlight = 0;
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimer = undefined;
-    Object.assign(patch, { lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
+    Object.assign(patch, { ...clearUndo(), lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
   } else if (nextId !== prevId || leavingSample) {
     // Another project (or the sample): drop everything that belonged to the previous one.
     serverArchitecture = null;
@@ -663,6 +691,7 @@ function handleProject(project: ProjectInfo | null) {
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimer = undefined;
     Object.assign(patch, {
+      ...clearUndo(),
       architecture: null,
       revision: 0,
       root: project?.root ?? null,
@@ -764,6 +793,9 @@ function handle(msg: ServerMessage) {
       noteArchitectureUpdate(serverArchitecture, msg.architecture, msg.by, msg.changes);
       noteTurnMapChanges(msg.by, msg.changes);
       serverArchitecture = msg.architecture;
+      // The echo of this viewer's own save keeps the undo history; any other change clears it.
+      const ownSave = msg.reason === "saved" && msg.by?.kind === "user" && savesInFlight > 0;
+      const undoPatch = ownSave || (undoStack.length === 0 && redoStack.length === 0) ? {} : clearUndo();
       if (needsResend && draft) {
         needsResend = false;
         set({
@@ -792,6 +824,7 @@ function handle(msg: ServerMessage) {
         archError: null,
         save: editsPending() ? state.save : "idle",
         ...(msg.reason === "saved" ? { lastSavedAt: Date.now() } : {}),
+        ...undoPatch,
       });
       return;
     }
@@ -974,6 +1007,7 @@ function handle(msg: ServerMessage) {
         savesInFlight = Math.max(0, savesInFlight - 1);
         if (!editsPending()) draft = null;
         set({
+          ...clearUndo(),
           archError: msg.message,
           save: "error",
           architecture: draft ?? serverArchitecture ?? state.architecture,
@@ -1496,6 +1530,33 @@ export function fetchOverview(limit = 24): Promise<ProjectsOverview> {
   return api<ProjectsOverview>(`/api/projects/overview?limit=${limit}`);
 }
 
+/** The "Reject" of a permission request: declines this one tool call, the agent carries on. */
+export function rejectOption(options: readonly PermissionOption[]): PermissionOption | undefined {
+  return options.find((o) => o.kind === "reject_once") ?? options.find((o) => o.kind.startsWith("reject"));
+}
+
+/**
+ * Declines one waiting permission of any project, like the card's and Home's "Reject" — never
+ * "cancelled", which stops the whole turn. The request's options come from the chat in front,
+ * else from GET /api/projects/overview. False when it could not be answered (not connected, the
+ * request is gone, or the agent offers no reject option).
+ */
+export async function rejectPermissionAnywhere(requestId: string, projectId: string): Promise<boolean> {
+  const here = state.turns.find((t) => t.permission?.requestId === requestId)?.permission;
+  let options: readonly PermissionOption[] | undefined = here?.options;
+  if (!options) {
+    try {
+      const overview = await fetchOverview(50);
+      options = overview.projects.find((p) => p.project.id === projectId)?.permissions.find((q) => q.requestId === requestId)?.options;
+    } catch {
+      return false;
+    }
+  }
+  const reject = options ? rejectOption(options) : undefined;
+  if (!reject) return false;
+  return answerPermissionAnywhere(requestId, reject.optionId);
+}
+
 /** §13.1: answer a waiting permission of any project (routed to the agent that asked). */
 export function answerPermissionAnywhere(requestId: string, answer: string | "cancel"): boolean {
   if (state.turns.some((t) => t.permission?.requestId === requestId)) {
@@ -1634,12 +1695,7 @@ function flushSave() {
   }
 }
 
-export function editArchitecture(fn: (arch: Architecture) => Architecture | null) {
-  if (!canEdit()) return;
-  const base = draft ?? state.architecture;
-  if (!base) return;
-  const next = fn(base);
-  if (!next || next === base) return;
+function showDraft(next: Architecture) {
   draft = next;
   if (saveTimer !== undefined) clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
@@ -1647,7 +1703,55 @@ export function editArchitecture(fn: (arch: Architecture) => Architecture | null
     architecture: next,
     save: "pending",
     archError: state.save === "error" ? null : state.archError,
+    ...undoDepths(),
   });
+}
+
+/**
+ * Applies a map edit (saved to architecture.json after a short debounce) and records the map
+ * before it for Cmd+Z. `coalesce` names what is being edited (e.g. `move:<id>`): repeated edits
+ * of the same thing within 1.5 s are one undo step. True when something changed.
+ */
+export function editArchitecture(fn: (arch: Architecture) => Architecture | null, options: { coalesce?: string } = {}): boolean {
+  if (!canEdit()) return false;
+  const base = draft ?? state.architecture;
+  if (!base) return false;
+  const next = fn(base);
+  if (!next || next === base) return false;
+  const now = Date.now();
+  const merge = options.coalesce !== undefined && lastCoalesce?.key === options.coalesce && now - lastCoalesce.at < COALESCE_MS && undoStack.length > 0;
+  if (!merge) {
+    undoStack.push(base);
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+  }
+  redoStack = [];
+  lastCoalesce = options.coalesce !== undefined ? { key: options.coalesce, at: now } : null;
+  showDraft(next);
+  return true;
+}
+
+/** Takes back this viewer's last map edit (Cmd+Z). False when there is nothing to undo. */
+export function undoEdit(): boolean {
+  if (!canEdit() || undoStack.length === 0) return false;
+  const current = draft ?? state.architecture;
+  const previous = undoStack.pop();
+  if (!current || !previous) return false;
+  redoStack.push(current);
+  lastCoalesce = null;
+  showDraft(previous);
+  return true;
+}
+
+/** Re-applies the last undone edit (Shift+Cmd+Z). */
+export function redoEdit(): boolean {
+  if (!canEdit() || redoStack.length === 0) return false;
+  const current = draft ?? state.architecture;
+  const next = redoStack.pop();
+  if (!current || !next) return false;
+  undoStack.push(current);
+  lastCoalesce = null;
+  showDraft(next);
+  return true;
 }
 
 export function reportLocalError(message: string) {
@@ -1874,6 +1978,8 @@ export const daemonActions = {
   setDefaults,
   resetSession,
   editArchitecture,
+  undoEdit,
+  redoEdit,
   fetchFile,
   fetchContext,
   dismissError,
