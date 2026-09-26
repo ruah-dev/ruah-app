@@ -36,9 +36,11 @@ describe("ruah app doctor", () => {
     const report = await runDoctorReport({
       version: "9.9.9",
       env: { HOME: join(dir, "home"), PATH: "/usr/bin:/bin", SHELL: "/bin/sh" },
-      readLogin: async (shell) => ({ ok: true, shell, path: loginBin, ms: 12 }),
+      readLogin: async (shell) => ({ ok: true, shell, path: loginBin, env: { PATH: loginBin, AWS_PROFILE: "work", HOME: "/other", SHLVL: "1" }, ms: 12 }),
     });
     expect(report.loginShell).toEqual({ ok: true, ms: 12 });
+    // Started with launchd's bare PATH: the app adds what the profile exports (names only).
+    expect(report.environment).toEqual({ bare: true, fromLoginShell: ["AWS_PROFILE"] });
     expect(report.path.split(":").slice(0, 3)).toEqual([loginBin, "/usr/bin", "/bin"]);
     const byName = new Map(report.tools.map((t) => [t.name, t]));
     expect(byName.get("kubectl")?.path).toBe(kubectl);
@@ -50,6 +52,8 @@ describe("ruah app doctor", () => {
     const text = formatDoctorReport(report);
     expect(text).toContain("Ruah 9.9.9 — doctor");
     expect(text).toContain("sh login shell (12 ms)");
+    expect(text).toContain("launchd's bare environment");
+    expect(text).toContain("1 variable from your shell profile the app adds: AWS_PROFILE");
     expect(text).toMatch(new RegExp(`✓ kubectl\\s+${kubectl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     expect(text).toContain("Cloud CLIs");
   });
@@ -73,6 +77,7 @@ describe("ruah app doctor", () => {
     });
     expect(report.loginShell).toEqual({ ok: false, ms: 5000, error: "zsh did not answer within 5000 ms" });
     expect(report.path).toBe("/usr/bin:/bin");
+    expect(report.environment.fromLoginShell).toEqual([]);
     expect(formatDoctorReport(report)).toContain("login shell failed: zsh did not answer");
   });
 

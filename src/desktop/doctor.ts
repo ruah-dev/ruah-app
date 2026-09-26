@@ -1,6 +1,7 @@
 // src/desktop/doctor.ts — `ruah app doctor`: which tools Ruah can find, with
-// the PATH the desktop app uses (the login shell's, see login-path.ts), where
-// it keeps its data and which app `ruah app` opens. No daemon needed.
+// the PATH the desktop app uses (the login shell's, see login-env.ts), which
+// variables it takes from the shell profile, where it keeps its data and which
+// app `ruah app` opens. No daemon needed.
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
@@ -8,7 +9,7 @@ import { resolveAgentBinary } from "../acp/presets.js";
 import { resolveBin } from "../integrations/exec.js";
 import { ruahHome } from "../usage/log.js";
 import { enclosingAppBundle, findInstalledApp } from "./launch.js";
-import { loginShell, mergePaths, readLoginPath, type LoginPathResult } from "./login-path.js";
+import { isMinimalPath, loginShell, mergePaths, missingLoginVars, readLoginEnv, type LoginEnvResult } from "./login-env.js";
 
 export type ToolGroup = "agent" | "source" | "cloud";
 
@@ -60,6 +61,12 @@ export interface DoctorReport {
   loginShell: { ok: true; ms: number } | { ok: false; ms: number; error: string } | { ok: false; skipped: true };
   /** The PATH tools are looked up on: the login shell's first, then this process's. */
   path: string;
+  environment: {
+    /** This process has launchd's bare PATH (started from Finder, the Dock or `open`, not a terminal). */
+    bare: boolean;
+    /** Variables the login shell exports that this process lacks — what the desktop app adds (names only). */
+    fromLoginShell: string[];
+  };
   tools: ToolStatus[];
   home: string;
   /** The Ruah.app `ruah app` opens, or null (then it runs this checkout's Electron). */
@@ -83,7 +90,7 @@ export interface DoctorOptions {
   /** The package root this CLI runs from: inside Ruah.app, `ruah app` opens that bundle. */
   packageRoot?: string;
   /** Test seam: the login shell's answer. */
-  readLogin?: (shell: string, env: NodeJS.ProcessEnv) => Promise<LoginPathResult>;
+  readLogin?: (shell: string, env: NodeJS.ProcessEnv) => Promise<LoginEnvResult>;
 }
 
 export async function runDoctorReport(options: DoctorOptions): Promise<DoctorReport> {
@@ -91,11 +98,13 @@ export async function runDoctorReport(options: DoctorOptions): Promise<DoctorRep
   const shell = loginShell(env);
   let loginState: DoctorReport["loginShell"] = { ok: false, skipped: true };
   let searchPath = env.PATH ?? "";
+  let fromLoginShell: string[] = [];
   if (options.loginShell !== false) {
-    const read = options.readLogin ?? ((s, e) => readLoginPath({ shell: s, env: e, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}) }));
+    const read = options.readLogin ?? ((s, e) => readLoginEnv({ shell: s, env: e, ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}) }));
     const result = await read(shell, env);
     if (result.ok) {
       searchPath = mergePaths(result.path, env.PATH);
+      fromLoginShell = missingLoginVars(env, result.env);
       loginState = { ok: true, ms: result.ms };
     } else {
       loginState = { ok: false, ms: result.ms, error: result.error };
@@ -113,6 +122,7 @@ export async function runDoctorReport(options: DoctorOptions): Promise<DoctorRep
     shell,
     loginShell: loginState,
     path: searchPath,
+    environment: { bare: isMinimalPath(env.PATH), fromLoginShell },
     tools,
     home: ruahHome(env),
     app:
@@ -134,6 +144,16 @@ export function formatDoctorReport(report: DoctorReport): string {
         ? `PATH       ${path.basename(report.shell)} login shell (${login.ms} ms) + this process`
         : `PATH       this process only — ${path.basename(report.shell)} login shell failed: ${login.error}`,
   );
+  const vars = report.environment.fromLoginShell;
+  if (report.environment.bare) {
+    lines.push("Env        this process has launchd's bare environment (not started from a terminal)");
+  }
+  if (vars.length > 0) {
+    const shown = vars.slice(0, 12).join(", ");
+    lines.push(`Env        ${vars.length} variable${vars.length === 1 ? "" : "s"} from your shell profile the app adds: ${shown}${vars.length > 12 ? ", …" : ""}`);
+  } else if (!("skipped" in login) && login.ok) {
+    lines.push("Env        the app gets the same variables as this shell");
+  }
   lines.push(`Data       ${report.home}`);
   lines.push(`App        ${report.app ?? "not installed (ruah app runs this checkout's Electron)"}`);
   for (const group of ["agent", "source", "cloud"] as const) {

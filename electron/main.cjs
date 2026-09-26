@@ -100,8 +100,8 @@ function startDaemon(repoDir) {
         ...process.env,
         ELECTRON_RUN_AS_NODE: "1",
         RUAH_PARENT_PID: String(process.pid),
-        // Finder / Dock launches get launchd's bare PATH: the daemon takes the login shell's (CONTRACTS §15.2).
-        RUAH_LOGIN_PATH: "1",
+        // Finder / Dock launches get launchd's bare environment: the daemon takes the login shell's (CONTRACTS §15.2).
+        RUAH_LOGIN_ENV: "1",
       },
     },
   );

@@ -56,8 +56,9 @@ Usage:
                                    unread and waiting-for-permission counts
   ruah app doctor [--json] [--no-login-shell]
                                    which agent / git / cloud CLIs Ruah finds on your login
-                                   shell's PATH (what the desktop app uses), where it keeps
-                                   its data and which Ruah.app \`ruah app\` opens
+                                   shell's PATH (what the desktop app uses), which variables
+                                   the app takes from your shell profile, where it keeps its
+                                   data and which Ruah.app \`ruah app\` opens
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -136,12 +137,12 @@ async function serve(argv: readonly string[]): Promise<number> {
     process.stderr.write(`ruah app serve: unknown --agent "${agent}" (expected claude, cursor, grok, kiro, opencode or acp)\n`);
     return 2;
   }
-  // Started by the desktop app (Finder / Dock / `open`): PATH is launchd's bare one, so take the
-  // login shell's (cached; refreshed in the background) before any agent or CLI is looked up.
-  if (process.env.RUAH_LOGIN_PATH === "1") {
-    delete process.env.RUAH_LOGIN_PATH;
-    const { applyLoginPath } = await import("./desktop/login-path.js");
-    await applyLoginPath({ log: (line) => process.stderr.write(`[ruah] ${line}\n`) });
+  // Started by the desktop app (Finder / Dock / `open`: launchd's bare environment): take the login
+  // shell's PATH and the variables its profile exports before any agent or CLI starts (CONTRACTS §15.2).
+  if (process.env.RUAH_LOGIN_ENV === "1") {
+    delete process.env.RUAH_LOGIN_ENV;
+    const { applyLoginEnv } = await import("./desktop/login-env.js");
+    await applyLoginEnv({ log: (line) => process.stderr.write(`[ruah] ${line}\n`) });
   }
   const { runServe } = await import("./serve/run-serve.js");
   return runServe(
