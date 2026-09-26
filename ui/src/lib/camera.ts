@@ -5,6 +5,8 @@ export interface Camera {
   x: number;
   y: number;
   k: number;
+  /** The canvas framed the level itself (Fit to view); re-framed at another size. */
+  framed?: true;
 }
 
 const cameras = new Map<string, Camera>();

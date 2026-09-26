@@ -4,7 +4,13 @@ import type { DiagramEdge, DiagramNode } from "@/data/graphs";
 import { NODE_H, NODE_W } from "@/components/explorer/kinds";
 
 export type Box = { x: number; y: number; w: number; h: number };
-export type Camera = { x: number; y: number; k: number };
+/**
+ * Pan (x, y) and zoom (k). `framed`: the canvas framed the level itself ("Fit to view", a level
+ * opened fresh, a filter applied) — such a camera is fitted again when the canvas changes size or
+ * the view is restored at another window size. Any pan or zoom by the user drops it (panBy,
+ * zoomAround), so a map the user moved is left exactly where they put it.
+ */
+export type Camera = { x: number; y: number; k: number; framed?: true };
 
 export const MIN_ZOOM = 0.08;
 export const MAX_ZOOM = 2.2;
@@ -43,21 +49,32 @@ export function fitCamera(b: Box, vw: number, vh: number, opts: { pad?: number; 
 /** The fit options the canvas frames a level with ("Fit to view", a level opened fresh). */
 export const FIT_ALL = { pad: 56, maxK: 1 } as const;
 
+/** `c` marked as framed by the canvas (see Camera). */
+export function asFramed(c: Camera): Camera {
+  return { x: c.x, y: c.y, k: c.k, framed: true };
+}
+
+/** The camera moved by (dx, dy) screen pixels — the user's own position, never framed. */
+export function panBy(c: Camera, dx: number, dy: number): Camera {
+  return { k: c.k, x: c.x + dx, y: c.y + dy };
+}
+
+/** The camera zoomed by `factor` around the screen point (sx, sy) — never framed. */
+export function zoomAround(c: Camera, sx: number, sy: number, factor: number): Camera {
+  const k = clampZoom(c.k * factor);
+  const wx = (sx - c.x) / c.k;
+  const wy = (sy - c.y) / c.k;
+  return { k, x: sx - wx * k, y: sy - wy * k };
+}
+
 /**
- * True when `cam` frames `b` exactly as `fitCamera` would for SOME viewport — i.e. it is a "fit
- * to view" camera, whatever size the window had when it was taken. A fit camera is centred on the
- * box, so the viewport it implies is twice the box centre's screen position; the camera is a fit
- * when fitting the box into that viewport gives it back. A camera the user zoomed or panned does
- * not round-trip. The canvas re-frames such a camera when its size changes (a panel opened, the
- * window was resized, a view saved at another size was restored) instead of cutting the map off.
+ * The camera a level opens with: its saved camera as the user left it, or "fit" — nothing saved,
+ * the level was drilled into (it opens framed), or the saved camera was a frame taken at another
+ * canvas size (it is framed again for the size the canvas has now).
  */
-export function isFitCamera(cam: Camera, b: Box, opts: { pad?: number; maxK?: number; minK?: number } = FIT_ALL): boolean {
-  if (!(cam.k > 0)) return false;
-  const vw = 2 * (cam.x + (b.x + b.w / 2) * cam.k);
-  const vh = 2 * (cam.y + (b.y + b.h / 2) * cam.k);
-  if (!(vw > 0) || !(vh > 0)) return false;
-  const f = fitCamera(b, vw, vh, opts);
-  return Math.abs(f.k - cam.k) <= 1e-3 * cam.k && Math.abs(f.x - cam.x) <= 0.5 && Math.abs(f.y - cam.y) <= 0.5;
+export function restoredCamera(saved: Camera | null | undefined, drilledIn: boolean): Camera | "fit" {
+  if (!saved || drilledIn || saved.framed) return "fit";
+  return saved;
 }
 
 /** The world rectangle visible through the camera. */

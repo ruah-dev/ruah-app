@@ -14,6 +14,9 @@ export interface Camera {
   x: number;
   y: number;
   k: number;
+  /** "Fit to view" framed by the canvas, not a pan / zoom of the user's: framed again on restore
+   * (the window may have another size by then). Absent in views saved before it existed. */
+  framed?: true;
 }
 
 export interface ShellView {
@@ -57,9 +60,9 @@ function finite(v: unknown): v is number {
 
 function readCamera(v: unknown): Camera | null {
   if (!v || typeof v !== "object") return null;
-  const c = v as Partial<Record<"x" | "y" | "k", unknown>>;
+  const c = v as Partial<Record<"x" | "y" | "k" | "framed", unknown>>;
   if (!finite(c.x) || !finite(c.y) || !finite(c.k) || c.k <= 0 || c.k > 8) return null;
-  return { x: c.x, y: c.y, k: c.k };
+  return c.framed === true ? { x: c.x, y: c.y, k: c.k, framed: true } : { x: c.x, y: c.y, k: c.k };
 }
 
 const KEY = "shell";
@@ -92,7 +95,14 @@ export function encodeShellView(view: ShellView, base: ViewState | null = null):
       v: 1,
       page: view.page,
       diagramId: view.diagramId,
-      camera: view.camera ? { x: round(view.camera.x, 1), y: round(view.camera.y, 1), k: round(view.camera.k, 3) } : null,
+      camera: view.camera
+        ? {
+            x: round(view.camera.x, 1),
+            y: round(view.camera.y, 1),
+            k: round(view.camera.k, 3),
+            ...(view.camera.framed ? { framed: true } : {}),
+          }
+        : null,
       drawerOpen: view.drawerOpen,
       panelOpen: view.panelOpen,
       panelView: view.panelView,

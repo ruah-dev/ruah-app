@@ -29,6 +29,15 @@ describe("view state round trip", () => {
     expect(decodeShellView(stored)).toEqual({ ...view, camera: { x: 120.4, y: -35.1, k: 1.235 } });
   });
 
+  it("keeps a framed camera's mark, and only then (views saved before it read as the user's own)", () => {
+    const framed = { ...view, camera: { x: 10, y: 20, k: 0.5, framed: true as const } };
+    const back = decodeShellView(JSON.parse(JSON.stringify(encodeShellView(framed))) as ViewState);
+    expect(back?.camera).toEqual({ x: 10, y: 20, k: 0.5, framed: true });
+    expect(decodeShellView(encodeShellView(view))?.camera?.framed).toBeUndefined();
+    expect(decodeShellView({ shell: { v: 1, camera: { x: 1, y: 2, k: 1, framed: "yes" } } })?.camera).toEqual({ x: 1, y: 2, k: 1 });
+    expect(sameShellView(framed, { ...framed, camera: { x: 10, y: 20, k: 0.5 } })).toBe(false);
+  });
+
   it("keeps other writers' keys", () => {
     const stored = encodeShellView(view, { other: { a: 1 } });
     expect(stored.other).toEqual({ a: 1 });

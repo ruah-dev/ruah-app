@@ -23,9 +23,12 @@ import {
   boundsOf,
   clampZoom,
   contains,
+  asFramed,
   fitCamera,
   FIT_ALL,
-  isFitCamera,
+  panBy,
+  restoredCamera,
+  zoomAround,
   grow,
   intersects,
   lodFor,
@@ -142,11 +145,13 @@ export function EditorCanvas({
   const [query, setQuery] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
 
-  const panRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; cx: number; cy: number; moved?: boolean } | null>(null);
   const dragRef = useRef<{ id: string; dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
   const lastDragMoved = useRef(false);
   const movingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const anim = useRef<number | null>(null);
+  // Where the running camera animation ends (a framed target is re-framed if the canvas resizes).
+  const animTarget = useRef<Camera | null>(null);
   const cams = useRef(new Map<string, Camera>());
   const prevLevel = useRef<{ id: string; depth: number } | null>(null);
   const pendingDrill = useRef<{ from: string; cam: Camera; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -244,6 +249,7 @@ export function EditorCanvas({
   const stopAnim = () => {
     if (anim.current !== null) cancelAnimationFrame(anim.current);
     anim.current = null;
+    animTarget.current = null;
   };
 
   const animateTo = useCallback(
@@ -255,8 +261,16 @@ export function EditorCanvas({
       }
       const from = { ...cam.current };
       const t0 = performance.now();
+      animTarget.current = target;
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / ms);
+        if (t >= 1) {
+          // The last frame is the target itself, so a framed target stays framed.
+          anim.current = null;
+          animTarget.current = null;
+          applyCamera(target);
+          return;
+        }
         const e = 1 - Math.pow(1 - t, 3);
         const k = Math.exp(Math.log(from.k) + (Math.log(target.k) - Math.log(from.k)) * e);
         // Keep the eased zoom and pan consistent: interpolate the world point at the viewport centre.
@@ -266,7 +280,7 @@ export function EditorCanvas({
         const cx = c0.x + (c1.x - c0.x) * e;
         const cy = c0.y + (c1.y - c0.y) * e;
         applyCamera({ k, x: w / 2 - cx * k, y: h / 2 - cy * k });
-        anim.current = t < 1 ? requestAnimationFrame(step) : null;
+        anim.current = requestAnimationFrame(step);
       };
       anim.current = requestAnimationFrame(step);
     },
@@ -274,10 +288,11 @@ export function EditorCanvas({
   );
 
   const fitBox = useCallback(
-    (b: Box | null, opts: { animate?: boolean; maxK?: number } = {}) => {
+    (b: Box | null, opts: { animate?: boolean; maxK?: number; framed?: boolean } = {}) => {
       const { w, h } = size.current;
       if (!b || w === 0) return;
-      const target = fitCamera(b, w, h, { pad: FIT_ALL.pad, maxK: opts.maxK ?? FIT_ALL.maxK });
+      const fit = fitCamera(b, w, h, { pad: FIT_ALL.pad, maxK: opts.maxK ?? FIT_ALL.maxK });
+      const target = opts.framed ? asFramed(fit) : fit;
       if (opts.animate) animateTo(target);
       else applyCamera(target);
     },
@@ -289,7 +304,8 @@ export function EditorCanvas({
     return boundsOf(bs);
   }, [boxes, vm.groups]);
 
-  const fitAll = useCallback((animate = false) => fitBox(allBounds(), { animate }), [fitBox, allBounds]);
+  // The whole level: a framed camera, kept framed across canvas resizes until the user moves it.
+  const fitAll = useCallback((animate = false) => fitBox(allBounds(), { animate, framed: true }), [fitBox, allBounds]);
 
   const fitSelection = useCallback(() => {
     const id = selectedNodeId && boxes.has(selectedNodeId) ? selectedNodeId : null;
@@ -341,10 +357,13 @@ export function EditorCanvas({
         const prev = shown;
         shown = { w: r.width, h: r.height };
         // A framed map stays framed when the canvas changes size (window resized, the side panel
-        // or the terminal opened): refit instead of leaving part of it off screen.
+        // or the terminal opened): refit instead of leaving part of it off screen. A map the user
+        // panned or zoomed is not framed (geometry.ts Camera) and stays where they put it.
         if (prev.w > 0 && (Math.abs(prev.w - r.width) > 1 || Math.abs(prev.h - r.height) > 1)) {
-          const b = boundsRef.current();
-          if (b && isFitCamera(cam.current, b)) fitRef.current(false);
+          if (cam.current.framed || animTarget.current?.framed) {
+            stopAnim();
+            fitRef.current(false);
+          }
         }
       }
       scheduleRecull();
@@ -364,8 +383,6 @@ export function EditorCanvas({
   // A level opened: restore its camera or fit it, with a short zoom transition.
   const fitRef = useRef(fitAll);
   fitRef.current = fitAll;
-  const boundsRef = useRef(allBounds);
-  boundsRef.current = allBounds;
   const hasNodes = diagram.nodes.length > 0;
   useLayoutEffect(() => {
     const prev = prevLevel.current;
@@ -382,12 +399,10 @@ export function EditorCanvas({
     setHoverEdge(null);
     setMatchIdx(0);
     stopAnim();
-    const saved = cams.current.get(diagram.id) ?? recallCamera(diagram.id);
-    // A saved "fit to view" is re-fitted: it was framed for the window size of that moment.
-    const bounds = boundsRef.current();
-    const savedFit = saved && bounds ? isFitCamera(saved, bounds) : false;
-    if (saved && dir !== "in" && !savedFit) applyCamera(saved);
-    else fitRef.current(false);
+    // The saved camera as the user left it; a saved frame is framed again for today's size.
+    const next = restoredCamera(cams.current.get(diagram.id) ?? recallCamera(diagram.id), dir === "in");
+    if (next === "fit") fitRef.current(false);
+    else applyCamera(next);
     const stage = stageRef.current;
     if (stage && dir !== "none" && !prefersReducedMotion() && typeof stage.animate === "function") {
       stage.animate(
@@ -407,9 +422,9 @@ export function EditorCanvas({
     () =>
       onCamerasReset(() => {
         cams.current.clear();
-        const seeded = recallCamera(levelId.current);
-        if (seeded) applyCamera(seeded);
-        else fitRef.current(false);
+        const next = restoredCamera(recallCamera(levelId.current), false);
+        if (next === "fit") fitRef.current(false);
+        else applyCamera(next);
       }),
     [applyCamera],
   );
@@ -439,12 +454,8 @@ export function EditorCanvas({
       const rect = shellRef.current?.getBoundingClientRect();
       const sx = clientX - (rect?.left ?? 0);
       const sy = clientY - (rect?.top ?? 0);
-      const c = cam.current;
-      const k = clampZoom(c.k * factor);
       lastZoomAt.current = performance.now();
-      const wx = (sx - c.x) / c.k;
-      const wy = (sy - c.y) / c.k;
-      applyCamera({ k, x: sx - wx * k, y: sy - wy * k });
+      applyCamera(zoomAround(cam.current, sx, sy, factor));
     },
     [applyCamera],
   );
@@ -463,7 +474,7 @@ export function EditorCanvas({
         const c = cam.current;
         const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
         const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
-        applyCamera({ ...c, x: c.x - dx * unit, y: c.y - dy * unit });
+        applyCamera(panBy(c, -dx * unit, -dy * unit));
       }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -491,7 +502,12 @@ export function EditorCanvas({
     const move = (e: PointerEvent) => {
       if (panRef.current) {
         const d = panRef.current;
-        applyCamera({ ...cam.current, x: d.cx + (e.clientX - d.x), y: d.cy + (e.clientY - d.y) });
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        // A click on the background (deselect) is not a pan: its jitter keeps a framed map framed.
+        if (!d.moved && Math.hypot(dx, dy) < 3) return;
+        d.moved = true;
+        applyCamera({ k: cam.current.k, x: d.cx + dx, y: d.cy + dy });
         return;
       }
       const drag = dragRef.current;
