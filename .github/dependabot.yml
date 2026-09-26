@@ -1,0 +1,47 @@
+# Dependabot: weekly, grouped update PRs for the daemon (pnpm), the viewer (bun)
+# and the pinned GitHub Actions. A cooldown skips versions younger than a few
+# days, in the spirit of ui/bunfig.toml's 24 h minimumReleaseAge supply-chain guard.
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm-lock.yaml at the root
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      daemon-dev:
+        dependency-type: development
+        update-types: [minor, patch]
+      daemon-runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore(deps)
+
+  - package-ecosystem: bun # ui/bun.lock
+    directory: /ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      viewer:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore(deps-ui)
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

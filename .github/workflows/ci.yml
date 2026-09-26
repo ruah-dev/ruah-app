@@ -1,0 +1,97 @@
+# CI: the same gates a contributor runs locally (CONTRIBUTING.md), on every pull
+# request and every push to main.
+#
+#   pnpm typecheck && pnpm build && pnpm test      (daemon, CLI, Electron shell)
+#   cd ui && npx tsc --noEmit && bun run build     (viewer)
+#
+# macOS is the supported platform (the app ships as a macOS arm64 .dmg) and is
+# required. Linux runs the same gates as an early signal (the daemon and CLI are
+# plain Node; node-pty compiles from source there) and does not block a merge
+# until it has proven green.
+#
+# Hardening: read-only token, no persisted git credentials, every action pinned
+# to a full commit SHA (Dependabot keeps the pins current, see dependabot.yml).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15 # Apple silicon, like the shipped app
+            experimental: false
+          - os: ubuntu-24.04
+            experimental: true
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (version from package.json "packageManager")
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Bun (the viewer's package manager)
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.9
+
+      # Builds only electron, esbuild and node-pty (pnpm.onlyBuiltDependencies).
+      # The Electron binary is needed: test/desktop-packaging.test.ts checks its fuses.
+      - name: Install (daemon)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install (viewer)
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build (dist/cli.js; the smoke test runs it)
+        run: pnpm build
+
+      # vitest.config.ts points RUAH_HOME at a temp folder, so tests never
+      # touch a real ~/.ruah; no test needs a network, an agent login or a cloud CLI.
+      - name: Test
+        run: pnpm test
+
+      - name: Viewer typecheck
+        working-directory: ui
+        run: npx tsc --noEmit
+
+      - name: Viewer build
+        working-directory: ui
+        run: bun run build
+
+      - name: CLI smoke
+        env:
+          RUAH_HOME: ${{ runner.temp }}/ruah-home
+        run: |
+          node dist/cli.js --version
+          node dist/cli.js help > /dev/null
+          node dist/cli.js scan test/golden --dry-run > /dev/null
