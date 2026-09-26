@@ -14,6 +14,7 @@ import {
   FolderOpen,
   FolderPlus,
   History,
+  Hash,
   Home,
   Keyboard,
   Layers,
@@ -67,6 +68,7 @@ import { useNav } from "@/components/shell/nav";
 import { LAYOUT_SHORTCUT, setRailLabels, toggleLayout } from "@/components/shell/layout";
 import { useViewerPrefs } from "@/lib/preferences";
 import { setShellDialog } from "@/components/shell/shellState";
+import { setTagsDialog } from "./TagsDialog";
 import { useProjectCloud } from "@/components/shell/useCloudAttention";
 import { newTerminal } from "@/components/terminal/TerminalPanel";
 import { openElementInTerminal } from "@/components/terminal/actions";
@@ -452,7 +454,13 @@ function LauncherBody() {
     more("all-projects", "All projects…", List, () => {
       close();
       setShellDialog("allProjects", true);
-    });
+    }, { sub: "drag pinned ones to change ⌘1…⌘9", keywords: ["reorder", "pinned", "order"] });
+    if (current) {
+      more("group-project", `Group ${current.name}…`, Hash, () => {
+        close();
+        setTagsDialog(current.id);
+      }, { sub: current.tags?.length ? current.tags.join(" · ") : "a client, Job, Freelance", keywords: ["tag", "tags", "client", "group", "label"] });
+    }
     more("start", "Start screen", Home, () => {
       close();
       wb.setLauncherOpen(true);

@@ -1,18 +1,33 @@
 // Projects in the Standard rail (Arc-spaces style): pinned first (⌘1…⌘9), then recent ones, as
 // avatar tiles with the activity badge (amber dot: an agent waits for you; pulsing lavender dot:
 // working; a count: unread). Click switches; hover shows name, status and path; right-click pins,
-// reveals or forgets. As many as fit the rail's height, then a "+N" tile (All projects), then "+"
-// (open folder, new project, new system). Which ones and in what order: lib/rail.ts.
+// groups, reveals or forgets. As many as fit the rail's height, then a "+N" tile (All projects),
+// then "+" (open folder, new project, new system). Which ones and in what order: lib/rail.ts.
+// §20: when two or more projects share a group (tag), a small switcher above the tiles shows one
+// group at a time (the open project always keeps its tile; ⌘1…⌘9 stay the global pin numbers).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { FolderOpen, FolderPlus, Layers, List, Pin, PinOff, Plus, SquareArrowOutUpRight, X } from "lucide-react";
+import { ChevronDown, FolderOpen, FolderPlus, Hash, Layers, List, Pin, PinOff, Plus, SquareArrowOutUpRight, X } from "lucide-react";
 import type { ProjectInfo } from "@/lib/contracts";
 import { useActivity, useProjectActivity } from "@/lib/activity";
 import { prefetchProject } from "@/lib/daemon";
-import { railBadge, railCapacity, railProjects, unreadText, RAIL_GAP, RAIL_TILE, type RailBadge } from "@/lib/rail";
+import {
+  groupInitials,
+  railBadge,
+  railCapacity,
+  railGroupProjects,
+  railGroups,
+  railProjects,
+  unreadText,
+  RAIL_ALL_GROUPS,
+  RAIL_GAP,
+  RAIL_TILE,
+  type RailBadge,
+} from "@/lib/rail";
 import { openSystemDialog } from "@/lib/system";
 import { prettyPath } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
 import { ProjectTile } from "@/components/projects/ProjectBits";
+import { setTagsDialog } from "@/components/projects/TagsDialog";
 import { useProjectActions } from "@/components/projects/useProjectActions";
 import {
   ContextMenu,
@@ -25,6 +40,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -33,6 +51,15 @@ import { cn } from "@/lib/utils";
 import { setShellDialog } from "./shellState";
 
 const ORDER_KEY = "ruah.rail.order.v1";
+const GROUP_KEY = "ruah.rail.group.v1";
+
+function readGroup(): string {
+  try {
+    return window.localStorage.getItem(GROUP_KEY) ?? RAIL_ALL_GROUPS;
+  } catch {
+    return RAIL_ALL_GROUPS;
+  }
+}
 
 function readOrder(): string[] {
   try {
@@ -201,6 +228,10 @@ function ProjectTileButton({
             {project.pinned ? <PinOff className="size-4 text-muted-foreground" /> : <Pin className="size-4 text-muted-foreground" />}
             {project.pinned ? "Unpin" : "Pin to top"}
           </ContextMenuItem>
+          <ContextMenuItem className={menuItem} onSelect={() => setTagsDialog(project.id)}>
+            <Hash className="size-4 text-muted-foreground" /> Group…
+            {project.tags?.[0] ? <span className="ms-auto truncate text-meta text-faint">{project.tags[0]}</span> : null}
+          </ContextMenuItem>
           {bridge ? (
             <ContextMenuItem className={menuItem} onSelect={() => bridge.revealInFinder(project.root)}>
               <SquareArrowOutUpRight className="size-4 text-muted-foreground" /> Reveal in Finder
@@ -222,6 +253,54 @@ function ProjectTileButton({
 
 const tileBox = "grid shrink-0 place-items-center rounded-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring";
 
+/** §20: which group's projects the rail shows (only when two or more projects share a group). */
+function RailGroupSwitcher({
+  groups,
+  value,
+  onChange,
+  total,
+}: {
+  groups: { key: string; label: string; count: number }[];
+  value: string;
+  onChange: (key: string) => void;
+  total: number;
+}) {
+  const current = groups.find((g) => g.key === value);
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger
+            aria-label={`Projects shown: ${current ? current.label : "all"} — switch group`}
+            className={cn(
+              "flex h-6 w-10 shrink-0 items-center justify-center gap-0.5 rounded-md text-[10.5px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent",
+              current ? "bg-primary/12 text-brand hover:bg-primary/18" : "text-faint hover:bg-accent/60 hover:text-foreground",
+            )}
+          >
+            {current ? groupInitials(current.label) : "All"}
+            <ChevronDown className="size-2.5 opacity-70" />
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="right">{current ? `Showing ${current.label} (${current.count})` : "Showing every project — pick a group"}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="right" align="start" sideOffset={8} className="w-56 rounded-xl border-hairline p-1">
+        <DropdownMenuLabel className="text-meta font-normal text-faint">Show in the rail</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={current ? current.key : RAIL_ALL_GROUPS} onValueChange={onChange}>
+          <DropdownMenuRadioItem value={RAIL_ALL_GROUPS} className="text-ui">
+            All projects <span className="ms-auto text-meta text-faint tabular-nums">{total}</span>
+          </DropdownMenuRadioItem>
+          {groups.map((g) => (
+            <DropdownMenuRadioItem key={g.key} value={g.key} className="text-ui">
+              <span className="truncate">{g.label}</span>
+              <span className="ms-auto text-meta text-faint tabular-nums">{g.count}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function RailProjects() {
   const { daemon } = useWorkspace();
   const activity = useActivity();
@@ -242,12 +321,27 @@ export function RailProjects() {
 
   const switchTarget = daemon.projectSwitch?.projectId ?? null;
   const currentId = switchTarget ?? daemon.project?.id ?? null;
-  // One slot stays free for the "+" tile.
-  const capacity = Math.max(0, railCapacity(height) - 1);
+  const groups = useMemo(() => railGroups(daemon.recentProjects), [daemon.recentProjects]);
+  const [group, setGroupState] = useState<string>(readGroup);
+  const activeGroup = groups.some((g) => g.key === group) ? group : RAIL_ALL_GROUPS;
+  const setGroup = (key: string) => {
+    setGroupState(key);
+    try {
+      window.localStorage.setItem(GROUP_KEY, key);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const filtered = activeGroup !== RAIL_ALL_GROUPS;
+  const shown = useMemo(() => railGroupProjects(daemon.recentProjects, activeGroup, currentId), [daemon.recentProjects, activeGroup, currentId]);
+  const pinnedIds = useMemo(() => daemon.recentProjects.filter((p) => p.pinned).map((p) => p.id), [daemon.recentProjects]);
+  // One slot stays free for the "+" tile (and one for the group switcher when it shows).
+  const capacity = Math.max(0, railCapacity(height) - 1 - (groups.length ? 1 : 0));
   const loaded = daemon.projectsLoaded;
   const layout = useMemo(
-    () => railProjects(daemon.recentProjects, currentId, capacity, order.current ?? [], { complete: loaded }),
-    [daemon.recentProjects, currentId, capacity, loaded],
+    // A group's list is partial: the other projects keep their saved slots (complete: false).
+    () => railProjects(shown, currentId, capacity, order.current ?? [], { complete: loaded && !filtered, pinnedIds }),
+    [shown, currentId, capacity, loaded, filtered, pinnedIds],
   );
 
   useEffect(() => {
@@ -264,8 +358,9 @@ export function RailProjects() {
     }
   }, [layout.order, height, loaded]);
 
-  // Waiting / running / unread in projects without a tile: say so on the "+N" tile.
+  // Waiting / running / unread in projects without a tile (another group's too): say so on the "+N" tile.
   const hidden = new Set(layout.tiles.map((t) => t.project.id));
+  const overflow = layout.overflow + (daemon.recentProjects.length - shown.length);
   const hiddenAttention = daemon.recentProjects.some((p) => {
     if (hidden.has(p.id)) return false;
     const a = activity.projects[p.id];
@@ -282,6 +377,11 @@ export function RailProjects() {
     >
       {daemon.projectsSupported ? (
         <>
+          {groups.length ? (
+            <div role="listitem" className="flex w-full shrink-0 justify-center">
+              <RailGroupSwitcher groups={groups} value={activeGroup} onChange={setGroup} total={daemon.recentProjects.length} />
+            </div>
+          ) : null}
           {layout.tiles.map((t) => (
             <ProjectTileButton
               key={t.project.id}
@@ -291,25 +391,25 @@ export function RailProjects() {
               switching={!!switchTarget && t.project.id === switchTarget}
             />
           ))}
-          {layout.overflow > 0 ? (
+          {overflow > 0 ? (
             <div role="listitem" className="flex w-full shrink-0 justify-center">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label={`${layout.overflow} more project${layout.overflow === 1 ? "" : "s"}: All projects`}
+                    aria-label={`${overflow} more project${overflow === 1 ? "" : "s"}: All projects`}
                     onClick={() => setShellDialog("allProjects", true)}
                     style={{ width: RAIL_TILE, height: RAIL_TILE }}
                     className={cn(tileBox, "relative text-[11.5px] font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground")}
                   >
-                    <span className="grid size-8 place-items-center rounded-[9px] bg-surface-2 tabular-nums">+{layout.overflow}</span>
+                    <span className="grid size-8 place-items-center rounded-[9px] bg-surface-2 tabular-nums">+{overflow}</span>
                     {hiddenAttention ? (
                       <span aria-hidden className="absolute top-0.5 right-0.5 size-2 rounded-full bg-warn ring-2 ring-sidebar" />
                     ) : null}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {layout.overflow} more · All projects
+                  {overflow} more{filtered ? " (other groups included)" : ""} · All projects
                   {hiddenAttention ? <span className="block text-warn">Something there needs a look</span> : null}
                 </TooltipContent>
               </Tooltip>

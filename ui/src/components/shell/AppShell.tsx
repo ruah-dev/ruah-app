@@ -14,6 +14,7 @@ import { useWorkbench } from "@/lib/workbench";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Launcher, AllProjectsHost } from "@/components/launcher/Launcher";
 import { NewProjectDialog, OpenFolderDialog } from "@/components/projects/ProjectDialogs";
+import { TagsDialog } from "@/components/projects/TagsDialog";
 import { SystemDialogs } from "@/components/system/SystemDialogs";
 import { ProjectMenu } from "@/components/projects/ProjectMenu";
 import { CommandLauncher } from "@/components/projects/CommandLauncher";
@@ -359,6 +360,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <NewProjectDialog />
       <SystemDialogs />
       <AllProjectsHost />
+      <TagsDialog />
       <ShortcutsDialog />
     </>
   );

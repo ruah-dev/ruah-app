@@ -5,7 +5,7 @@
 // everything) and no agent footer (the top bar's agent pill says it).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { MoreHorizontal, Pencil, Pin, PinOff, Plus, SquareArrowOutUpRight, Trash2, X } from "lucide-react";
+import { Hash, MoreHorizontal, Pencil, Pin, PinOff, Plus, SquareArrowOutUpRight, Trash2, X } from "lucide-react";
 import type { ChatInfo, ProjectInfo } from "@/lib/contracts";
 import { deleteChat, prefetchChat, prefetchProject, renameChat } from "@/lib/daemon";
 import { useProjectActivity } from "@/lib/activity";
@@ -17,6 +17,8 @@ import { useWorkspace } from "@/lib/workspace";
 import { Phantom } from "@/components/brand/Phantom";
 import { ProjectTile } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
+import { setTagsDialog } from "@/components/projects/TagsDialog";
+import { usePinReorder, type PinDragProps } from "@/components/projects/usePinReorder";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -86,7 +88,22 @@ function SubLabel({ children }: { children: ReactNode }) {
   return <div className="px-2 pt-1.5 pb-0.5 text-[10.5px] font-medium tracking-wide text-faint uppercase">{children}</div>;
 }
 
-function ProjectRow({ p, current, shortcut, switching }: { p: ProjectInfo; current: boolean; shortcut: string | null; switching: boolean }) {
+function ProjectRow({
+  p,
+  current,
+  shortcut,
+  switching,
+  drag,
+  drop,
+}: {
+  p: ProjectInfo;
+  current: boolean;
+  shortcut: string | null;
+  switching: boolean;
+  /** §20: pinned rows can be dragged (and moved with Alt+↑/↓) to reorder ⌘1…⌘9. */
+  drag?: PinDragProps | Record<string, never>;
+  drop?: "before" | "after" | null;
+}) {
   const actions = useProjectActions();
   const badge = railBadge(useProjectActivity(p.id));
   const hover = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -96,15 +113,19 @@ function ProjectRow({ p, current, shortcut, switching }: { p: ProjectInfo; curre
     <div
       role="listitem"
       data-active={current}
+      {...drag}
       onMouseEnter={() => {
         if (current) return;
         clearTimeout(hover.current);
         hover.current = setTimeout(() => void prefetchProject(p.id), 90);
       }}
       onMouseLeave={() => clearTimeout(hover.current)}
-      title={`${p.name}\n${prettyPath(p.root)}${badge.label ? `\n${badge.label}` : ""}`}
+      title={`${p.name}\n${prettyPath(p.root)}${badge.label ? `\n${badge.label}` : ""}${p.tags?.length ? `\n${p.tags.join(" · ")}` : ""}${drag && "draggable" in drag ? "\nDrag (or Alt+↑/↓) to reorder" : ""}`}
       className="group/proj list-row relative h-7 gap-2 ps-1.5 pe-1"
     >
+      {drop ? (
+        <span aria-hidden className={cn("pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-primary", drop === "before" ? "-top-px" : "-bottom-px")} />
+      ) : null}
       <button
         type="button"
         aria-label={current ? `${p.name} (current project)` : `Switch to ${p.name}${badge.label ? ` — ${badge.label}` : ""}`}
@@ -139,6 +160,9 @@ function ProjectRow({ p, current, shortcut, switching }: { p: ProjectInfo; curre
         <RowAction label={p.pinned ? "Unpin" : "Pin to top"} onClick={() => void actions.togglePin(p)}>
           {p.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
         </RowAction>
+        <RowAction label="Group…" onClick={() => setTagsDialog(p.id)}>
+          <Hash className="size-3" />
+        </RowAction>
         {bridge ? (
           <RowAction label="Reveal in Finder" onClick={() => bridge.revealInFinder(p.root)}>
             <SquareArrowOutUpRight className="size-3" />
@@ -157,9 +181,15 @@ function ProjectRow({ p, current, shortcut, switching }: { p: ProjectInfo; curre
 export function SidebarProjects() {
   const { daemon } = useWorkspace();
   if (!daemon.projectsSupported) return null;
+  return <SidebarProjectsList />;
+}
+
+function SidebarProjectsList() {
+  const { daemon } = useWorkspace();
   const switchTarget = daemon.projectSwitch?.projectId ?? null;
   const currentId = switchTarget ?? daemon.project?.id ?? null;
   const pinned = daemon.recentProjects.filter((p) => p.pinned);
+  const reorder = usePinReorder(pinned.map((p) => p.id));
   const recents = daemon.recentProjects.filter((p) => !p.pinned);
   const shown = recents.slice(0, RECENT_ROWS);
   // The open project is always listed.
@@ -194,7 +224,15 @@ export function SidebarProjects() {
         <div role="list" aria-label="Projects" className="space-y-px">
           {pinned.length ? <SubLabel>Pinned</SubLabel> : null}
           {pinned.map((p, i) => (
-            <ProjectRow key={p.id} p={p} current={p.id === currentId} shortcut={i < 9 ? `⌘${i + 1}` : null} switching={p.id === switchTarget} />
+            <ProjectRow
+              key={p.id}
+              p={p}
+              current={p.id === currentId}
+              shortcut={i < 9 ? `⌘${i + 1}` : null}
+              switching={p.id === switchTarget}
+              drag={reorder.rowProps(p.id)}
+              drop={reorder.indicator(p.id)}
+            />
           ))}
           {pinned.length && shown.length ? <SubLabel>Recent</SubLabel> : null}
           {shown.map((p) => (
