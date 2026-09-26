@@ -424,16 +424,20 @@ describe("Cursor limits", () => {
     const store = new SettingsStore(home, { env: {} });
     expect(store.usageSettings()).toEqual({ readAppLogins: false, source: "default" });
     const changes: string[] = [];
-    store.onFeaturesChange((before, after) => changes.push(`${before.usage.readAppLogins}->${after.usage.readAppLogins}`));
+    store.onFeaturesChange((before, after, cause) => changes.push(`${before.usage.readAppLogins}->${after.usage.readAppLogins} (${cause})`));
     expect(store.updateFeatures({ usage: { readAppLogins: true } }).usage).toEqual({ readAppLogins: true, source: "settings" });
     store.updateFeatures({ usage: { readAppLogins: true } }); // unchanged: no event
-    expect(changes).toEqual(["false->true"]);
+    expect(changes).toEqual(["false->true (update)"]);
     const saved = JSON.parse(readFileSync(path.join(home, "settings.json"), "utf8")) as { usage?: unknown };
     expect(saved.usage).toEqual({ readAppLogins: true });
     // Another process (the CLI) changes the file: a long-lived store sees it.
     writeFileSync(path.join(home, "settings.json"), JSON.stringify({ version: 1, usage: { readAppLogins: false } }));
     utimesSync(path.join(home, "settings.json"), new Date(), new Date(Date.now() + 5_000));
     expect(store.usageSettings()).toEqual({ readAppLogins: false, source: "settings" });
+    // ...and tells its listeners (the daemon drops the Cursor reading and updates every window).
+    expect(changes).toEqual(["false->true (update)", "true->false (file)"]);
+    store.refresh(); // unchanged file: no event
+    expect(changes).toHaveLength(2);
     // The environment wins over the saved value, both ways.
     expect(new SettingsStore(home, { env: { RUAH_USAGE_READ_LOGINS: "1" } }).usageSettings()).toEqual({ readAppLogins: true, source: "env" });
     store.updateFeatures({ usage: { readAppLogins: true } });
@@ -1031,6 +1035,9 @@ describe("§20.1 usage settings over HTTP and the CLI", () => {
     out.length = 0;
     expect(runUsageSettings([], { ...io, env: { RUAH_HOME: home, RUAH_USAGE_READ_LOGINS: "0" } })).toBe(0);
     expect(out.join("")).toContain("off (set by RUAH_USAGE_READ_LOGINS");
+    // The variable wins: say how to use the saved choice, not the --read-app-logins hint that would not help.
+    expect(out.join("")).toContain("The saved choice is on. To use it, unset the variable: unset RUAH_USAGE_READ_LOGINS");
+    expect(out.join("")).not.toContain("--read-app-logins on");
     expect(runUsageSettings(["--read-app-logins", "maybe"], io)).toBe(2);
     expect(err.join("")).toContain("on or off");
   });

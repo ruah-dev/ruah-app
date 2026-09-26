@@ -79,12 +79,19 @@ function applyPatch(target: Record<string, string>, patch: Record<string, string
   return next;
 }
 
+/**
+ * Told when the feature flags changed: `cause` "update" = updateFeatures in
+ * this process, "file" = another process (`ruah app usage settings`, a hand
+ * edit) changed settings.json and this store re-read it.
+ */
+export type FeaturesListener = (before: AppFeatures, after: AppFeatures, cause: "update" | "file") => void;
+
 export class SettingsStore {
   readonly file: string;
   private cache: { settings: SavedAgentSettings; extra: Record<string, unknown> } | undefined;
   /** mtime of the file the cache came from (or we wrote): another process's write reloads it. */
   private cacheMtime: number | null = null;
-  private readonly featureListeners = new Set<(before: AppFeatures, after: AppFeatures) => void>();
+  private readonly featureListeners = new Set<FeaturesListener>();
 
   constructor(
     home: string,
@@ -136,8 +143,12 @@ export class SettingsStore {
     return this.features().usage;
   }
 
-  /** Called after updateFeatures changed something (e.g. to drop readings made under the old setting). */
-  onFeaturesChange(listener: (before: AppFeatures, after: AppFeatures) => void): () => void {
+  /**
+   * Called after the feature flags changed, here (updateFeatures) or in the
+   * file (re-read on the next access), e.g. to drop readings made under the
+   * old setting and tell every window.
+   */
+  onFeaturesChange(listener: FeaturesListener): () => void {
     this.featureListeners.add(listener);
     return () => this.featureListeners.delete(listener);
   }
@@ -145,16 +156,24 @@ export class SettingsStore {
   updateFeatures(patch: FeaturesPatch): AppFeatures {
     const before = this.features();
     const after = this.writeFeatures(patch);
-    if (JSON.stringify(before) !== JSON.stringify(after)) {
-      for (const listener of [...this.featureListeners]) {
-        try {
-          listener(before, after);
-        } catch (err) {
-          this.options.onError?.(`ruah: a settings listener failed: ${(err as Error).message}`);
-        }
+    this.notify(before, after, "update");
+    return after;
+  }
+
+  /** Re-reads settings.json if another process changed it (the daemon calls this every few seconds). */
+  refresh(): void {
+    this.load();
+  }
+
+  private notify(before: AppFeatures, after: AppFeatures, cause: "update" | "file"): void {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    for (const listener of [...this.featureListeners]) {
+      try {
+        listener(before, after, cause);
+      } catch (err) {
+        this.options.onError?.(`ruah: a settings listener failed: ${(err as Error).message}`);
       }
     }
-    return after;
   }
 
   private writeFeatures(patch: FeaturesPatch): AppFeatures {
@@ -204,7 +223,10 @@ export class SettingsStore {
       models: stringRecord(models),
       modes: stringRecord(modes),
     };
+    const previous = this.cache;
     this.cache = { settings, extra };
+    // Another process changed the flags: listeners hear it as they would an update here.
+    if (previous !== undefined) this.notify(featuresOf(previous.extra, this.options.env), featuresOf(extra, this.options.env), "file");
     return this.cache;
   }
 }

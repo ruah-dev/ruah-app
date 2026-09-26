@@ -56,6 +56,9 @@ export interface ServeHooks {
   openSystemProject?: OpenSystemProject;
 }
 
+/** How often settings.json is checked for changes made by another process (the CLI). */
+const SETTINGS_REFRESH_MS = 3000;
+
 function envInt(name: string, fallback: number, min: number): number {
   const raw = process.env[name];
   const value = raw !== undefined ? Number.parseInt(raw, 10) : Number.NaN;
@@ -172,10 +175,14 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     maxBackgroundTurns: envInt("RUAH_MAX_BACKGROUND_TURNS", DEFAULT_MAX_BACKGROUND_TURNS, 0),
   });
   broadcastFeatures = () => activity.broadcastSnapshot();
-  // Readings made under the old app-login setting are dropped, whichever path changed it.
-  settings.onFeaturesChange((before, after) => {
+  // Readings made under the old app-login setting are dropped, whichever path changed it; a
+  // change made by another process (`ruah app usage settings`) also reaches every window.
+  settings.onFeaturesChange((before, after, cause) => {
     if (before.usage.readAppLogins !== after.usage.readAppLogins) usage.agentLimitsService.invalidate("cursor");
+    if (cause === "file") broadcastFeatures();
   });
+  // settings.json is re-read when it changes on disk (one stat every few seconds).
+  setInterval(() => settings.refresh(), SETTINGS_REFRESH_MS).unref();
   const attachments = new AttachmentStore(home);
   const engines = new EnginesService({
     root: () => hubRef?.project()?.root ?? null,

@@ -139,12 +139,17 @@ export function runUsageSettings(argv: readonly string[], io: UsageCliIo = defau
   }
   const state = view.readAppLogins ? "on" : "off";
   const why = view.source === "env" ? ` (set by ${READ_LOGINS_ENV}, which wins over the saved choice)` : view.source === "default" ? " (default)" : "";
-  io.out(
-    `Read the Cursor app's saved login for plan usage: ${state}${why}\n` +
-      (view.readAppLogins
-        ? "  The token is read from the Cursor app, used for one read-only request to cursor.com, and never stored.\n"
-        : "  Cursor's card shows its tier only. Turn it on with: ruah app usage settings --read-app-logins on\n"),
-  );
+  const lines = [`Read the Cursor app's saved login for plan usage: ${state}${why}`];
+  if (view.readAppLogins) lines.push("  The token is read from the Cursor app, used for one read-only request to cursor.com, and never stored.");
+  if (view.source === "env") {
+    // --read-app-logins cannot change what this process (or a Ruah started with the variable) uses.
+    const saved = new SettingsStore(ruahHome(env), { env: {} }).usageSettings();
+    lines.push(`  The saved choice is ${saved.readAppLogins ? "on" : "off"}. To use it, unset the variable: unset ${READ_LOGINS_ENV}`);
+  } else if (!view.readAppLogins) {
+    lines.push("  Cursor's card shows its tier only. Turn it on with: ruah app usage settings --read-app-logins on");
+  }
+  if (raw !== undefined && view.source !== "env") lines.push("  A running Ruah picks up the change within a few seconds.");
+  io.out(`${lines.join("\n")}\n`);
   return 0;
 }
 
