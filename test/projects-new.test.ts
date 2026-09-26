@@ -15,7 +15,7 @@ import { ProjectService } from "../src/projects/service.js";
 import { checkNewProject, commandLine, createProjectFolder, githubCreateArgs, githubRepoName, suggestParentDir } from "../src/projects/create.js";
 import { TEMPLATES, findTemplate, renderTemplate, templateInfos, slugify } from "../src/projects/templates/index.js";
 import { ProjectOverviewService } from "../src/projects/overview.js";
-import { runNew } from "../src/projects/run-new.js";
+import { runNew, shellPath } from "../src/projects/run-new.js";
 import { validateArchitecture } from "../src/contracts/validate.js";
 import { CreateResultSchema, NewProjectCheckSchema, NewProjectDefaultsSchema, ProjectsListSchema } from "../src/contracts/projects.js";
 import { ProjectsOverviewSchema } from "../src/contracts/overview.js";
@@ -493,6 +493,13 @@ describe("ruah app new", () => {
     expect(text.code).toBe(0);
     expect(text.out).toMatch(/Created .*site from "Static site"/);
     expect(existsSync(path.join(work, "site", ".git"))).toBe(false);
+
+    // Suggested commands stay copy-pasteable when the path has a space.
+    const spaced = await capture(() => runNew(["My Site", "--in", work, "-t", "static-site", "--no-git"], "t", { env }));
+    expect(spaced.out).toContain(`Next: cd '${path.join(work, "My Site")}'`);
+    expect(shellPath("~/Projects/Payments API")).toBe("~/'Projects/Payments API'");
+    expect(shellPath("/tmp/it's")).toBe("'/tmp/it'\\''s'");
+    expect(shellPath("/tmp/plain-dir")).toBe("/tmp/plain-dir");
 
     const again = await capture(() => runNew(["site", "--in", work], "t", { env }));
     expect(again.code).toBe(1);

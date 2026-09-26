@@ -42,6 +42,16 @@ function pretty(p: string): string {
   return home !== "" && (p === home || p.startsWith(`${home}/`)) ? `~${p.slice(home.length)}` : p;
 }
 
+/**
+ * A path as one shell word, for the commands the report suggests ("Payments API" has a space):
+ * single-quoted when needed; a leading `~/` stays outside the quotes so the shell still expands it.
+ */
+export function shellPath(p: string): string {
+  const quote = (s: string) => (/^[A-Za-z0-9._/:=@+-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+  if (p === "~" || p === "~/") return p;
+  return p.startsWith("~/") ? `~/${quote(p.slice(2))}` : quote(p);
+}
+
 export function formatReport(report: CreateReport, name: string): string[] {
   const template = findTemplate(report.template);
   const lines = [`Created ${pretty(report.path)} from "${template?.name ?? report.template}"`];
@@ -55,13 +65,14 @@ export function formatReport(report: CreateReport, name: string): string[] {
   }
   if (report.github !== null) {
     lines.push(report.github.error === undefined ? `  GitHub: ${report.github.url ?? "created"}` : `  GitHub: not created — ${report.github.error}`);
-    if (report.github.error !== undefined) lines.push(`    retry: (cd ${pretty(report.path)} && ${commandLine("gh", report.github.command.slice(1))})`);
+    if (report.github.error !== undefined) lines.push(`    retry: (cd ${shellPath(pretty(report.path))} && ${commandLine("gh", report.github.command.slice(1))})`);
   }
   for (const warning of report.warnings.filter((w) => !w.startsWith("GitHub repo not created") && !w.startsWith("Not added to the system"))) lines.push(`  ! ${warning}`);
   const run = template?.run;
-  lines.push(`Next: cd ${pretty(report.path)}${run !== undefined && !run.startsWith("open ") ? ` && ${run}` : ""}   ·   ruah app ${pretty(report.path)}`);
+  const dir = shellPath(pretty(report.path));
+  lines.push(`Next: cd ${dir}${run !== undefined && !run.startsWith("open ") ? ` && ${run}` : ""}   ·   ruah app ${dir}`);
   if (report.github === null && report.git?.commit != null && resolveBin("gh") !== undefined) {
-    lines.push(`To put it on GitHub: (cd ${pretty(report.path)} && ${commandLine("gh", githubCreateArgs(githubRepoName(name), "private", true))})`);
+    lines.push(`To put it on GitHub: (cd ${dir} && ${commandLine("gh", githubCreateArgs(githubRepoName(name), "private", true))})`);
   }
   return lines;
 }
