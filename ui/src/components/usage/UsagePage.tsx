@@ -24,6 +24,7 @@ import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { Skeleton } from "@/components/ui/skeleton";
+import { iconButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { UsageChart, type ChartColumn } from "./UsageChart";
 import { AgentLimitsPanel } from "./AgentLimitsPanel";
@@ -169,12 +170,14 @@ export function UsagePage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Usage">
         <Segmented
+          label="Show"
           value={metric}
           options={METRIC_OPTIONS}
           onChange={(v: UsageMetric) => setPref({ metric: v })}
         />
         {/* The period does not apply to Limits: it stays in place, disabled, so nothing shifts. */}
         <Segmented
+          label="Period"
           value={range}
           options={RANGE_OPTIONS.map((o) => ({ ...o, disabled: showingLimits }))}
           onChange={(v: UsageRange) => setPref({ range: v })}
@@ -185,7 +188,7 @@ export function UsagePage() {
           aria-label="Model prices"
           title="Model prices"
           onClick={() => setPricesOpen(true)}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={iconButton}
         >
           <SlidersHorizontal className="size-3.5" />
         </button>
@@ -194,7 +197,7 @@ export function UsagePage() {
           aria-label="Refresh"
           title="Refresh"
           onClick={refresh}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={iconButton}
         >
           <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
         </button>
@@ -203,16 +206,16 @@ export function UsagePage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 max-md:px-4">
           {showingLimits ? (
-            <AgentLimitsPanel />
+            <AgentLimitsPanel refreshButton={false} />
           ) : summary.status === "loading" ? (
             <UsageSkeleton />
           ) : summary.status !== "ok" || !model ? (
             <EmptyState
               failed={summary.status === "error"}
-              title="No usage recorded yet"
+              title={summary.status === "error" ? "Couldn't load usage" : "No usage recorded yet"}
               body={
                 summary.status === "error"
-                  ? `The daemon did not answer: ${summary.message}`
+                  ? `The daemon did not answer: ${summary.message.replace(/\.$/, "")}. Refresh to try again.`
                   : daemon.source === "daemon"
                     ? "Tokens and cost appear here after the agent has worked on a few turns."
                     : "Usage comes from the Ruah daemon. Start ruah app serve <repo> to record it."

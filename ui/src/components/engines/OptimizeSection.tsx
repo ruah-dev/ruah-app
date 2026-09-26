@@ -1,7 +1,10 @@
-// Optimize section for the Usage page. Hidden work when ruah-opt is not installed.
+// Optimize section for the Usage page. Quiet when ruah opt is missing: one line with the install
+// command (copyable), no disabled button that cannot do anything.
 import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { engineStatus, optUsage, type EngineToolStatus, type OptUsage } from "@/lib/engines";
-import { Button } from "@/components/ui/button";
+import { solidButton } from "@/components/ui/controls";
+import { CopyCommand } from "@/components/integrations/common";
 
 export function OptimizeSection() {
   const [tool, setTool] = useState<EngineToolStatus | null>(null);
@@ -25,26 +28,38 @@ export function OptimizeSection() {
     <section className="flex flex-col gap-3 border-t border-hairline pt-6">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="heading text-headline text-foreground">Optimize</h2>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={!installed || busy}
-          title={installed ? "Summarize ~/.ruah/usage.jsonl" : install}
-          onClick={() => {
-            setBusy(true);
-            void optUsage()
-              .then(setReport)
-              .finally(() => setBusy(false));
-          }}
-        >
-          {busy ? "Analyzing…" : "Run opt"}
-        </Button>
+        {installed ? (
+          <button
+            type="button"
+            className={solidButton}
+            disabled={busy}
+            title="Summarize ~/.ruah/usage.jsonl with ruah opt"
+            onClick={() => {
+              setBusy(true);
+              void optUsage()
+                .then(setReport)
+                .finally(() => setBusy(false));
+            }}
+          >
+            <Sparkles className="size-3.5" />
+            {busy ? "Analyzing…" : "Analyze usage"}
+          </button>
+        ) : null}
       </div>
       <p className="text-label text-muted-foreground">
-        Top spenders, waste signals, and suggestions from the usage log via <code>ruah opt usage</code>.
+        Top spenders, waste signals and suggestions from the usage log (<code className="font-mono">ruah opt usage</code>).
       </p>
-      {tool && !installed ? <p className="text-label text-muted-foreground">Not installed. {install}</p> : null}
-      {report && "error" in report ? <p className="text-label text-bad">{report.error}</p> : null}
+      {tool && !installed ? (
+        <div className="flex flex-wrap items-center gap-2 text-label text-muted-foreground">
+          <span>Needs ruah opt. Install it once:</span>
+          <CopyCommand command={install} runnable className="w-full max-w-sm" />
+        </div>
+      ) : null}
+      {report && "error" in report ? (
+        <p role="alert" className="text-label text-bad">
+          ruah opt failed: {report.error.replace(/\.$/, "")}. Try again, or run ruah opt usage in a terminal.
+        </p>
+      ) : null}
       {report && "topSpenders" in report ? (
         <div className="flex flex-col gap-2 text-label">
           <p className="text-muted-foreground">

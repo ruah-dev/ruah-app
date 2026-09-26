@@ -7,7 +7,7 @@ import { Phantom } from "@/components/brand/Phantom";
 import { groupCandidates, type PreviewCandidate, type PreviewDetection, type PreviewStatus } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { CandidateLine } from "./PreviewCommandMenu";
-import { primaryButton, quietButton, solidButton } from "@/components/ui/controls";
+import { aiButton, primaryButton, quietButton, solidButton } from "@/components/ui/controls";
 
 function Centered({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -159,7 +159,8 @@ export function ReadyPanel({
     <Centered>
       <Phantom expression="idle" size="md" />
       <div className="flex flex-col items-center gap-1">
-        <p className="heading text-title text-foreground">Preview {candidate.title}</p>
+        <p className="eyebrow">{candidate.title}</p>
+        <p className="heading text-title text-foreground">Ready to preview</p>
         <p className="text-ui-sm text-muted-foreground">
           {candidate.hmr ? (
             <span className="inline-flex items-center gap-1">
@@ -283,11 +284,7 @@ export function CrashPanel({
         {status.candidate ? <CandidateNotes c={status.candidate} onSetup={onSetup} /> : null}
         <LogTail lines={status.logs.slice(-40)} className="max-h-80" />
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onAskAgent}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ai px-3 text-ui-sm font-medium text-ai-foreground transition-colors hover:bg-ai/90"
-          >
+          <button type="button" onClick={onAskAgent} className={aiButton}>
             <Sparkles className="size-3.5" /> Ask agent to fix
           </button>
           <button type="button" onClick={onRestart} disabled={busy} className={outlineBtn}>

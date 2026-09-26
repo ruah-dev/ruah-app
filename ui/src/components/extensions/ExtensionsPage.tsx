@@ -6,31 +6,34 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, X } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Phantom } from "@/components/brand/Phantom";
+import { EmptyState } from "@/components/brand/EmptyState";
+import { SkeletonRows } from "@/components/ui/skeleton";
+import { iconButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { matchesQuery, useExtensions, type ExtensionAgent, type ExtensionView, type FeaturedExtension } from "@/lib/extensions";
 import { AddExtensionDialog, type SourceKind } from "./AddExtensionDialog";
 import { DiscoverView } from "./DiscoverView";
 import { ExtensionCard } from "./ExtensionCard";
 import { PerAgentView } from "./PerAgentView";
-import { Segmented, fieldClass, primaryButton, quietButton } from "./parts";
+import { Segmented, fieldClass, primaryButton } from "./parts";
 
 export type ExtensionsTab = "installed" | "discover" | "agents";
 
 function EmptyInstalled({ onBrowse }: { onBrowse: () => void }) {
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-hairline bg-surface-1 px-4 py-4">
-      <Phantom expression="idle" size="md" />
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="text-ui font-medium text-foreground">No extensions yet</p>
-        <p className="text-ui-sm leading-relaxed text-muted-foreground">
-          Give your agents more tools: Claude Design, GitHub, Playwright, your own skills. Nothing runs until you turn it on for an agent.
-        </p>
-      </div>
-      <button type="button" className={primaryButton} onClick={onBrowse}>
-        Browse
-      </button>
-    </div>
+    <EmptyState
+      pose="keyholder"
+      size="sm"
+      eyebrow="No extensions yet"
+      title="Give your agents more tools"
+      body="Claude Design, GitHub, Playwright or your own skills. Nothing runs until you turn it on for an agent."
+      actions={
+        <button type="button" className={primaryButton} onClick={onBrowse}>
+          Browse extensions
+        </button>
+      }
+      className="rounded-xl border border-hairline bg-surface-1"
+    />
   );
 }
 
@@ -94,14 +97,20 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
   return (
     <TooltipProvider delayDuration={250}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex h-bar shrink-0 items-center gap-3 border-b border-hairline px-5 max-md:h-11 max-md:px-3">
+        {/* The same metrics as the shell's PageHeader (h-11, px-4), so switching pages never jumps. */}
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-hairline px-4 max-md:px-3">
           <h1 className="heading min-w-0 truncate text-title text-foreground max-md:hidden">Extensions</h1>
           <Segmented
             label="Extensions view"
             value={tab}
             onChange={setTab}
             options={[
-              { value: "installed", label: <>Installed{count > 0 ? <span className="text-faint">{count}</span> : null}{reviewCount > 0 ? <span className="size-1.5 rounded-full bg-warn" aria-label={`${reviewCount} need review`} /> : null}</> },
+              { value: "installed", label: <>Installed{count > 0 ? <span className="text-faint">{count}</span> : null}{reviewCount > 0 ? (
+                      <>
+                        <span aria-hidden className="size-1.5 rounded-full bg-warn" />
+                        <span className="sr-only">{`, ${reviewCount} need review`}</span>
+                      </>
+                    ) : null}</> },
               { value: "discover", label: "Discover" },
               { value: "agents", label: "Per agent" },
             ]}
@@ -124,7 +133,7 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
               ) : null}
             </div>
           ) : null}
-          <button type="button" className={quietButton} aria-label="Refresh" disabled={noDaemon} onClick={() => void x.reload()}>
+          <button type="button" className={iconButton} aria-label="Refresh" title="Refresh" disabled={noDaemon} onClick={() => void x.reload()}>
             <RefreshCw className={cn("size-3.5", x.list.status === "loading" && "animate-spin")} />
           </button>
           <button type="button" className={primaryButton} disabled={noDaemon} onClick={() => setAdding({ featured: null })}>
@@ -146,7 +155,11 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
                 Connect to the Ruah daemon to manage extensions (or use <span className="font-mono text-foreground">ruah app ext</span> in a terminal).
               </div>
             ) : null}
-            {x.list.status === "error" ? <p className="text-ui-sm text-bad">{x.list.message}</p> : null}
+            {x.list.status === "error" ? (
+              <p role="alert" className="text-ui-sm text-bad">
+                Couldn't load extensions: {x.list.message}. Refresh to try again.
+              </p>
+            ) : null}
             {data?.errors.map((e) => (
               <div key={e.file} className="rounded-xl border border-bad/25 bg-bad/[0.05] px-4 py-3 text-ui-sm text-foreground">
                 <span className="font-mono">{e.file}</span>: {e.error}. Ruah will not change it until it is fixed or deleted.
@@ -160,11 +173,16 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
 
             {tab === "installed" ? (
               data === null ? (
-                x.list.status === "loading" ? <p className="text-ui-sm text-muted-foreground">Loading…</p> : null
+                x.list.status === "loading" ? <SkeletonRows rows={3} label="Loading extensions" className="gap-4" /> : null
               ) : count === 0 ? (
                 <EmptyInstalled onBrowse={() => setTab("discover")} />
               ) : filtered.length === 0 ? (
-                <p className="text-ui-sm text-muted-foreground">No extension matches “{query}”.</p>
+                <p className="text-ui-sm text-muted-foreground">
+                  No extension matches “{query}”.{" "}
+                  <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => setQuery("")}>
+                    Clear the search
+                  </button>
+                </p>
               ) : (
                 groups.map((g) => (
                   <section key={g.scope} className="flex flex-col gap-3">

@@ -334,14 +334,19 @@ export function CloudPage() {
             {scopeInfo?.accounts.length ? `Accounts (${scopeInfo.accounts.length})` : "Accounts"}
           </button>
         ) : null}
-        <span className="text-label text-muted-foreground max-sm:hidden">
-          {s.syncing
-            ? "Syncing…"
-            : snapshot?.syncedAt
-              ? `Synced ${timeAgo(snapshot.syncedAt, now)}`
-              : "Never synced"}
-        </span>
-        <SyncMenu providers={cloudProviders} syncing={s.syncing} onSync={(o) => void sync(o)} />
+        {/* Nothing to sync before a provider is connected: the page's action is connecting one. */}
+        {noProviders ? null : (
+          <>
+            <span className="text-label text-muted-foreground max-sm:hidden">
+              {s.syncing
+                ? "Syncing…"
+                : snapshot?.syncedAt
+                  ? `Synced ${timeAgo(snapshot.syncedAt, now)}`
+                  : "Never synced"}
+            </span>
+            <SyncMenu providers={cloudProviders} syncing={s.syncing} onSync={(o) => void sync(o)} />
+          </>
+        )}
         {/* Secondary: the map's Cloud level (one row of controls; the rest in ⋯). */}
         <PageMenu>
           <DropdownMenuCheckboxItem checked={s.showCloudOnMap} onCheckedChange={(on) => setShowCloudOnMap(on === true)}>
@@ -353,13 +358,36 @@ export function CloudPage() {
         </PageMenu>
       </PageHeader>
 
+      {noProviders ? (
+        // First run: one message and the providers' setup — no filters or table over nothing.
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-10 max-md:px-4">
+            <RemoteNotice remote={s.cloud} what="Cloud" />
+            <GhostState
+              pose="plugging"
+              size="sm"
+              eyebrow="Not connected"
+              title="Connect a cloud provider"
+              body="Ruah reads what's deployed with each provider's own CLI, read-only. Log in to one below, then check again: its resources show up here and on the map."
+              className="py-6"
+            />
+            <ConnectProviders
+              providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
+            />
+          </div>
+        </div>
+      ) : (
+        renderBody()
+      )}
+    </div>
+  );
+
+  // A plain function (not a component): the filter field keeps its focus across renders.
+  function renderBody() {
+    return (
+      <>
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
         <RemoteNotice remote={s.cloud} what="Cloud" />
-        {noProviders ? (
-          <ConnectProviders
-            providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
-          />
-        ) : null}
         {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}
         {scopeError ? <Notice tone="bad" title="Could not change the project's scope" body={scopeError} /> : null}
         {scopeFileError ? (
@@ -521,6 +549,7 @@ export function CloudPage() {
           </aside>
         ) : null}
       </div>
-    </div>
-  );
+      </>
+    );
+  }
 }

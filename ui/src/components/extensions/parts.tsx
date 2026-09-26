@@ -20,6 +20,7 @@ import {
 } from "@/lib/extensions";
 
 import { quietButton, solidButton, primaryButton, fieldClass } from "@/components/ui/controls";
+import { Segmented } from "@/components/ui/segmented";
 
 export { quietButton, solidButton, primaryButton, fieldClass };
 
@@ -80,41 +81,8 @@ export function StatusChip({ view }: { view: ExtensionView }) {
   );
 }
 
-/** A compact segmented control (the page's own, so it does not depend on the shell's). */
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  className,
-  label,
-}: {
-  value: T;
-  options: readonly { value: T; label: ReactNode; title?: string }[];
-  onChange: (v: T) => void;
-  className?: string;
-  label: string;
-}) {
-  return (
-    <div role="tablist" aria-label={label} className={cn("flex h-7 items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 ring-1 ring-hairline", className)}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={value === o.value}
-          title={o.title}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-2.5 text-ui-sm transition-colors max-sm:px-2",
-            value === o.value ? "bg-surface-4 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** The kit's segmented control (a radio group; arrow keys move the choice). */
+export { Segmented };
 
 /** One switch per agent. `busy` is the agent being toggled. */
 export function AgentSwitches({

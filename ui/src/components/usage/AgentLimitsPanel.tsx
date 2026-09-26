@@ -8,6 +8,7 @@ import { Phantom } from "@/components/brand/Phantom";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { iconButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { AgentLimitCard } from "./AgentLimitCard";
 import { AgentLimitToasts } from "./AgentLimitToasts";
@@ -61,7 +62,7 @@ export function LimitSettingsPopover({ settings, onChange }: { settings: LimitSe
           type="button"
           aria-label="Limit warnings"
           title="Limit warnings"
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={iconButton}
         >
           <Bell className="size-3.5" />
         </button>
@@ -114,33 +115,64 @@ function Quiet({ title, body, failed = false }: { title: string; body: ReactNode
 
 const cli = <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-label text-foreground">ruah app usage limits</code>;
 
-export function AgentLimitsPanel({ toasts = true, className }: { toasts?: boolean; className?: string }) {
+/**
+ * "Checked 2m ago", the warning settings and refresh-all: a row above the cards when the panel
+ * is embedded, or the page header's controls on /limits (one row of controls per page).
+ */
+export function AgentLimitsControls({ refreshButton = true, statusClassName }: { refreshButton?: boolean; statusClassName?: string }) {
   const { load, report, fetchedAt, refreshing, refresh } = useAgentLimits();
   const [settings, setSettings] = useLimitSettings();
   const now = useNow(30_000);
   const all = refreshing.has("*");
-
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
-      <div className="flex items-center gap-2">
-        <p className="min-w-0 truncate text-label text-muted-foreground" aria-live="polite">
-          {report && fetchedAt
-            ? `Checked ${formatAgo(new Date(fetchedAt).toISOString(), now)} · every agent reads its own source`
-            : "Plan limits for every coding agent"}
-        </p>
-        <span className="flex-1" />
-        <LimitSettingsPopover settings={settings} onChange={setSettings} />
+    <>
+      <p className={cn("min-w-0 truncate text-label text-muted-foreground", statusClassName)} aria-live="polite">
+        {report && fetchedAt
+          ? `Checked ${formatAgo(new Date(fetchedAt).toISOString(), now)} · every agent reads its own source`
+          : "Plan limits for every coding agent"}
+      </p>
+      <LimitSettingsPopover settings={settings} onChange={setSettings} />
+      {refreshButton ? (
         <button
           type="button"
           aria-label="Refresh all limits"
           title="Refresh all"
           onClick={() => refresh()}
           disabled={load.status === "idle" || all}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className={iconButton}
         >
           <RefreshCw className={cn("size-3.5", (all || load.status === "loading") && "animate-spin")} />
         </button>
-      </div>
+      ) : null}
+    </>
+  );
+}
+
+export function AgentLimitsPanel({
+  toasts = true,
+  controls = true,
+  refreshButton = true,
+  className,
+}: {
+  toasts?: boolean;
+  /** The status + settings row above the cards (off when the page header carries it). */
+  controls?: boolean;
+  /** Refresh-all in that row (off when the page header already has a refresh). */
+  refreshButton?: boolean;
+  className?: string;
+}) {
+  const { load, report, refreshing, refresh } = useAgentLimits();
+  const [settings] = useLimitSettings();
+  const now = useNow(30_000);
+  const all = refreshing.has("*");
+
+  return (
+    <div className={cn("flex flex-col gap-4", className)}>
+      {controls ? (
+        <div className="flex items-center gap-2">
+          <AgentLimitsControls refreshButton={refreshButton} statusClassName="me-auto" />
+        </div>
+      ) : null}
 
       {report ? (
         <>
@@ -163,13 +195,13 @@ export function AgentLimitsPanel({ toasts = true, className }: { toasts?: boolea
       ) : load.status === "loading" ? (
         <div className="grid gap-4 md:grid-cols-2" aria-busy>
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-44 rounded-[var(--r-md)]" />
+            <Skeleton key={i} className="h-44 rounded-xl" />
           ))}
         </div>
       ) : load.status === "unavailable" ? (
         <Quiet title="Limits need a newer daemon" body={<>Restart Ruah to read every agent's limits, or run {cli} in a terminal.</>} />
       ) : load.status === "error" ? (
-        <Quiet failed title="Could not read limits" body={<>The daemon did not answer: {load.message}. Try again, or run {cli}.</>} />
+        <Quiet failed title="Couldn't read limits" body={<>The daemon did not answer: {load.message.replace(/\.$/, "")}. Refresh to try again, or run {cli}.</>} />
       ) : (
         <Quiet title="No daemon running" body={<>Limits come from the Ruah daemon. Without it, run {cli} in a terminal.</>} />
       )}

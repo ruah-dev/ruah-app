@@ -1,12 +1,12 @@
 // Small segmented control (Cursor / t3code style): a muted track, the active item raised. One
 // choice of a few ("Cost | Tokens | Limits", "View | Edit"). Keyboard: it is one Tab stop; the
 // arrow keys (and Home / End) move the choice, as a radio group does.
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export type SegmentedOption<T extends string> = {
   value: T;
-  label: string;
+  label: ReactNode;
   disabled?: boolean | undefined;
   title?: string | undefined;
 };
@@ -98,7 +98,7 @@ export function Segmented<T extends string>({
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              "h-6 cursor-pointer rounded-md px-2.5 text-ui-sm whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              "inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-2.5 text-ui-sm whitespace-nowrap transition-colors max-sm:px-2 disabled:cursor-not-allowed disabled:opacity-50",
               on ? "bg-surface-4 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}
           >

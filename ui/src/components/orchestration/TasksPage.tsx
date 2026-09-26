@@ -45,12 +45,14 @@ import {
   RemoteNotice,
   primaryButton,
   quietButton,
+  iconButton,
 } from "@/components/integrations/common";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { StatusTone } from "@/lib/integrations";
 import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
 import { GuardCard } from "@/components/engines/GuardCard";
 import { cn } from "@/lib/utils";
-import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import type { PhantomExpression } from "@/components/brand/Phantom";
 import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import { PhantomAgent, agentTintOf } from "@/components/brand/PhantomPose";
 
@@ -163,10 +165,7 @@ function TaskRow({
                   aria-label={`${meta.label} ${task.name}`}
                   disabled={busy !== null}
                   onClick={() => onAction(a)}
-                  className={cn(
-                    "grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40",
-                    a === "cancel" && "hover:text-bad",
-                  )}
+                  className={cn(iconButton, a === "cancel" && "hover:text-bad")}
                 >
                   {busy === a ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}
                 </button>
@@ -180,25 +179,62 @@ function TaskRow({
   );
 }
 
+const RUAH_PITCH =
+  "ruah runs coding agents on isolated git worktrees with file locks, so several tasks run at once without stepping on each other.";
+
+/** What the "not set up" state says for the daemon's hint: the command to run, or what to do. */
+export function notInitializedCopy(hint: string | undefined): { title: string; body: string; command: string | null } {
+  const h = (hint ?? "").trim();
+  if (/^(npm|pnpm|brew|bun) /.test(h))
+    return { title: "ruah isn't installed", body: `${RUAH_PITCH} Install it once, then check again:`, command: h };
+  if (/^open a project/i.test(h))
+    return { title: "Open a project first", body: `${RUAH_PITCH} Tasks belong to a repository: open one from the project menu.`, command: null };
+  return { title: "ruah isn't set up in this repository", body: `${RUAH_PITCH} Set it up once in the repo root:`, command: h || "ruah init" };
+}
+
 /** ruah isn't initialised: the trio scene shows what it is for — agents working side by side. */
 function NotInitialized({ hint }: { hint?: string | undefined }) {
+  const copy = notInitializedCopy(hint);
   return (
     <GhostState
       scene="trio"
       size="lg"
       eyebrow="Parallel agents"
-      title={<>ruah isn&apos;t set up in this repository</>}
-      body={
-        hint ??
-        "ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once without stepping on each other. Initialise it once in the repo root:"
-      }
+      title={copy.title}
+      body={copy.body}
       className="mx-auto max-w-lg px-6"
     >
-      <CopyCommand command="ruah init" className="mt-2 w-full max-w-xs text-left" />
-      <button type="button" className={quietButton} onClick={() => void loadRuah()}>
+      {copy.command ? <CopyCommand command={copy.command} runnable className="mt-2 w-full max-w-xs text-left" /> : null}
+      <button type="button" className={cn(quietButton, "mt-1")} onClick={() => void loadRuah()}>
         <RefreshCw className="size-3.5" /> Check again
       </button>
     </GhostState>
+  );
+}
+
+/** The task table's shape while ruah answers (it polls every 5 s; the first read can take a moment). */
+function TasksSkeleton() {
+  return (
+    <div role="status" aria-live="polite" className="pt-4">
+      <span className="sr-only">Loading tasks…</span>
+      <div className="flex items-center gap-2 px-5 pb-3 max-md:px-3">
+        <Skeleton className="h-7 w-28 rounded-lg" />
+        <Skeleton className="h-5 w-20 rounded-md" />
+      </div>
+      <div className="border-t border-hairline">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className={cn(COLS, "h-11 border-b border-hairline px-5 max-md:px-3")}>
+            <Skeleton className="h-3 rounded" style={{ width: `${70 - ((i * 13) % 30)}%` }} />
+            <Skeleton className="h-5 w-16 rounded-md" />
+            <Skeleton className="h-3 w-16 rounded" />
+            <Skeleton className="h-3 w-3/4 rounded" />
+            <Skeleton className="h-3 w-1/2 rounded" />
+            <Skeleton className="h-3 w-6 rounded" />
+            <span />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -282,11 +318,12 @@ export function TasksPage() {
             {status.currentBranch ? ` · on ${status.currentBranch}` : ""}
           </span>
         ) : null}
-        <GuardCard compact />
+        {status ? <GuardCard compact /> : null}
         <button
           type="button"
-          className={quietButton}
+          className={iconButton}
           aria-label="Refresh"
+          title="Refresh"
           onClick={() => {
             void loadRuah();
             void loadWorkflows();
@@ -294,9 +331,12 @@ export function TasksPage() {
         >
           <RefreshCw className={cn("size-3.5", s.ruah.status === "loading" && "animate-spin")} />
         </button>
-        <button type="button" className={primaryButton} disabled={!status} onClick={() => setCreateOpen(true)}>
-          <Plus className="size-3.5" /> New task
-        </button>
+        {/* Only where it can work: before ruah is set up the page's one action is the setup. */}
+        {status ? (
+          <button type="button" className={primaryButton} onClick={() => setCreateOpen(true)}>
+            <Plus className="size-3.5" /> New task
+          </button>
+        ) : null}
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -307,9 +347,7 @@ export function TasksPage() {
         ) : notInit ? (
           <NotInitialized hint={notInit.hint} />
         ) : !status ? (
-          <div className="grid h-40 place-items-center">
-            <Phantom expression="loading" size="md" label="Loading tasks" />
-          </div>
+          <TasksSkeleton />
         ) : (
           <div className="flex flex-col gap-8 pb-10">
             <div className="space-y-3">
@@ -376,6 +414,13 @@ export function TasksPage() {
                     title={tasks.length ? "No open tasks" : "No tasks yet"}
                     body="Create one here, or from an element's Details on the Map — its files are locked for the agent."
                     className="px-6 py-12"
+                    actions={
+                      tasks.length ? null : (
+                        <button type="button" className={primaryButton} onClick={() => setCreateOpen(true)}>
+                          <Plus className="size-3.5" /> New task
+                        </button>
+                      )
+                    }
                   />
                 )}
                 {hidden > 0 && scope === "active" ? (

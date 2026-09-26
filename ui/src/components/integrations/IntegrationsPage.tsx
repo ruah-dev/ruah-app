@@ -27,6 +27,7 @@ import {
   setupCommands,
   quietButton,
   solidButton,
+  iconButton,
 } from "./common";
 import { JiraConnectDialog } from "./JiraConnectDialog";
 import { PhantomPose } from "@/components/brand/PhantomPose";
@@ -239,7 +240,11 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
           <SetupCommands info={info} />
         </div>
       ) : null}
-      {error ?<p className="mt-2 ms-11 text-ui-sm text-bad">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="mt-2 ms-11 text-ui-sm text-bad">
+          {error}
+        </p>
+      ) : null}
 
       {isJira ? (
         <JiraConnectDialog
@@ -278,13 +283,13 @@ export function IntegrationsPage() {
         ) : null}
         <button
           type="button"
-          className={quietButton}
+          className={iconButton}
           onClick={() => void loadIntegrations()}
           disabled={remote.status === "loading"}
           aria-label="Refresh"
+          title="Check every service again"
         >
           <RefreshCw className={cn("size-3.5", remote.status === "loading" && "animate-spin")} />
-          Refresh
         </button>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
