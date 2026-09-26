@@ -190,16 +190,6 @@ export async function runVerify(nodeId: string): Promise<NodeVerifyState | { err
   return body;
 }
 
-/** `written: false` when there were no criteria to sync (nothing is written then, §21.3). */
-export async function syncVerify(): Promise<{ path: string; criteriaCount: number; written: boolean } | { error: string }> {
-  const url = engineUrl("/api/engines/verify/sync");
-  if (!url) return notConnected();
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-  const body = (await res.json()) as { path?: string; criteriaCount?: number; written?: boolean; error?: string };
-  if (!res.ok) return { error: body.error ?? `sync failed (${res.status})` };
-  return { path: body.path!, criteriaCount: body.criteriaCount!, written: body.written ?? true };
-}
-
 export async function runEval(nodeId: string, prompt: string): Promise<unknown> {
   const url = engineUrl("/api/engines/eval/run");
   if (!url) return notConnected();

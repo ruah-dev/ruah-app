@@ -176,7 +176,7 @@ export function syncVerifyJson(options: {
 
   const outPath = path.join(options.root, VERIFY_FILE);
   if (criteria.length === 0) return { path: outPath, criteriaCount: 0, written: false };
-  // An explicit action (Sync criteria): the committable file, plus the .gitignore for caches.
+  // An explicit action (POST /api/engines/verify/sync): the committable file, plus the .gitignore for caches.
   atomicWriteFileSync(outPath, `${JSON.stringify({ schemaVersion: "1", criteria }, null, 2)}\n`);
   ensureRuahGitignore(options.root);
   return { path: outPath, criteriaCount: criteria.length, written: true };
@@ -246,11 +246,12 @@ export async function runVerifyForNode(options: {
 }): Promise<NodeVerifyState> {
   const criteriaRoot = path.join(options.root, VERIFY_FILE);
   if (!fs.existsSync(criteriaRoot)) {
-    // Nothing is written into the repo on a run: criteria come from Sync criteria (or by hand).
+    // Nothing is written into the repo on a run: criteria come from `ruah verify init`, by hand, or
+    // POST /api/engines/verify/sync with ruah workflow tasks that carry acceptance criteria.
     const state: NodeVerifyState = {
       nodeId: options.nodeId,
       badge: "unverifiable",
-      detail: "No acceptance criteria yet: Sync criteria writes .ruah/verify.json (commit it to share them).",
+      detail: "No acceptance criteria yet: create .ruah/verify.json with `ruah verify init` (commit it to share them).",
       verifiedAt: new Date().toISOString(),
     };
     persistNodeState(options.root, options.nodeId, state, options.stateDir);

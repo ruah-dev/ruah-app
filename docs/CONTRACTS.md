@@ -2973,7 +2973,7 @@ Only committable files, and only on an explicit user action:
 
 | File | Written by |
 | --- | --- |
-| `.ruah/verify.json` | Sync criteria (never by a verify run) |
+| `.ruah/verify.json` | `ruah verify init` / by hand, or `POST /api/engines/verify/sync` with ruah workflow tasks that carry acceptance criteria (never by a verify run; the viewer has no sync button — its element inspector has **Verify**) |
 | `.ruah/cloud.json` | cloud scope changes (§14) |
 | `.ruah/extensions.json` | enabling / editing a project extension (§17) |
 | `.ruah/preview.json` | "Save to the repo" in the Preview (off by default; §18) |
@@ -2993,7 +2993,8 @@ Only committable files, and only on an explicit user action:
   --remember` keeps the pick in `$RUAH_HOME`, `--save-to-repo` writes the repo file.
 - Verify after an agent turn runs only when the repo has criteria (`.ruah/verify.json` with
   more than the placeholder older versions wrote) and `ruah verify` is installed. An explicit
-  Verify without criteria answers `unverifiable` with the fix and writes nothing. Sync
+  Verify (the element inspector's **Verify**, `POST /api/engines/verify/run`) without criteria
+  answers `unverifiable` with the fix (`ruah verify init`) and writes nothing. Sync
   criteria with nothing to sync writes nothing either: `POST /api/engines/verify/sync` →
   `{ path, criteriaCount: 0, written: false }` (`written: true` otherwise).
 - Whenever Ruah writes a committable file into a repo's `.ruah/`, it makes sure
