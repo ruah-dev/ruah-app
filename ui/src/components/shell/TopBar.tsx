@@ -3,12 +3,13 @@
 // cross-project activity bell, the terminal toggle and the agent pill (toggles the right agent
 // panel) with the agent's remaining limit beside it (./slots.ts setAgentLimitHint).
 import { useState } from "react";
+import { toast } from "sonner";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { Bell, CheckCheck, Gauge, GitBranch, MonitorPlay, Search } from "lucide-react";
 import type { ActivityEvent, ResumeInfo } from "@/lib/contracts";
 import { useActivity } from "@/lib/activity";
 import { attentionCount, eventTone, feedEvents, pendingPermissions, type FeedTone } from "@/lib/activity-feed";
-import { answerPermission, markActivityRead, openActivityTarget } from "@/lib/daemon";
+import { answerPermission, markActivityRead, openActivityTarget, rejectPermissionAnywhere } from "@/lib/daemon";
 import { requestModelPicker } from "@/lib/bus";
 import { relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
@@ -130,10 +131,16 @@ function FeedRow({ e, pending, onOpen }: { e: ActivityEvent; pending: boolean; o
             )}
             <button
               type="button"
-              onClick={() => answerPermission(e.requestId!, "cancel")}
+              // Declines this one tool call like Home's and the card's "Reject" (the agent carries
+              // on); "cancelled" would stop the whole turn.
+              onClick={() =>
+                void rejectPermissionAnywhere(e.requestId!, e.projectId).then((ok) => {
+                  if (!ok) toast.error("Couldn't reject it from here — open the chat to answer", { description: e.projectName });
+                })
+              }
               className="h-6 rounded-md border border-hairline bg-surface-2 px-2 text-[11.5px] text-foreground hover:bg-surface-3"
             >
-              Deny
+              Reject
             </button>
           </div>
         ) : null}

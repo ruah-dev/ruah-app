@@ -1530,6 +1530,33 @@ export function fetchOverview(limit = 24): Promise<ProjectsOverview> {
   return api<ProjectsOverview>(`/api/projects/overview?limit=${limit}`);
 }
 
+/** The "Reject" of a permission request: declines this one tool call, the agent carries on. */
+export function rejectOption(options: readonly PermissionOption[]): PermissionOption | undefined {
+  return options.find((o) => o.kind === "reject_once") ?? options.find((o) => o.kind.startsWith("reject"));
+}
+
+/**
+ * Declines one waiting permission of any project, like the card's and Home's "Reject" — never
+ * "cancelled", which stops the whole turn. The request's options come from the chat in front,
+ * else from GET /api/projects/overview. False when it could not be answered (not connected, the
+ * request is gone, or the agent offers no reject option).
+ */
+export async function rejectPermissionAnywhere(requestId: string, projectId: string): Promise<boolean> {
+  const here = state.turns.find((t) => t.permission?.requestId === requestId)?.permission;
+  let options: readonly PermissionOption[] | undefined = here?.options;
+  if (!options) {
+    try {
+      const overview = await fetchOverview(50);
+      options = overview.projects.find((p) => p.project.id === projectId)?.permissions.find((q) => q.requestId === requestId)?.options;
+    } catch {
+      return false;
+    }
+  }
+  const reject = options ? rejectOption(options) : undefined;
+  if (!reject) return false;
+  return answerPermissionAnywhere(requestId, reject.optionId);
+}
+
 /** §13.1: answer a waiting permission of any project (routed to the agent that asked). */
 export function answerPermissionAnywhere(requestId: string, answer: string | "cancel"): boolean {
   if (state.turns.some((t) => t.permission?.requestId === requestId)) {

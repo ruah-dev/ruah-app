@@ -2876,11 +2876,14 @@ behind), 2 bad arguments.
   already has projects shows no card. Only dismissing the card sets `ruah.onboarded.v1`. With
   no daemon (the bundled sample) a first run opens the start screen with the card over the
   sample.
-- **Permission shortcut** (every PermissionCard): Enter = allow once and Esc = dismiss only
+- **Permission shortcut** (every PermissionCard): Enter = allow once only
   when the key can't mean anything else — it lands on `<body>`, a disabled field (the composer
   while the agent works) or a non-interactive part of the card. A key on any button, link,
   tab, option, field, editor, dialog or menu belongs to that control (Enter on a Home card or
-  its "Reject" quick action clicks it); an already-handled key is ignored.
+  its "Reject" quick action clicks it); an already-handled key is ignored. Esc answers nothing
+  (2026-09-26: it sent `cancelled`, which stops the whole turn, and a stray second Esc killed the
+  agent's work). Every "Reject" — the card, Home, the bell — sends the `reject_once` option
+  (this call is declined, the agent carries on); only the composer's Stop cancels a turn.
 - **Wizard** (⇧⌘N; ⌘N on the start screen): name + location (live check, final path shown) →
   starting point → options (git + first commit on; GitHub off, private, only with gh logged
   in, the exact command shown; add to a system when one is known; ask the agent with an

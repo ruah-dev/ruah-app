@@ -116,7 +116,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { keys: "Del · ⌘⌫", label: "Remove the selected element (Edit mode)", group: "Map" },
   { keys: "⌘Z · ⇧⌘Z", label: "Undo · redo your map edits", group: "Map" },
   { keys: "Enter", label: "Send (Shift+Enter: new line)", group: "Agent" },
-  { keys: "Enter / Esc", label: "Allow once / deny a permission request", group: "Agent" },
+  { keys: "Enter", label: "Allow a waiting permission request once (Reject and Stop are buttons)", group: "Agent" },
   { keys: "↑ ↓ · Enter", label: "Move · open", group: "Launcher" },
   { keys: "⌘Enter", label: "Open in the background (warm a project, ask without showing the chat)", group: "Launcher" },
   { keys: "Tab", label: "Ask the agent what you typed", group: "Launcher" },

@@ -1,5 +1,6 @@
-// When a window-level Enter / Esc may answer the waiting permission (PermissionCard: Enter =
-// allow once, Esc = dismiss). Only when the key cannot mean anything else: nothing has focus (the
+// When a window-level Enter may answer the waiting permission (PermissionCard: Enter = allow
+// once; Esc answers nothing — it used to stop the whole turn). Only when the key cannot mean
+// anything else: nothing has focus (the
 // key lands on <body>), a disabled field has it (the composer while the turn runs), or the focus
 // sits on a non-interactive part of the permission card itself. A key on any button, link, tab,
 // field, menu or dialog belongs to that control — Enter on Home's "Open Gamma" or "Reject" must
