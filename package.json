@@ -1,6 +1,31 @@
 {
   "name": "@ruah-dev/app",
   "version": "0.1.0",
+  "description": "Ruah maps any codebase into a living architecture and lets coding agents (Claude Code, Cursor, Grok, Kiro, OpenCode) work on it — a local-first macOS desktop app, daemon and CLI.",
+  "keywords": [
+    "architecture",
+    "architecture-diagram",
+    "coding-agents",
+    "claude-code",
+    "agent-client-protocol",
+    "acp",
+    "developer-tools",
+    "desktop-app",
+    "electron",
+    "infrastructure-as-code",
+    "devops",
+    "local-first"
+  ],
+  "homepage": "https://github.com/ruah-dev/ruah-app#readme",
+  "bugs": {
+    "url": "https://github.com/ruah-dev/ruah-app/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ruah-dev/ruah-app.git"
+  },
+  "license": "UNLICENSED",
+  "author": "Ruah contributors (https://github.com/ruah-dev)",
   "type": "module",
   "bin": {
     "ruah-app": "dist/cli.js"
@@ -8,6 +33,7 @@
   "engines": {
     "node": ">=22"
   },
+  "packageManager": "pnpm@10.33.2",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx scripts/dev.ts",
@@ -40,7 +66,6 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },
-  "description": "Ruah \u2014 map any codebase into a living architecture and work on it with coding agents (Claude Code, Cursor, Grok, Kiro, OpenCode).",
   "ruah": {
     "namespace": "app",
     "description": "Ruah desktop app: architecture map + coding agents (`ruah app` opens it)"
