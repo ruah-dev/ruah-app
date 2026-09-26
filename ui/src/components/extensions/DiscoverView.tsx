@@ -22,6 +22,7 @@ function FeaturedCard({ entry, onAdd }: { entry: FeaturedExtension; onAdd: () =>
           <p className="mt-0.5 line-clamp-2 text-ui-sm text-muted-foreground">{entry.description}</p>
         </div>
       </div>
+      {entry.builtin !== undefined && entry.notes !== undefined ? <p className="text-label leading-relaxed text-muted-foreground">{entry.notes}</p> : null}
       {runs !== undefined ? (
         <p className="truncate rounded-md bg-surface-0 px-2 py-1 font-mono text-meta text-foreground/80 ring-1 ring-hairline" title={describeServer(runs.type === "stdio" ? { name: entry.id, transport: "stdio", command: runs.command, args: runs.args, env } : { name: entry.id, transport: runs.type, url: runs.url, env: [] })}>
           {runs.type === "stdio" ? `$ ${[runs.command, ...runs.args].join(" ")}` : runs.url}
@@ -34,7 +35,11 @@ function FeaturedCard({ entry, onAdd }: { entry: FeaturedExtension; onAdd: () =>
           <span className="truncate text-meta text-faint">{entry.category}</span>
         )}
         <span className="flex-1" />
-        {entry.added === true ? (
+        {entry.builtin !== undefined ? (
+          <span className="inline-flex items-center gap-1 text-label text-muted-foreground" title={entry.notes}>
+            <Check className="size-3.5" /> Built into {AGENT_LABEL[entry.builtin]}
+          </span>
+        ) : entry.added === true ? (
           <span className="inline-flex items-center gap-1 text-label text-ok">
             <Check className="size-3.5" /> Added
           </span>

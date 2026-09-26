@@ -259,7 +259,9 @@ export function AddExtensionDialog({
               <WhatItRunsBlock what={what} />
             </div>
           ) : featured === null && (source === "folder" || source === "git") ? (
-            <p className="text-label text-muted-foreground">What it runs is read from the folder after it is added and shown on its card before any agent uses it.</p>
+            <p className="text-label text-muted-foreground">
+              What it runs is read from the folder after it is added. If it runs commands (MCP servers, hooks), its card asks you to approve them before any agent gets it.
+            </p>
           ) : null}
           {featured?.notes !== undefined ? <p className="text-label leading-relaxed text-muted-foreground">{featured.notes}</p> : null}
 

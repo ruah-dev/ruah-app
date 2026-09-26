@@ -55,6 +55,7 @@ export interface InstallRecord {
   path: string;
   type: "json-key" | "copy" | "claude-cli";
   key?: string[];
+  sha256?: string;
   at: string;
 }
 
@@ -70,6 +71,7 @@ export interface ExtensionView {
   notes?: string;
   homepage?: string;
   addedAt: string;
+  /** "Also install into" writes made from this machine (kept on this machine only). */
   installedInto?: InstallRecord[];
   scope: ExtensionScope;
   path?: string;
@@ -78,6 +80,8 @@ export interface ExtensionView {
   what: WhatItRuns;
   secrets: { name: string; set: boolean; fromEnv: boolean }[];
   support: Record<ExtensionAgent, SupportInfo>;
+  /** What an approval covers; sent back with enable so a change in between is refused, not approved unseen. */
+  fingerprint: string;
 }
 
 export interface FeaturedExtension {
@@ -92,6 +96,8 @@ export interface FeaturedExtension {
   optionalEnv?: string[];
   notes?: string;
   suggestedFor?: ExtensionAgent[];
+  /** Built into that agent: nothing to add (notes say how to turn it on). */
+  builtin?: ExtensionAgent;
   added?: boolean;
 }
 
@@ -277,6 +283,10 @@ export type Result<T> = { ok: true; data: T } | { ok: false; status: number; mes
 
 async function call<T>(origin: string | null, method: "GET" | "POST", path: string, body?: unknown): Promise<Result<T>> {
   if (origin === null) return { ok: false, status: 0, message: "No daemon connected" };
+  // The daemon accepts changes only from the viewer it serves (same origin, on this machine).
+  if (method === "POST" && typeof window !== "undefined" && origin !== window.location.origin) {
+    return { ok: false, status: 403, message: "Extensions can be changed only in the Ruah app (the viewer the daemon serves), not in a preview." };
+  }
   try {
     const r = await fetch(`${origin}${path}`, {
       method,
@@ -303,7 +313,8 @@ export interface ExtensionsApi {
   preview: (agent: ExtensionAgent) => Promise<Result<SessionPreview>>;
   add: (req: AddRequest) => Promise<Result<{ extension: ExtensionView }>>;
   remove: (id: string, scope: ExtensionScope) => Promise<Result<{ ok: true; notes: string[] }>>;
-  enable: (id: string, scope: ExtensionScope, agents: ExtensionAgent[]) => Promise<Result<{ extension: ExtensionView }>>;
+  /** `fingerprint`: the ExtensionView.fingerprint the user saw (409 when what it runs changed since). */
+  enable: (id: string, scope: ExtensionScope, agents: ExtensionAgent[], fingerprint?: string) => Promise<Result<{ extension: ExtensionView }>>;
   disable: (id: string, scope: ExtensionScope, agents?: ExtensionAgent[]) => Promise<Result<{ extension: ExtensionView }>>;
   fetchSource: (id: string, scope: ExtensionScope) => Promise<Result<{ extension: ExtensionView }>>;
   setSecret: (id: string, scope: ExtensionScope, name: string, value: string) => Promise<Result<{ ok: true }>>;
@@ -320,7 +331,7 @@ export function extensionsApi(origin: string | null): ExtensionsApi {
     preview: (agent) => call(origin, "GET", `/api/extensions/preview?agent=${encodeURIComponent(agent)}`),
     add: (req) => call(origin, "POST", "/api/extensions/add", req),
     remove: (id, scope) => call(origin, "POST", "/api/extensions/remove", { id, scope }),
-    enable: (id, scope, agents) => call(origin, "POST", "/api/extensions/enable", { id, scope, agents }),
+    enable: (id, scope, agents, fingerprint) => call(origin, "POST", "/api/extensions/enable", { id, scope, agents, ...(fingerprint !== undefined ? { fingerprint } : {}) }),
     disable: (id, scope, agents) => call(origin, "POST", "/api/extensions/disable", { id, scope, ...(agents !== undefined ? { agents } : {}) }),
     fetchSource: (id, scope) => call(origin, "POST", "/api/extensions/fetch", { id, scope }),
     setSecret: (id, scope, name, value) => call(origin, "POST", "/api/extensions/secret", { id, scope, name, value }),

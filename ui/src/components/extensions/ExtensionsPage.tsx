@@ -70,7 +70,13 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
     (view: ExtensionView) => {
       setTab("installed");
       setHighlight(`${view.scope}/${view.id}`);
-      setMessage({ text: `Added ${view.name}${view.enabledFor.length > 0 ? ` and enabled it for ${view.enabledFor.length} agent${view.enabledFor.length === 1 ? "" : "s"}` : " — turn it on for an agent below"}.`, tone: "ok" });
+      setMessage({
+        text:
+          view.status === "review"
+            ? `Added ${view.name}. It runs commands: review them on its card and approve before agents get it.`
+            : `Added ${view.name}${view.enabledFor.length > 0 ? ` and enabled it for ${view.enabledFor.length} agent${view.enabledFor.length === 1 ? "" : "s"}` : " — turn it on for an agent below"}.`,
+        tone: "ok",
+      });
       void x.reload();
       void x.loadFeatured();
     },

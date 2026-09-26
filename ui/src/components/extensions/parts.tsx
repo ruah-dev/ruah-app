@@ -205,9 +205,9 @@ export function WhatItRunsBlock({ what, className }: { what: WhatItRuns; classNa
       ))}
       {what.hooks.length > 0 ? (
         <div className="space-y-0.5">
-          <p className="text-meta text-faint">Hooks (run by agents that load the plugin)</p>
-          {what.hooks.map((h) => (
-            <p key={h} className="font-mono text-label text-foreground/90 [overflow-wrap:anywhere]">
+          <p className="text-meta text-faint">Hooks and other commands (run by agents that load the plugin)</p>
+          {what.hooks.map((h, i) => (
+            <p key={`${i}:${h}`} className="font-mono text-label text-foreground/90 [overflow-wrap:anywhere]">
               {h}
             </p>
           ))}

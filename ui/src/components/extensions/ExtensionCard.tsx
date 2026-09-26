@@ -78,7 +78,8 @@ export function ExtensionCard({
   const enable = async (agents: ExtensionAgent[]) => {
     setBusyAgent(agents[0] ?? null);
     setError(null);
-    const r = await api.enable(view.id, view.scope, agents);
+    // The fingerprint of what this card shows: if it changed meanwhile, the daemon refuses instead of approving it unseen.
+    const r = await api.enable(view.id, view.scope, agents, view.fingerprint);
     setBusyAgent(null);
     if (!r.ok) setError(r.message);
     await onChanged();
@@ -195,7 +196,16 @@ export function ExtensionCard({
           <p className="min-w-0 flex-1 text-ui-sm text-foreground">
             {view.statusDetail ?? "Needs review"} — it is not given to agents until you approve what it runs (below).
           </p>
-          <button type="button" className={primaryButton} disabled={approveAgents.length === 0 || busyAgent !== null} onClick={() => void enable(approveAgents)}>
+          <button
+            type="button"
+            className={primaryButton}
+            disabled={approveAgents.length === 0 || busyAgent !== null}
+            onClick={() => {
+              // Something that runs commands is approved from the dialog that lists them.
+              if (needsApproval(view)) setConfirm(approveAgents);
+              else void enable(approveAgents);
+            }}
+          >
             Approve
           </button>
         </div>

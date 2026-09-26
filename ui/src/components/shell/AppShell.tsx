@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plug,
+  Puzzle,
   Search,
   Settings,
   Workflow,
@@ -105,6 +106,7 @@ export const NAV = [
   { to: "/cloud", label: "Cloud", icon: Cloud, key: "l" },
   { to: "/usage", label: "Usage", icon: BarChart3, key: "u" },
   { to: "/integrations", label: "Integrations", icon: Plug, key: "i" },
+  { to: "/extensions", label: "Extensions", icon: Puzzle, key: "e" },
   { to: "/settings", label: "Settings", icon: Settings, key: "s" },
 ] as const satisfies readonly NavItemDef[];
 
