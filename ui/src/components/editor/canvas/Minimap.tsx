@@ -1,9 +1,11 @@
 // Minimap: every element of the level as a tiny coloured block on a <canvas>, the viewport as a
 // frame. Click or drag to move the camera there. Redrawn imperatively on camera changes (the
-// parent calls `draw`), so panning never re-renders React.
+// parent calls `draw`), so panning never re-renders React. Colours come from the tokens and are
+// re-read when the theme or palette changes (a palette recolours the --node-* kinds too).
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import type { DiagramNode } from "@/data/graphs";
 import { styleFor } from "@/components/explorer/kinds";
+import { useAppearanceKey } from "@/lib/theme";
 import { boundsOf, nodeBox, viewRect, type Box, type Camera } from "./geometry";
 
 export type MinimapHandle = { draw: (cam: Camera, vw: number, vh: number) => void };
@@ -33,7 +35,9 @@ export const Minimap = forwardRef<MinimapHandle, Props>(function Minimap({ nodes
     const pad = Math.max(b.w, b.h) * 0.06 + 40;
     return { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
   }, [nodes]);
+  const appearance = useAppearanceKey();
   const colors = useMemo(() => {
+    void appearance; // a theme / palette switch invalidates the cached colours
     const cache = new Map<string, string>();
     return (n: DiagramNode) => {
       const token = styleFor(n).bar.replace(/^bg-/, "--");
@@ -45,7 +49,7 @@ export const Minimap = forwardRef<MinimapHandle, Props>(function Minimap({ nodes
       return c;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes]);
+  }, [nodes, appearance]);
 
   const scaleOf = useCallback(() => {
     if (!world) return null;
