@@ -816,6 +816,62 @@ describe("GET /api/usage/agents", () => {
     const post = await fetch(`http://127.0.0.1:${port}/api/usage/agents`, { method: "POST" });
     expect(post.status).toBe(405);
   });
+
+  it("refuses other sites and DNS rebinding before any agent CLI runs", async () => {
+    let calls = 0;
+    const api: UsageApi = {
+      summary: async () => {
+        calls++;
+        throw new Error("unused");
+      },
+      limits: async () => {
+        calls++;
+        return { providers: [] };
+      },
+      agentLimits: async () => {
+        calls++;
+        return { checkedAt: new Date(NOW).toISOString(), agents: [] };
+      },
+    };
+    const access = { originAllowed: (origin: string | undefined) => origin === undefined || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || origin === "https://viewer.example", bindHost: "ruah.lan" };
+    server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (!handleUsageRequest(req, res, url, api, access)) {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const get = (pathname: string, headers: Record<string, string>): Promise<{ status: number; body: string }> =>
+      new Promise((resolve, reject) => {
+        const req = httpRequest({ host: "127.0.0.1", port, path: pathname, method: "GET", headers }, (res) => {
+          let body = "";
+          res.setEncoding("utf8");
+          res.on("data", (chunk: string) => (body += chunk));
+          res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+    const self = `127.0.0.1:${port}`;
+    // Another site's page: a CORS fetch carries its Origin; an <img> / no-cors fetch carries Sec-Fetch-Site.
+    expect(await get("/api/usage/agents?refresh=1", { host: self, origin: "https://evil.example" })).toMatchObject({ status: 403, body: expect.stringContaining("origin not allowed") });
+    expect(await get("/api/usage/agents?refresh=1", { host: self, "sec-fetch-site": "cross-site" })).toMatchObject({ status: 403, body: expect.stringContaining("cross-site") });
+    expect(await get("/api/usage/limits", { host: self, origin: "https://evil.example" })).toMatchObject({ status: 403 });
+    // DNS rebinding: the page's own name in Host (and a same-origin request, so no Origin at all).
+    expect(await get("/api/usage/agents?agent=opencode", { host: `attacker.example:${port}` })).toMatchObject({ status: 403, body: expect.stringContaining("host not allowed") });
+    expect(await get("/api/usage/agents", { host: `attacker.example:${port}`, "sec-fetch-site": "same-origin" })).toMatchObject({ status: 403 });
+    expect(calls).toBe(0);
+    // The viewer (same origin, a loopback dev server, an --allow-origin site), curl, and the bound name.
+    expect((await get("/api/usage/agents", { host: self, "sec-fetch-site": "same-origin" })).status).toBe(200);
+    expect((await get("/api/usage/agents", { host: self, origin: "http://localhost:3000", "sec-fetch-site": "cross-site" })).status).toBe(200);
+    expect((await get("/api/usage/agents", { host: self, origin: "https://viewer.example" })).status).toBe(200);
+    expect((await get("/api/usage/agents", { host: `localhost:${port}` })).status).toBe(200);
+    expect((await get("/api/usage/agents", { host: `ruah.lan:${port}` })).status).toBe(200);
+    expect((await get("/api/usage/agents", { host: `[::1]:${port}` })).status).toBe(200);
+    expect(calls).toBe(6);
+  });
 });
 
 describe("ruah app usage limits", () => {
