@@ -140,6 +140,16 @@ describe("ProjectsStore §20: stable pinned order and tags", () => {
 // ---------------------------------------------------------------- templates
 
 describe("templates §20.2", () => {
+  // Regression: the static site's "Run it: `open index.html (or Ruah's Preview)` in the terminal"
+  // was not a shell command. The hint card pastes `run` as a terminal command.
+  it("runs are plain shell commands", () => {
+    for (const t of TEMPLATES) {
+      if (t.run === undefined) continue;
+      expect(t.run, t.id).not.toMatch(/[()]|\bor\b/);
+      expect(t.run, t.id).toMatch(/^(open|pnpm|npm|cd) /);
+    }
+  });
+
   it("has the curated set, each renders plain relative files and scans into a valid map", () => {
     expect(TEMPLATES.map((t) => t.id)).toEqual(["empty", "web-vite-react", "node-api-ts", "static-site", "pnpm-monorepo", "infra-terraform"]);
     for (const info of templateInfos()) {

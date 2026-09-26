@@ -135,7 +135,13 @@ export function NewProjectHints() {
             ? <>The map was drawn from the files. Double-click an element to open its level; {kbd("⌘B")} lists every level.</>
             : <>An empty map in Edit mode: drag your first element from the palette, or ask the agent to propose one.</>}
         </Tip>
-        {hints.run ? (
+        {hints.run && hints.template === "static-site" ? (
+          // No build step: the Preview serves the folder as is; `open` shows the file in a browser.
+          <Tip icon={Play}>
+            See it: Preview serves the site as is, or run <code className="rounded bg-surface-3 px-1 font-mono text-[11px]">{hints.run}</code> in
+            the terminal ({kbd("⌃`")}).
+          </Tip>
+        ) : hints.run ? (
           <Tip icon={Play}>
             Run it: <code className="rounded bg-surface-3 px-1 font-mono text-[11px]">{hints.run}</code> in the terminal ({kbd("⌃`")})
             {hints.template === "infra-terraform" ? " — nothing is applied until you run apply." : ", then Preview."}

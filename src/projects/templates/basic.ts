@@ -23,7 +23,8 @@ export const staticSiteTemplate: ProjectTemplate = {
   id: "static-site",
   name: "Static site",
   description: "Plain HTML, CSS and JavaScript — no build step. Ruah's preview serves it as is.",
-  run: "open index.html (or Ruah's Preview)",
+  // A real command (opens the page in the default browser); the hint card offers the Preview too.
+  run: "open index.html",
   setupPrompt:
     "Set up the project: look at index.html, css/styles.css and js/main.js, then ask me what the site is for and propose the pages and sections to add.",
   scan: true,

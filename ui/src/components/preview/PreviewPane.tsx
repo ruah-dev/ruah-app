@@ -191,7 +191,8 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
     const lines = await previewActions.logs(80).catch(() => s.logs);
     requestComposerDraft(buildFixPrompt(s, lines));
     onAskAgent?.();
-    toast("Drafted a fix request for the agent", { description: "It’s in the composer — review it and send." });
+    // Not over the composer it points at (bottom right): top centre, like the update toast.
+    toast("Drafted a fix request for the agent", { position: "top-center", description: "It’s in the composer — review it and send." });
   };
 
   const typeSetup = (command: string, dir: string) => {

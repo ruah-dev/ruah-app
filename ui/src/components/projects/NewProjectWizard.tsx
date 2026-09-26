@@ -331,11 +331,14 @@ export function NewProjectWizard() {
         report?.github?.url ? "on GitHub" : "",
       ].filter(Boolean);
       const bridge = typeof window !== "undefined" ? window.ruah : undefined;
+      // Top centre (like the update toast): the new project opens with the agent panel, and a
+      // bottom-right toast covered the composer's Send button for seconds.
       toast.success(`Created ${result.name}`, {
+        position: "top-center",
         description: bits.join(" · "),
         ...(bridge ? { action: { label: "Reveal", onClick: () => bridge.revealInFinder(result.root) } } : {}),
       });
-      for (const w of report?.warnings ?? []) toast.warning(w);
+      for (const w of report?.warnings ?? []) toast.warning(w, { position: "top-center" });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

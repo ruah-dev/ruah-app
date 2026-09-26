@@ -2772,7 +2772,7 @@ permission, 500 write / scan / git init failed.
 | `empty` | Empty | README, `.gitignore`, an empty `architecture.json` (the viewer opens it in Edit mode) | — |
 | `web-vite-react` | Web app (Vite + React + TS) | Vite + React 19 + strict TS app | `pnpm install && pnpm dev` |
 | `node-api-ts` | Node API (TypeScript) | Node 22 `http` API with a tiny router, `node:test` tests | `pnpm install && pnpm dev` |
-| `static-site` | Static site | HTML, CSS, JS, no build step | `open index.html (or Ruah's Preview)` |
+| `static-site` | Static site | HTML, CSS, JS, no build step | `open index.html` (the hints also offer Ruah's Preview, which serves it as is) |
 | `pnpm-monorepo` | Monorepo (pnpm workspaces) | an API app + a shared package, one tsconfig base | `pnpm install && pnpm dev` |
 | `infra-terraform` | Infra (Terraform + GitHub Actions) | Terraform with dev / prod variables, a workflow that fmt-checks, validates and plans (never applies) | `cd terraform && terraform init && terraform plan` |
 
