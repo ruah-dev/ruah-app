@@ -133,23 +133,37 @@ function EstimateRow({ estimate }: { estimate: UsageEstimate }) {
   const prices = usePrices();
   let cost: number | null = null;
   let priced = false;
+  let pricedTurns = 0;
   for (const m of estimate.byModel) {
     const c = costOf(m, prices);
     if (c === null) continue;
-    if (m.costUsd === null) priced = true;
+    if (m.costUsd === null) {
+      // No turn of this model reported a cost: the viewer's price covers all of them.
+      priced = true;
+      pricedTurns += m.turns ?? 0;
+    }
     cost = (cost ?? 0) + c;
   }
+  // A cost that covers only some turns says so (as the CLI does), instead of passing for the total.
+  const costedTurns = Math.min(estimate.turns, estimate.costedTurns + pricedTurns);
+  const partialCost = cost !== null && costedTurns < estimate.turns;
   const tokens = estimate.inputTokens + estimate.outputTokens;
   return (
     <Row
       label="Ruah estimate"
-      hint={`Turns run through Ruah only, ${estimate.basis}. Cost is what the agent reported${priced ? ", plus your model prices" : ""}.`}
+      hint={`Turns run through Ruah only, ${estimate.basis}. Cost is what the agent reported${priced ? ", plus your model prices" : ""}${partialCost ? "; turns without a cost count tokens only" : ""}.`}
     >
       <span className="me-1.5 rounded-sm bg-ai/12 px-1 py-px text-[10.5px] font-medium tracking-wide text-ai uppercase">
         estimate
       </span>
       {estimate.turns} {estimate.turns === 1 ? "turn" : "turns"} · {formatTokens(tokens)} tokens
       {cost !== null ? ` · ${formatMoney(cost)}` : ""}
+      {partialCost ? (
+        <span className="text-faint">
+          {" "}
+          ({costedTurns}/{estimate.turns} turns)
+        </span>
+      ) : null}
       <span className="text-faint"> · {estimate.basis}</span>
     </Row>
   );
