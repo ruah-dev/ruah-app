@@ -41,7 +41,17 @@ const PRESSABLE = [
 ].join(",");
 
 const PRESS_KEYS = new Set(["Enter", " "]);
-const COMPOSITE_KEYS = new Set([...PRESS_KEYS, "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
+const COMPOSITE_KEYS = new Set([
+  ...PRESS_KEYS,
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
 
 type Closest = { closest?: (selector: string) => unknown };
 

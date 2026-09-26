@@ -5,7 +5,10 @@
 
 /** True when the user asked the system for less motion. False outside a browser. */
 export function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  );
 }
 
 /** The `behavior` for scrolling: smooth, unless the user asked for less motion. */
