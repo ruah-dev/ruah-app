@@ -1,22 +1,12 @@
 // Optimize section for the Usage page. Hidden work when ruah-opt is not installed.
-import { useEffect, useState } from "react";
-import { engineStatus, optUsage, type EngineToolStatus, type OptUsage } from "@/lib/engines";
+import { useState } from "react";
+import { optUsage, useEngineTool, type OptUsage } from "@/lib/engines";
 import { Button } from "@/components/ui/button";
 
 export function OptimizeSection() {
-  const [tool, setTool] = useState<EngineToolStatus | null>(null);
+  const { tool } = useEngineTool("opt");
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<OptUsage | { error: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void engineStatus().then((status) => {
-      if (!cancelled) setTool(status["opt"] ?? { installed: false, install: "npm i -g @ruah-dev/cli @ruah-dev/opt" });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const installed = tool?.installed === true;
   const install = tool?.install ?? "npm i -g @ruah-dev/cli @ruah-dev/opt";

@@ -149,12 +149,62 @@ export interface EngineToolStatus {
   install: string;
 }
 
+/**
+ * One engine's availability for a component: asked again whenever the daemon connection (or the
+ * project) changes — mounted before the daemon answered, a card no longer says "not installed"
+ * for good. `connected: false` while there is no daemon project (the sample): nothing to run.
+ */
+export function useEngineTool(name: "guard" | "opt" | "watch"): { tool: EngineToolStatus | null; connected: boolean } {
+  const connected = useDaemonSelector((s) => s.source === "daemon" && s.connection === "open");
+  const origin = useDaemonSelector((s) => (s.source === "daemon" ? s.httpOrigin : null));
+  const projectId = useDaemonSelector((s) => s.project?.id ?? null);
+  const [tool, setTool] = useState<EngineToolStatus | null>(null);
+  useEffect(() => {
+    setTool(null);
+    if (!connected || !origin) return;
+    let cancelled = false;
+    void engineStatus()
+      .then((status) => {
+        if (!cancelled) setTool(status[name] ?? { installed: false, install: `npm i -g @ruah-dev/cli @ruah-dev/${name}` });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, origin, projectId, name]);
+  return { tool, connected };
+}
+
+/** One status read shared by every card on screen (a chat shows a replay button per turn). */
+interface StatusMemo {
+  key: string;
+  at: number;
+  value: Promise<Record<string, EngineToolStatus>>;
+}
+let statusMemo: StatusMemo | null = null;
+const STATUS_TTL_MS = 15_000;
+
 export async function engineStatus(): Promise<Record<string, EngineToolStatus>> {
   const url = engineUrl("/api/engines/status");
   if (!url) return {};
-  const res = await fetch(url);
-  if (!res.ok) return {};
-  return res.json();
+  const key = `${url}|${daemonSnapshot().project?.id ?? ""}`;
+  if (statusMemo && statusMemo.key === key && Date.now() - statusMemo.at < STATUS_TTL_MS) return statusMemo.value;
+  const memo: StatusMemo = {
+    key,
+    at: Date.now(),
+    value: fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`engines status ${res.status}`);
+        return res.json() as Promise<Record<string, EngineToolStatus>>;
+      })
+      .catch((): Record<string, EngineToolStatus> => {
+        // A failed read is not remembered: the next card asks again instead of "not installed" for 15 s.
+        if (statusMemo === memo) statusMemo = null;
+        return {};
+      }),
+  };
+  statusMemo = memo;
+  return memo.value;
 }
 
 export interface GuardScan {

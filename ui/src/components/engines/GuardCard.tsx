@@ -1,24 +1,14 @@
 // Guard card for the element inspector. Report only — it never changes permissions.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Shield } from "lucide-react";
-import { engineStatus, guardAudit, guardScan, type EngineToolStatus, type GuardAudit, type GuardScan } from "@/lib/engines";
+import { guardAudit, guardScan, useEngineTool, type GuardAudit, type GuardScan } from "@/lib/engines";
 import { Button } from "@/components/ui/button";
 
 export function GuardCard({ compact = false }: { compact?: boolean }) {
-  const [tool, setTool] = useState<EngineToolStatus | null>(null);
+  const { tool, connected } = useEngineTool("guard");
   const [busy, setBusy] = useState(false);
   const [scan, setScan] = useState<GuardScan | { error: string } | null>(null);
   const [audit, setAudit] = useState<GuardAudit | { error: string } | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void engineStatus().then((status) => {
-      if (!cancelled) setTool(status["guard"] ?? { installed: false, install: "npm i -g @ruah-dev/cli @ruah-dev/guard" });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const installed = tool?.installed === true;
   const install = tool?.install ?? "npm i -g @ruah-dev/cli @ruah-dev/guard";
@@ -44,7 +34,13 @@ export function GuardCard({ compact = false }: { compact?: boolean }) {
           </p>
         </>
       ) : null}
-      <Button size="sm" variant={compact ? "secondary" : "default"} disabled={!installed || busy} title={installed ? "Scan the working tree" : install} onClick={() => void run()}>
+      <Button
+        size="sm"
+        variant={compact ? "secondary" : "default"}
+        disabled={!installed || busy}
+        title={!connected ? "Needs the Ruah daemon (open a project)" : installed ? "Scan the working tree" : install}
+        onClick={() => void run()}
+      >
         <Shield className="size-3.5" />
         {busy ? "Scanning…" : "Guard"}
       </Button>
