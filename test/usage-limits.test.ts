@@ -3,8 +3,8 @@
 // end to end with fake CLIs / fetch / ACP child, the caching service, the
 // Ruah-log estimates, GET /api/usage/agents and `ruah app usage limits`.
 import { EventEmitter } from "node:events";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -414,10 +414,12 @@ describe("Cursor limits", () => {
 // ---------- Kiro ----------
 
 /** A fake `kiro-cli acp`: answers initialize, session/new and the usage command over stdio. */
-function fakeKiroAcp(usage: unknown): { spawner: Spawner; methods: string[]; killed: () => boolean } {
+function fakeKiroAcp(usage: unknown): { spawner: Spawner; methods: string[]; killed: () => boolean; cwds: Array<{ cwd: string; mode: number }> } {
   const methods: string[] = [];
+  const cwds: Array<{ cwd: string; mode: number }> = [];
   let killed = false;
-  const spawner: Spawner = () => {
+  const spawner: Spawner = (_command, _args, options) => {
+    cwds.push({ cwd: options.cwd, mode: statSync(options.cwd).mode & 0o777 });
     const stdin = new PassThrough();
     const stdout = new PassThrough();
     const events = new EventEmitter();
@@ -456,7 +458,7 @@ function fakeKiroAcp(usage: unknown): { spawner: Spawner; methods: string[]; kil
       once: (event: string, listener: (...args: never[]) => void) => events.once(event, listener as (...args: unknown[]) => void),
     } as unknown as ReturnType<Spawner>;
   };
-  return { spawner, methods, killed: () => killed };
+  return { spawner, methods, killed: () => killed, cwds };
 }
 
 describe("Kiro limits", () => {
@@ -481,8 +483,39 @@ describe("Kiro limits", () => {
     expect(meter).toMatchObject({ usedPercent: 85, used: 42.5, limit: 50, resetsAt: "2026-10-01T00:00:00.000Z", detail: "From Kiro's /usage text" });
     const fromText = parseKiroUsage({ success: true, message: fixture("kiro-usage-text.txt") })!;
     expect(fromText.meters).toHaveLength(1);
-    expect(parseKiroUsage({ success: false, message: "Failed to retrieve usage information: throttled" })).toMatchObject({ meters: [], message: expect.stringContaining("throttled") });
+    expect(parseKiroUsage({ success: false, message: "Failed to retrieve usage information: throttled" })).toMatchObject({ meters: [], failed: true, message: expect.stringContaining("throttled") });
     expect(parseKiroUsage(undefined)).toBeUndefined();
+    // "42.5 of 50 credits" reads too; a percent on a credits line alone gives a percent-only meter.
+    expect(parseKiroUsageText("You have used 1,250.5 of 2,000 credits this month.")).toMatchObject({ used: 1250.5, limit: 2000, usedPercent: 62.53 });
+    expect(parseKiroUsageText("Credits: 12% used. Resets on 10/01/2026")).toMatchObject({ usedPercent: 12, used: null, limit: null, resetsAt: null });
+  });
+
+  it("never reads a meter out of errors, retry counts or dates", () => {
+    // An error envelope is an error, whatever numbers its message holds.
+    expect(parseKiroUsage({ success: false, message: "Could not fetch usage (attempt 3 of 3). Try again later." })).toEqual({
+      plan: null,
+      meters: [],
+      failed: true,
+      message: "Could not fetch usage (attempt 3 of 3). Try again later.",
+    });
+    for (const text of [
+      "Could not fetch usage (attempt 3 of 3). Try again later.",
+      "Usage limit reached for 2026/10",
+      "Retrying 2/5 …",
+      "Session 1 of 4 started; 30% used of the context window",
+      "Updated 10/01/2026 of 12 regions",
+    ]) {
+      expect(parseKiroUsageText(text), text).toBeUndefined();
+      expect(parseKiroUsage({ success: true, message: text })?.meters, text).toEqual([]);
+    }
+  });
+
+  it("reports Kiro's failed /usage as an error with its message, never as a meter", async () => {
+    const bins = stubBins(["kiro-cli"]);
+    const { run } = fakeRunner({ "kiro-cli": () => ({ stdout: fixture("kiro-whoami.json") }) });
+    const acp = fakeKiroAcp({ success: false, message: "Could not fetch usage (attempt 3 of 3). Try again later." });
+    const limits = valid(await kiroProvider({ spawner: acp.spawner }).read(ctx({ env: bins.env, run })));
+    expect(limits).toMatchObject({ status: "error", meters: [], plan: "Kiro Pro", reason: "Kiro's /usage failed: Could not fetch usage (attempt 3 of 3). Try again later." });
   });
 
   it("runs /usage over ACP and closes the agent", async () => {
@@ -494,6 +527,15 @@ describe("Kiro limits", () => {
     expect(limits.meters[0]).toMatchObject({ id: "credits", usedPercent: 81.24 });
     expect(acp.methods).toEqual(["initialize", "session/new", "_kiro.dev/commands/execute"]);
     expect(acp.killed()).toBe(true);
+    // A fresh private folder per read (never a shared, predictable /tmp name), removed afterwards.
+    await kiroProvider({ spawner: acp.spawner }).read(ctx({ env: bins.env, run }));
+    expect(acp.cwds).toHaveLength(2);
+    for (const { cwd, mode } of acp.cwds) {
+      expect(path.basename(cwd)).toMatch(/^ruah-kiro-usage-.+/);
+      expect(mode).toBe(0o700);
+      expect(existsSync(cwd)).toBe(false);
+    }
+    expect(acp.cwds[0]?.cwd).not.toBe(acp.cwds[1]?.cwd);
   });
 
   it("says not logged in without starting ACP", async () => {

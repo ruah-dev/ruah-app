@@ -6,7 +6,7 @@
 // The command answers from CodeWhisperer GetUsageLimits (usageBreakdownList,
 // nextDateReset, subscriptionInfo…), parsed defensively; when Kiro returns
 // only text, the text is parsed and shown as Kiro wrote it.
-import { mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentLimits, LimitMeter, OnDemandSpend } from "../../contracts/agent-limits.js";
@@ -32,7 +32,9 @@ import { StdioRpc, defaultSpawner, type Spawner } from "./stdio-rpc.js";
 export const KIRO_ID = "kiro";
 export const KIRO_NAME = "Kiro CLI";
 const DASHBOARD = "https://app.kiro.dev/account/usage";
-const SOURCE = "kiro-cli /usage over ACP (Kiro's own login)";
+// Kiro starts its global MCP servers (~/.kiro/settings/mcp.json) for the
+// session: ACP's session/new cannot turn them off; Ruah adds none.
+const SOURCE = "kiro-cli /usage over ACP (Kiro's own login; Kiro starts its global MCP servers)";
 
 /** `kiro-cli whoami --format json`: `{"account":null}` when signed out. */
 export function parseKiroWhoami(stdout: string): { loggedIn: boolean; plan: string | null } | undefined {
@@ -56,6 +58,8 @@ export interface KiroUsage {
   onDemand?: OnDemandSpend;
   /** Kiro's own text when it sent no numbers we recognise. */
   message?: string;
+  /** Kiro answered `success: false`: `message` is its error, never parsed for numbers. */
+  failed?: boolean;
 }
 
 const USAGE_KEYS = ["usageBreakdownList", "usageBreakdown", "subscriptionInfo", "nextDateReset"];
@@ -118,14 +122,38 @@ function grantMeter(id: string, label: string, g: Json, expiresKey: string): Lim
   };
 }
 
-/** Kiro's text answer ("… 50.2 of 1000 credits … (5% used) … resets on Oct 01, 2026 …"). */
+const NUMBER = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)`;
+/** "Credits: 42.5 of 50" — the amount pair right after the word. */
+const CREDITS_LABELLED = new RegExp(String.raw`\bcredits?\s*:\s*${NUMBER}[ \t]+of[ \t]+${NUMBER}\b`, "i");
+/** "42.5 of 50 credits" — the amount pair right before it. */
+const CREDITS_UNIT = new RegExp(String.raw`\b${NUMBER}[ \t]+of[ \t]+${NUMBER}[ \t]+credits?\b`, "i");
+const PERCENT_USED = /\b(\d+(?:\.\d+)?)[ \t]*%[ \t]*used\b/i;
+
+const amountOf = (text: string): number => Number(text.replace(/,/g, ""));
+
+/**
+ * Kiro's text answer ("Credits: 42.5 of 50 covered in plan (85% used)", "… 50.2
+ * of 1000 credits … resets on Oct 01, 2026"). Only a line that names credits
+ * counts, and only "<n> of <m>" anchored to the word: a retry count ("attempt
+ * 3 of 3"), a date ("10/01/2026") or any other pair of numbers is never read
+ * as a meter.
+ */
 export function parseKiroUsageText(text: string): LimitMeter | undefined {
-  const pct = /(\d+(?:\.\d+)?)\s*%\s*used/i.exec(text);
-  const amounts = /([\d,]+(?:\.\d+)?)\s*(?:\/|of)\s*([\d,]+(?:\.\d+)?)\s*(?:credits?)?/i.exec(text);
+  let used: number | undefined;
+  let limit: number | undefined;
+  let pct: number | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    if (!/\bcredits?\b/i.test(line)) continue;
+    const amounts = CREDITS_LABELLED.exec(line) ?? CREDITS_UNIT.exec(line);
+    if (amounts !== null && used === undefined) {
+      used = amountOf(amounts[1]!);
+      limit = amountOf(amounts[2]!);
+    }
+    const p = PERCENT_USED.exec(line);
+    if (p !== null && pct === undefined) pct = Math.min(100, Number(p[1]));
+  }
   const reset = /resets?\s+on\s+([A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+\d{4})/i.exec(text);
-  const used = amounts !== null ? Number(amounts[1]!.replace(/,/g, "")) : undefined;
-  const limit = amounts !== null ? Number(amounts[2]!.replace(/,/g, "")) : undefined;
-  const usedPercent = pct !== null ? Math.min(100, Number(pct[1])) : percentOf(used, limit);
+  const usedPercent = pct ?? percentOf(used, limit);
   if (usedPercent === null) return undefined;
   const resetsAt = reset !== null ? isoFrom(`${reset[1]!.replace(".", "")} 00:00:00 UTC`) : null;
   return {
@@ -146,6 +174,8 @@ export function parseKiroUsageText(text: string): LimitMeter | undefined {
 export function parseKiroUsage(result: unknown): KiroUsage | undefined {
   const envelope = obj(result);
   const message = str(envelope?.message);
+  // A failed command's message is an error, whatever numbers it holds.
+  if (envelope?.success === false) return { plan: null, meters: [], failed: true, ...(message !== undefined ? { message: message.slice(0, 400) } : {}) };
   const usage = findUsage(envelope?.data ?? result);
   if (usage === undefined) {
     if (message === undefined) return undefined;
@@ -191,11 +221,16 @@ export function parseKiroUsage(result: unknown): KiroUsage | undefined {
 
 /** Runs Kiro's /usage over ACP and returns the raw command result. */
 export async function kiroAcpUsage(bin: string, ctx: LimitsContext, spawner: Spawner = defaultSpawner): Promise<unknown> {
-  // A Ruah-owned empty folder, so no project's hooks or steering load.
-  const cwd = path.join(tmpdir(), "ruah-kiro-usage");
-  mkdirSync(cwd, { recursive: true });
-  const rpc = new StdioRpc(spawner(bin, ["acp"], { cwd, env: { ...ctx.env, NO_COLOR: "1" } }));
+  // A fresh private folder per read (mkdtemp: random name, mode 0700), so no
+  // project's — or anyone else's — .kiro hooks, steering or MCP config load;
+  // removed afterwards.
+  const cwd = mkdtempSync(path.join(tmpdir(), "ruah-kiro-usage-"));
+  let rpc: StdioRpc | undefined;
+  const abort = (): void => rpc?.close();
+  ctx.signal?.addEventListener("abort", abort, { once: true });
   try {
+    if (ctx.signal?.aborted === true) throw new Error("cancelled");
+    rpc = new StdioRpc(spawner(bin, ["acp"], { cwd, env: { ...ctx.env, NO_COLOR: "1" } }));
     await rpc.request(
       "initialize",
       { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: "ruah", version: ctx.version } },
@@ -206,7 +241,13 @@ export async function kiroAcpUsage(bin: string, ctx: LimitsContext, spawner: Spa
     if (sessionId === undefined) throw new Error("Kiro started no session");
     return await rpc.request("_kiro.dev/commands/execute", { sessionId, command: { command: "usage", args: {} } }, 30_000);
   } finally {
-    rpc.close();
+    ctx.signal?.removeEventListener("abort", abort);
+    rpc?.close();
+    try {
+      rmSync(cwd, { recursive: true, force: true });
+    } catch {
+      // the OS cleans its temp folder eventually
+    }
   }
 }
 
@@ -255,6 +296,16 @@ export function kiroProvider(options: { spawner?: Spawner } = {}): LimitsProvide
           loggedIn: who?.loggedIn ?? null,
           plan: who?.plan ?? null,
           reason: `Kiro's /usage did not answer: ${safeMessage(err)}`,
+          dashboardUrl: DASHBOARD,
+        });
+      }
+      if (usage?.failed === true) {
+        return agentLimits(KIRO_ID, KIRO_NAME, "error", {
+          checkedAt,
+          source: SOURCE,
+          loggedIn: who?.loggedIn ?? null,
+          plan: who?.plan ?? null,
+          reason: usage.message !== undefined ? `Kiro's /usage failed: ${usage.message}` : "Kiro's /usage failed without a message.",
           dashboardUrl: DASHBOARD,
         });
       }
