@@ -425,7 +425,7 @@ export function CloudPage() {
           <Notice
             key={e.provider}
             tone="warn"
-            title={`${providerLabel(e.provider)} could not be read`}
+            title={`Couldn't read ${providerLabel(e.provider)}`}
             body={e.message}
           />
         ))}

@@ -5,10 +5,11 @@ import { AlertTriangle, Globe, Loader2, Maximize2, Minimize2, Plus, SquareTermin
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
-import { MIN_HEIGHT, terminalActions, useTerminal, type TerminalInfo } from "@/lib/terminal";
+import { MIN_HEIGHT, terminalActions, terminalState, useTerminal, type TerminalInfo } from "@/lib/terminal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./TerminalView";
+import { terminalErrorCopy } from "./error-copy";
 
 const EMPTY: TerminalInfo[] = [];
 
@@ -29,19 +30,20 @@ function useToggleKey() {
 
 export function newTerminal() {
   terminalActions.create().catch((err: unknown) => {
-    toast.error("Couldn't open a terminal", {
-      description: `${(err instanceof Error ? err.message : String(err)).replace(/\.$/, "")}. Check that Ruah is still running, then try again.`,
-    });
+    toast.error("Couldn't open a terminal", { description: terminalErrorCopy(err, terminalState().connection) });
   });
 }
 
 function Tab({
   terminal,
   active,
+  tabStop,
   onSelect,
 }: {
   terminal: TerminalInfo;
   active: boolean;
+  /** Takes the strip's one Tab stop (the active tab, or the first when none is active). */
+  tabStop: boolean;
   onSelect: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -52,8 +54,8 @@ function Tab({
       role="tab"
       aria-selected={active}
       // One Tab stop for the strip (the active tab); ← / → move between tabs (tablist below).
-      tabIndex={active ? 0 : -1}
-      title={`${terminal.title} — ${terminal.cwd}${exited ? ` (exited ${terminal.exitCode ?? ""})` : ""}\nDouble-click or F2 to rename`}
+      tabIndex={tabStop ? 0 : -1}
+      title={`${terminal.title} — ${terminal.cwd}${exited ? ` (exited ${terminal.exitCode ?? ""})` : ""}\nDouble-click or F2 to rename · Delete closes`}
       onClick={onSelect}
       onDoubleClick={() => {
         setDraft(terminal.title);
@@ -68,6 +70,9 @@ function Tab({
           e.preventDefault();
           setDraft(terminal.title);
           setEditing(true);
+        } else if (e.key === "Delete") {
+          e.preventDefault();
+          terminalActions.kill(terminal.id);
         }
       }}
       onAuxClick={(e) => {
@@ -109,6 +114,9 @@ function Tab({
       <button
         type="button"
         aria-label={`Close ${terminal.title}`}
+        // Only the active tab's close button is a Tab stop: the strip stays one stop plus one
+        // button, and Delete on any focused tab closes it.
+        tabIndex={active ? 0 : -1}
         onClick={(e) => {
           e.stopPropagation();
           terminalActions.kill(terminal.id);
@@ -153,7 +161,20 @@ export function TerminalPanel() {
   const activeId = projectId ? t.active[projectId] : undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const autoCreated = useRef<string | null>(null);
+  // The tallest the panel can be (its column minus 60 px), for the resize handle's range.
+  const [maxHeight, setMaxHeight] = useState(0);
+  const shown = t.open && !!project && daemon.source === "daemon";
   useToggleKey();
+
+  useEffect(() => {
+    const parent = panelRef.current?.parentElement;
+    if (!shown || !parent) return;
+    const measure = () => setMaxHeight(Math.round(parent.getBoundingClientRect().height - 60));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [shown]);
 
   // Connect once the panel has been opened (or was open before a reload), then list the
   // project's terminals whenever the project changes.
@@ -182,7 +203,10 @@ export function TerminalPanel() {
     newTerminal();
   }, [t.open, t.connection, projectId, listed, terminals.length]);
 
-  if (!t.open || !project || daemon.source !== "daemon") return null;
+  if (!shown || !project) return null;
+  const tabStopId = terminals.some((x) => x.id === activeId) ? activeId : terminals[0]?.id;
+  const rangeMax = Math.max(MIN_HEIGHT, maxHeight);
+  const shownHeight = Math.round(t.maximized ? rangeMax : Math.min(rangeMax, Math.max(MIN_HEIGHT, t.height)));
 
   const startDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -219,7 +243,9 @@ export function TerminalPanel() {
         aria-orientation="horizontal"
         aria-label="Resize terminal"
         aria-valuemin={MIN_HEIGHT}
-        aria-valuenow={Math.round(t.height)}
+        aria-valuemax={rangeMax}
+        aria-valuenow={shownHeight}
+        aria-valuetext={`${shownHeight} pixels${t.maximized ? ", maximized" : ""}`}
         tabIndex={0}
         onPointerDown={startDrag}
         onDoubleClick={() => terminalActions.setMaximized(!t.maximized)}
@@ -265,6 +291,7 @@ export function TerminalPanel() {
               key={term.id}
               terminal={term}
               active={term.id === activeId}
+              tabStop={term.id === tabStopId}
               onSelect={() => {
                 terminalActions.setActive(term.projectId, term.id);
                 terminalActions.focus();

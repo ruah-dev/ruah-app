@@ -158,12 +158,12 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
             ) : null}
             {x.list.status === "error" ? (
               <p role="alert" className="text-ui-sm text-bad">
-                Couldn't load extensions: {x.list.message}. Refresh to try again.
+                Couldn't load extensions: {x.list.message.replace(/\.$/, "")}. Refresh to try again.
               </p>
             ) : null}
             {data?.errors.map((e) => (
               <div key={e.file} className="rounded-xl border border-bad/25 bg-bad/[0.05] px-4 py-3 text-ui-sm text-foreground">
-                <span className="font-mono">{e.file}</span>: {e.error}. Ruah will not change it until it is fixed or deleted.
+                <span className="font-mono">{e.file}</span>: {e.error.replace(/\.$/, "")}. Ruah won't change it until it is fixed or deleted.
               </div>
             ))}
             {message !== null ? (
