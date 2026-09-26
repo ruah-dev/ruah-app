@@ -1,7 +1,7 @@
 // Replay one assistant turn with ruah-watch. Opens an in-app frame, or reveals the file.
 import { useEffect, useState } from "react";
 import { Clapperboard } from "lucide-react";
-import { engineStatus, watchReplay, type EngineToolStatus } from "@/lib/engines";
+import { engineStatus, engineUrl, watchReplay, type EngineToolStatus } from "@/lib/engines";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export function ReplayButton({ projectId, chatId, turnId }: { projectId: string; chatId: string; turnId: string }) {
@@ -34,7 +34,7 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
         return;
       }
       setFilePath(result.path);
-      setView(`/api/engines/watch/view?name=${encodeURIComponent(result.name)}`);
+      setView(engineUrl(`/api/engines/watch/view?name=${encodeURIComponent(result.name)}`) ?? null);
     } finally {
       setBusy(false);
     }

@@ -4,7 +4,7 @@
 // (device width, auto-reload). A useSyncExternalStore store like lib/terminal.ts; nothing
 // runs at module load. The pure helpers at the bottom are tested in ui/test/preview.test.ts.
 import { useEffect, useSyncExternalStore } from "react";
-import { onDaemonMessage, resolveDaemonUrls, useDaemonSelector } from "./daemon";
+import { daemonSnapshot, onDaemonMessage, resolveDaemonUrls, SAMPLE_MODE_MESSAGE, useDaemonSelector } from "./daemon";
 import type { PreviewCandidate, PreviewDetection, PreviewFile, PreviewStatus } from "./preview-types";
 
 export type { PreviewCandidate, PreviewDetection, PreviewFile, PreviewStatus } from "./preview-types";
@@ -109,6 +109,8 @@ export class PreviewApiError extends Error {
 }
 
 function origin(): string {
+  // The bundled sample never reaches a daemon: a start would run the real project's dev server.
+  if (daemonSnapshot().source === "sample") throw new PreviewApiError(SAMPLE_MODE_MESSAGE, 0);
   const urls = resolveDaemonUrls();
   if (!urls) throw new PreviewApiError("The daemon is not reachable.", 0);
   return urls.httpOrigin;

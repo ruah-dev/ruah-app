@@ -207,6 +207,11 @@ function subscribe(listener: () => void) {
 const getSnapshot = () => state;
 const getServerSnapshot = () => INITIAL;
 
+/** The current state outside React (plain modules such as lib/engines.ts). */
+export function daemonSnapshot(): DaemonState {
+  return state;
+}
+
 // ---------------------------------------------------------------------------
 // URL resolution
 
@@ -571,11 +576,14 @@ function clearSwitchTimer() {
 function handleProject(project: ProjectInfo | null) {
   const prevId = state.project?.id ?? null;
   const nextId = project?.id ?? null;
+  // The viewer showed the bundled sample (no daemon at first): nothing of it may carry over to the
+  // daemon — not its map (edits would be saved as the daemon's), nor its turns.
+  const leavingSample = state.source === "sample";
   const patch: Partial<DaemonState> = { projectsSupported: true, project, source: "daemon" };
   const previewing =
     !!state.projectSwitch?.preview && !!nextId && state.projectSwitch.projectId === nextId;
   if (nextId !== prevId && prevId !== null && !state.projectSwitch?.preview) snapshotCurrent();
-  if (nextId !== prevId && previewing) {
+  if (nextId !== prevId && previewing && !leavingSample) {
     // The target is already on screen from the cache: keep it until the daemon's frames land.
     serverArchitecture = null;
     draft = null;
@@ -584,8 +592,8 @@ function handleProject(project: ProjectInfo | null) {
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimer = undefined;
     Object.assign(patch, { lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
-  } else if (nextId !== prevId) {
-    // Another project: drop everything that belonged to the previous one.
+  } else if (nextId !== prevId || leavingSample) {
+    // Another project (or the sample): drop everything that belonged to the previous one.
     serverArchitecture = null;
     draft = null;
     needsResend = false;
@@ -1197,8 +1205,13 @@ export function deleteChat(chatId: string): boolean {
 // ---------------------------------------------------------------------------
 // projects (§5.3)
 
+/** Said when something needs the daemon while the viewer shows the bundled sample. */
+export const SAMPLE_MODE_MESSAGE = "You are exploring the sample: connect Ruah (the app, or `ruah app serve`) to work on your own projects.";
+
 async function api<T>(path: string, body?: unknown): Promise<T> {
   if (!state.httpOrigin) throw new Error("No daemon connected");
+  // The sample never reaches a daemon, even one that answers HTTP on this origin.
+  if (state.source === "sample") throw new Error(SAMPLE_MODE_MESSAGE);
   const r = await fetch(`${state.httpOrigin}${path}`, {
     ...(body !== undefined
       ? {

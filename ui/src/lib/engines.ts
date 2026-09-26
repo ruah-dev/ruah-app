@@ -1,6 +1,20 @@
-// ui/src/lib/engines.ts — client for /api/engines/*
+// ui/src/lib/engines.ts — client for /api/engines/*. Every call goes to the connected daemon's
+// origin and only while the viewer shows the daemon's project: with the bundled sample on screen
+// (no daemon at first) nothing here reaches a daemon — a scan, an eval or a replay would act on
+// whatever real project it has open, not on the sample the user is looking at.
 import { useCallback, useEffect, useState } from "react";
-import { sameRoot, useDaemonSelector } from "./daemon";
+import { daemonSnapshot, SAMPLE_MODE_MESSAGE, sameRoot, useDaemonSelector } from "./daemon";
+
+/** The daemon URL for an engines path; undefined while there is no daemon project to act on. */
+export function engineUrl(path: string): string | undefined {
+  const s = daemonSnapshot();
+  if (s.source !== "daemon" || !s.httpOrigin) return undefined;
+  return `${s.httpOrigin}${path}`;
+}
+
+function notConnected(): { error: string } {
+  return { error: daemonSnapshot().source === "sample" ? SAMPLE_MODE_MESSAGE : "No Ruah daemon connected" };
+}
 
 export type VerifyBadge = "pass" | "fail" | "unverifiable" | "error" | "idle";
 
@@ -25,7 +39,9 @@ export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] 
   const refresh = useCallback(() => {
     if (!connected || !root) return;
     const asked = root;
-    void fetch("/api/engines/verify/state")
+    const url = engineUrl("/api/engines/verify/state");
+    if (!url) return;
+    void fetch(url)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: VerifyStateAnswer | null) => {
         const nodes = verifyAnswerFor(asked, body);
@@ -74,7 +90,9 @@ export function visibleVerifyNodes(
 }
 
 export async function runVerify(nodeId: string): Promise<NodeVerifyState | { error: string }> {
-  const res = await fetch("/api/engines/verify/run", {
+  const url = engineUrl("/api/engines/verify/run");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ nodeId }),
@@ -85,14 +103,18 @@ export async function runVerify(nodeId: string): Promise<NodeVerifyState | { err
 }
 
 export async function syncVerify(): Promise<{ path: string; criteriaCount: number } | { error: string }> {
-  const res = await fetch("/api/engines/verify/sync", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const url = engineUrl("/api/engines/verify/sync");
+  if (!url) return notConnected();
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   const body = (await res.json()) as { path?: string; criteriaCount?: number; error?: string };
   if (!res.ok) return { error: body.error ?? `sync failed (${res.status})` };
   return { path: body.path!, criteriaCount: body.criteriaCount! };
 }
 
 export async function runEval(nodeId: string, prompt: string): Promise<unknown> {
-  const res = await fetch("/api/engines/eval/run", {
+  const url = engineUrl("/api/engines/eval/run");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ nodeId, prompt }),
@@ -101,7 +123,9 @@ export async function runEval(nodeId: string, prompt: string): Promise<unknown> 
 }
 
 export async function detectConv(nodeId: string): Promise<{ specs: Array<{ path: string; kind: string }> }> {
-  const res = await fetch(`/api/engines/conv/detect?nodeId=${encodeURIComponent(nodeId)}`);
+  const url = engineUrl(`/api/engines/conv/detect?nodeId=${encodeURIComponent(nodeId)}`);
+  if (!url) return { specs: [] };
+  const res = await fetch(url);
   return res.json();
 }
 
@@ -110,7 +134,9 @@ export async function runConv(
   specPath: string,
   command: "inspect" | "curate" | "generate" | "validate",
 ): Promise<unknown> {
-  const res = await fetch("/api/engines/conv/run", {
+  const url = engineUrl("/api/engines/conv/run");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ nodeId, specPath, command }),
@@ -124,7 +150,9 @@ export interface EngineToolStatus {
 }
 
 export async function engineStatus(): Promise<Record<string, EngineToolStatus>> {
-  const res = await fetch("/api/engines/status");
+  const url = engineUrl("/api/engines/status");
+  if (!url) return {};
+  const res = await fetch(url);
   if (!res.ok) return {};
   return res.json();
 }
@@ -136,7 +164,9 @@ export interface GuardScan {
 }
 
 export async function guardScan(): Promise<GuardScan | { error: string }> {
-  const res = await fetch("/api/engines/guard/scan", {
+  const url = engineUrl("/api/engines/guard/scan");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
@@ -153,7 +183,9 @@ export interface GuardAudit {
 }
 
 export async function guardAudit(): Promise<GuardAudit | { error: string }> {
-  const res = await fetch("/api/engines/guard/audit");
+  const url = engineUrl("/api/engines/guard/audit");
+  if (!url) return notConnected();
+  const res = await fetch(url);
   const body = (await res.json()) as GuardAudit & { error?: string };
   if (!res.ok) return { error: body.error ?? `audit failed (${res.status})` };
   return body;
@@ -169,7 +201,9 @@ export interface OptUsage {
 }
 
 export async function optUsage(): Promise<OptUsage | { error: string }> {
-  const res = await fetch("/api/engines/opt/usage", {
+  const url = engineUrl("/api/engines/opt/usage");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",
@@ -184,7 +218,9 @@ export async function watchReplay(
   chatId: string,
   turnId: string,
 ): Promise<{ path: string; name: string; turns: number } | { error: string }> {
-  const res = await fetch("/api/engines/watch/replay", {
+  const url = engineUrl("/api/engines/watch/replay");
+  if (!url) return notConnected();
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ projectId, chatId, turnId }),

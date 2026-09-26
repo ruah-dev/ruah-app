@@ -62,8 +62,9 @@ const deriveId = (p: string) =>
     .replace(/^[^a-z0-9]+/, "")
     .replace(/-+$/, "") || "repo";
 
+/** The daemon to call — none while the bundled sample is on screen (it must never reach a daemon). */
 function useOrigin() {
-  return useDaemonSelector((s) => s.httpOrigin);
+  return useDaemonSelector((s) => (s.source === "daemon" ? s.httpOrigin : null));
 }
 
 /** Native folder picker in the desktop app; null in a browser (callers show a path field). */

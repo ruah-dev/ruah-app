@@ -268,7 +268,8 @@ export function appLoginOffReason(source: "settings" | "env" | "default"): { rea
   return {
     reason:
       "Included usage, on-demand spend and the reset date come from cursor.com with the Cursor app's saved login, and Ruah reads that login only when you allow it.",
-    action: "Turn on “Read Cursor's saved login” here or in Settings → Features, or open cursor.com/dashboard.",
+    action:
+      "Allow it with “Read Cursor's saved login” in Ruah (Cursor's limits card or Settings → Features) or `ruah app usage settings --read-app-logins on`, or open cursor.com/dashboard.",
   };
 }
 
