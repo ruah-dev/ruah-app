@@ -3,14 +3,23 @@
 // slots while switching, the "+N" overflow and the activity badge.
 import { describe, expect, it } from "vitest";
 import type { ProjectInfo } from "@/lib/contracts";
-import { MAX_RAIL_TILES, railBadge, railCapacity, railProjects, stableOrder, unreadText } from "@/lib/rail";
+import {
+  MAX_RAIL_TILES,
+  pinnedOrder,
+  railBadge,
+  railCapacity,
+  railProjects,
+  sortProjectList,
+  stableOrder,
+  unreadText,
+} from "@/lib/rail";
 
-const project = (id: string, pinned = false): ProjectInfo => ({
+const project = (id: string, pinned = false, lastOpenedAt = "2026-09-26T10:00:00.000Z"): ProjectInfo => ({
   id,
   name: id,
   root: `/r/${id}`,
   kind: "repo",
-  lastOpenedAt: "2026-09-26T10:00:00.000Z",
+  lastOpenedAt,
   ...(pinned ? { pinned: true } : {}),
 });
 
@@ -92,6 +101,26 @@ describe("railProjects", () => {
     const after = railProjects(withX, "x", 4, before.order);
     expect(ids(after)).toEqual(["A", "c", "x"]);
   });
+
+  it("keeps the saved order through an empty or single-project first render (list not loaded yet)", () => {
+    // Saved: e, c, d (the user's slots). The page opens with no project list, then only the open one.
+    const saved = ["e", "c", "d"];
+    const empty = railProjects([], null, 10, saved, { complete: false });
+    expect(ids(empty)).toEqual([]);
+    expect(empty.order).toEqual(saved);
+    const single = railProjects([project("d")], "d", 10, saved, { complete: false });
+    expect(ids(single)).toEqual(["d"]);
+    expect(single.order).toEqual(saved);
+    // A project the saved order does not know goes last; the saved ids keep their slots.
+    expect(railProjects([project("x")], "x", 10, saved, { complete: false }).order).toEqual([...saved, "x"]);
+    // The whole list (sorted by last opened: d, c, e) lands: the tiles keep the saved slots.
+    const full = [project("A", true), project("d"), project("c"), project("e")];
+    const loaded = railProjects(full, "d", 10, single.order);
+    expect(ids(loaded)).toEqual(["A", "e", "c", "d"]);
+    expect(loaded.order).toEqual(saved);
+    // Once loaded, a saved id the list no longer has (forgotten) drops.
+    expect(railProjects(full, "d", 10, ["gone", ...saved]).order).toEqual(saved);
+  });
 });
 
 describe("stableOrder", () => {
@@ -101,6 +130,40 @@ describe("stableOrder", () => {
     expect(stableOrder(["a", "b", "c"], ["a", "x", "c"])).toEqual(["a", "x", "c"]);
     expect(stableOrder(["a", "b", "c"], ["c"])).toEqual(["c"]);
     expect(stableOrder(["a", "b"], ["y", "x"])).toEqual(["y", "x"]);
+  });
+
+  it("keeps the slots of ids that `keep` says are only absent from this render", () => {
+    const unknown = (id: string) => id !== "b";
+    expect(stableOrder(["a", "b", "c"], [], unknown)).toEqual(["a", "c"]);
+    expect(stableOrder(["a", "b", "c"], ["c", "x"], unknown)).toEqual(["a", "x", "c"]);
+    expect(stableOrder(["a", "b"], ["y"], () => true)).toEqual(["a", "b", "y"]);
+  });
+});
+
+describe("pinned order", () => {
+  it("keeps the order projects were pinned in; newly pinned go last, unpinned drop", () => {
+    expect(pinnedOrder([], ["B", "A"])).toEqual(["B", "A"]);
+    // The daemon re-sorted by last opened (A opened last): A stays ⌘2.
+    expect(pinnedOrder(["B", "A"], ["A", "B"])).toEqual(["B", "A"]);
+    expect(pinnedOrder(["B", "A"], ["C", "A", "B"])).toEqual(["B", "A", "C"]);
+    expect(pinnedOrder(["B", "A", "C"], ["C", "B"])).toEqual(["B", "C"]);
+    expect(pinnedOrder(["B", "B", "A"], ["A", "B"])).toEqual(["B", "A"]);
+  });
+
+  it("sorts pinned by that order, the rest by last opened", () => {
+    const list = [
+      project("r1", false, "2026-09-26T09:00:00.000Z"),
+      project("P2", true, "2026-09-26T11:00:00.000Z"),
+      project("r2", false, "2026-09-26T12:00:00.000Z"),
+      project("P1", true, "2026-09-26T08:00:00.000Z"),
+      project("P3", true, "2026-09-26T10:00:00.000Z"),
+    ];
+    expect(sortProjectList(list, ["P1", "P2"]).map((p) => p.id)).toEqual(["P1", "P2", "P3", "r2", "r1"]);
+    // No saved order: the daemon's (last opened) order.
+    expect(sortProjectList(list).map((p) => p.id)).toEqual(["P2", "P3", "P1", "r2", "r1"]);
+    // ⌘1…⌘9 follow the same list: opening P2 (newest) does not make it ⌘1.
+    const l = railProjects(sortProjectList(list, ["P1", "P2", "P3"]), "P2", 10);
+    expect(l.tiles.filter((t) => t.shortcut).map((t) => `${t.project.id} ${t.shortcut}`)).toEqual(["P1 ⌘1", "P2 ⌘2", "P3 ⌘3"]);
   });
 });
 

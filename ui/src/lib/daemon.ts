@@ -32,6 +32,7 @@ import { sampleFiles } from "@/data/sample-files";
 import { lruSet } from "./switching";
 import { markSwitchCached, markSwitchStart } from "./switch-timing";
 import { clearUnreadLocally, handleActivityMessage } from "./activity";
+import { pinnedOrder as reconcilePinnedOrder, sortProjectList } from "./rail";
 import type { AppFeatures, NotificationTarget, ResumeInfo, ViewState } from "./contracts";
 
 export const CLIENT_ID = "architects-canvas/0.1.0";
@@ -146,8 +147,10 @@ export interface DaemonState {
   projectsSupported: boolean;
   /** Current project; null = launcher state (only meaningful when projectsSupported). */
   project: ProjectInfo | null;
-  /** Recent projects (GET /api/projects), most recent first, pinned on top. */
+  /** Recent projects (GET /api/projects), most recent first, pinned on top (in pin order). */
   recentProjects: ProjectInfo[];
+  /** GET /api/projects answered once: `recentProjects` is the whole list, not just the open one. */
+  projectsLoaded: boolean;
   projectSwitch: ProjectSwitch | null;
   chats: ChatInfo[];
   activeChatId: string | null;
@@ -179,6 +182,7 @@ const INITIAL: DaemonState = {
   projectsSupported: false,
   project: null,
   recentProjects: [],
+  projectsLoaded: false,
   projectSwitch: null,
   chats: [],
   activeChatId: null,
@@ -355,6 +359,7 @@ export function startDaemon() {
   if (started || typeof window === "undefined") return;
   started = true;
   loadModelCache();
+  pinnedIds = readPinnedOrder() ?? [];
   // §13.3: a click on a desktop notification (the window is already focused) opens its project + chat.
   window.ruah?.onNotificationClick?.((target) => void openActivityTarget(target));
   connect();
@@ -482,12 +487,35 @@ export function basename(path: string) {
   return parts[parts.length - 1] || path;
 }
 
+// The pinned projects' order: the order they were pinned in, kept by the viewer. The daemon sorts
+// pinned projects by lastOpenedAt, which would renumber ⌘1…⌘9 (and move the rail's pinned tiles)
+// on every switch. Every list of projects reads `recentProjects`, so one order serves the rail, the
+// Advanced sidebar, the launchers, the project menu and the ⌘1…⌘9 keys.
+const PINNED_ORDER_KEY = "ruah.rail.pinned.v1";
+let pinnedIds: string[] = [];
+
+function readPinnedOrder(): string[] | null {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(PINNED_ORDER_KEY) ?? "null") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+function setPinnedOrder(next: string[]) {
+  if (next.length === pinnedIds.length && next.every((id, i) => id === pinnedIds[i])) return;
+  pinnedIds = next;
+  try {
+    window.localStorage.setItem(PINNED_ORDER_KEY, JSON.stringify(next));
+  } catch {
+    /* storage unavailable: the order lasts for this page */
+  }
+}
+
+/** Pinned first (in pin order), then the rest most recently opened first. */
 export function sortProjects(list: ProjectInfo[]): ProjectInfo[] {
-  return [...list].sort(
-    (a, b) =>
-      Number(!!b.pinned) - Number(!!a.pinned) ||
-      Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt),
-  );
+  return sortProjectList(list, pinnedIds);
 }
 
 function recordToTurn(r: TurnRecord, idle: boolean): Turn {
@@ -1161,7 +1189,11 @@ export async function refreshProjects(): Promise<void> {
   if (!state.httpOrigin || state.source === "sample") return;
   try {
     const res = await api<ProjectsResponse>("/api/projects");
-    set({ recentProjects: sortProjects(res.recent ?? []) });
+    const recent = res.recent ?? [];
+    // The whole list: settle the pin order (another window may have pinned or unpinned meanwhile).
+    const pinned = sortProjectList(recent.filter((p) => p.pinned)).map((p) => p.id);
+    setPinnedOrder(reconcilePinnedOrder(readPinnedOrder() ?? pinnedIds, pinned));
+    set({ recentProjects: sortProjects(recent), projectsLoaded: true });
   } catch {
     /* older daemon without §5 */
   }
@@ -1269,6 +1301,9 @@ export async function createProject(input: {
 
 export async function pinProject(id: string, pinned: boolean): Promise<void> {
   const before = state.recentProjects;
+  const orderBefore = pinnedIds;
+  // A newly pinned project goes last (the next ⌘ number); the others keep theirs.
+  setPinnedOrder(pinned ? [...pinnedIds.filter((x) => x !== id), id] : pinnedIds.filter((x) => x !== id));
   set({
     recentProjects: sortProjects(before.map((p) => (p.id === id ? { ...p, pinned } : p))),
     ...(state.project?.id === id ? { project: { ...state.project, pinned } } : {}),
@@ -1276,6 +1311,7 @@ export async function pinProject(id: string, pinned: boolean): Promise<void> {
   try {
     await api("/api/projects/pin", { id, pinned });
   } catch (err) {
+    setPinnedOrder(orderBefore);
     set({ recentProjects: before });
     throw err;
   }

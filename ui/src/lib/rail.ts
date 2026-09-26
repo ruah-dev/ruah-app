@@ -5,7 +5,9 @@
 // Order: pinned projects first (their order is the ⌘1…⌘9 order), then the most recently opened
 // ones that fit. Tiles keep their place while you switch between them: a recent project that is
 // already in the rail does not jump to the top when opened (the daemon's list is sorted by
-// lastOpenedAt, so it would), a newcomer takes the slot of the one it pushed out.
+// lastOpenedAt, so it would), a newcomer takes the slot of the one it pushed out. Pinned projects
+// keep the order they were pinned in (pinnedOrder / sortProjectList: the daemon sorts them by
+// lastOpenedAt too, which would renumber ⌘1…⌘9 on every switch).
 import type { ProjectActivity, ProjectInfo } from "./contracts";
 
 /** Tile size and gap in the rail (px); the component uses the same numbers. */
@@ -25,7 +27,8 @@ export interface RailProjectsLayout {
   tiles: RailProject[];
   /** Projects without a tile (the "+N" tile opens All projects). */
   overflow: number;
-  /** Order of the unpinned tiles, to pass back as `prevOrder` next time (stable slots). */
+  /** Order of the unpinned tiles, to pass back as `prevOrder` next time (stable slots). With
+   * `complete: false` it also holds the saved ids the list does not know yet. */
   order: string[];
 }
 
@@ -37,11 +40,14 @@ export function railCapacity(heightPx: number, tile = RAIL_TILE, gap = RAIL_GAP)
 
 /**
  * Keeps `ids` in the order they had in `prev`: ids already placed keep their relative order,
- * a new id takes the slot of an id that left (first free slot first), else goes last.
+ * a new id takes the slot of an id that left (first free slot first), else goes last. An id of
+ * `prev` that is not in `ids` but for which `keep(id)` holds (not known to this render, e.g. the
+ * project list has not loaded yet) keeps its slot: it is in the result, and a newcomer does not
+ * take its place. Filter the result by `ids` for what to show.
  */
-export function stableOrder(prev: readonly string[], ids: readonly string[]): string[] {
+export function stableOrder(prev: readonly string[], ids: readonly string[], keep?: (id: string) => boolean): string[] {
   const want = new Set(ids);
-  const slots: (string | null)[] = prev.map((id) => (want.has(id) ? id : null));
+  const slots: (string | null)[] = prev.map((id) => (want.has(id) || keep?.(id) ? id : null));
   const placed = new Set(slots.filter((s): s is string => s !== null));
   for (const id of ids) {
     if (placed.has(id)) continue;
@@ -54,14 +60,44 @@ export function stableOrder(prev: readonly string[], ids: readonly string[]): st
 }
 
 /**
- * The rail's project tiles for `capacity` slots (railCapacity). `projects` is the daemon's recent
- * list (pinned first, then most recent first). The current project always has a tile.
+ * The pinned projects' order (the ⌘1…⌘9 order everywhere): ids of `prev` that are still pinned
+ * keep their place, newly pinned ones go last in the order given (the daemon's). Unpinned ids drop.
+ */
+export function pinnedOrder(prev: readonly string[], pinnedIds: readonly string[]): string[] {
+  const want = new Set(pinnedIds);
+  const out = [...new Set(prev)].filter((id) => want.has(id));
+  for (const id of want) if (!out.includes(id)) out.push(id);
+  return out;
+}
+
+/**
+ * The recent list as the viewer shows it: pinned first in `pinned` order (pinnedOrder; pinned
+ * projects not in it follow, most recent first), then the rest most recently opened first.
+ */
+export function sortProjectList(list: readonly ProjectInfo[], pinned: readonly string[] = []): ProjectInfo[] {
+  const rank = new Map(pinned.map((id, i) => [id, i]));
+  const recent = (a: ProjectInfo, b: ProjectInfo) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt);
+  return [...list].sort((a, b) => {
+    const pin = Number(!!b.pinned) - Number(!!a.pinned);
+    if (pin || !a.pinned) return pin || recent(a, b);
+    const ra = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const rb = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return ra - rb || recent(a, b);
+  });
+}
+
+/**
+ * The rail's project tiles for `capacity` slots (railCapacity). `projects` is the recent list
+ * (pinned first, then most recent first: sortProjectList). The current project always has a tile.
+ * `complete: false` says the list has not loaded yet (the page just opened: empty, or only the
+ * open project): saved ids it does not know keep their slots in `order` instead of being dropped.
  */
 export function railProjects(
   projects: readonly ProjectInfo[],
   currentId: string | null,
   capacity: number,
   prevOrder: readonly string[] = [],
+  opts: { complete?: boolean } = {},
 ): RailProjectsLayout {
   const pinned = projects.filter((p) => p.pinned);
   const recents = projects.filter((p) => !p.pinned);
@@ -93,8 +129,10 @@ export function railProjects(
   }
 
   const byId = new Map(shownRecents.map((p) => [p.id, p]));
-  const order = stableOrder(prevOrder, shownRecents.map((p) => p.id));
-  const ordered = order.map((id) => byId.get(id)!).filter(Boolean);
+  const known = new Set(projects.map((p) => p.id));
+  const keep = opts.complete === false ? (id: string) => !known.has(id) : undefined;
+  const order = stableOrder(prevOrder, shownRecents.map((p) => p.id), keep);
+  const ordered = order.flatMap((id) => byId.get(id) ?? []);
   const tiles = [...shownPinned, ...ordered].map((project) => ({
     project,
     current: project.id === currentId,

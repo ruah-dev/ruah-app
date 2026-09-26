@@ -244,14 +244,16 @@ export function RailProjects() {
   const currentId = switchTarget ?? daemon.project?.id ?? null;
   // One slot stays free for the "+" tile.
   const capacity = Math.max(0, railCapacity(height) - 1);
+  const loaded = daemon.projectsLoaded;
   const layout = useMemo(
-    () => railProjects(daemon.recentProjects, currentId, capacity, order.current ?? []),
-    [daemon.recentProjects, currentId, capacity],
+    () => railProjects(daemon.recentProjects, currentId, capacity, order.current ?? [], { complete: loaded }),
+    [daemon.recentProjects, currentId, capacity, loaded],
   );
 
   useEffect(() => {
-    // Before the first measure (height 0) the layout holds one tile at most: keep the saved order.
-    if (height === 0) return;
+    // Keep the saved order until the rail was measured (height 0: one tile at most) and the project
+    // list has loaded (a page that just opened knows no project, then only the open one).
+    if (height === 0 || !loaded) return;
     const prev = order.current ?? [];
     if (prev.length === layout.order.length && prev.every((id, i) => id === layout.order[i])) return;
     order.current = layout.order;
@@ -260,7 +262,7 @@ export function RailProjects() {
     } catch {
       /* storage unavailable */
     }
-  }, [layout.order, height]);
+  }, [layout.order, height, loaded]);
 
   // Waiting / running / unread in projects without a tile: say so on the "+N" tile.
   const hidden = new Set(layout.tiles.map((t) => t.project.id));
