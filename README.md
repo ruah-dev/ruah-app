@@ -245,7 +245,8 @@ credentials are present too: `APPLE_API_KEY` (path to the `.p8`) +
 `APPLE_API_KEY_ID` + `APPLE_API_ISSUER`, or `APPLE_ID` +
 `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, or `APPLE_KEYCHAIN_PROFILE`.
 Claude's native CLI keeps Anthropic's signature in every build. In CI the
-same values come from repository secrets (`.github/workflows/release.yml`).
+same values come from secrets of the `release` GitHub Environment, which only
+`v*` tag builds enter (`.github/workflows/release.yml`).
 
 **Releases.** A `v<version>` tag builds the `.dmg` in GitHub Actions and
 attaches it with `SHA256SUMS.txt` to a draft release (CONTRIBUTING.md,

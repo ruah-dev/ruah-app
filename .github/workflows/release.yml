@@ -6,7 +6,11 @@
 #
 # Signing is optional. Without secrets the app is ad-hoc signed (README "Install":
 # first launch needs "Open Anyway"). With them it is Developer ID signed and, when
-# the Apple API key is present too, notarized (scripts/macos/signing.cjs):
+# the Apple API key is present too, notarized (scripts/macos/signing.cjs). Keep them
+# as secrets of the GitHub Environment "release" (Settings -> Environments), whose
+# deployment rule allows only tags "v*", and NOT as repository secrets: the dmg job
+# enters that environment for tags only, so a "Run workflow" dry run, or a run of
+# an edited workflow from another branch, never receives them.
 #
 #   MAC_CERT_P12_BASE64   base64 of a "Developer ID Application" .p12  -> CSC_LINK
 #   MAC_CERT_PASSWORD     its password                                 -> CSC_KEY_PASSWORD
@@ -36,6 +40,9 @@ jobs:
     name: Build the macOS dmg (arm64)
     runs-on: macos-15
     timeout-minutes: 60
+    # Tag builds only: the environment's secrets (signing, notarization). Dry runs
+    # get no environment, hence no secrets, and are ad-hoc signed.
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
     permissions:
       contents: read
     steps:

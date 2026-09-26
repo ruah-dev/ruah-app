@@ -137,11 +137,34 @@ describe("GitHub workflows", () => {
     for (const step of checkouts) expect(step).toMatch(/persist-credentials:\s*false/);
   });
 
-  test("only the release's publish job may write, and electron-builder never publishes", () => {
+  test("CI never writes; in the release only the publish job may, and only contents", () => {
+    for (const name of workflows.filter((w) => w !== "release.yml")) {
+      expect(writeScopes(readFileSync(join(dir, name), "utf8")), name).toEqual([]);
+    }
     const text = readFileSync(join(dir, "release.yml"), "utf8");
-    expect(text.match(/contents: write/g)).toHaveLength(1);
+    expect(writeScopes(text)).toEqual([{ job: "publish", scope: "contents" }]);
     expect(text).toMatch(/pnpm dist --publish never/);
     expect(text).toMatch(/--draft/);
+  });
+
+  test("the guard sees write scopes at any level and in any job", () => {
+    const wf = "permissions:\n  contents: read\njobs:\n  a:\n    permissions:\n      pull-requests: write\n      id-token:   write # oidc\n  b:\n    permissions: write-all\n";
+    expect(writeScopes(wf)).toEqual([
+      { job: "a", scope: "pull-requests" },
+      { job: "a", scope: "id-token" },
+      { job: "b", scope: "*" },
+    ]);
+    expect(writeScopes("permissions:\n  actions: write\njobs:\n  a:\n    steps: []\n")).toEqual([{ job: "(top level)", scope: "actions" }]);
+  });
+
+  test("signing secrets only reach the dmg job through the tag-only `release` environment", () => {
+    const text = readFileSync(join(dir, "release.yml"), "utf8");
+    const dmg = jobBlock(text, "dmg");
+    expect(dmg).toMatch(/^ {4}environment: \$\{\{ startsWith\(github\.ref, 'refs\/tags\/v'\) && 'release' \|\| '' \}\}$/m);
+    for (const name of ["MAC_CERT_P12_BASE64", "MAC_CERT_PASSWORD", "APPLE_API_KEY_P8", "APPLE_API_KEY_ID", "APPLE_API_ISSUER"]) {
+      expect(dmg, name).toContain(`secrets.${name}`);
+      expect(text.replace(dmg, ""), `${name} outside the dmg job`).not.toContain(`secrets.${name}`);
+    }
   });
 });
 

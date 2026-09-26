@@ -2716,7 +2716,9 @@ What GitHub runs for this repository and what a release publishes. Code:
   run fails before building. `workflow_dispatch` is a dry run: same build, workflow
   artifact only, no release.
 - Job `dmg` (`macos-15`, token `contents: read`, no dependency cache): the §20.1 gates,
-  then `pnpm dist --publish never` (§19.7), then `release/SHA256SUMS.txt`.
+  then `pnpm dist --publish never` (§19.7), then `release/SHA256SUMS.txt`. For tags it
+  runs in the GitHub Environment `release` (`environment: ${{ startsWith(github.ref,
+  'refs/tags/v') && 'release' || '' }}`); a dry run has no environment.
 - Job `publish` (only for tags; `ubuntu-24.04`; token `contents: write`; runs no project
   code): downloads the artifact and creates the release as a **draft** titled
   `Ruah v<version>` (a prerelease when the tag contains `-`), or uploads with `--clobber`
@@ -2728,7 +2730,10 @@ What GitHub runs for this repository and what a release publishes. Code:
 | `SHA256SUMS.txt` | one line per `.dmg`: `<sha256>  <file name>` (`shasum -a 256 -c SHA256SUMS.txt`) |
 | workflow artifact `ruah-macos-arm64` | both files, kept 14 days (also for dry runs) |
 
-Optional repository secrets (none set = ad-hoc signing, no notarization):
+Optional secrets of the `release` environment (none set = ad-hoc signing, no
+notarization). They belong in the environment, whose deployment rule allows only tags
+`v*`, and not in repository secrets: then a dry run, or a run of an edited workflow from a
+branch, never receives them, and a dry run is always ad-hoc signed.
 
 | Secret | Becomes (§19.7) |
 | --- | --- |
