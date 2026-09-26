@@ -658,7 +658,7 @@ export interface TurnRecord {    // what the viewer needs to redraw a past turn
 - daemon → viewer `{ type: "chats", projectId, chats: ChatInfo[], activeChatId: string | null }` — after `hello`, on switch, and whenever the list changes.
 - daemon → viewer `{ type: "chat.history", chatId, turns: TurnRecord[] }` — reply to `chat.open` (and after `hello` for the active chat).
 - viewer → daemon `{ type: "chat.new" }`, `{ type: "chat.open", chatId }`, `{ type: "chat.rename", chatId, title }`, `{ type: "chat.delete", chatId }`.
-- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1).
+- Turns (`prompt`) always belong to the active chat; `chat.new` / `chat.open` cancel a running turn first. A project switch does not (§13.1). The viewer therefore asks before it opens another chat of the project (or a new one) while a turn runs in the chat in front ("Stop the agent?", 2026-09-26); the recent-chats strip shows which chat is working.
 
 ### 5.3 HTTP additions
 | Method + path | Body / result |
