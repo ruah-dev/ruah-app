@@ -276,8 +276,9 @@ export class KubernetesIntegration extends CliCloudAdapter {
       if (contexts !== undefined && contexts.length === 0) {
         return {
           ok: false, status: "not_connected",
-          detail: "no contexts in your kubeconfig",
-          setupHint: "add a cluster (e.g. `aws eks update-kubeconfig`, `gcloud container clusters get-credentials`, `kind create cluster`), then: kubectl config use-context <context>",
+          // setupHint is shown (and can be run) as a command: the explanation goes in the detail.
+          detail: "no contexts in your kubeconfig — add your cluster with its provider's CLI (aws eks update-kubeconfig, gcloud container clusters get-credentials, doctl kubernetes cluster kubeconfig save, kind create cluster)",
+          setupHint: "kubectl config use-context <context>",
         };
       }
     }

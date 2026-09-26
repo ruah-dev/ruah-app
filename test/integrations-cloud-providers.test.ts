@@ -440,7 +440,7 @@ describe("Kubernetes", () => {
     });
     const i = new k8s.KubernetesIntegration({ runner, settings: settings(), bin: () => "/fake/kubectl" });
     const info = await i.info();
-    expect(info).toMatchObject({ status: "not_connected", detail: "no contexts in your kubeconfig", setupHint: expect.stringContaining("kubectl config use-context") });
+    expect(info).toMatchObject({ status: "not_connected", detail: expect.stringMatching(/^no contexts in your kubeconfig/), setupHint: "kubectl config use-context <context>" });
     expect(runner.calls.some((c) => c.args[0] === "version")).toBe(false);
   });
 });
