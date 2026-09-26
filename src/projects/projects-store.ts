@@ -217,7 +217,7 @@ export class ProjectsStore {
       }
     }
     return [...counts.values()]
-      .map((c) => ({ n: c.n, tag: [...c.spellings].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "" }))
+      .map((c) => ({ n: c.n, tag: [...c.spellings].sort((a, b) => b[1] - a[1] || capitalFirst(a[0], b[0]))[0]?.[0] ?? "" }))
       .sort((a, b) => b.n - a.n || a.tag.localeCompare(b.tag))
       .map((c) => c.tag);
   }
@@ -259,4 +259,11 @@ export class ProjectsStore {
   private write(projects: ProjectInfo[]): void {
     atomicWriteFileSync(this.file, `${JSON.stringify({ version: 1, projects: normalizeProjects(projects) }, null, 2)}\n`);
   }
+}
+
+/** Spelling ties: a capitalized spelling ("Job") wins over "job", then alphabetical. */
+function capitalFirst(a: string, b: string): number {
+  const ca = a[0] !== undefined && a[0] !== a[0].toLowerCase();
+  const cb = b[0] !== undefined && b[0] !== b[0].toLowerCase();
+  return Number(cb) - Number(ca) || a.localeCompare(b);
 }

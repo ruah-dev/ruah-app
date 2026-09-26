@@ -130,6 +130,9 @@ describe("ProjectsStore §20: stable pinned order and tags", () => {
     expect(store.get(ids[0]!)?.tags).toEqual(["Freelance", "Liquid Money"]);
     expect(store.setTags(ids[0]!, [])).not.toHaveProperty("tags");
     expect(store.setTags("nope", ["x"])).toBeUndefined();
+    // A tie between spellings: the capitalized one names the group ("Job", not "job").
+    store.setTags(ids[1]!, ["job"]);
+    expect(store.tags()).toEqual(["Job", "Freelance"]);
   });
 });
 
