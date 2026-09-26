@@ -1,11 +1,14 @@
 // Edges of the current level: routed once per layout (routing.ts), culled to the viewport,
 // emphasised around the focus (selection / hover), quiet elsewhere (never below 60 %).
-// Labels appear on hover, on emphasised edges, or when zoomed in on an uncrowded view.
+// Labels appear on hover, on emphasised edges, or when zoomed in on an uncrowded view, and keep
+// a readable screen size when zoomed out (`labelScale`). Deployment links (IaC → what it runs)
+// are dashed and quieter than runtime calls until they are in focus.
 import { memo } from "react";
 import type { DiagramEdge } from "@/data/graphs";
 import { cn } from "@/lib/utils";
 import { intersects, type Box, type Lod } from "./geometry";
 import type { Route } from "./routing";
+import { isQuietEdgeKind } from "./display";
 
 export type EdgeRef = { from: string; to: string };
 
@@ -16,6 +19,8 @@ type Props = {
   lod: Lod;
   /** Which labels the zoom allows: every label (uncrowded), only emphasised edges, or none. */
   labels: "all" | "focus" | "none";
+  /** World-unit scale for label text and boxes (display.ts `edgeLabelScale`). */
+  labelScale?: number;
   focusId: string | null;
   selectedEdge: EdgeRef | null;
   hoverEdge: number | null;
@@ -27,7 +32,7 @@ function labelWidth(text: string) {
   return text.length * 6.2 + 12;
 }
 
-function EdgeLayerImpl({ edges, routes, cull, lod, labels, focusId, selectedEdge, hoverEdge, onHoverEdge, onSelectEdge }: Props) {
+function EdgeLayerImpl({ edges, routes, cull, lod, labels, labelScale = 1, focusId, selectedEdge, hoverEdge, onHoverEdge, onSelectEdge }: Props) {
   const visible: number[] = [];
   for (let i = 0; i < edges.length; i++) {
     const r = routes[i];
@@ -57,25 +62,26 @@ function EdgeLayerImpl({ edges, routes, cull, lod, labels, focusId, selectedEdge
     const r = routes[i]!;
     if (!e.label) return null;
     if (!(active ? labels !== "none" : quietLabels)) return null;
-    const w = labelWidth(e.label);
+    const s = labelScale;
+    const w = labelWidth(e.label) * s;
     return (
       <g key={`l${i}`} pointerEvents="none">
         <rect
           x={r.lx - w / 2}
-          y={r.ly - 9}
+          y={r.ly - 9 * s}
           width={w}
-          height={17}
-          rx={4}
+          height={17 * s}
+          rx={4 * s}
           fill="var(--canvas)"
           stroke={active ? "var(--edge-active)" : "var(--hairline)"}
           strokeOpacity={active ? 0.55 : 0.8}
         />
         <text
           x={r.lx}
-          y={r.ly + 3.5}
+          y={r.ly + 3.5 * s}
           textAnchor="middle"
           className="font-mono"
-          fontSize={9.5}
+          fontSize={9.5 * s}
           fill={active ? "var(--edge-active)" : "var(--muted-foreground)"}
         >
           {e.label}
@@ -97,16 +103,20 @@ function EdgeLayerImpl({ edges, routes, cull, lod, labels, focusId, selectedEdge
       <g opacity={dimIdle || crowded ? 0.6 : 0.95}>
         {idle.map((i) => {
           const e = edges[i]!;
+          const quiet = isQuietEdgeKind(e.kind);
           return (
             <path
               key={i}
               d={routes[i]!.d}
               fill="none"
               stroke="var(--edge)"
-              strokeWidth={width(e, false)}
+              strokeWidth={quiet ? Math.max(1, width(e, false) - 0.3) : width(e, false)}
+              strokeOpacity={quiet ? 0.55 : undefined}
+              strokeDasharray={quiet ? "3 4" : undefined}
               vectorEffect="non-scaling-stroke"
               markerEnd={lod === "tiny" ? undefined : "url(#arrow)"}
-              className={e.animated && animateIdle ? "edge-flow" : undefined}
+              data-kind={e.kind}
+              className={e.animated && animateIdle && !quiet ? "edge-flow" : undefined}
             />
           );
         })}

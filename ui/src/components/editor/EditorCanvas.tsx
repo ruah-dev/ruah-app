@@ -6,13 +6,14 @@
 //   only when the view leaves the rendered window or the zoom crosses a level-of-detail step.
 // - Level of detail: full cards → compact bar + name → tiny blocks; edge labels on demand.
 // - Focus: search (⌘F), kind / layer filters, n-hop neighbourhood, collapsible layer groups,
-//   selection emphasis (others stay ≥ 60 %), arrow-key navigation, minimap, fit-to-selection.
+//   selection emphasis (others stay at 80 %, where their text still passes WCAG), arrow-key navigation, minimap, fit-to-selection.
 // - Drill: chip / double-click / Enter zooms into the element and opens its level; Backspace /
 //   ⌥↑ goes back up.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronsDownUp, Maximize2, Minus, MousePointer2, Plus } from "lucide-react";
 import type { DiagramNode as NodeType, NodeKind } from "@/data/graphs";
 import type { Diagram } from "@/lib/workspace";
+import { edgeLabelScale } from "./canvas/display";
 import { NODE_H, NODE_W, groupIcon as GroupIcon } from "@/components/explorer/kinds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -159,6 +160,11 @@ export function EditorCanvas({
     [diagram.nodes, diagram.edges, diagram.groups, filters, selectedNodeId],
   );
   const boxes = useMemo(() => new Map(vm.nodes.map((n) => [n.id, nodeBox(n)])), [vm.nodes]);
+  const laneCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of vm.nodes) if (n.layer) m.set(n.layer, (m.get(n.layer) ?? 0) + 1);
+    return m;
+  }, [vm.nodes]);
   const routes = useMemo(() => routeEdges(boxes, vm.edges), [boxes, vm.edges]);
   const nodeById = useMemo(() => new Map(vm.nodes.map((n) => [n.id, n])), [vm.nodes]);
   const big = vm.nodes.length > CULL_ABOVE;
@@ -831,35 +837,17 @@ export function EditorCanvas({
           className="absolute top-0 left-0 origin-top-left"
           style={{ transform: `translate3d(${cam.current.x}px, ${cam.current.y}px, 0) scale(${cam.current.k})`, ["--inv-k" as string]: 1 / view.kq }}
         >
-          {visibleGroups.map((g) => {
-            const layer = g.id.replace(/^layer:/, "");
-            return (
-              <div
-                key={g.id}
-                className="group/frame absolute rounded-2xl border border-dashed border-group/35 bg-group/[0.03]"
-                style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
-              >
-                <span
-                  className="absolute bottom-[calc(100%-0.6em)] left-3 flex origin-bottom-left items-center gap-1.5 rounded-md bg-canvas px-1.5 font-medium tracking-wide whitespace-nowrap text-group uppercase"
-                  style={{ fontSize: "max(11px, min(96px, calc(11px * var(--inv-k, 1))))" }}
-                >
-                  <GroupIcon className="size-[1em]" />
-                  {g.label}
-                  <button
-                    type="button"
-                    data-ui
-                    title="Collapse into one card"
-                    aria-label={`Collapse ${g.label}`}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => toggleGroup(layer)}
-                    className="grid size-[1.3em] place-items-center rounded text-group/70 opacity-0 transition-opacity group-hover/frame:opacity-100 hover:bg-group/15 hover:text-group"
-                  >
-                    <ChevronsDownUp className="size-[0.95em]" />
-                  </button>
-                </span>
-              </div>
-            );
-          })}
+          {/* Lanes: a quiet solid frame under everything (dashed is for deployment links and
+              collapsed groups); their headers are drawn above the edges (below), so a link
+              crossing a lane never cuts through its name. */}
+          {visibleGroups.map((g) => (
+            <div
+              key={g.id}
+              data-lane={g.id}
+              className="absolute rounded-2xl border border-group/25 bg-group/[0.035]"
+              style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
+            />
+          ))}
 
           <EdgeLayer
             edges={vm.edges}
@@ -867,6 +855,7 @@ export function EditorCanvas({
             cull={cull}
             lod={view.lod}
             labels={view.kq >= 0.9 ? "all" : view.kq >= 0.45 ? "focus" : "none"}
+            labelScale={edgeLabelScale(view.kq)}
             focusId={edgeFocus}
             selectedEdge={selectedEdge}
             hoverEdge={hoverEdge}
@@ -890,6 +879,38 @@ export function EditorCanvas({
               />
             </svg>
           ) : null}
+
+          {visibleGroups.map((g) => {
+            const layer = g.id.replace(/^layer:/, "");
+            const members = laneCounts.get(layer) ?? 0;
+            return (
+              <div
+                key={`h:${g.id}`}
+                className="group/lane pointer-events-none absolute"
+                style={{ left: g.x, top: g.y, width: g.w, height: 0 }}
+              >
+                <span
+                  className="pointer-events-auto absolute bottom-[calc(100%-0.62em)] left-3 flex origin-bottom-left items-center gap-1.5 rounded-md bg-canvas px-1.5 font-semibold tracking-[0.08em] whitespace-nowrap text-group uppercase shadow-[0_0_0_1px_var(--color-canvas)]"
+                  style={{ fontSize: "max(11px, min(96px, calc(11px * var(--inv-k, 1))))" }}
+                >
+                  <GroupIcon className="size-[1em]" />
+                  {g.label}
+                  {members > 0 ? <span className="font-normal tracking-normal text-faint tabular-nums">{members}</span> : null}
+                  <button
+                    type="button"
+                    data-ui
+                    title="Collapse into one card"
+                    aria-label={`Collapse ${g.label}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => toggleGroup(layer)}
+                    className="grid size-[1.3em] place-items-center rounded text-group/70 opacity-0 transition-opacity group-hover/lane:opacity-100 focus-visible:opacity-100 hover:bg-group/15 hover:text-group"
+                  >
+                    <ChevronsDownUp className="size-[0.95em]" />
+                  </button>
+                </span>
+              </div>
+            );
+          })}
 
           {visibleNodes.map((node) => (
             <NodeCard
@@ -969,6 +990,7 @@ export function EditorCanvas({
             size="icon"
             className="size-6"
             aria-label="Zoom out"
+            title="Zoom out (⌘ scroll)"
             onClick={() => {
               const r = shellRef.current?.getBoundingClientRect();
               zoomAt((r?.left ?? 0) + size.current.w / 2, (r?.top ?? 0) + size.current.h / 2, 0.8);
@@ -976,7 +998,7 @@ export function EditorCanvas({
           >
             <Minus className="size-3.5" />
           </Button>
-          <span ref={zoomLabelRef} className="w-10 text-center text-caption text-muted-foreground tabular-nums">
+          <span ref={zoomLabelRef} aria-live="off" className="w-10 text-center text-caption text-muted-foreground tabular-nums">
             {Math.round(cam.current.k * 100)}%
           </span>
           <Button
@@ -984,6 +1006,7 @@ export function EditorCanvas({
             size="icon"
             className="size-6"
             aria-label="Zoom in"
+            title="Zoom in (⌘ scroll)"
             onClick={() => {
               const r = shellRef.current?.getBoundingClientRect();
               zoomAt((r?.left ?? 0) + size.current.w / 2, (r?.top ?? 0) + size.current.h / 2, 1.25);
