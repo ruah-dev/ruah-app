@@ -12,7 +12,6 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
   const [filePath, setFilePath] = useState<string | null>(null);
 
   const installed = tool?.installed === true;
-  const install = tool?.install ?? "npm i -g @ruah-dev/cli @ruah-dev/watch";
 
   async function replay() {
     setBusy(true);
@@ -30,19 +29,22 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
     }
   }
 
+  // Quiet when ruah-watch is missing: not a disabled button and its install command under every
+  // turn of every chat (Guard and Optimize show the ruah toolkit's install command once).
+  if (!installed) return null;
+
   return (
     <>
       <button
         type="button"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-        disabled={!installed || busy}
-        title={installed ? "Replay this turn" : install}
+        disabled={busy}
+        title="Replay this turn"
         onClick={() => void replay()}
       >
         <Clapperboard className="size-3.5" />
         {busy ? "Rendering…" : "Replay"}
       </button>
-      {tool && !installed ? <span className="text-[11px] text-muted-foreground">{install}</span> : null}
       {error ? <span className="text-[11px] text-bad">{error}</span> : null}
       <Dialog open={view !== null} onOpenChange={(open) => { if (!open) setView(null); }}>
         <DialogContent className="max-w-3xl">
