@@ -104,3 +104,44 @@ export function serveStatic(viewerDir: string | undefined, urlPath: string): Sta
     : "no-cache";
   return { status: 200, contentType, body: fs.readFileSync(abs), cacheControl };
 }
+
+// ---------------------------------------------------------------------------
+// Viewer build id (CONTRACTS §2.3 /api/health `viewerBuild`): every viewer build stamps
+// <meta name="ruah-build" content="<id>"> into its prerendered index.html (ui/vite.config.ts).
+// An open window compares it with its own id and reloads onto a newer build. Read on demand
+// (`pnpm ui:build` replaces the whole directory while the daemon runs), cached by mtime + size.
+
+const buildIdCache = new Map<string, { mtimeMs: number; size: number; id: string | null }>();
+
+/** The id in a viewer index.html, or null (an older build without the meta tag). */
+export function parseViewerBuildId(html: string): string | null {
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    if (!/\bname\s*=\s*["']ruah-build["']/i.test(tag)) continue;
+    const content = /\bcontent\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1]?.trim();
+    return content ? content : null;
+  }
+  return null;
+}
+
+/** The build id of the viewer served from `viewerDir`; null without a viewer or an id. */
+export function viewerBuildId(viewerDir: string | undefined): string | null {
+  if (viewerDir === undefined) return null;
+  const index = path.join(path.resolve(viewerDir), "index.html");
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(index);
+  } catch {
+    return null;
+  }
+  const cached = buildIdCache.get(index);
+  if (cached !== undefined && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.id;
+  let id: string | null = null;
+  try {
+    id = parseViewerBuildId(fs.readFileSync(index, "utf8"));
+  } catch {
+    return null;
+  }
+  buildIdCache.set(index, { mtimeMs: stat.mtimeMs, size: stat.size, id });
+  return id;
+}
