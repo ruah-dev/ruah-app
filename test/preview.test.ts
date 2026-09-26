@@ -91,6 +91,39 @@ describe("url discovery", () => {
     expect(stripAnsi("\u001b[31merror\u001b[0m \u001b]8;;x\u0007link\u001b]8;;\u0007")).toBe("error link");
     expect(crashReason(["starting", "Error: listen EADDRINUSE: address already in use :::3000", "    at Server.setupListenHandle", "exit"])).toContain("EADDRINUSE");
     expect(crashReason(["one", "two"])).toBe("two");
+    // Regression: Node's dump of the error object came after the message, and `code: 'EADDRINUSE',`
+    // (then npm's update notice) was reported instead of what happened.
+    const node = [
+      "> dev",
+      "> vite",
+      "node:events:487",
+      "      throw er; // Unhandled 'error' event",
+      "      ^",
+      "Error: listen EADDRINUSE: address already in use ::1:5173",
+      "    at Server.setupListenHandle [as _listen2] (node:net:2008:16)",
+      "Emitted 'error' event on Server instance at:",
+      "    at emitErrorNT (node:net:2044:8) {",
+      "  code: 'EADDRINUSE',",
+      "  errno: -48,",
+      "  syscall: 'listen',",
+      "  address: '::1',",
+      "  port: 5173",
+      "}",
+      "Node.js v25.9.0",
+      "⠙npm notice",
+      "npm notice New minor version of npm available! 11.12.1 -> 11.20.0",
+      "npm notice",
+      "⠙",
+    ];
+    expect(crashReason(node)).toBe("Error: listen EADDRINUSE: address already in use ::1:5173");
+    expect(crashReason(["Traceback (most recent call last):", '  File "app.py", line 1, in <module>', "ModuleNotFoundError: No module named 'flask'"])).toBe(
+      "ModuleNotFoundError: No module named 'flask'",
+    );
+    // A spinner frame glued to npm's notice is still npm's notice.
+    expect(crashReason(["ready in 300 ms", "\u2819npm notice", "\u2819"])).toBe("ready in 300 ms");
+    expect(crashReason(["  VITE v6.0.0", "[vite] Internal server error: Failed to resolve import \"./x.js\"", "npm notice"])).toBe(
+      '[vite] Internal server error: Failed to resolve import "./x.js"',
+    );
   });
 });
 
