@@ -1,16 +1,17 @@
 // Threshold toasts: when a limit window crosses the warning (default 80%) or critical (95%)
 // threshold, one toast per agent, window, level and reset — remembered across reloads. Renders
-// nothing; mount it once (the Limits panel does; the shell can mount it app-wide instead).
+// nothing; mount it once (the Limits panel does; the shell can mount it app-wide instead). It
+// fetches nothing itself: it announces what the panel and the hints have read.
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { formatResetsIn, limitCrossings } from "./agentLimitsModel";
-import { readAnnounced, useAgentLimits, useLimitSettings, writeAnnounced } from "./agentLimitsStore";
+import { readAnnounced, useAgentLimitsSnapshot, useLimitSettings, writeAnnounced } from "./agentLimitsStore";
 
 /** Crossings announced this session (covers a viewer without localStorage). */
 const sessionAnnounced = new Set<string>();
 
 export function AgentLimitToasts() {
-  const { report } = useAgentLimits();
+  const { report } = useAgentLimitsSnapshot();
   const [settings] = useLimitSettings();
 
   useEffect(() => {

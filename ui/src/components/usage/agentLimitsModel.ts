@@ -277,8 +277,19 @@ export interface LimitCrossing {
   level: Exclude<Severity, "normal">;
 }
 
+/**
+ * The window a reset time names, to the minute: two sources can report the same reset a second
+ * apart (Claude's get_usage "…:59.591Z" vs a streamed event's "…:00.000Z"), which must not look
+ * like a new window and toast again.
+ */
+function windowKey(resetsAt: string | null): string {
+  if (!resetsAt) return "none";
+  const at = Date.parse(resetsAt);
+  return Number.isFinite(at) ? new Date(Math.round(at / MINUTE) * MINUTE).toISOString() : resetsAt;
+}
+
 function crossingKey(agentId: string, meter: LimitMeter, level: Exclude<Severity, "normal">): string {
-  return `${agentId}|${meter.id}|${level}|${meter.resetsAt ?? "none"}`;
+  return `${agentId}|${meter.id}|${level}|${windowKey(meter.resetsAt)}`;
 }
 
 /**

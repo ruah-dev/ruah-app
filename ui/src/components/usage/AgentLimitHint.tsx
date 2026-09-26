@@ -1,7 +1,8 @@
 // The compact limit hint for the shell's top-bar agent pill: "62% left · resets 4h" for the
 // agent's tightest window, amber / red past the viewer's thresholds, the window and the absolute
 // reset time on hover. Renders nothing when the agent reports no percentage (so a pill without
-// limits stays as it is). Self-contained: it shares the Limits panel's reading.
+// limits stays as it is). Self-contained: it shares the Limits panel's reading, and on its own
+// asks the daemon for its agent only (never every agent's CLIs).
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatAbsolute, limitHintText, severityOf, tightestMeter } from "./agentLimitsModel";
@@ -20,10 +21,10 @@ const DOT = {
 } as const;
 
 export function AgentLimitHint({ agentId, className }: { agentId: string; className?: string }) {
-  const { report } = useAgentLimits();
+  const id = agentId === "claude-acp" ? "claude" : agentId;
+  const { report } = useAgentLimits({ agentId: id });
   const [settings] = useLimitSettings();
   const now = useNow(60_000);
-  const id = agentId === "claude-acp" ? "claude" : agentId;
   const agent = report?.agents.find((a) => a.agentId === id);
   if (!agent) return null;
   const text = limitHintText(agent, now);

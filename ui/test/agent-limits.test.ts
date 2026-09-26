@@ -16,7 +16,7 @@ import {
   type AgentLimits,
   type LimitMeter,
 } from "@/components/usage/agentLimitsModel";
-import { mergeReport, parseLimitSettings } from "@/components/usage/agentLimitsStore";
+import { mergeReport, parseLimitSettings, scopesToRead } from "@/components/usage/agentLimitsStore";
 
 const NOW = Date.parse("2026-09-25T12:00:00.000Z");
 const H = 3_600_000;
@@ -102,6 +102,16 @@ describe("agent limits model", () => {
     expect(limitCrossings(next, t, announced)).toHaveLength(1);
   });
 
+  it("does not announce again when the same reset arrives with other seconds", () => {
+    const t = { warn: 80, critical: 95 };
+    // Claude's get_usage sends fractional seconds, a streamed rate_limit event whole epoch seconds.
+    const probed = [agent({ meters: [meter({ usedPercent: 85, resetsAt: "2026-09-26T04:39:59.591Z" })] })];
+    const announced = new Set(limitCrossings(probed, t, new Set()).flatMap((c) => c.keys));
+    for (const resetsAt of ["2026-09-26T04:39:59.000Z", "2026-09-26T04:40:00.000Z", "2026-09-26T04:40:00.412Z"]) {
+      expect(limitCrossings([agent({ meters: [meter({ usedPercent: 86, resetsAt })] })], t, announced), resetsAt).toEqual([]);
+    }
+  });
+
   it("orders signed-in agents first and merges a one-agent refresh", () => {
     const list = [agent({ agentId: "kiro", status: "not_logged_in" }), agent({ agentId: "grok", status: "partial" }), agent({ agentId: "claude" })];
     expect(orderForDisplay(list).map((a) => a.agentId)).toEqual(["claude", "grok", "kiro"]);
@@ -110,6 +120,16 @@ describe("agent limits model", () => {
     const merged = mergeReport(report, { checkedAt: "b", agents: [fresh] }, "kiro");
     expect(merged.agents.map((a) => [a.agentId, a.status])).toEqual([["kiro", "ok"], ["grok", "partial"], ["claude", "ok"]]);
     expect(mergeReport(null, { checkedAt: "c", agents: [fresh] })).toEqual({ checkedAt: "c", agents: [fresh] });
+  });
+
+  it("reads only what the mounted consumers show", () => {
+    // A lone top-bar hint asks for its own agent, never every agent's CLIs.
+    expect(scopesToRead(new Map([["claude", 1]]))).toEqual(["claude"]);
+    expect(scopesToRead(new Map([["claude", 2], ["kiro", 1]]))).toEqual(["claude", "kiro"]);
+    // The panel (every agent) covers the hints.
+    expect(scopesToRead(new Map([["claude", 1], ["*", 1]]))).toEqual(["*"]);
+    expect(scopesToRead(new Map([["claude", 0]]))).toEqual([]);
+    expect(scopesToRead(new Map())).toEqual([]);
   });
 
   it("reads saved settings defensively", () => {
