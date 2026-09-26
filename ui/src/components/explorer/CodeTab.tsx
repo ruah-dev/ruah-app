@@ -129,7 +129,7 @@ export function CodeTab({
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           {fileSwitcher ? <div className="mb-2">{fileSwitcher}</div> : null}
           <p className="text-label text-foreground">
-            {result.status === 404 ? "File not found in the repo" : "Cannot show this file"}
+            {result.status === 404 ? "File not found in the repo" : "Couldn't show this file"}
           </p>
           <p className="font-mono text-caption break-all text-muted-foreground">{path}</p>
           <p className="text-caption text-muted-foreground">{result.message}</p>

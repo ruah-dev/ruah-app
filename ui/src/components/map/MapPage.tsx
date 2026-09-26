@@ -316,7 +316,10 @@ function EmptyMap() {
         description: r.nodes ? `${r.edges} links · ${Math.round(r.ms)} ms` : "Add them by hand from the palette.",
       });
     } catch (err) {
-      toast.error("Scan failed", { description: err instanceof Error ? err.message : String(err) });
+      const reason = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
+      toast.error("Couldn't scan the project", {
+        description: `${reason}. Check that the folder still exists and is readable, then scan again.`,
+      });
     } finally {
       setScanning(false);
     }

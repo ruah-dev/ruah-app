@@ -2,8 +2,9 @@
 // segmented controls, a big total with per-agent shares beside a layered chart, a totals row and
 // a model / time breakdown table. t3code's environments, Effect atoms and RPC are replaced by the
 // daemon's /api/usage endpoints (src/lib/usage.ts).
-import { useMemo, useState } from "react";
-import { RefreshCw, SlidersHorizontal } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { MessageSquare, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import {
   bucketOf,
@@ -24,7 +25,7 @@ import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { Skeleton } from "@/components/ui/skeleton";
-import { iconButton } from "@/components/ui/controls";
+import { iconButton, primaryButton, quietButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { UsageChart, type ChartColumn } from "./UsageChart";
 import { AgentLimitsPanel } from "./AgentLimitsPanel";
@@ -60,13 +61,24 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 /** No data yet: the Accountant (charting) waits for turns; a failure brings the detective. */
-function EmptyState({ title, body, failed = false }: { title: string; body: string; failed?: boolean }) {
+function EmptyState({
+  title,
+  body,
+  failed = false,
+  action,
+}: {
+  title: string;
+  body: string;
+  failed?: boolean;
+  action?: ReactNode;
+}) {
   return (
     <GhostState
       pose={failed ? "detective" : "charting"}
       eyebrow={failed ? "Couldn't load" : "Usage"}
       title={title}
       body={body}
+      actions={action}
       className="py-20"
       live={failed ? "polite" : undefined}
     />
@@ -215,10 +227,21 @@ export function UsagePage() {
               title={summary.status === "error" ? "Couldn't load usage" : "No usage recorded yet"}
               body={
                 summary.status === "error"
-                  ? `The daemon did not answer: ${summary.message.replace(/\.$/, "")}. Refresh to try again.`
+                  ? `The daemon did not answer: ${summary.message.replace(/\.$/, "")}. Check that Ruah is still running, then try again.`
                   : daemon.source === "daemon"
                     ? "Tokens and cost appear here after the agent has worked on a few turns."
                     : "Usage comes from the Ruah daemon. Start ruah app serve <repo> to record it."
+              }
+              action={
+                summary.status === "error" ? (
+                  <button type="button" className={quietButton} onClick={refreshSummary}>
+                    <RefreshCw className="size-3.5" /> Try again
+                  </button>
+                ) : daemon.source === "daemon" && daemon.project ? (
+                  <Link to="/agent" className={primaryButton}>
+                    <MessageSquare className="size-3.5" /> Ask agent
+                  </Link>
+                ) : undefined
               }
             />
           ) : (

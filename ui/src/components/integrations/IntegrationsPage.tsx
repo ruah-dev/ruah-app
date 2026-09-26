@@ -212,7 +212,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
               onClick={() => void run("connect")}
             >
               {busy === "connect" ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {info.status === "error" ? "Retry" : "Connect"}
+              {info.status === "error" ? "Try again" : "Connect"}
             </button>
           )}
         </div>

@@ -253,7 +253,7 @@ export function limitHintText(agent: Pick<AgentLimits, "meters">, now: number): 
 export const STATUS_LABEL: Record<AgentLimitsStatus, string> = {
   ok: "",
   partial: "Partial",
-  error: "Could not read",
+  error: "Couldn't read",
   unsupported: "No plan limits",
   not_logged_in: "Not signed in",
   not_installed: "Not installed",

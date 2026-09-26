@@ -304,8 +304,8 @@ export function InspectorPanel({
         title="Nothing selected"
         body={
           view === "code"
-            ? "Select an element on the diagram to read its source."
-            : "Select an element on the diagram to see what it is, what it talks to and where it lives."
+            ? "Select an element on the map to read its source."
+            : "Select an element on the map to see what it is, what it talks to and where it lives."
         }
       />
     );

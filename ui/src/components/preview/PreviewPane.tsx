@@ -25,6 +25,7 @@ import {
   type PreviewStatus,
 } from "@/lib/preview";
 import { cn } from "@/lib/utils";
+import { primaryButton } from "@/components/ui/controls";
 import { PreviewFrame, openInBrowser } from "./PreviewFrame";
 import { CustomCommandDialog, PreviewCommandMenu } from "./PreviewCommandMenu";
 import { CrashPanel, LookingPanel, NoProjectPanel, NothingFoundPanel, PickPanel, ReadyPanel, StartingPanel } from "./PreviewPanels";
@@ -195,7 +196,7 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
 
   const typeSetup = (command: string, dir: string) => {
     terminalActions.create({ ...(dir !== "." ? { cwd: dir } : {}), input: command, title: "install" }).catch((err: unknown) => {
-      toast.error("Could not open a terminal", { description: err instanceof Error ? err.message : String(err) });
+      toast.error("Couldn't open a terminal", { description: `${(err instanceof Error ? err.message : String(err)).replace(/\.$/, "")}. Run the command in your own terminal instead.` });
     });
   };
 
@@ -204,7 +205,9 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
     setEditing(false);
     if (next === null) {
       setDraft(navUrl ?? "");
-      toast.error("That is not an address the preview can open");
+      toast.error("The preview can't open that address", {
+        description: "Type a path on the dev server (/about), a localhost address (localhost:5173) or a full http:// URL.",
+      });
       return;
     }
     setNav({ base: baseUrl, url: next });
@@ -370,10 +373,10 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
                     type="button"
                     onClick={() => (selected ? startCandidate(selected, false) : setMenuOpen(true))}
                     disabled={busy || (detection !== null && detection.candidates.length === 0)}
-                    className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    className={primaryButton}
                   >
                     {p.pending === "start" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                    {status?.state === "crashed" ? "Retry" : "Start"}
+                    {status?.state === "crashed" ? "Restart" : "Start"}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">{selected ? `Run ${selected.command}` : "Choose what to run"}</TooltipContent>

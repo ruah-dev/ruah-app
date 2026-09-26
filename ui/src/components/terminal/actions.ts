@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { openTerminalForElement, runInTerminal } from "@/lib/terminal";
 
 function fail(err: unknown) {
-  toast.error("Could not open a terminal", { description: err instanceof Error ? err.message : String(err) });
+  toast.error("Couldn't open a terminal", {
+      description: `${(err instanceof Error ? err.message : String(err)).replace(/\.$/, "")}. Check that Ruah is still running, then try again.`,
+    });
 }
 
 export function openElementInTerminal(node: { id: string; label?: string; path?: string; filePaths?: string[] }) {

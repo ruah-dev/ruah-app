@@ -29,7 +29,9 @@ function useToggleKey() {
 
 export function newTerminal() {
   terminalActions.create().catch((err: unknown) => {
-    toast.error("Could not open a terminal", { description: err instanceof Error ? err.message : String(err) });
+    toast.error("Couldn't open a terminal", {
+      description: `${(err instanceof Error ? err.message : String(err)).replace(/\.$/, "")}. Check that Ruah is still running, then try again.`,
+    });
   });
 }
 

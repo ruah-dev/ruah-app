@@ -391,7 +391,7 @@ export function CloudPage() {
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
         <RemoteNotice remote={s.cloud} what="Cloud" />
         {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}
-        {scopeError ? <Notice tone="bad" title="Could not change the project's scope" body={scopeError} /> : null}
+        {scopeError ? <Notice tone="bad" title="Couldn't change the project's scope" body={scopeError} /> : null}
         {scopeFileError ? (
           <Notice
             tone="warn"
@@ -533,7 +533,7 @@ export function CloudPage() {
                       ) : null}
                       {all.length === 0 && s.cloud.status === "error" ? (
                         <button type="button" className={quietButton} onClick={() => void loadCloud()}>
-                          Retry
+                          Try again
                         </button>
                       ) : null}
                     </>
