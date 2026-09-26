@@ -21,6 +21,8 @@ type Props = {
   onDeleteNode: () => void;
   onDeleteEdge: () => void;
   onDiagramPatch: (patch: { title?: string; subtitle?: string }) => void;
+  /** Select one of the element's connections (the keyboard way to reach a link on the canvas). */
+  onSelectEdge?: ((edge: EdgeRef) => void) | undefined;
 };
 
 function Field({
@@ -86,6 +88,7 @@ export function PropertiesPanel({
   onDeleteNode,
   onDeleteEdge,
   onDiagramPatch,
+  onSelectEdge,
 }: Props) {
   const edgeData = edge
     ? diagram.edges.find((e) => e.from === edge.from && e.to === edge.to)
@@ -93,6 +96,7 @@ export function PropertiesPanel({
   const nameOf = (id: string) => diagram.nodes.find((n) => n.id === id)?.label ?? id;
   const disabled = !editable;
   const kindChoices = node && !kinds.includes(node.kind) ? [node.kind, ...kinds] : kinds;
+  const links = node ? diagram.edges.filter((e) => e.from === node.id || e.to === node.id) : [];
 
   return (
     <div className="space-y-4 px-5 py-5">
@@ -179,6 +183,38 @@ export function PropertiesPanel({
               className="min-h-16 rounded-md border-hairline bg-transparent text-ui-sm shadow-none"
             />
           </Field>
+          {links.length && onSelectEdge ? (
+            <Field label="Connections" hint="select to edit">
+              <ul className="-mx-2 space-y-0.5">
+                {links.map((e) => {
+                  const out = e.from === node.id;
+                  const other = nameOf(out ? e.to : e.from);
+                  return (
+                    <li key={`${e.from}\u0000${e.to}`}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectEdge({ from: e.from, to: e.to })}
+                        aria-label={`${out ? "To" : "From"} ${other}${e.label ? `, ${e.label}` : ""}`}
+                        className="flex h-7 w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-ui-sm text-foreground transition-colors hover:bg-accent"
+                      >
+                        <span aria-hidden className="w-3 shrink-0 text-center text-muted-foreground">
+                          {out ? "→" : "←"}
+                        </span>
+                        <span className="min-w-0 truncate" title={other}>
+                          {other}
+                        </span>
+                        {e.label ? (
+                          <span className="ms-auto max-w-[45%] shrink-0 truncate font-mono text-caption text-muted-foreground">
+                            {e.label}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Field>
+          ) : null}
           <Field label="Drill-down">
             <p className="font-mono text-meta text-muted-foreground">
               {node.drill

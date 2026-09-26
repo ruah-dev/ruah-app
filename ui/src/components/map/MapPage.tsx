@@ -666,6 +666,10 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
                 wb.clearSelection();
               }}
               onDiagramPatch={(patch) => ws.updateDiagram(wb.activeDiagram.id, patch)}
+              onSelectEdge={(edge) => {
+                wb.selectEdge(edge);
+                wb.selectNode(null);
+              }}
             />
           </div>
         ) : (

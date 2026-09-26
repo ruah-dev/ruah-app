@@ -51,17 +51,30 @@ function Tab({
     <div
       role="tab"
       aria-selected={active}
-      title={`${terminal.title} — ${terminal.cwd}${exited ? ` (exited ${terminal.exitCode ?? ""})` : ""}\nDouble-click to rename`}
+      // One Tab stop for the strip (the active tab); ← / → move between tabs (tablist below).
+      tabIndex={active ? 0 : -1}
+      title={`${terminal.title} — ${terminal.cwd}${exited ? ` (exited ${terminal.exitCode ?? ""})` : ""}\nDouble-click or F2 to rename`}
       onClick={onSelect}
       onDoubleClick={() => {
         setDraft(terminal.title);
         setEditing(true);
       }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        } else if (e.key === "F2") {
+          e.preventDefault();
+          setDraft(terminal.title);
+          setEditing(true);
+        }
+      }}
       onAuxClick={(e) => {
         if (e.button === 1) terminalActions.kill(terminal.id);
       }}
       className={cn(
-        "group/tab relative flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md ps-2 pe-1 text-ui-sm transition-colors select-none",
+        "group/tab relative flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md ps-2 pe-1 text-ui-sm transition-colors select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
     >
@@ -101,8 +114,8 @@ function Tab({
           terminalActions.kill(terminal.id);
         }}
         className={cn(
-          "grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-surface-4 hover:text-foreground",
-          active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100",
+          "grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-surface-4 hover:text-foreground focus-visible:opacity-100",
+          active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 group-focus-within/tab:opacity-100",
         )}
       >
         <X className="size-3" />
@@ -205,13 +218,48 @@ export function TerminalPanel() {
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize terminal"
+        aria-valuemin={MIN_HEIGHT}
+        aria-valuenow={Math.round(t.height)}
+        tabIndex={0}
         onPointerDown={startDrag}
         onDoubleClick={() => terminalActions.setMaximized(!t.maximized)}
-        className="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize hover:bg-primary/30"
+        onKeyDown={(e) => {
+          // ↑ / ↓ resize by 24 px (Shift: 96 px); Enter maximizes / restores.
+          if (e.key === "Enter") {
+            e.preventDefault();
+            terminalActions.setMaximized(!t.maximized);
+            return;
+          }
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+          e.preventDefault();
+          const step = (e.shiftKey ? 96 : 24) * (e.key === "ArrowUp" ? 1 : -1);
+          const max = (panelRef.current?.parentElement?.getBoundingClientRect().height ?? window.innerHeight) - 60;
+          if (t.maximized) terminalActions.setMaximized(false);
+          terminalActions.setHeight(Math.min(max, Math.max(MIN_HEIGHT, t.height + step)));
+        }}
+        className="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize hover:bg-primary/30 focus-visible:bg-primary/40 focus-visible:outline-none"
       />
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-hairline bg-sidebar ps-2 pe-1">
         <span className="section-label pe-2">Terminal</span>
-        <div role="tablist" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <div
+          role="tablist"
+          aria-label="Terminals"
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+            if ((e.target as HTMLElement).getAttribute("role") !== "tab") return;
+            const i = terminals.findIndex((x) => x.id === activeId);
+            const n = terminals.length;
+            if (n === 0) return;
+            const next = e.key === "Home" ? 0 : e.key === "End" ? n - 1 : (Math.max(0, i) + (e.key === "ArrowRight" ? 1 : -1) + n) % n;
+            const term = terminals[next];
+            if (!term) return;
+            e.preventDefault();
+            terminalActions.setActive(term.projectId, term.id);
+            const list = e.currentTarget;
+            requestAnimationFrame(() => list.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus());
+          }}
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+        >
           {terminals.map((term) => (
             <Tab
               key={term.id}

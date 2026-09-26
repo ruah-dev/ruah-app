@@ -10,6 +10,7 @@ import { contextPathOf } from "@/lib/architecture";
 import { cancel, resetSession, sendPrompt, type DaemonState } from "@/lib/daemon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { scrollBehavior } from "@/lib/motion";
 import { Composer, imageBlockedReason, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
 
@@ -129,7 +130,7 @@ export function AgentPanel({
     const el = document.getElementById(`turn-${focusTurnId}`);
     if (!el) return;
     stickRef.current = false;
-    el.scrollIntoView({ block: "start", behavior: "smooth" });
+    el.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [focusTurnId]);
 
   const send = (text: string, attachments: AttachmentMeta[] = []) => {

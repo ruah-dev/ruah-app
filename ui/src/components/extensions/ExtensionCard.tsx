@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { scrollBehavior } from "@/lib/motion";
 import {
   AGENT_LABEL,
   TARGET_LABEL,
@@ -63,7 +64,7 @@ export function ExtensionCard({
 
   // A just-added extension scrolls into view.
   useEffect(() => {
-    if (highlight === true) cardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (highlight === true) cardRef.current?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
   }, [highlight]);
 
   const run = async (label: string, action: () => Promise<{ ok: boolean; message?: string }>) => {

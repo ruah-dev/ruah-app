@@ -17,6 +17,8 @@ import { edgeLabelScale } from "./canvas/display";
 import { NODE_H, NODE_W, groupIcon as GroupIcon } from "@/components/explorer/kinds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/motion";
+import { controlOwnsKey } from "@/lib/key-targets";
 import {
   boundsOf,
   clampZoom,
@@ -88,9 +90,6 @@ const CULL_ABOVE = 160;
 // gesture restyles the cards a handful of times instead of every frame.
 const K_STEP = 1.25;
 const quantize = (k: number) => Math.pow(K_STEP, Math.round(Math.log(k) / Math.log(K_STEP)));
-
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 type ViewState = { lod: Lod; kq: number; cull: Box | null };
 
@@ -647,6 +646,8 @@ export function EditorCanvas({
         return;
       }
       if (typing || mod) return;
+      // A focused button / tab / radio keeps its own Enter, Space and arrows (lib/key-targets.ts).
+      if (controlOwnsKey(target, e.key)) return;
       // Only when the map is on screen (the canvas may be mounted behind another page).
       if (!shellRef.current?.isConnected || shellRef.current.offsetParent === null) return;
       const sel = K.selectedNodeId && K.nodes.some((n) => n.id === K.selectedNodeId) ? K.selectedNodeId : null;

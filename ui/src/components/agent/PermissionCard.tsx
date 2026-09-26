@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { ShieldQuestion, Wrench } from "lucide-react";
 import type { PermissionRequest } from "@/lib/daemon";
 import { answerPermission } from "@/lib/daemon";
+import { controlOwnsKey } from "@/lib/key-targets";
 import { iconByKind } from "./ToolCallRow";
 import { primaryButton, quietButton, solidButton } from "@/components/ui/controls";
 
@@ -37,6 +38,8 @@ export function PermissionCard({
         !(target as HTMLTextAreaElement).disabled
       )
         return;
+      // Enter on a focused option (or any other button) presses THAT button, never "Allow".
+      if (controlOwnsKey(target, e.key)) return;
       if (e.key === "Enter") {
         const allow = request.options.find((o) => o.kind === "allow_once");
         if (!allow) return;
