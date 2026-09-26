@@ -41,11 +41,17 @@ Stored in `localStorage["ruah.palette"]`; `<html data-palette>` carries it (abse
 
 - The design system's **dusk** is indigo, so the id `dusk` now means **Indigo** (the old app
   "Dusk" was a lavender accent swap). Keeping the id means the first-paint boot script already
-  applies it.
+  applies it, and indigo is the nearest of the new palettes to the old purple accent. A `dusk`
+  saved before the change (no `ruah.palette.v`) gets a one-time note in Settings → Appearance —
+  "Dusk is now Indigo", with **Keep Indigo** / **Use Classic teal**; choosing any palette or
+  dismissing writes `ruah.palette.v = 2` and ends it.
 - `classic` is the design system's default palette unchanged (the look before Teal + Indigo).
-  **Wiring:** `THEME_BOOT` in `routes/__root.tsx` only accepts `dusk` and `sunrise`; it must accept
-  every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`) or a stored `classic` shows the
-  default palette for one frame after a reload.
+  Until the shell's boot script accepts it (Wiring, step 1) a stored `classic` paints Teal + Indigo
+  after a reload until the viewer's JS has run (RootComponent applies it on hydration).
+- Theme and palette are in-memory stores (`lib/theme.ts` `themeStore` / `paletteStore`): the
+  session's choice is the truth and still applies when localStorage is unavailable; every switcher
+  (Settings, the appearance menu, ⌘K) shares them; other windows follow through the `storage`
+  event; a theme change never re-applies the palette or the reverse.
 
 ## Themes
 
@@ -67,7 +73,7 @@ contrast.
 | `--ok` `--warn` `--bad` `--info` | sage / amber / coral / slate | text-safe; `Pill` puts them on a 12–15 % tint of themselves |
 | `--destructive` | bad fill | as primary (ink on it) |
 | `--node-service` / `-frontend` / `-data` / `-queue` / `-gateway` / `-external` / `-step` / `-file` | brand / ai / extra 1–3 / info / pale ai / warm neutral | text-safe (the code preview uses them as syntax colours); **never a status hue**, so an element never reads as failing by its kind |
-| `--cat-1…6` (`--series-1…6`) | brand, ai, extra 1–3, info | ≥ 3:1 — chart series, provider tints (`bg-cat-3/15 text-cat-3`) |
+| `--cat-1…6` (`--series-1…6`) | brand, ai, extra 1–3, info | ≥ 3:1 on surfaces **and on a 15 % tint of itself** — chart series, provider tiles (`bg-cat-3/15 text-cat-3`) |
 | `--agent-claude` `-cursor` `-grok` `-kiro` `-opencode` | fixed identity hues, lightness per theme | ≥ 3:1 — the agent's ghost, chart series, `AgentMark` fill |
 | `--ph-brand` `-ai` `-ok` `-warn` `-bad` `-info` `-brand-soft` `-extra-1…3` | role fills | the Phantom bodies: the design system's exact step whenever it reaches 3:1 on the page |
 | `--ph-eye` `-shine` `-paper` `-ink` `-prop` `-prop-deep` `-screen` `-edge` `-muted` `-cream` | theme neutrals | the Phantom's eyes and props |
@@ -77,14 +83,22 @@ contrast.
 **Readable adjustments.** Accent tokens keep the design system's hue and chroma; where a pair
 would fail WCAG, only OKLab lightness moves (`color.ts` `readable`) until it passes. Examples in
 dark: `--ai` is indigo `#6578ff` lifted to `#8da1ff` for text (the indigo fills — ghosts, charts —
-stay `#6578ff`); `--faint` `#8f8a7e` → `#999488` so hints pass on popovers too. In light the fills
-deepen (teal `#00bea8` → `--primary` `#137164`).
+stay `#6578ff`); `--faint` `#8f8a7e` → `#a39d91` so hints pass on popovers, hovered rows (accent)
+and raised panels (surface-3) too. In light the fills deepen (teal `#00bea8` → `--primary`
+`#137164`).
 
 **The check** (`ui/test/design-tokens.test.ts`, `ruah app design check`): body text pairs ≥ 4.5:1
-(7:1 in the contrast theme) — foreground / muted / faint on every surface, inks on accent fills,
-semantic colours on surfaces and on their own tints, node kinds, terminal colours; UI pairs ≥ 3:1 —
-focus ring, input borders, map edges, chart / agent / Phantom colours. 199 pairs × 4 palettes × 3
-themes, all passing.
+(7:1 in the contrast theme) — foreground on every surface (surface-0…4, background, card, popover,
+message, composer, accent, muted); muted and faint on every surface that carries secondary text
+(the same minus surface-4, which only fills controls whose text turns foreground, and composer);
+inks on accent fills; semantic colours on surfaces and on a 15 % tint of themselves over
+background / card / popover; node kinds; terminal colours. UI pairs ≥ 3:1 — focus ring, input
+borders, map edges, chart / agent / Phantom colours, and the categorical colours on their own 15 %
+tint. 224 pairs × 4 palettes × 3 themes = 2688 checks, all passing.
+
+**Tints above 15 %** are not checked: semantic text sits on at most a 15 % tint of itself (the
+`soft` button is 10 %, 15 % on hover; badges 12 %). Semantic text on a tint over `surface-2` is not
+checked either — keep pills on background, card and popover.
 
 ## Scopes
 
@@ -96,8 +110,8 @@ themes, all passing.
 ## Components (`ui/src/components/ui/*`)
 
 Following the design system's kit, in the app's type:
-- **Button:** `default` (primary fill), `ai`, `soft` (primary tint), `outline`, `ghost`,
-  `destructive`; 2 px focus ring in `--ring`.
+- **Button:** `default` (primary fill), `ai`, `soft` (primary on a 10 % tint, 15 % on hover),
+  `outline`, `ghost`, `destructive`; 2 px focus ring in `--ring`.
 - **Badge:** `brand` `ai` `ok` `warn` `bad` `info` — pill, the role colour on its tint.
 - **Alert:** `info` `ai` `ok` `warn` `bad` — 3 px role-coloured edge on `surface-2`, title and icon
   in the role colour.
@@ -140,4 +154,34 @@ theme (`?palette=dusk&section=poses&size=200&theme=light`).
 
 Rules: SVG + CSS-only motion (transform / opacity), a per-instance phase, static under
 `prefers-reduced-motion` and in the high-contrast theme, paused while the tab is hidden; pupils
-are the body's own deep shade (never black); decorative unless given a `label`.
+are the body's own deep shade (never black); decorative unless given a `label`. A pose's props and
+a scene's figures animate SVG children (main-thread paint), so they move only on hover or with
+`lively` (a pose that reports progress — the Map's scan — and the `/_ghosts` sheet); otherwise only
+the whole ghost drifts, a compositor transform. An idle page of empty states costs no paint.
+
+## Wiring for the shell owner (not on this branch)
+
+The shell (`routes/__root.tsx`, `components/shell/*`, the launcher, onboarding, `projects/*`) was
+outside this track. Line numbers are against main at `46d8d64` (icon rail + command bar).
+
+1. **Boot script** — `routes/__root.tsx:154` `THEME_BOOT` ends with
+   `if(a==="dusk"||a==="sunrise")r.dataset.palette=a`. Accept every id in `PALETTE_BOOT_IDS`,
+   ideally generated: `…;if(${JSON.stringify(PALETTE_BOOT_IDS)}.indexOf(a)>=0)r.dataset.palette=a`.
+   `ui/test/design-tokens.test.ts` runs the script and carries an `it.fails` for `classic`; drop
+   `.fails` once this lands.
+2. **Appearance menu** — `components/shell/TopBar.tsx:323` `TopBar`: add `<AppearanceMenu />`
+   (`components/settings/AppearanceMenu.tsx`) before `<AgentPill />`, e.g. after
+   `<PreviewToggle />`.
+3. **The agent's ghost in the command bar** — `components/shell/TopBar.tsx:279` (`AgentPill`):
+   `<Phantom expression={expression} size={14} tone={…} still={!working} />` →
+   `<PhantomAgent agent={daemon.agent?.agents?.currentAgentId ?? ""} expression={expression} size={14} tone={daemon.source === "sample" ? "muted" : undefined} still={!working} />`
+   (status expressions keep their semantic colour on an agent's ghost).
+4. **Start screen** — `components/launcher/Launcher.tsx:253` keeps `PhantomCompanion` (it follows
+   the pointer); optionally `PhantomScene scene="duo" height={96}` for "you and your agent".
+5. **Onboarding** — `components/workspace/Onboarding.tsx:65` `steps[].ghost` (expressions at `sm`,
+   drawn at :119) could become poses at `md`: step 1 `traveler`, step 2 `mapping`, step 3
+   `chatting` (`PhantomPose pose=… size="md" noGlow`).
+6. **Hard-coded status colours** in `projects/*`: `ProjectBits.tsx:9`
+   (`bg-amber-400/16 text-amber-300 [html.light_&]:text-amber-700` → `bg-warn/15 text-warn`) and
+   `ProjectActivityBadge.tsx:26` (`bg-amber-500 … text-black` → `bg-warn … text-primary-foreground`),
+   so they follow the palette like every other status.

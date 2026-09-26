@@ -1845,12 +1845,16 @@ preview scope, and the `ruah app design` CLI.
 | --- | --- | --- |
 | `ruah.theme` | `dark` · `light` · `contrast` · `system` | `dark` |
 | `ruah.palette` | `teal` (**Teal + Indigo**) · `dusk` (**Indigo**, the design system's Dusk) · `sunrise` · `classic` (the design system's default, teal + lavender) | `teal` |
+| `ruah.palette.v` | `2` once a palette was chosen (or the Dusk → Indigo note dismissed) since `dusk` became Indigo | absent |
 
 `<html>` carries `data-theme="dark|light|contrast"` (always), `class="dark|light"` and
 `data-palette="<id>"` for every palette except the default (absent = Teal + Indigo). Unknown stored
 values fall back to the defaults. The first-paint script (`THEME_BOOT`, routes/__root.tsx) must set
-`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`). A stored `dusk`
-now renders the indigo palette (it was a lavender accent swap before).
+`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`); until it accepts
+`classic`, that palette appears only once the viewer's JS has run. A stored `dusk` now renders the
+indigo palette (it was a lavender accent swap before); when `ruah.palette.v` is absent, Settings →
+Appearance says so once. The viewer keeps the session's choice in memory: storage only persists it
+(a choice holds when storage is unavailable) and other windows follow through the `storage` event.
 
 ### 15.2 Preview scope
 
