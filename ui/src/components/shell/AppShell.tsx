@@ -390,12 +390,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // A cached target renders the real page at once; only a first visit shows the skeleton.
   const content = switching && !switching.preview ? <SwitchingContent name={switching.name} /> : children;
   const hideContent = terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon";
-  // A project the wizard just created shows its first-run hints instead of "Where you left off".
-  const showHints = !isMobile && !!firstRun && firstRun.projectId === daemon.project?.id && !switching;
+  // A project the wizard just created shows its first-run hints (on its map, where they point)
+  // instead of "Where you left off" — on no page while they are pending.
+  const hintsPending = !isMobile && !!firstRun && firstRun.projectId === daemon.project?.id && !switching;
+  const showHints = hintsPending && pathname === "/map";
   const showResume =
     !isMobile &&
     !skipResume &&
-    !showHints &&
+    !hintsPending &&
     shouldShowResumeCard({
       resume: resume.entry,
       projectId,
@@ -463,7 +465,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               ) : null}
               {showHints ? (
                 // Beside the Map's element palette (Edit mode, top-left, 14 rem wide), never over it.
-                <div className={cn("pointer-events-none absolute bottom-5 z-30 flex max-w-full", wb.editing && pathname === "/map" ? "left-[15.5rem]" : "left-5")}>
+                <div className={cn("pointer-events-none absolute bottom-5 z-30 flex max-w-full", wb.editing ? "left-[15.5rem]" : "left-5")}>
                   <NewProjectHints />
                 </div>
               ) : null}
