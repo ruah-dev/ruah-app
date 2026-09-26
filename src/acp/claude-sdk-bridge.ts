@@ -50,8 +50,7 @@ import {
   type SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import type { AcpBridge, AgentMapTools, BridgeEvent, BridgeOptions, ClaudePlanUsage, RateLimitSample, TurnHandle, TurnUsage } from "./bridge.js";
-import { BusyError } from "./bridge.js";
+import { BusyError, claudeAccountAuth, type AcpBridge, type AgentMapTools, type BridgeEvent, type BridgeOptions, type ClaudeAccountAuth, type ClaudePlanUsage, type RateLimitSample, type TurnHandle, type TurnUsage } from "./bridge.js";
 import { resolveClaudeSdkExecutablePath } from "./claude-executable.js";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "./claude-home.js";
 import { planClaudeSkillDispatch } from "./claude-skill-dispatch.js";
@@ -773,7 +772,22 @@ export class ClaudeSdkBridge implements AcpBridge {
     const query = session.query as Partial<Query>;
     if (typeof query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET !== "function") return undefined;
     const response = await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET.call(session.query, { skipBehaviors: true });
-    return { rate_limits_available: response.rate_limits_available, rate_limits: response.rate_limits as Record<string, unknown> | null };
+    // No windows: an API key, a 3P provider or a signed-out CLI answer alike;
+    // the initialize answer's account (already in hand) tells them apart.
+    let account: ClaudeAccountAuth | undefined;
+    if (!response.rate_limits_available && typeof query.initializationResult === "function") {
+      try {
+        account = claudeAccountAuth((await query.initializationResult.call(session.query)).account);
+      } catch {
+        account = undefined;
+      }
+    }
+    return {
+      rate_limits_available: response.rate_limits_available,
+      rate_limits: response.rate_limits as Record<string, unknown> | null,
+      ...(response.subscription_type !== undefined ? { subscription_type: response.subscription_type } : {}),
+      ...(account !== undefined ? { account } : {}),
+    };
   }
 
   // ----- session lifecycle -----

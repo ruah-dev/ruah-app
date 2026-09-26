@@ -12,7 +12,8 @@ const pkg = require("../package.json") as { version: string };
 const USAGE = `ruah app — the Ruah desktop app (architecture map + coding agents) and its daemon
 
 Usage:
-  ruah app [<repo>]                 open the desktop app (on <repo>, e.g. \`ruah app .\`)
+  ruah app [<repo>]                 open the desktop app (on <repo>, e.g. \`ruah app .\`; a folder
+                                   named like a command below: \`ruah app open <repo>\` or ./<repo>)
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
   ruah app scan <repo> [options]    scan a repo into architecture.json
@@ -53,6 +54,10 @@ Usage:
                                    unread and waiting-for-permission counts
   ruah app design <cmd>             the app's design tokens (palettes, WCAG contrast check,
                                    generated CSS); \`ruah app design help\` for commands
+  ruah app usage limits [--agent <id>] [--json] [--refresh]
+                                   plan limits per coding agent: Claude windows, Cursor included
+                                   usage + on-demand, Kiro credits, Grok / OpenCode local stats,
+                                   and Ruah's own estimate (no daemon needed)
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -272,6 +277,19 @@ function openDesktop(repo: string | undefined): number {
   return 0;
 }
 
+/** The subcommands; a folder with one of these names opens only as `open <dir>` or `./<dir>`. */
+const COMMANDS = new Set(["serve", "scan", "infra", "system", "export", "mcp", "cloud", "resume", "usage", "activity"]);
+
+/**
+ * Whether argv[0] opens the desktop app: nothing, `open`, or a directory that
+ * is not a subcommand's name (a `usage/` folder must not swallow `ruah app usage`).
+ */
+export function opensDesktop(cmd: string | undefined, isDir: (p: string) => boolean = isDirectory): boolean {
+  if (cmd === undefined || cmd === "open") return true;
+  if (cmd.startsWith("-") || COMMANDS.has(cmd)) return false;
+  return isDir(cmd);
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === "--version" || cmd === "-v") {
@@ -283,7 +301,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
   // `ruah app`, `ruah app open [<repo>]`, `ruah app <repo-dir>`: the desktop app.
-  if (cmd === undefined || cmd === "open" || (!cmd.startsWith("-") && isDirectory(cmd))) {
+  if (opensDesktop(cmd)) {
     const repo = cmd === "open" ? rest[0] : cmd;
     return openDesktop(repo);
   }
@@ -315,6 +333,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "resume": {
       const { runResume } = await import("./resume/run-resume.js");
       return await runResume(rest);
+    }
+    case "usage": {
+      const { runUsage } = await import("./usage/run-usage.js");
+      return await runUsage(rest, pkg.version);
     }
     case "activity": {
       const { runActivity } = await import("./activity/run-activity.js");

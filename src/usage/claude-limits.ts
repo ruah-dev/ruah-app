@@ -12,7 +12,7 @@
 // Effect (Ref, DateTime, Option) replaced by a plain class and Date; t3code's
 // windowDurationMins and "monthly" kind are dropped (CONTRACTS §2.3 windows).
 import type { UsageWindow } from "../contracts/usage.js";
-import type { ClaudePlanUsage, RateLimitSample } from "../acp/bridge.js";
+import type { ClaudeAccountAuth, ClaudePlanUsage, RateLimitSample } from "../acp/bridge.js";
 
 const WINDOW_KIND_ORDER: Record<UsageWindow["kind"], number> = { session: 0, weekly: 1, other: 2 };
 
@@ -45,6 +45,68 @@ export interface ClaudeLimitsSnapshot {
   readonly windows: readonly UsageWindow[];
   /** "unsupported": plan limits do not apply (API key, Bedrock, Vertex). */
   readonly unavailable?: { readonly reason: "unsupported" | "probeFailed"; readonly message?: string };
+  /** claude.ai plan from the last get_usage ('pro', 'max', …); absent when not reported. */
+  readonly subscriptionType?: string | null;
+  /** `rate_limits.extra_usage` from the last get_usage (overage spend, minor units). */
+  readonly extraUsage?: ClaudeExtraUsage | null;
+  /** How the CLI authenticates, when get_usage reported no windows (auth fields only; see claudeAuthKind). */
+  readonly account?: ClaudeAccountAuth;
+}
+
+/**
+ * Why a Claude login reports no plan windows. `get_usage` answers
+ * `rate_limits_available: false` for an API key, a third-party provider and a
+ * signed-out CLI alike; the CLI's account info is what separates them.
+ */
+export type ClaudeAuthKind = "signed_out" | "api_key" | "third_party" | "claude_ai" | "token" | "unknown";
+
+export function claudeAuthKind(account: ClaudeAccountAuth | undefined): ClaudeAuthKind {
+  if (account === undefined) return "unknown";
+  const provider = account.apiProvider;
+  if (provider !== undefined && provider !== "firstParty") return "third_party";
+  const set = (value: string | undefined): value is string => value !== undefined && value !== "none";
+  if (set(account.apiKeySource)) return "api_key";
+  if (set(account.tokenSource)) return account.tokenSource === "claude.ai" || /oauth/i.test(account.tokenSource) ? "claude_ai" : "token";
+  if (account.tokenSource === "none" || account.apiKeySource === "none") return "signed_out";
+  return "unknown";
+}
+
+const PROVIDER_NAMES: Readonly<Record<string, string>> = {
+  bedrock: "Amazon Bedrock",
+  vertex: "Google Vertex AI",
+  foundry: "Microsoft Foundry",
+  anthropicAws: "Claude on AWS",
+  anthropicGoogleCloud: "Claude on Google Cloud",
+  gateway: "a gateway",
+};
+
+/** "Amazon Bedrock" for "bedrock"; the raw id for one this build does not know. */
+export function claudeProviderName(apiProvider: string | undefined): string | undefined {
+  if (apiProvider === undefined) return undefined;
+  return PROVIDER_NAMES[apiProvider] ?? apiProvider;
+}
+
+/** The plan's extra-usage (overage) block; amounts in minor units of `currency` (cents for USD). */
+export interface ClaudeExtraUsage {
+  readonly is_enabled: boolean;
+  readonly monthly_limit: number | null;
+  readonly used_credits: number | null;
+  readonly utilization: number | null;
+  readonly currency?: string | null;
+}
+
+function readExtraUsage(rateLimits: object | null): ClaudeExtraUsage | null {
+  const raw = (rateLimits as { readonly extra_usage?: unknown } | null)?.extra_usage;
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    is_enabled: r.is_enabled === true,
+    monthly_limit: n(r.monthly_limit),
+    used_credits: n(r.used_credits),
+    utilization: n(r.utilization),
+    currency: typeof r.currency === "string" ? r.currency : null,
+  };
 }
 
 export function clampPercent(value: number): number {
@@ -132,8 +194,10 @@ export function claudeUsageResponseToLimits(input: { readonly response: ClaudePl
   readonly names: ClaudeScopedLimitNames;
 } {
   const { response, checkedAt } = input;
+  const plan = response.subscription_type !== undefined ? { subscriptionType: response.subscription_type } : {};
   if (!response.rate_limits_available || response.rate_limits === null || typeof response.rate_limits !== "object") {
-    return { limits: { checkedAt, windows: [], unavailable: { reason: "unsupported" } }, names: { overageIncluded: undefined } };
+    const account = response.account !== undefined ? { account: response.account } : {};
+    return { limits: { checkedAt, windows: [], unavailable: { reason: "unsupported" }, ...plan, ...account }, names: { overageIncluded: undefined } };
   }
   const windows: UsageWindow[] = [];
   for (const id of Object.keys(WINDOWS)) {
@@ -153,7 +217,24 @@ export function claudeUsageResponseToLimits(input: { readonly response: ClaudePl
     // skipped would let a mid-turn event open a row the probe never showed.
     overageIncluded ??= entry.display_name;
   }
-  return { limits: { checkedAt, windows: sortWindows(windows) }, names: { overageIncluded } };
+  const extraUsage = readExtraUsage(response.rate_limits);
+  return {
+    limits: { checkedAt, windows: sortWindows(windows), ...plan, ...(extraUsage !== null ? { extraUsage } : {}) },
+    names: { overageIncluded },
+  };
+}
+
+/**
+ * The same reset seen by both sources: get_usage sends fractional seconds
+ * ("…:59.591Z"), a streamed event whole epoch seconds ("…:59.000Z" or
+ * ":00"). Within a minute keeps the value already shown, so the reset time
+ * (and every key built from it) does not flap between the two.
+ */
+function sameReset(next: string | null, current: string | null | undefined): boolean {
+  if (next === null || current === null || current === undefined) return false;
+  const a = Date.parse(next);
+  const b = Date.parse(current);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) < 60_000;
 }
 
 /**
@@ -171,10 +252,16 @@ export function applyUsageWindows(previous: ClaudeLimitsSnapshot | undefined, wi
     merged.set(window.id, {
       ...window,
       usedPercent: window.usedPercent === null ? null : clampPercent(window.usedPercent),
-      resetsAt: window.resetsAt ?? existing?.resetsAt ?? null,
+      resetsAt: sameReset(window.resetsAt, existing?.resetsAt) ? (existing?.resetsAt ?? null) : (window.resetsAt ?? existing?.resetsAt ?? null),
     });
   }
-  return { checkedAt, windows: sortWindows(merged.values()) };
+  // Plan and extra usage come only from get_usage; a streamed event keeps them.
+  return {
+    checkedAt,
+    windows: sortWindows(merged.values()),
+    ...(previous?.subscriptionType !== undefined ? { subscriptionType: previous.subscriptionType } : {}),
+    ...(previous?.extraUsage !== undefined ? { extraUsage: previous.extraUsage } : {}),
+  };
 }
 
 /** The Claude account's windows as last seen from either source (t3code's scopedLimitNames Ref + provider snapshot). */

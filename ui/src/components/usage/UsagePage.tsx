@@ -16,7 +16,6 @@ import {
   formatTokens,
   formatUsd,
   usePrices,
-  useUsageLimits,
   useUsageSummary,
   type UsageRange,
 } from "@/lib/usage";
@@ -27,7 +26,8 @@ import { AgentMark } from "@/components/agent/ComposerControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { UsageChart, type ChartColumn } from "./UsageChart";
-import { UsageLimitsSection } from "./UsageLimits";
+import { AgentLimitsPanel } from "./AgentLimitsPanel";
+import { refreshAgentLimits, useAgentLimitsSnapshot } from "./agentLimitsStore";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { OptimizeSection } from "@/components/engines/OptimizeSection";
 import { agentColor, agentLabel, orderAgents } from "./usageAgents";
@@ -77,11 +77,11 @@ export function UsagePage() {
   const [prefs, setPrefs] = useState(readUsagePagePreferences);
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
   const [pricesOpen, setPricesOpen] = useState(false);
-  const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const { metric, range } = prefs;
   const showingLimits = metric === "limits";
   const [summary, refreshSummary] = useUsageSummary(range);
-  const [limits, refreshLimits] = useUsageLimits();
+  // Only the Limits tab's panel fetches; this just follows its state for the header spinner.
+  const limits = useAgentLimitsSnapshot();
   const prices = usePrices();
 
   const names = useMemo(
@@ -157,19 +157,13 @@ export function UsagePage() {
     };
   }, [data, range, metric, prices, names]);
 
-  const limitColors = useMemo(() => {
-    const ids = limits.status === "ok" ? limits.data.providers.map((p) => p.agentId) : [];
-    const ordered = orderAgents(ids);
-    return new Map(ordered.map((a) => [a, agentColor(a, ordered)]));
-  }, [limits]);
-
   const refresh = () => {
-    if (showingLimits) {
-      setLimitsNow(Date.now());
-      refreshLimits();
-    } else refreshSummary();
+    if (showingLimits) refreshAgentLimits();
+    else refreshSummary();
   };
-  const loading = showingLimits ? limits.status === "loading" : summary.status === "loading";
+  const loading = showingLimits
+    ? limits.load.status === "loading" || limits.refreshing.has("*")
+    : summary.status === "loading";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -177,10 +171,7 @@ export function UsagePage() {
         <Segmented
           value={metric}
           options={METRIC_OPTIONS}
-          onChange={(v: UsageMetric) => {
-            if (v === "limits") setLimitsNow(Date.now());
-            setPref({ metric: v });
-          }}
+          onChange={(v: UsageMetric) => setPref({ metric: v })}
         />
         {/* The period does not apply to Limits: it stays in place, disabled, so nothing shifts. */}
         <Segmented
@@ -212,21 +203,7 @@ export function UsagePage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 max-md:px-4">
           {showingLimits ? (
-            limits.status === "loading" ? (
-              <Skeleton className="h-40" />
-            ) : limits.status === "ok" ? (
-              <UsageLimitsSection providers={limits.data.providers} colors={limitColors} now={limitsNow} />
-            ) : (
-              <EmptyState
-                failed={limits.status === "error"}
-                title="No limits reported yet"
-                body={
-                  limits.status === "error"
-                    ? `The daemon did not answer: ${limits.message}`
-                    : "When an agent reports its subscription windows, how much is left and when it resets shows here."
-                }
-              />
-            )
+            <AgentLimitsPanel />
           ) : summary.status === "loading" ? (
             <UsageSkeleton />
           ) : summary.status !== "ok" || !model ? (

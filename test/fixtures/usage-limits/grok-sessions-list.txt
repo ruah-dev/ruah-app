@@ -1,0 +1,5 @@
+(no label)
+SESSION ID                            CREATED     UPDATED     STATUS      SUMMARY
+0190aaaa-0000-7000-8000-000000000001  2026-09-16  2026-09-22  local  (no summary)
+0190aaaa-0000-7000-8000-000000000002  2026-09-18  2026-09-18  local  Install a skill
+0190aaaa-0000-7000-8000-000000000003  2026-07-01  2026-07-02  local  Old session

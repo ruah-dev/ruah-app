@@ -75,10 +75,46 @@ export interface RateLimitSample {
   resetsAt?: number;
 }
 
+/**
+ * How the Claude CLI authenticates, from the SDK's AccountInfo (initialize /
+ * accountInfo). Only these three fields are kept: never the email or the
+ * organization. A signed-out CLI reports `tokenSource: "none"` and no
+ * `apiKeySource`, exactly like the rate-limit-less answer an API key gets, so
+ * this is what tells the two apart.
+ */
+export interface ClaudeAccountAuth {
+  /** "firstParty" | "bedrock" | "vertex" | "foundry" | "gateway" | … */
+  apiProvider?: string;
+  /** "claude.ai" | "CLAUDE_CODE_OAUTH_TOKEN" | "ANTHROPIC_AUTH_TOKEN" | "apiKeyHelper" | … | "none" */
+  tokenSource?: string;
+  /** "ANTHROPIC_API_KEY" | "apiKeyHelper" | "/login managed key" | "none" */
+  apiKeySource?: string;
+}
+
 /** The SDK's get_usage answer, reduced to the plan windows (usage/claude-limits.ts). */
 export interface ClaudePlanUsage {
   rate_limits_available: boolean;
   rate_limits: Record<string, unknown> | null;
+  /** claude.ai plan ('pro', 'max', 'team', 'enterprise'); null for API key / 3P logins. */
+  subscription_type?: string | null;
+  /** How the CLI authenticates; read when it reports no rate limits (absent: unknown). */
+  account?: ClaudeAccountAuth;
+}
+
+/** The auth fields of an SDK AccountInfo (drops email / organization). */
+export function claudeAccountAuth(account: unknown): ClaudeAccountAuth | undefined {
+  if (account === null || typeof account !== "object") return undefined;
+  const a = account as Record<string, unknown>;
+  const pick = (value: unknown): string | undefined => (typeof value === "string" && value.length > 0 && value.length <= 100 ? value : undefined);
+  const apiProvider = pick(a.apiProvider);
+  const tokenSource = pick(a.tokenSource);
+  const apiKeySource = pick(a.apiKeySource);
+  if (apiProvider === undefined && tokenSource === undefined && apiKeySource === undefined) return undefined;
+  return {
+    ...(apiProvider !== undefined ? { apiProvider } : {}),
+    ...(tokenSource !== undefined ? { tokenSource } : {}),
+    ...(apiKeySource !== undefined ? { apiKeySource } : {}),
+  };
 }
 
 export interface TurnHandle { turnId: string; done: Promise<{ stopReason: StopReason; error?: string }> }

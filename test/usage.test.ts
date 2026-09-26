@@ -428,7 +428,8 @@ describe("ClaudeSdkBridge usage", () => {
     const second = events.find((e) => e.type === "turn_finished" && e.turnId === "t2");
     expect(second).toMatchObject({ usage: { model: "claude-opus-5-5", inputTokens: 4, outputTokens: 7, cacheReadTokens: 30, cacheWriteTokens: 0, costUsd: 0.03, durationMs: 700 } });
 
-    await expect(bridge.claudePlanUsage()).resolves.toEqual(GET_USAGE);
+    // The plan (subscription_type) rides along for the per-agent limits (§15).
+    await expect(bridge.claudePlanUsage()).resolves.toEqual({ ...GET_USAGE, subscription_type: "max" });
     await bridge.stop();
     await expect(bridge.claudePlanUsage()).resolves.toBeUndefined();
   });
@@ -573,6 +574,9 @@ describe("usage endpoints", () => {
     expect(limits.providers.map((p) => [p.agentId, p.status])).toEqual([["claude", "available"], ["cursor", "unavailable"]]);
     // The streamed rate_limit (60 %) came during the turn; the later get_usage read (37.5 %) replaced it.
     expect(limits.providers[0]?.windows[0]).toMatchObject({ id: "five_hour", usedPercent: 37.5 });
+    // The daemon wires the Origin rule into the usage endpoints (they start agent CLIs).
+    expect((await fetch(`${url}/api/usage/agents?refresh=1`, { headers: { origin: "https://evil.example" } })).status).toBe(403);
+    expect((await fetch(`${url}/api/usage/limits`, { headers: { origin: "http://localhost:5173" } })).status).toBe(200);
   });
 
   it("records turns without agent usage as zero-token turns with the picker's model", async () => {

@@ -130,7 +130,7 @@ export function startServer(
       });
       return;
     }
-    if (handleUsageRequest(req, res, url, options.usage)) return;
+    if (handleUsageRequest(req, res, url, options.usage, { originAllowed: (origin) => originAllowed(origin, options.allowOrigins), bindHost: options.host })) return;
     if (options.terminal !== undefined ? options.terminal.handleHttp(req, res, url) : pathname === "/api/terminal/token") {
       if (options.terminal === undefined) sendJson(res, 503, { error: "the terminal is not available" });
       return;

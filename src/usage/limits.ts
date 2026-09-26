@@ -6,7 +6,7 @@
 // turns. Other agents are "unknown" unless their traffic streams rate limits.
 import type { ProviderLimits, UsageLimits } from "../contracts/usage.js";
 import type { AcpBridge, ClaudePlanUsage, RateLimitSample } from "../acp/bridge.js";
-import { ClaudeLimitsState, type ClaudeLimitsSnapshot } from "./claude-limits.js";
+import { ClaudeLimitsState, claudeAuthKind, claudeProviderName, type ClaudeLimitsSnapshot } from "./claude-limits.js";
 
 export interface LimitsAgent {
   id: string;
@@ -41,6 +41,23 @@ function limitsKey(agentId: string): string {
   return agentId === "claude" || agentId === "claude-acp" ? CLAUDE_KEY : agentId;
 }
 
+/** Why a Claude login has no windows (§2.3 note); the account info tells a signed-out CLI from an API key. */
+function unsupportedNote(snapshot: ClaudeLimitsSnapshot): string {
+  switch (claudeAuthKind(snapshot.account)) {
+    case "signed_out":
+      return "Claude Code is not signed in: run `claude` and sign in with /login.";
+    case "api_key":
+      return "Plan usage limits do not apply to an API key.";
+    case "third_party":
+      return `Plan usage limits do not apply: Claude Code runs through ${claudeProviderName(snapshot.account?.apiProvider) ?? "a third-party provider"}.`;
+    case "claude_ai":
+    case "token":
+      return "Claude Code is signed in but reports no plan usage limits for this login.";
+    case "unknown":
+      return "No plan usage limits reported: this login uses an API key, Bedrock or Vertex, or is not signed in.";
+  }
+}
+
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -60,6 +77,23 @@ export class UsageLimitsService {
   /** A rate-limit reading streamed during one of `agentId`'s turns. */
   recordRateLimit(agentId: string, info: RateLimitSample): void {
     this.state(limitsKey(agentId)).recordRateLimit(info, new Date(this.now()).toISOString());
+  }
+
+  /**
+   * The Claude account's plan reading for the per-agent limits (§16): the
+   * same throttled refresh as limits(), plus the last refresh error.
+   */
+  async claudePlan(): Promise<{ snapshot: ClaudeLimitsSnapshot | undefined; error: string | undefined; canProbe: boolean; installed: boolean }> {
+    // The catalog decides whether Claude is there at all (no probe when it is not).
+    const installed = this.deps.agents().some((agent) => limitsKey(agent.id) === CLAUDE_KEY && agent.installed);
+    if (!installed) return { snapshot: undefined, error: undefined, canProbe: false, installed };
+    await this.refreshClaude();
+    return {
+      snapshot: this.states.get(CLAUDE_KEY)?.snapshot(),
+      error: this.lastError,
+      canProbe: this.liveBridge() !== undefined || this.deps.probeClaude !== undefined,
+      installed,
+    };
   }
 
   async limits(): Promise<UsageLimits> {
@@ -144,7 +178,7 @@ export class UsageLimitsService {
 
   private claudeProvider(base: { agentId: string; name: string }, snapshot: ClaudeLimitsSnapshot | undefined): ProviderLimits {
     if (snapshot?.unavailable?.reason === "unsupported") {
-      return { ...base, status: "unavailable", windows: [], note: "Plan usage limits do not apply to this Claude login (API key, Bedrock or Vertex)." };
+      return { ...base, status: "unavailable", windows: [], note: unsupportedNote(snapshot) };
     }
     if (snapshot !== undefined && snapshot.windows.length > 0) {
       const age = this.now() - Date.parse(snapshot.checkedAt);

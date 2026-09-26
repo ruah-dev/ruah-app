@@ -1,0 +1,11 @@
+{
+  "subscription_type": "max",
+  "rate_limits_available": true,
+  "rate_limits": {
+    "five_hour": { "utilization": 48, "resets_at": "2026-09-25T16:40:00Z" },
+    "seven_day": { "utilization": 18.5, "resets_at": "2026-09-29T09:00:00Z" },
+    "seven_day_opus": null,
+    "model_scoped": [{ "display_name": "Fable", "utilization": 7, "resets_at": "2026-09-29T09:00:00Z" }],
+    "extra_usage": { "is_enabled": true, "monthly_limit": 5000, "used_credits": 420, "utilization": 8.4, "currency": "USD" }
+  }
+}

@@ -15,6 +15,7 @@ import { Route as AgentRouteImport } from './routes/agent'
 import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as CloudRouteImport } from './routes/cloud'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
+import { Route as LimitsRouteImport } from './routes/limits'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TasksRouteImport } from './routes/tasks'
@@ -50,6 +51,11 @@ const IntegrationsRoute = IntegrationsRouteImport.update({
   path: '/integrations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LimitsRoute = LimitsRouteImport.update({
+  id: '/limits',
+  path: '/limits',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MapRoute = MapRouteImport.update({
   id: '/map',
   path: '/map',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
+  '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
+  '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/chats': typeof ChatsRoute
   '/cloud': typeof CloudRoute
   '/integrations': typeof IntegrationsRoute
+  '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/chats'
     | '/cloud'
     | '/integrations'
+    | '/limits'
     | '/map'
     | '/settings'
     | '/tasks'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/chats'
     | '/cloud'
     | '/integrations'
+    | '/limits'
     | '/map'
     | '/settings'
     | '/tasks'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/chats'
     | '/cloud'
     | '/integrations'
+    | '/limits'
     | '/map'
     | '/settings'
     | '/tasks'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   ChatsRoute: typeof ChatsRoute
   CloudRoute: typeof CloudRoute
   IntegrationsRoute: typeof IntegrationsRoute
+  LimitsRoute: typeof LimitsRoute
   MapRoute: typeof MapRoute
   SettingsRoute: typeof SettingsRoute
   TasksRoute: typeof TasksRoute
@@ -204,6 +217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/limits': {
+      id: '/limits'
+      path: '/limits'
+      fullPath: '/limits'
+      preLoaderRoute: typeof LimitsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/map': {
       id: '/map'
       path: '/map'
@@ -242,6 +262,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatsRoute: ChatsRoute,
   CloudRoute: CloudRoute,
   IntegrationsRoute: IntegrationsRoute,
+  LimitsRoute: LimitsRoute,
   MapRoute: MapRoute,
   SettingsRoute: SettingsRoute,
   TasksRoute: TasksRoute,

@@ -1,0 +1,49 @@
+{
+  "success": true,
+  "message": "Estimated Usage | resets on Oct 01, 2026 | KIRO PRO",
+  "data": {
+    "usage": {
+      "daysUntilReset": 6,
+      "nextDateReset": 1790812800,
+      "subscriptionInfo": {
+        "subscriptionTitle": "KIRO PRO",
+        "type": "Q_DEVELOPER_STANDALONE_PRO",
+        "overageCapability": "OVERAGE_CAPABLE",
+        "upgradeCapability": "UPGRADE_CAPABLE"
+      },
+      "overageConfiguration": { "overageStatus": "ENABLED" },
+      "usageBreakdownList": [
+        {
+          "resourceType": "CREDIT",
+          "displayName": "Credit",
+          "displayNamePlural": "Credits",
+          "unit": "INVOCATIONS",
+          "currentUsage": 812,
+          "currentUsageWithPrecision": 812.37,
+          "usageLimit": 1000,
+          "usageLimitWithPrecision": 1000,
+          "currentOverages": 3,
+          "currentOveragesWithPrecision": 3.25,
+          "overageCharges": 0.13,
+          "overageRate": 0.04,
+          "overageCap": 100,
+          "currency": "USD",
+          "nextDateReset": 1790812800,
+          "freeTrialInfo": { "freeTrialStatus": "EXPIRED", "usageLimit": 500, "currentUsage": 500, "freeTrialExpiry": 1788000000 },
+          "bonuses": [
+            {
+              "bonusCode": "WELCOME",
+              "displayName": "Welcome bonus",
+              "usageLimit": 100,
+              "usageLimitWithPrecision": 100,
+              "currentUsage": 12,
+              "currentUsageWithPrecision": 12.5,
+              "expiresAt": 1791417600,
+              "status": "ACTIVE"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
