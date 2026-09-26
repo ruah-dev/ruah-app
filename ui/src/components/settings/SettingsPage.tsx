@@ -20,6 +20,8 @@ import { LayoutSettingsRows } from "@/components/shell/LayoutSettings";
 import { BUILD_ID } from "@/lib/build-reload";
 import { cn } from "@/lib/utils";
 import { solidButton } from "@/components/ui/controls";
+import { useEnsure } from "@/lib/integrations";
+import { connectedServicesHint } from "@/lib/settings-hints";
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -306,7 +308,7 @@ export function SettingsPage() {
             title="Integrations"
             description="Cloud providers, issue trackers and ruah orchestration."
           >
-            <Row label="Connected services" hint="DigitalOcean, AWS, Jira, GitHub, ruah">
+            <Row label="Connected services" hint={<ConnectedServicesHint />}>
               <Link to="/integrations" className={solidButton}>
                 Open Integrations
               </Link>
@@ -358,4 +360,10 @@ export function SettingsPage() {
       </div>
     </div>
   );
+}
+
+/** What is actually connected (GET /api/integrations), not a fixed list of names. */
+function ConnectedServicesHint() {
+  const s = useEnsure("integrations");
+  return <>{connectedServicesHint(s.integrations.status === "ok" ? s.integrations.data : null)}</>;
 }

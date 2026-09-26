@@ -1,10 +1,10 @@
 # CONTRACTS.md — ruah coupling contracts
 
-These three contracts are the only coupling between the Lovable viewer ("Architect's Canvas") and the daemon (`ruah`). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
+These contracts are the only coupling between the viewer and the daemon (`ruah app`). It started with three (§1 `architecture.json`, §2 the WebSocket protocol, §3 the context pack); every later section adds one area, numbered in the order it was written (there is no §4). Both sides copy the TypeScript types verbatim and validate at the boundary with zod. Nothing else crosses the wire.
 
 Written 2026-09-16 against ACP `protocolVersion: 1`, `@agentclientprotocol/sdk` 1.4.0, `@agentclientprotocol/claude-agent-acp` 0.78.0.
 
-Conventions that apply to all three contracts:
+Conventions that apply to every section:
 
 - Paths are repo-relative, POSIX separators, no leading `./`, no trailing `/`. The only absolute path on the wire is `root` in the `architecture` message. ACP itself requires absolute paths; the daemon converts in both directions.
 - IDs match `^[a-z0-9][a-z0-9._-]{0,63}$`. Node ids in a system architecture (§1.5) may carry one repo namespace: `^([a-z0-9][a-z0-9-]{0,62}:)?[a-z0-9][a-z0-9._-]{0,63}$` (e.g. `invoices-api:routes`).
@@ -1896,8 +1896,8 @@ preview scope, and the `ruah app design` CLI.
 `<html>` carries `data-theme="dark|light|contrast"` (always), `class="dark|light"` and
 `data-palette="<id>"` for every palette except the default (absent = Teal + Indigo). Unknown stored
 values fall back to the defaults. The first-paint script (`THEME_BOOT`, routes/__root.tsx) must set
-`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`); until it accepts
-`classic`, that palette appears only once the viewer's JS has run. A stored `dusk` now renders the
+`data-palette` for every id in `PALETTE_BOOT_IDS` (`dusk`, `sunrise`, `classic`), so every palette
+is right from the first paint. A stored `dusk` now renders the
 indigo palette (it was a lavender accent swap before); when `ruah.palette.v` is absent, Settings →
 Appearance says so once. The viewer keeps the session's choice in memory: storage only persists it
 (a choice holds when storage is unavailable) and other windows follow through the `storage` event.

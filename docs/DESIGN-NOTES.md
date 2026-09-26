@@ -310,7 +310,7 @@ Decisions:
 - **Shortcuts in one place**: `shell/nav.ts` `SHORTCUTS`, listed by the launcher's "Keyboard
   shortcuts" item.
 
-## Live preview (`src/preview/*`, `ui/src/components/preview/*`, CONTRACTS §15, 2026-09-26)
+## Live preview (`src/preview/*`, `ui/src/components/preview/*`, CONTRACTS §18, 2026-09-26)
 
 - **The built-in static server is a local web server any page can reach.** It checks the `Host`
   header (loopback names only, like the daemon's `hostAllowed`), never serves a path with a
