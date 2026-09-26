@@ -15,13 +15,18 @@ const IGNORES_CACHE = /^\s*\/?\.cache(\/(\*\*?)?)?\s*$/m;
 
 /**
  * Makes `<root>/.ruah/.gitignore` ignore `.cache/`: creates it, or appends
- * one line to a file that does not ignore it yet. Never throws (a read-only
- * repo keeps working); returns whether the file was written.
+ * one line to a file that does not ignore it yet. Called only next to an
+ * explicit write into `.ruah/` (never on a read or a migration). Leaves it
+ * alone while a `.ruah/.cache/` folder exists: Ruah's old caches are moved out
+ * of it (§20.3), so what is there belongs to the user and must not silently
+ * drop out of git. Never throws (a read-only repo keeps working); returns
+ * whether the file was written.
  */
 export function ensureRuahGitignore(root: string): boolean {
   const file = path.join(root, RUAH_GITIGNORE);
   try {
     if (!fs.existsSync(path.dirname(file))) return false;
+    if (fs.existsSync(path.join(path.dirname(file), ".cache"))) return false;
     let current: string | undefined;
     try {
       current = fs.readFileSync(file, "utf8");

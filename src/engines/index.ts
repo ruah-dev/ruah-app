@@ -11,13 +11,16 @@ import { ruahHome } from "../usage/log.js";
 import * as path from "node:path";
 import {
   hasVerifyCriteria,
+  legacyRepoFiles,
   loadVerifyState,
+  removePlaceholderVerifyJson,
   runVerifyForNode,
   syncVerifyJson,
+  type LegacyRepoFiles,
   type NodeVerifyState,
 } from "./verify.js";
 
-export type { NodeVerifyState, VerifyBadge } from "./verify.js";
+export type { LegacyRepoFiles, NodeVerifyState, VerifyBadge } from "./verify.js";
 export { badgeFromReport } from "./verify.js";
 
 export interface EnginesDeps {
@@ -48,12 +51,26 @@ export class EnginesService {
     return projectCacheDir(this.homeDir(), root);
   }
 
-  /** The open project's node badges, with the root they belong to (the viewer drops a stale answer). */
-  verifyStateOf(): { root: string | null; nodes: Record<string, NodeVerifyState> } {
+  /**
+   * The open project's node badges, with the root they belong to (the viewer drops a stale
+   * answer), and what an older Ruah left in the repo for the user to decide on (§20.3).
+   */
+  verifyStateOf(): { root: string | null; nodes: Record<string, NodeVerifyState>; legacy?: LegacyRepoFiles } {
     const root = this.deps.root();
     if (!root) return { root: null, nodes: {} };
-    const disk = loadVerifyState(root, this.cacheDir(root));
-    return { root, nodes: { ...disk, ...Object.fromEntries(this.nodeState.get(root) ?? []) } };
+    const cache = this.cacheDir(root);
+    const disk = loadVerifyState(root, cache);
+    const legacy = legacyRepoFiles(root, cache);
+    return { root, nodes: { ...disk, ...Object.fromEntries(this.nodeState.get(root) ?? []) }, ...(legacy !== undefined ? { legacy } : {}) };
+  }
+
+  /** "Remove it": deletes `.ruah/verify.json` only when it is the old placeholder (409 otherwise). */
+  removeVerifyPlaceholder(): { removed: true; path: string } {
+    const root = this.requireRoot();
+    if (!removePlaceholderVerifyJson(root)) {
+      throw Object.assign(new Error(".ruah/verify.json is not the placeholder an older Ruah wrote; nothing was removed"), { status: 409 });
+    }
+    return { removed: true, path: path.join(root, ".ruah", "verify.json") };
   }
 
   verifyState(): Record<string, NodeVerifyState> {
@@ -63,6 +80,7 @@ export class EnginesService {
   syncVerify(workflows?: Parameters<typeof syncVerifyJson>[0]["workflows"]): {
     path: string;
     criteriaCount: number;
+    written: boolean;
   } {
     const root = this.requireRoot();
     const arch = this.deps.architecture();

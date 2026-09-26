@@ -120,6 +120,10 @@ export function handleEnginesRequest(
         json(res, 200, engines.verifyStateOf());
         return;
       }
+      if (method === "POST" && url.pathname === "/api/engines/verify/remove-placeholder") {
+        json(res, 200, engines.removeVerifyPlaceholder());
+        return;
+      }
       if (method === "POST" && url.pathname === "/api/engines/verify/sync") {
         const result = engines.syncVerify();
         json(res, 200, result);

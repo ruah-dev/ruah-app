@@ -45,7 +45,10 @@ export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] 
       .then((r) => (r.ok ? r.json() : null))
       .then((body: VerifyStateAnswer | null) => {
         const nodes = verifyAnswerFor(asked, body);
-        if (nodes) setState({ root: asked, nodes });
+        if (nodes) {
+          setState({ root: asked, nodes });
+          announceLegacyRepoFiles(asked, body?.legacy);
+        }
       })
       .catch(() => {});
   }, [connected, root]);
@@ -68,10 +71,95 @@ export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] 
 
 const EMPTY_NODES: Record<string, NodeVerifyState> = {};
 
-/** GET /api/engines/verify/state (`root` since §20.4). */
+/** GET /api/engines/verify/state (`root` since §20.4, `legacy` since §20.3). */
 export interface VerifyStateAnswer {
   root?: string | null;
   nodes?: Record<string, NodeVerifyState>;
+  legacy?: LegacyRepoFiles;
+}
+
+/** What an older Ruah left in the repo for the user to decide on (§20.3). */
+export interface LegacyRepoFiles {
+  /** `.ruah/verify.json` is only the placeholder older versions wrote on their own. */
+  placeholderCriteria?: string;
+  /** Ruah's own old cache files still in the repo: committed ones, or ones it could not delete. */
+  leftover?: string[];
+}
+
+const LEGACY_KEPT_KEY = "ruah:legacy-placeholder-kept";
+/** Roots told about this session (the poll runs every 4 s: say it once). */
+const legacyAnnounced = new Set<string>();
+
+function keptRoots(): string[] {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(LEGACY_KEPT_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((r): r is string => typeof r === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function keepPlaceholder(root: string): void {
+  try {
+    window.localStorage.setItem(LEGACY_KEPT_KEY, JSON.stringify([...keptRoots().filter((r) => r !== root), root].slice(-100)));
+  } catch {
+    // private window: asked again next session
+  }
+}
+
+/** Which notice to show for an answer about `root`; undefined when there is nothing (new) to say. */
+export function legacyNoticeFor(root: string, legacy: LegacyRepoFiles | undefined, kept: readonly string[]): "placeholder" | "leftover" | undefined {
+  if (legacy?.placeholderCriteria && !kept.some((r) => sameRoot(r, root))) return "placeholder";
+  if (legacy?.leftover && legacy.leftover.length > 0) return "leftover";
+  return undefined;
+}
+
+/**
+ * Once per project and session: the placeholder `.ruah/verify.json` an older Ruah wrote into the
+ * repo is offered for removal (never removed without the click), and old cache files Ruah left
+ * (committed ones, or ones it could not delete) are named so the user can remove them.
+ */
+function announceLegacyRepoFiles(root: string, legacy: LegacyRepoFiles | undefined): void {
+  if (legacyAnnounced.has(root)) return;
+  const notice = legacyNoticeFor(root, legacy, keptRoots());
+  if (notice === undefined) return;
+  legacyAnnounced.add(root);
+  // Loaded here, not at module load: this module stays free of DOM side effects (tests import it).
+  void import("sonner").then(({ toast }) => showLegacyNotice(toast, root, notice, legacy));
+}
+
+function showLegacyNotice(toast: typeof import("sonner").toast, root: string, notice: "placeholder" | "leftover", legacy: LegacyRepoFiles | undefined): void {
+  if (notice === "leftover") {
+    toast.message("Ruah's old cache files are still in this repo", {
+      description: `Ruah no longer uses ${legacy?.leftover?.join(", ")} (its caches now live in Ruah's own folder). Delete them, and commit, when it suits you.`,
+      duration: 12_000,
+    });
+    return;
+  }
+  toast.message("An older Ruah added .ruah/verify.json here", {
+    description: "It holds no acceptance criteria. Remove it, or keep it if you committed it on purpose.",
+    duration: 20_000,
+    action: {
+      label: "Remove",
+      onClick: () => {
+        void removeVerifyPlaceholder().then((r) => {
+          if ("error" in r) toast.error("Couldn't remove .ruah/verify.json", { description: r.error });
+          else toast.success("Removed .ruah/verify.json");
+        });
+      },
+    },
+    cancel: { label: "Keep", onClick: () => keepPlaceholder(root) },
+  });
+}
+
+/** POST /api/engines/verify/remove-placeholder: only the old placeholder is ever removed. */
+export async function removeVerifyPlaceholder(): Promise<{ removed: true } | { error: string }> {
+  const url = engineUrl("/api/engines/verify/remove-placeholder");
+  if (!url) return notConnected();
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const body = (await res.json().catch(() => ({}))) as { removed?: boolean; error?: string };
+  if (!res.ok || body.removed !== true) return { error: body.error ?? `remove failed (${res.status})` };
+  return { removed: true };
 }
 
 /** The badges of an answer to a poll made for `asked`; undefined when it is about another project. */
@@ -102,13 +190,14 @@ export async function runVerify(nodeId: string): Promise<NodeVerifyState | { err
   return body;
 }
 
-export async function syncVerify(): Promise<{ path: string; criteriaCount: number } | { error: string }> {
+/** `written: false` when there were no criteria to sync (nothing is written then, §20.3). */
+export async function syncVerify(): Promise<{ path: string; criteriaCount: number; written: boolean } | { error: string }> {
   const url = engineUrl("/api/engines/verify/sync");
   if (!url) return notConnected();
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-  const body = (await res.json()) as { path?: string; criteriaCount?: number; error?: string };
+  const body = (await res.json()) as { path?: string; criteriaCount?: number; written?: boolean; error?: string };
   if (!res.ok) return { error: body.error ?? `sync failed (${res.status})` };
-  return { path: body.path!, criteriaCount: body.criteriaCount! };
+  return { path: body.path!, criteriaCount: body.criteriaCount!, written: body.written ?? true };
 }
 
 export async function runEval(nodeId: string, prompt: string): Promise<unknown> {

@@ -3,7 +3,8 @@
 // .ruah/verify.json and .ruah/.cache/ appeared in a client repo after an agent
 // turn (verify ran on its own and wrote both). Also §20.4: verify badges never
 // carry over from the previous project.
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,7 +12,7 @@ import type { Architecture } from "../src/contracts/architecture.js";
 import type { Runner } from "../src/integrations/exec.js";
 import { EnginesService } from "../src/engines/index.js";
 import { resetEngineProbe } from "../src/engines/cli.js";
-import { migrateLegacyVerifyCache } from "../src/engines/verify.js";
+import { loadVerifyState, migrateLegacyRepoCache } from "../src/engines/verify.js";
 import { ensureRuahGitignore, projectCacheDir } from "../src/projects/repo-files.js";
 import { writePreviewChoice } from "../src/preview/config.js";
 import { updateScopeFile } from "../src/integrations/scope/file.js";
@@ -132,8 +133,34 @@ describe("nothing lands in a repo that never opted in (§20.3)", () => {
   });
 });
 
+/** Every file under `dir` with its size and mtime: a read that writes nothing leaves this unchanged. */
+function snapshot(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (d: string): void => {
+    for (const name of readdirSync(d)) {
+      const file = path.join(d, name);
+      const st = statSync(file);
+      if (st.isDirectory()) walk(file);
+      else out[path.relative(dir, file)] = `${st.size}:${st.mtimeMs}`;
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+const PLACEHOLDER = {
+  schemaVersion: "1",
+  criteria: [
+    {
+      id: "workspace/human-review",
+      description: "No acceptance criteria linked to map nodes yet",
+      check: { type: "unverifiable", reason: "Run ruah verify init or add acceptance on orch workflow tasks" },
+    },
+  ],
+};
+
 describe("migrating the old repo cache (§20.3)", () => {
-  it("moves Ruah's badges to home, deletes only its own files, and ignores caches from then on", () => {
+  it("moves Ruah's badges to home, deletes only its own files, creates nothing in the repo, and runs once", () => {
     const repo = tmp("ruah-client-repo-");
     const home = tmp("ruah-home-");
     const cache = path.join(repo, ".ruah", ".cache");
@@ -145,31 +172,108 @@ describe("migrating the old repo cache (§20.3)", () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(path.join(stateDir, "verify-nodes.json"), JSON.stringify({ web: { nodeId: "web", badge: "unverifiable" } }));
 
-    const moved = migrateLegacyVerifyCache(repo, stateDir);
-    expect(Object.keys(moved).sort()).toEqual(["api", "web"]);
+    expect(migrateLegacyRepoCache(repo, stateDir)).toBe(true);
     // Home already knew "web": its newer entry wins.
-    expect(JSON.parse(readFileSync(path.join(stateDir, "verify-nodes.json"), "utf8"))).toMatchObject({ api: { badge: "fail" }, web: { badge: "unverifiable" } });
+    expect(loadVerifyState(repo, stateDir)).toMatchObject({ api: { badge: "fail" }, web: { badge: "unverifiable" } });
     expect(readdirSync(cache)).toEqual(["verify-report.json"]);
-    expect(readFileSync(path.join(repo, ".ruah", ".gitignore"), "utf8")).toContain(".cache/");
-
-    // Only Ruah's files left: the folder goes too.
-    rmSync(path.join(cache, "verify-report.json"));
+    // No .gitignore: the user's own file stays visible to git.
+    expect(readdirSync(path.join(repo, ".ruah"))).toEqual([".cache"]);
+    // Recorded in home: later reads leave the repo alone, whatever appears there.
     writeFileSync(path.join(cache, "verify-nodes.json"), "{}");
-    migrateLegacyVerifyCache(repo, stateDir);
-    expect(existsSync(cache)).toBe(false);
-    // Idempotent and quiet without an old cache.
-    expect(migrateLegacyVerifyCache(repo, stateDir)).toEqual({});
+    expect(migrateLegacyRepoCache(repo, stateDir)).toBe(false);
+    expect(readdirSync(cache).sort()).toEqual(["verify-nodes.json", "verify-report.json"]);
   });
 
-  it("the daemon's first read migrates, and badges show from home afterwards", () => {
+  it("with only Ruah's files the old folders go, and old eval runs move to home", () => {
+    const repo = tmp("ruah-client-repo-");
+    const home = tmp("ruah-home-");
+    mkdirSync(path.join(repo, ".ruah", ".cache"), { recursive: true });
+    mkdirSync(path.join(repo, ".ruah", "evals"), { recursive: true });
+    writeFileSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"), "{}");
+    const spec = { name: "node-api", task: { prompt: "hi" }, executors: [{ name: "claude" }], criteria: [], runs: 1 };
+    writeFileSync(path.join(repo, ".ruah", "evals", "node-api.json"), JSON.stringify(spec));
+    writeFileSync(path.join(repo, ".ruah", "evals", "results-api-1758000000000.json"), JSON.stringify({ runs: [] }));
+    const stateDir = projectCacheDir(home, repo);
+    migrateLegacyRepoCache(repo, stateDir);
+    expect(existsSync(path.join(repo, ".ruah"))).toBe(false);
+    expect(readdirSync(path.join(stateDir, "evals")).sort()).toEqual(["node-api.json", "results-api-1758000000000.json"]);
+    expect(JSON.parse(readFileSync(path.join(stateDir, "evals", "node-api.json"), "utf8"))).toEqual(spec);
+  });
+
+  it("a committed old cache file is copied to home but left in the repo, and reported", () => {
+    const repo = tmp("ruah-client-repo-");
+    const home = tmp("ruah-home-");
+    mkdirSync(path.join(repo, ".ruah", ".cache"), { recursive: true });
+    writeFileSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"), JSON.stringify({ api: { nodeId: "api", badge: "fail" } }));
+    writeFileSync(path.join(repo, ".ruah", ".cache", "verify-api.json"), JSON.stringify({ schemaVersion: "1", criteria: [{ id: "node/api/fix/0" }] }));
+    const stateDir = projectCacheDir(home, repo);
+    migrateLegacyRepoCache(repo, stateDir, { tracked: () => new Set([".ruah/.cache/verify-nodes.json"]) });
+    expect(readdirSync(path.join(repo, ".ruah", ".cache"))).toEqual(["verify-nodes.json"]);
+    expect(loadVerifyState(repo, stateDir)).toMatchObject({ api: { badge: "fail" } });
+    const service = engines({ root: () => repo, home });
+    expect(service.verifyStateOf().legacy).toEqual({ leftover: [".ruah/.cache/verify-nodes.json"] });
+    // The user deletes it: nothing left to report.
+    rmSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"));
+    expect(service.verifyStateOf().legacy).toBeUndefined();
+  });
+
+  it("asks git which files are committed", () => {
+    const repo = tmp("ruah-client-repo-");
+    const home = tmp("ruah-home-");
+    mkdirSync(path.join(repo, ".ruah", ".cache"), { recursive: true });
+    writeFileSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"), "{}");
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, "-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { stdio: "ignore" });
+    git("init", "-q");
+    git("add", "-A");
+    git("commit", "-qm", "old ruah cache");
+    migrateLegacyRepoCache(repo, projectCacheDir(home, repo));
+    expect(existsSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"))).toBe(true);
+  });
+
+  it("the daemon's first read migrates; a later read writes nothing, even after .ruah/.gitignore was deleted", () => {
     const repo = tmp("ruah-client-repo-");
     const home = tmp("ruah-home-");
     mkdirSync(path.join(repo, ".ruah", ".cache"), { recursive: true });
     writeFileSync(path.join(repo, ".ruah", ".cache", "verify-nodes.json"), JSON.stringify({ api: { nodeId: "api", badge: "pass" } }));
+    writeFileSync(path.join(repo, ".ruah", ".cache", "mine.txt"), "the user's");
+    writeFileSync(path.join(repo, ".ruah", ".gitignore"), ".cache/\n");
     const service = engines({ root: () => repo, home });
     expect(service.verifyState()).toMatchObject({ api: { badge: "pass" } });
-    expect(existsSync(path.join(repo, ".ruah", ".cache"))).toBe(false);
+    expect(readdirSync(path.join(repo, ".ruah", ".cache"))).toEqual(["mine.txt"]);
+    rmSync(path.join(repo, ".ruah", ".gitignore"));
+    const before = snapshot(repo);
+    const homeBefore = snapshot(home);
+    expect(service.verifyStateOf()).toMatchObject({ root: repo, nodes: { api: { badge: "pass" } } });
     expect(service.verifyState()).toMatchObject({ api: { badge: "pass" } });
+    expect(snapshot(repo)).toEqual(before);
+    expect(snapshot(home)).toEqual(homeBefore);
+  });
+
+  it("the placeholder older versions wrote is reported, not removed, until the user asks", () => {
+    const repo = tmp("ruah-client-repo-");
+    const home = tmp("ruah-home-");
+    mkdirSync(path.join(repo, ".ruah"));
+    writeFileSync(path.join(repo, ".ruah", "verify.json"), `${JSON.stringify(PLACEHOLDER, null, 2)}\n`);
+    const service = engines({ root: () => repo, home });
+    expect(service.verifyStateOf()).toMatchObject({ root: repo, legacy: { placeholderCriteria: path.join(".ruah", "verify.json") } });
+    expect(existsSync(path.join(repo, ".ruah", "verify.json"))).toBe(true);
+    expect(service.removeVerifyPlaceholder()).toMatchObject({ removed: true });
+    expect(existsSync(path.join(repo, ".ruah"))).toBe(false);
+    expect(service.verifyStateOf().legacy).toBeUndefined();
+    // Real criteria are never offered for removal, nor removed.
+    mkdirSync(path.join(repo, ".ruah"));
+    const real = { schemaVersion: "1", criteria: [{ id: "node/api/fix/0", check: { type: "tests_pass" } }] };
+    writeFileSync(path.join(repo, ".ruah", "verify.json"), JSON.stringify(real));
+    expect(service.verifyStateOf().legacy).toBeUndefined();
+    expect(() => service.removeVerifyPlaceholder()).toThrow(/not the placeholder/);
+    expect(JSON.parse(readFileSync(path.join(repo, ".ruah", "verify.json"), "utf8"))).toEqual(real);
+  });
+
+  it("Sync criteria with nothing to sync writes nothing", () => {
+    const repo = tmp("ruah-client-repo-");
+    const home = tmp("ruah-home-");
+    expect(engines({ root: () => repo, home }).syncVerify([])).toMatchObject({ criteriaCount: 0, written: false });
+    expect(existsSync(path.join(repo, ".ruah"))).toBe(false);
   });
 });
 
@@ -185,6 +289,14 @@ describe(".ruah/.gitignore (§20.3)", () => {
     expect(readFileSync(path.join(repo, ".ruah", ".gitignore"), "utf8")).toBe("state.json\n.cache/\n");
     writeFileSync(path.join(repo, ".ruah", ".gitignore"), "/.cache/**\n");
     expect(ensureRuahGitignore(repo)).toBe(false);
+  });
+
+  it("is left alone while a .ruah/.cache folder holds the user's own files", () => {
+    const repo = tmp("ruah-client-repo-");
+    mkdirSync(path.join(repo, ".ruah", ".cache"), { recursive: true });
+    writeFileSync(path.join(repo, ".ruah", ".cache", "mine.txt"), "the user's");
+    expect(ensureRuahGitignore(repo)).toBe(false);
+    expect(existsSync(path.join(repo, ".ruah", ".gitignore"))).toBe(false);
   });
 
   it("comes with every committable file Ruah writes on request (preview, cloud scope)", () => {
