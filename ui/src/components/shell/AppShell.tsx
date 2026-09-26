@@ -462,7 +462,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
               ) : null}
               {showHints ? (
-                <div className="pointer-events-none absolute bottom-5 left-5 z-30 flex max-w-full">
+                // Beside the Map's element palette (Edit mode, top-left, 14 rem wide), never over it.
+                <div className={cn("pointer-events-none absolute bottom-5 z-30 flex max-w-full", wb.editing && pathname === "/map" ? "left-[15.5rem]" : "left-5")}>
                   <NewProjectHints />
                 </div>
               ) : null}
