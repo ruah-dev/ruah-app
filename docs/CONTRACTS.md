@@ -1885,15 +1885,18 @@ interface ModelUsage { model: string; turns?: number; inputTokens; outputTokens;
 
 | Agent | Plan / sign-in | Meters | On-demand | Local |
 | --- | --- | --- | --- | --- |
-| Claude Code | `get_usage` `subscription_type` | `five_hour` (Session · 5h), `seven_day`, model-scoped weekly — the §2.3 windows (live query ≤ 60 s, else probe ≤ 5 min, plus streamed `rate_limit_event`s); `periodStart` = reset − window length | `rate_limits.extra_usage` (cents → dollars) | — |
-| Cursor | `cursor-agent about --format json` (tier; no email = not signed in) | `GET https://cursor.com/api/usage-summary` with the **Cursor app's** login (`state.vscdb` `cursorAuth/accessToken`, read with `sqlite3 -readonly`; cookie `WorkosCursorSessionToken=<userId>::<jwt>`): `included` (total %, $ used of $ limit), `auto` (Auto + Composer %), `api` (API models %), all resetting at `billingCycleEnd`. Not read when the app is signed in to another account than cursor-agent, or its token is expired (JWT `exp`, checked locally). | `individualUsage.onDemand` (else `teamUsage.onDemand`), cents → dollars | — |
-| Kiro CLI | `kiro-cli whoami --format json` (`{"account":null}` = signed out) | Kiro's own `/usage` over ACP: `kiro-cli acp` → `initialize` → `session/new` (cwd: an empty Ruah temp folder, no MCP servers) → `_kiro.dev/commands/execute {sessionId, command:{command:"usage",args:{}}}`; parses the GetUsageLimits shape (`usageBreakdownList[].currentUsage(WithPrecision)/usageLimit(WithPrecision)/nextDateReset`, active `bonuses`/`freeTrialInfo` as expiring meters, `subscriptionInfo.subscriptionTitle`), else Kiro's text ("… 42.5 of 50 … (85% used) … resets on Oct 01, 2026"), else shows Kiro's message | `overageConfiguration.overageStatus` + `overageCharges` / `overageCap` | — |
+| Claude Code | `get_usage` `subscription_type`; when it reports no windows, the CLI's account info (`initialize` / `accountInfo`: `apiProvider`, `tokenSource`, `apiKeySource` only — never the email) tells the cases apart: `tokenSource`/`apiKeySource` `"none"` = **not signed in** (`not_logged_in`, `/login`), an `apiKeySource` = API key (`unsupported`, plan "API key"), `apiProvider` ≠ `firstParty` = Bedrock / Vertex / Foundry / gateway (`unsupported`, `loggedIn: null`), no account info = `unsupported` with `loggedIn: null`, `plan: null` and a neutral reason. `installed` comes from the daemon's agent catalog | `five_hour` (Session · 5h), `seven_day`, model-scoped weekly — the §2.3 windows (live query ≤ 60 s, else probe ≤ 5 min, plus streamed `rate_limit_event`s; a streamed reset within a minute of the probed one keeps the probed value); `periodStart` = reset − window length | `rate_limits.extra_usage` (cents → dollars) | — |
+| Cursor | `cursor-agent about --format json` (tier; no email = not signed in) | `GET https://cursor.com/api/usage-summary` with the **Cursor app's** login (`state.vscdb` `cursorAuth/accessToken`, read with `sqlite3 -readonly`; cookie `WorkosCursorSessionToken=<userId>::<jwt>`): `included` (total %, $ used of $ limit), `auto` (Auto + Composer %), `api` (API models %), all resetting at `billingCycleEnd`. Read only when cursor-agent and the app name the same account: not read when `cursor-agent about` fails (status `error`, so the last good reading shows as stale), when either names no email or they differ (`partial`), or when the token is expired (JWT `exp`, checked locally). | `individualUsage.onDemand` (else `teamUsage.onDemand`), cents → dollars | — |
+| Kiro CLI | `kiro-cli whoami --format json` (`{"account":null}` = signed out) | Kiro's own `/usage` over ACP: `kiro-cli acp` → `initialize` → `session/new` (cwd: a fresh private temp folder per read — `mkdtemp`, mode 0700 — removed afterwards; `mcpServers: []`, but Kiro still starts the user's **global** MCP servers from `~/.kiro/settings/mcp.json`, which ACP cannot turn off — the card's source line says so) → `_kiro.dev/commands/execute {sessionId, command:{command:"usage",args:{}}}`; parses the GetUsageLimits shape (`usageBreakdownList[].currentUsage(WithPrecision)/usageLimit(WithPrecision)/nextDateReset`, active `bonuses`/`freeTrialInfo` as expiring meters, `subscriptionInfo.subscriptionTitle`), else Kiro's text — only on a line naming credits, only "Credits: 42.5 of 50" / "42.5 of 50 credits" / "85% used" (never another "n of m", "n/m" or a date) — else shows Kiro's message (`partial`). `success: false` is an `error` with Kiro's message, never parsed | `overageConfiguration.overageStatus` + `overageCharges` / `overageCap` | — |
 | Grok Build | `grok models` ("You are logged in with grok.com.") | none: the allowance is only in grok's TUI (`/usage`) — status `partial` with that reason | — | `grok usage <id>` for sessions touched in 30 days (ids from `$GROK_HOME/sessions/<cwd>/<id>/` names + mtimes; fallback `grok sessions list`), turns filtered by `endedAt`, cost = `costUsdTicks / 1e10` |
 | OpenCode | — | none: status `unsupported` (bills through connected providers) | — | `opencode stats --days 30 --models` (rounded: `approximate: true`) |
 
 Caching (service): Cursor 5 min, Kiro / Grok / OpenCode 10 min, Claude per §2.3's own throttle;
 `refresh` bypasses the cache but not a 15 s floor; a provider read is capped at 60 s (then
-`error`); an `error` after a good reading returns the good one with `stale: true`.
+`error`): the read is aborted (its CLIs get the abort signal and are killed), no new read of that
+agent starts until it has wound down, the timeout error is reused for 60 s only, and an answer
+that still arrives replaces it; an `error` after a good reading returns the good one with
+`stale: true`.
 Estimates cover the agent's current period: the weekly window (Claude), the billing period
 (Cursor, Kiro), else the last 30 days; installed agents with at least one turn only.
 
@@ -1907,12 +1910,20 @@ Environment: `RUAH_CLAUDE_USAGE_PROBE=0` (no Claude probe, as §2.3),
 | --- | --- | --- |
 | `GET /api/usage/agents[?agent=<id>][&refresh=1]` | `AgentLimitsReport` (with `agent`: that agent only) | 400 unknown agent (`{ error }`), 405 other methods, 503 without usage tracking, 404 when the daemon's `UsageApi` has no `agentLimits` (older fakes). `claude-acp` is accepted for `claude`. |
 
+Every `GET /api/usage/*` (these reads start agent CLIs and use saved logins) answers **403**
+`{ error }` before doing anything when: the `Host` is not a loopback name, an IP literal or the
+`--host` name (DNS rebinding); an `Origin` is present and not allowed (loopback origins +
+`--allow-origin`, as for POSTs); or there is no `Origin` and `Sec-Fetch-Site: cross-site` (another
+site's `<img>` / no-cors fetch). curl and other non-browser clients send neither and pass.
+
 ### 15.4 CLI (no daemon)
 
 `ruah app usage limits [--agent <id>] [--json] [--refresh]` — the same report (`--json`: the
 `AgentLimitsReport`), text: one block per agent with a bar per window, "resets in 3d 4h (Mon
 9:00 AM)", on-demand, local stats, Ruah estimate, source. Exit 0; 2 on usage errors and unknown
-agents; 1 when `--agent` names an agent whose reading is `error`. `ruah app usage help`.
+agents; 1 when `--agent` names an agent whose reading is `error`. `ruah app usage help`. Subcommand
+names win over folders of the same name (`ruah app usage` runs this even beside a `usage/`
+folder; open such a folder with `ruah app open usage` or `ruah app ./usage`).
 
 ### 15.5 Viewer (self-contained, `ui/src/components/usage/`)
 
@@ -1923,11 +1934,16 @@ agents; 1 when `--agent` names an agent whose reading is `error`. `ruah app usag
 - `AgentLimitCard` — plan pill, status pill, a meter per window (amber / red past the
   thresholds, a tick at the even-pace point, reset countdown with the absolute time on hover),
   on-demand, "Recorded locally", "Ruah estimate" (plus the viewer's model-price overrides for
-  turns without a reported cost), reason + action, source · checked · refresh · Dashboard ↗.
+  turns without a reported cost; "(1/2 turns)" when the cost covers only some turns), reason +
+  action, source · checked · refresh · Dashboard ↗.
 - `AgentLimitHint agentId` — "62% left · resets 4h" for the tightest window (tie → shorter
   window), for the top-bar agent pill; renders nothing without a percentage.
-- `AgentLimitToasts` — one toast per agent, window, level and reset (remembered in
-  `localStorage` `ruah.usage.limit-announced.v1`); the panel mounts it, the shell may instead.
-- One shared reading (`agentLimitsStore.ts`): fetched when the daemon origin appears, polled
-  every 3 min while mounted and visible, refreshed per agent or all; an older daemon (404 /
-  HTML) shows "Limits need a newer daemon".
+- `AgentLimitToasts` — one toast per agent, window, level and reset (the reset rounded to the
+  minute, so two sources a second apart are one window; remembered in `localStorage`
+  `ruah.usage.limit-announced.v1`); the panel mounts it, the shell may instead. It fetches
+  nothing: it announces what the panel and the hints read.
+- One shared reading (`agentLimitsStore.ts`), fetched per mounted scope: the panel reads every
+  agent, a hint only its own (`?agent=<id>`), so a lone top-bar hint never keeps every
+  installed agent's CLIs running. Fetched when the daemon origin appears, polled every 3 min
+  while mounted and visible, refreshed per agent or all; an older daemon (404 / HTML) shows
+  "Limits need a newer daemon".
