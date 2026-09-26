@@ -195,3 +195,47 @@ describe("railBadge", () => {
     expect(unreadText(100)).toBe("99+");
   });
 });
+
+describe("§20 pin order, reorder and groups", () => {
+  it("pinOrderIds follows the daemon's pinOrder; moveId moves one id", async () => {
+    const { pinOrderIds, moveId } = await import("@/lib/rail");
+    const list = [
+      { ...project("a", true), pinOrder: 2 },
+      { ...project("b", true), pinOrder: 0 },
+      project("c"),
+      { ...project("d", true), pinOrder: 1 },
+    ];
+    expect(pinOrderIds(list)).toEqual(["b", "d", "a"]);
+    expect(moveId(["a", "b", "c"], "c", 0)).toEqual(["c", "a", "b"]);
+    expect(moveId(["a", "b", "c"], "a", 9)).toEqual(["b", "c", "a"]);
+    expect(moveId(["a", "b"], "x", 0)).toEqual(["a", "b"]);
+  });
+
+  it("keeps ⌘ numbers global when the rail shows one group", async () => {
+    const { railGroupProjects, railGroups, groupInitials } = await import("@/lib/rail");
+    const tagged = (id: string, pinned: boolean, tags: string[]) => ({ ...project(id, pinned), tags });
+    const list = [tagged("A", true, ["Job"]), tagged("B", true, ["Liquid Money"]), tagged("c", false, ["job"]), tagged("d", false, ["Liquid Money"]), tagged("e", false, ["Solo"])];
+    expect(railGroups(list).map((g) => `${g.label}:${g.count}`)).toEqual(["Job:2", "Liquid Money:2"]);
+    expect(railGroups([tagged("x", false, ["Solo"])])).toEqual([]);
+    const lm = railGroupProjects(list, "liquid money", "e");
+    expect(lm.map((p) => p.id)).toEqual(["B", "d", "e"]);
+    expect(railGroupProjects(list, "nope", null)).toHaveLength(5);
+    const layout = railProjects(lm, "e", 10, [], { complete: false, pinnedIds: ["A", "B"] });
+    expect(layout.tiles.map((t) => [t.project.id, t.shortcut])).toEqual([["B", "⌘2"], ["d", null], ["e", null]]);
+    expect(groupInitials("Liquid Money")).toBe("LM");
+    expect(groupInitials("job")).toBe("Jo");
+  });
+});
+
+describe("drag to reorder pins", () => {
+  it("dropIndex + moveId put the dragged pin where the line shows", async () => {
+    const { dropIndex, moveId } = await import("@/lib/rail");
+    const ids = ["a", "b", "c", "d"];
+    const drop = (dragged: string, target: string, after: boolean) => moveId(ids, dragged, dropIndex(ids, dragged, target, after));
+    expect(drop("a", "c", false)).toEqual(["b", "a", "c", "d"]);
+    expect(drop("a", "c", true)).toEqual(["b", "c", "a", "d"]);
+    expect(drop("d", "a", false)).toEqual(["d", "a", "b", "c"]);
+    expect(drop("d", "b", true)).toEqual(["a", "b", "d", "c"]);
+    expect(drop("b", "b", true)).toEqual(ids);
+  });
+});

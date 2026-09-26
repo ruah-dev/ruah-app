@@ -200,7 +200,9 @@ export type ServerMessage =
       maxBackgroundTurns: number;
     }
   // §18: the live preview of a project's dev server changed (every viewer; filter by projectId)
-  | { type: "preview"; status: PreviewStatus };
+  | { type: "preview"; status: PreviewStatus }
+  // §20: the recent list changed without a switch (pin, unpin, reorder, tags, forget) — every viewer
+  | { type: "projects.changed"; recent: ProjectInfo[] };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -328,6 +330,9 @@ export interface ProjectInfo {
   kind: "repo" | "system"; // "system" = multi-repo (docs/MULTI-REPO.md)
   lastOpenedAt: string; // ISO
   pinned?: boolean;
+  pinOrder?: number; // §20: the pinned projects' explicit order (0 = ⌘1)
+  pinnedAt?: string; // §20: ISO, when it was pinned
+  tags?: string[]; // §20: free-form groups (a client, "Job"); the first is the project's group
 }
 
 export interface ChatInfo {
@@ -489,6 +494,124 @@ export interface MapChange {
 export interface ProjectsResponse {
   current: ProjectInfo | null;
   recent: ProjectInfo[]; // most recent first, pinned on top
+}
+
+// §20 new project wizard, pinned order, tags, Home overview
+
+export type GithubVisibility = "private" | "public";
+
+export interface TemplateInfo {
+  id: string;
+  name: string;
+  description: string;
+  files: string[]; // top-level entries it writes (folders end with "/")
+  run?: string; // "pnpm install && pnpm dev"
+  setupPrompt: string; // the suggested first prompt for the agent
+}
+
+/** GET /api/projects/new */
+export interface NewProjectDefaults {
+  parentDir: string;
+  home: string;
+  templates: TemplateInfo[];
+  git: { installed: boolean; identity: boolean };
+}
+
+/** GET /api/projects/new/github */
+export interface GithubToolStatus {
+  installed: boolean;
+  loggedIn: boolean;
+  login?: string;
+}
+
+/** POST /api/projects/new/check */
+export interface NewProjectCheck {
+  path: string;
+  ok: boolean;
+  name: { ok: boolean; error?: string };
+  parent: { exists: boolean; isDir: boolean; writable: boolean };
+  target: { exists: boolean; empty?: boolean };
+  problems: string[];
+}
+
+export interface CreateProjectInput {
+  parentDir: string;
+  name: string;
+  git?: boolean;
+  template?: string;
+  commit?: boolean;
+  github?: { visibility: GithubVisibility; name?: string };
+  system?: string;
+  createParent?: boolean;
+}
+
+export interface CreateReport {
+  path: string;
+  template: string;
+  files: number;
+  scanned: { nodes: number; edges: number } | null;
+  git: { init: boolean; branch: string | null; commit: string | null; warning?: string } | null;
+  github: { command: string[]; ran: boolean; url?: string; error?: string } | null;
+  system: { root: string; repoId: string | null; error?: string } | null;
+  warnings: string[];
+}
+
+/** POST /api/projects/create */
+export type CreateResult = ProjectInfo & { created?: CreateReport };
+
+export interface OverviewPermission {
+  requestId: string;
+  turnId: string;
+  chatId: string | null;
+  title: string;
+  options: PermissionOption[];
+}
+
+export interface OverviewCloud {
+  inScope: number;
+  healthy: number;
+  degraded: number;
+  down: number;
+  deploying: number;
+  unhealthy: string[];
+  syncedAt: string | null;
+}
+
+/** One card of GET /api/projects/overview (§20.5). */
+export interface ProjectOverview {
+  project: ProjectInfo;
+  current: boolean;
+  exists: boolean;
+  lastViewedAt: string | null;
+  lastChat: {
+    id: string;
+    title: string;
+    agentId: string;
+    updatedAt: string;
+    turnCount: number;
+    lastPrompt: string | null;
+    lastReply: string | null;
+  } | null;
+  since: {
+    from: string | null;
+    turnsFinished: number;
+    turnsFailed: number;
+    permissionsRequested: number;
+    filesTotal: number;
+    mapChanges: number;
+  };
+  lastEvent: ActivityEvent | null;
+  unread: number;
+  live: { running: number; waitingPermission: number };
+  permissions: OverviewPermission[];
+  git: GitState;
+  cloud: OverviewCloud | null;
+  preview: { state: "stopped" | "starting" | "running" | "crashed"; url: string | null; exitCode: number | null } | null;
+}
+
+export interface ProjectsOverview {
+  at: string;
+  projects: ProjectOverview[];
 }
 
 /** GET /api/chats/recent */

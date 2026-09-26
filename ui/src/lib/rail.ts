@@ -70,6 +70,36 @@ export function pinnedOrder(prev: readonly string[], pinnedIds: readonly string[
   return out;
 }
 
+/** §20: the pinned ids in the daemon's explicit order (`pinOrder`; pins without one last, most recent first). */
+export function pinOrderIds(list: readonly ProjectInfo[]): string[] {
+  return list
+    .filter((p) => p.pinned)
+    .sort((a, b) => (a.pinOrder ?? Number.MAX_SAFE_INTEGER) - (b.pinOrder ?? Number.MAX_SAFE_INTEGER) || Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt))
+    .map((p) => p.id);
+}
+
+/**
+ * Moves `id` to `toIndex` in `ids` (drag to reorder); an unknown id or a no-op returns `ids` as is.
+ * `toIndex` is clamped into the list.
+ */
+export function moveId(ids: readonly string[], id: string, toIndex: number): string[] {
+  const from = ids.indexOf(id);
+  if (from < 0) return [...ids];
+  const next = ids.filter((x) => x !== id);
+  const to = Math.max(0, Math.min(next.length, Math.round(toIndex)));
+  next.splice(to, 0, id);
+  return next;
+}
+
+/** Where `dragged` lands (its index after the move) when dropped before / after `target`. */
+export function dropIndex(ids: readonly string[], dragged: string, target: string, after: boolean): number {
+  const t = ids.indexOf(target);
+  const from = ids.indexOf(dragged);
+  let to = t + (after ? 1 : 0);
+  if (from >= 0 && from < to) to -= 1;
+  return to;
+}
+
 /**
  * The recent list as the viewer shows it: pinned first in `pinned` order (pinnedOrder; pinned
  * projects not in it follow, most recent first), then the rest most recently opened first.
@@ -97,11 +127,12 @@ export function railProjects(
   currentId: string | null,
   capacity: number,
   prevOrder: readonly string[] = [],
-  opts: { complete?: boolean } = {},
+  opts: { complete?: boolean; pinnedIds?: readonly string[] } = {},
 ): RailProjectsLayout {
   const pinned = projects.filter((p) => p.pinned);
   const recents = projects.filter((p) => !p.pinned);
-  const shortcutOf = new Map(pinned.slice(0, 9).map((p, i) => [p.id, `⌘${i + 1}`]));
+  // ⌘1…⌘9 follow every pinned project (`pinnedIds`, when the list is a group's), not just the shown ones.
+  const shortcutOf = new Map((opts.pinnedIds ?? pinned.map((p) => p.id)).slice(0, 9).map((id, i) => [id, `⌘${i + 1}`]));
   const max = Math.max(0, Math.min(capacity, MAX_RAIL_TILES));
 
   let shownPinned: ProjectInfo[];
@@ -173,4 +204,55 @@ export function railBadge(activity: Pick<ProjectActivity, "running" | "waitingPe
 /** "3", "99+" for the unread pill. */
 export function unreadText(n: number): string {
   return n > 99 ? "99+" : String(n);
+}
+
+// ---------------------------------------------------------------- groups (§20 tags)
+
+export const RAIL_ALL_GROUPS = "all";
+
+/**
+ * The groups the rail's switcher offers: tags that at least two projects share (a tag on one
+ * project is a label, not a group), most used first. Empty = no switcher (the rail stays calm).
+ */
+export function railGroups(projects: readonly ProjectInfo[]): { key: string; label: string; count: number }[] {
+  const byKey = new Map<string, { count: number; spellings: Map<string, number> }>();
+  for (const p of projects) {
+    for (const tag of new Set((p.tags ?? []).map((t) => t.trim()).filter(Boolean))) {
+      const key = tag.toLowerCase();
+      const hit = byKey.get(key) ?? { count: 0, spellings: new Map<string, number>() };
+      hit.count += 1;
+      hit.spellings.set(tag, (hit.spellings.get(tag) ?? 0) + 1);
+      byKey.set(key, hit);
+    }
+  }
+  return [...byKey]
+    .filter(([, h]) => h.count >= 2)
+    .map(([key, h]) => ({ key, count: h.count, label: [...h.spellings].sort((a, b) => b[1] - a[1] || capitalFirst(a[0], b[0]))[0]![0] }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/**
+ * The projects the rail shows for a group (`key` from railGroups, or "all"): the group's projects
+ * plus the open one (it always has a tile). An unknown group shows everything.
+ */
+export function railGroupProjects(projects: readonly ProjectInfo[], group: string, currentId: string | null): ProjectInfo[] {
+  if (group === RAIL_ALL_GROUPS) return [...projects];
+  const inGroup = (p: ProjectInfo) => (p.tags ?? []).some((t) => t.trim().toLowerCase() === group);
+  if (!projects.some(inGroup)) return [...projects];
+  return projects.filter((p) => inGroup(p) || p.id === currentId);
+}
+
+/** Two letters for the switcher's tile ("Liquid Money" → "LM", "Job" → "Jo"). */
+export function groupInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();
+  const w = words[0] ?? "?";
+  return w.slice(0, 1).toUpperCase() + w.slice(1, 2).toLowerCase();
+}
+
+/** Spelling ties: a capitalized spelling ("Job") wins over "job", then alphabetical. */
+function capitalFirst(a: string, b: string): number {
+  const ca = a[0] !== undefined && a[0] !== a[0].toLowerCase();
+  const cb = b[0] !== undefined && b[0] !== b[0].toLowerCase();
+  return Number(cb) - Number(ca) || a.localeCompare(b);
 }
