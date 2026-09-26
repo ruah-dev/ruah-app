@@ -128,6 +128,12 @@ Nothing has been tagged yet, so the first tagged release will contain both.
   positive control for history rewrites.
 - The app ships `THIRD_PARTY_NOTICES.md` in `Contents/Resources`.
 
+- Map undo: Cmd+Z / Shift+Cmd+Z undo and redo your own map edits, and every
+  delete shows a toast with Undo for 10 seconds; deleting an element that has
+  elements inside asks first.
+- One composer per project: unsent text and attached images stay with the
+  project they were written for.
+
 ### Changed
 - **Reading Cursor's saved login is opt-in** (`usage.readAppLogins` in
   `$RUAH_HOME/settings.json`, default off). While it is off the Cursor card
@@ -159,6 +165,12 @@ Nothing has been tagged yet, so the first tagged release will contain both.
   repo's own `.ruah/` and editor files.
 - Test fixtures and docs use fictional names only.
 
+- Delete and Cmd+Backspace remove elements only in Edit mode.
+- Switching chats while the agent works asks before stopping the turn; the
+  bell's "Reject" rejects the one request instead of ending the whole turn.
+- A project remembers only its own pages; Home and other global pages no
+  longer come back when you switch into a project.
+
 ### Fixed
 - A repo of a multi-repo system is not renamed while an agent turn in the
   system runs (the turn would write the old ids back): 409 in the app,
@@ -172,8 +184,8 @@ Nothing has been tagged yet, so the first tagged release will contain both.
 - A viewer opened with `?daemon=` keeps using that daemon after navigation; an
   element added with a palette click lands beside the others; the Repos dialog
   fits long paths.
-- Keyboard and focus: Enter / Esc answer a permission only when nothing else
-  can take the key; Esc that closes a menu or popover no longer dismisses a
+- Keyboard and focus: Enter answers a permission only when nothing else can
+  take the key, and Esc never answers one (it only closes menus); Esc that closes a menu or popover no longer dismisses a
   permission or leaves the level; dialogs give focus back to what opened them;
   terminal tabs, the terminal strip, resize handles and map links work by
   keyboard; clicking a segmented control leaves the arrow keys to the map.
@@ -211,6 +223,10 @@ Nothing has been tagged yet, so the first tagged release will contain both.
   ignores `SIGUSR1`.
 - Release signing secrets are available only to tag builds; every workflow
   write scope is guarded.
+- `GET /api/file` resolves every path segment, so a symlinked folder inside
+  a repository can no longer expose files outside it.
+- A project-scope extension from a folder outside the repository is refused
+  (it would write an absolute local path into a committable file).
 
 ## [0.1.0] — not yet tagged
 
