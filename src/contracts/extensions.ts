@@ -75,18 +75,26 @@ export const ExtensionSourceSchema = z.discriminatedUnion("type", [
 ]);
 export type ExtensionSource = z.infer<typeof ExtensionSourceSchema>;
 
-/** One "Also install into" write, remembered so Remove can undo exactly it. */
+/**
+ * One "Also install into" write, remembered so Remove can undo exactly it.
+ * Kept on this machine only ($RUAH_HOME/extensions-installs.json, keyed by
+ * scope + id), never in an extensions file: a record read from a committed
+ * project file would let a commit make Remove delete arbitrary config.
+ */
 export const InstallRecordSchema = z.object({
   target: z.enum(INSTALL_TARGETS),
   scope: z.enum(EXTENSION_SCOPES),
   /** The file or folder written (absolute). */
-  path: z.string(),
+  path: z.string().max(4096),
   /** "json-key": a key merged into a JSON config; "copy": a folder or file Ruah created; "claude-cli": `claude mcp add-json -s user`. */
   type: z.enum(["json-key", "copy", "claude-cli"]),
-  /** For json-key: the object path of the key, e.g. ["mcpServers", "github"]; for claude-cli: ["mcpServers", <name>]. */
-  key: z.array(z.string()).optional(),
-  /** For a copied file: its hash, so Remove deletes it only while it is unchanged. */
-  sha256: z.string().optional(),
+  /** For json-key and claude-cli: ["mcpServers", <name>]. */
+  key: z.array(z.string().max(200)).max(2).optional(),
+  /**
+   * What Ruah wrote, so Remove undoes it only while it is unchanged: a copied
+   * file's content hash, or (json-key, claude-cli) the hash of the entry.
+   */
+  sha256: z.string().max(128).optional(),
   at: z.string(),
 });
 export type InstallRecord = z.infer<typeof InstallRecordSchema>;
@@ -107,7 +115,8 @@ export const ExtensionSchema = z.object({
   notes: z.string().max(1000).optional(),
   homepage: z.string().max(2048).optional(),
   addedAt: z.string(),
-  installedInto: z.array(InstallRecordSchema).max(32).optional(),
+  // No install records here (see InstallRecordSchema); an `installedInto` key in an
+  // older file is dropped when it is read.
 });
 export type Extension = z.infer<typeof ExtensionSchema>;
 
@@ -133,7 +142,11 @@ export interface ServerPreview {
 /** "What it runs": everything executable an extension brings, shown before it is enabled. */
 export interface WhatItRuns {
   servers: ServerPreview[];
-  /** Hook commands of a plugin (run by agents that load the plugin: Claude, Cursor, Grok). */
+  /**
+   * Commands a plugin runs besides its MCP servers, one line each: hooks, LSP
+   * servers, monitors, status lines (run by agents that load the plugin:
+   * Claude, Cursor, Grok).
+   */
   hooks: string[];
   /** Instruction files it provides (SKILL.md, POWER.md, steering, rules), relative to its folder. */
   files: string[];
@@ -159,6 +172,10 @@ export interface ExtensionView extends Extension {
   /** Each declared env var / header: whether the Keychain has a value, whether the daemon's env has one. */
   secrets: { name: string; set: boolean; fromEnv: boolean }[];
   support: Record<ExtensionAgent, SupportInfo>;
+  /** What an approval covers (the hash of what it runs now); pass it to enable so a change in between is not approved unseen. */
+  fingerprint: string;
+  /** "Also install into" writes made from this machine (Remove undoes them). */
+  installedInto?: InstallRecord[];
 }
 
 export interface FeaturedExtension {
@@ -175,6 +192,12 @@ export interface FeaturedExtension {
   notes?: string;
   /** Agents it is suggested for (the add dialog pre-selects them; nothing is enabled without the user). */
   suggestedFor?: ExtensionAgent[];
+  /**
+   * Built into that agent: nothing to add (Claude Design is a Claude Code tool
+   * that calls its endpoint with Claude's own credentials; a generic MCP client
+   * cannot sign in to it). `notes` says how to turn it on.
+   */
+  builtin?: ExtensionAgent;
   /** Already added (global or this project). */
   added?: boolean;
 }
@@ -240,7 +263,12 @@ export const AddExtensionBodySchema = z.object({
   id: ExtensionIdSchema.optional(),
   name: z.string().min(1).max(120).optional(),
   kind: z.enum(EXTENSION_KINDS).optional(),
-  /** Enable right away for these agents (the user picked them in the add dialog). */
+  /**
+   * Enable for these agents (the user picked them in the add dialog). Approved
+   * right away only when the request itself says what runs (an MCP command or
+   * URL, a featured entry) or it runs nothing; a folder or git source that runs
+   * commands stays in review until approved with its fingerprint.
+   */
   enableFor: AgentListSchema.optional(),
 });
 export type AddExtensionBody = z.infer<typeof AddExtensionBodySchema>;
@@ -250,7 +278,11 @@ export const ExtensionRefBodySchema = z.object({
   scope: z.enum(EXTENSION_SCOPES),
 });
 
-export const EnableExtensionBodySchema = ExtensionRefBodySchema.extend({ agents: AgentListSchema.min(1) });
+export const EnableExtensionBodySchema = ExtensionRefBodySchema.extend({
+  agents: AgentListSchema.min(1),
+  /** The fingerprint the user reviewed (ExtensionView.fingerprint); 409 when what it runs changed since. */
+  fingerprint: z.string().max(128).optional(),
+});
 export const DisableExtensionBodySchema = ExtensionRefBodySchema.extend({ agents: AgentListSchema.optional() });
 export const RemoveExtensionBodySchema = ExtensionRefBodySchema.extend({
   /** Also undo its "Also install into" writes (default true). */

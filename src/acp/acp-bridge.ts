@@ -93,6 +93,12 @@ interface Runtime {
   retiring: boolean;  // we are killing it on purpose (stop / cancel timeout / failed start)
   /** §15: extensions resolved for this process's launch, used by its first session (later sessions re-resolve). */
   extensions?: SessionExtensions | undefined;
+  /** §15: the launch (command, args, env) this process started with; a later session whose extensions change it restarts the process. */
+  launchKey: string;
+}
+
+function launchKeyOf(preset: AcpPreset): string {
+  return JSON.stringify([preset.command, preset.args, Object.entries(preset.env ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 
 function errorMessage(err: unknown): string {
@@ -330,8 +336,9 @@ export class AcpProcessBridge implements AcpBridge {
       await this.start();
       return;
     }
+    if (await this.relaunchIfLaunchChanged(rt)) return;
     const oldSessionId = this.sessionId;
-    rt.session.dispose();
+    rt.session?.dispose();
     rt.session = undefined;
     this.sessionId = undefined;
     this.modes = undefined;
@@ -374,8 +381,9 @@ export class AcpProcessBridge implements AcpBridge {
       if (this.state !== "stopped") await this.start();
       return;
     }
+    if (await this.relaunchIfLaunchChanged(rt)) return;
     const oldSessionId = this.sessionId;
-    rt.session.dispose();
+    rt.session?.dispose();
     rt.session = undefined;
     this.sessionId = undefined;
     this.modes = undefined;
@@ -426,10 +434,47 @@ export class AcpProcessBridge implements AcpBridge {
 
   // ---------- lifecycle ----------
 
-  private async startOnce(): Promise<void> {
+  /**
+   * §15: plugin folders (Cursor / Grok skills and plugins) and env
+   * (OPENCODE_CONFIG_CONTENT) are fixed when the process starts; only MCP
+   * servers go in each session/new. When a later session's extensions change
+   * the launch, the process is restarted (the new session starts in it).
+   * true when it restarted.
+   */
+  private async relaunchIfLaunchChanged(rt: Runtime): Promise<boolean> {
+    if (this.options.extensions === undefined) return false;
+    const next = await this.resolveExtensions();
+    if (this.runtime !== rt) return false;
+    const preset = next?.acp?.preset ?? this.options.preset;
+    if (launchKeyOf(preset) === rt.launchKey) {
+      rt.extensions = next; // this session's servers (extensionServers takes them instead of resolving again)
+      return false;
+    }
+    this.options.onStderr?.("ruah extensions: the enabled plugins or skills changed the agent's launch; restarting it\n");
+    rt.retiring = true;
+    for (const pending of [...this.permissions.values()]) pending.settle({ cancelled: true });
+    rt.session?.dispose();
+    rt.session = undefined;
+    rt.conn.close();
+    this.runtime = undefined;
+    this.sessionId = undefined;
+    this.modes = undefined;
+    this.modeSelector = undefined;
+    this.models = undefined;
+    this.modelSelector = undefined;
+    await rt.proc.kill(this.killGraceMs);
+    const starting = this.startOnce(next).finally(() => {
+      if (this.starting === starting) this.starting = undefined;
+    });
+    this.starting = starting;
+    await starting;
+    return true;
+  }
+
+  private async startOnce(resolved?: SessionExtensions): Promise<void> {
     this.emitStatus("starting");
     // §15: enabled extensions can change the launch (plugin folders, env); resolved before the spawn.
-    const extensions = this.options.extensions !== undefined ? await this.resolveExtensions() : undefined;
+    const extensions = resolved ?? (this.options.extensions !== undefined ? await this.resolveExtensions() : undefined);
     if (extensions !== undefined && this.stopRequested) throw new Error("agent stopped during start");
     const preset: AcpPreset = extensions?.acp?.preset ?? this.options.preset;
     const proc = new AgentProcess(preset, this.root, this.options.onStderr);
@@ -443,6 +488,7 @@ export class AcpProcessBridge implements AcpBridge {
       ready: false,
       retiring: false,
       extensions,
+      launchKey: launchKeyOf(preset),
     };
     this.runtime = rt;
     void proc.exited.then((exit) => this.onExit(rt, exit));

@@ -24,8 +24,12 @@ export interface BridgeOptions {
  * or disabling an extension applies to the next session without a restart.
  */
 export interface SessionExtensions {
-  /** Claude Agent SDK: extra mcpServers (the map tools' "ruah" server wins), local plugin folders, text appended to the system prompt. */
-  sdk?: { mcpServers: Record<string, unknown>; plugins: string[]; append?: string };
+  /**
+   * Claude Agent SDK: extra mcpServers (the map tools' "ruah" server wins), local plugin folders
+   * (`pluginsWithoutMcp`: of those, the ones loaded with skipMcpDiscovery because Ruah starts their
+   * servers itself), text appended to the system prompt.
+   */
+  sdk?: { mcpServers: Record<string, unknown>; plugins: string[]; pluginsWithoutMcp?: string[]; append?: string };
   /** ACP: extra mcpServers for session/new and session/load; `preset` replaces the launch (plugin folders, env) when the process starts. */
   acp?: { mcpServers: McpServer[]; preset?: AcpPreset };
   /** Things that were skipped, for the debug log. */

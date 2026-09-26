@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import type { Extension, ExtensionScope, ExtensionStatus, McpRuns, WhatItRuns } from "../contracts/extensions.js";
 import { inspectPath, whatOf, type BundledServer, type Inspection } from "./inspect.js";
-import { ExtensionError, fingerprint, scopeKeyOf, slugify } from "./model.js";
+import { ExtensionError, fingerprint, scopeKeyOf, slugify, validateMcpUrl } from "./model.js";
 import type { ExtensionsStore } from "./store.js";
 
 export interface Evaluated {
@@ -74,6 +74,21 @@ export function evaluate(store: ExtensionsStore, ext: Extension, scope: Extensio
     statusDetail = "no server command or URL";
   }
 
+  // Remote servers read from a folder (.mcp.json, a power's mcp.json, a plugin) get the same URL
+  // rule as inline ones: https, or http only on loopback.
+  if (status === "ready") {
+    for (const server of servers) {
+      if (server.runs.type === "stdio") continue;
+      try {
+        validateMcpUrl(server.runs.url);
+      } catch (err) {
+        status = "invalid";
+        statusDetail = `${server.name}: ${(err as Error).message}`;
+        break;
+      }
+    }
+  }
+
   const launcher = servers.some((s) => s.runs.type === "stdio" && s.env.some((name) => s.envValues[name] === undefined || /\$\{/.test(s.envValues[name] ?? "")));
   const base = whatOf(inspection, launcher);
   const what: WhatItRuns = {
@@ -86,7 +101,7 @@ export function evaluate(store: ExtensionsStore, ext: Extension, scope: Extensio
       ...(s.runs.type !== "stdio" && s.runs.headers !== undefined ? { headers: [...s.runs.headers] } : {}),
     })),
   };
-  const fp = fingerprint(ext, what);
+  const fp = fingerprint(ext, what, { servers, ...(inspection?.digest !== undefined ? { digest: inspection.digest } : {}) });
 
   if (status === "ready" && ext.enabledFor.length > 0) {
     const approved = store.approvedFingerprint(scopeKey, ext.id);

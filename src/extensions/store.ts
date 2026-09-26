@@ -5,15 +5,21 @@
 //   $RUAH_HOME/extensions-trust.json      approvals: the fingerprint of what each extension ran
 //                                         when the user enabled it (§15.4). A project file from
 //                                         someone else's commit is not injected until approved here.
+//   $RUAH_HOME/extensions-installs.json   "Also install into" records of this machine (what Remove
+//                                         undoes), keyed like approvals. Never read from a project
+//                                         file: a commit must not be able to make Remove delete things.
 // A file that cannot be read (bad JSON, schema error, > 1 MiB) is reported and never overwritten.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import {
   ExtensionsFileSchema,
+  InstallRecordSchema,
   type Extension,
   type ExtensionScope,
   type ExtensionSource,
+  type InstallRecord,
 } from "../contracts/extensions.js";
 import { atomicWriteFileSync } from "../projects/fs-util.js";
 import { ExtensionError, slugify } from "./model.js";
@@ -65,9 +71,23 @@ export interface TrustFile {
   approved: Record<string, string>;
 }
 
+const InstallsFileSchema = z.object({
+  version: z.literal(1),
+  installs: z.record(z.string(), z.array(z.unknown())),
+});
+
+function realOrResolved(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 export class ExtensionsStore {
   readonly globalFile: string;
   readonly trustFile: string;
+  readonly installsFile: string;
   /** Git clones live here (one folder per URL + ref). */
   readonly sourcesDir: string;
   /** Generated per-session plugin folders (skills bundle for Claude / Cursor / Grok / OpenCode). */
@@ -76,6 +96,7 @@ export class ExtensionsStore {
   constructor(readonly home: string) {
     this.globalFile = path.join(home, "extensions.json");
     this.trustFile = path.join(home, "extensions-trust.json");
+    this.installsFile = path.join(home, "extensions-installs.json");
     this.sourcesDir = path.join(home, "extensions", "src");
     this.runtimeDir = path.join(home, "extensions", "runtime");
   }
@@ -84,9 +105,18 @@ export class ExtensionsStore {
     return path.join(root, ".ruah", "extensions.json");
   }
 
+  /**
+   * False when `root/.ruah` is Ruah's own home (e.g. $HOME with the default
+   * RUAH_HOME ~/.ruah): its extensions.json is the global file, not a project's.
+   */
+  isProjectRoot(root: string): boolean {
+    return realOrResolved(path.join(root, ".ruah")) !== realOrResolved(this.home) && realOrResolved(this.projectFile(root)) !== realOrResolved(this.globalFile);
+  }
+
   fileFor(scope: ExtensionScope, root: string | undefined): string {
     if (scope === "global") return this.globalFile;
     if (root === undefined) throw new ExtensionError(409, "no project is open");
+    if (!this.isProjectRoot(root)) throw new ExtensionError(409, `${root} is not a project: its .ruah folder is Ruah's home (global extensions); open a repository or pass --repo`);
     return this.projectFile(root);
   }
 
@@ -185,6 +215,40 @@ export class ExtensionsStore {
     if (trust.approved[`${scopeKey}/${id}`] === undefined) return;
     delete trust.approved[`${scopeKey}/${id}`];
     this.writeTrust(trust);
+  }
+
+  // ---- install records ------------------------------------------------------------
+
+  private readInstalls(): Record<string, unknown[]> {
+    try {
+      const parsed = InstallsFileSchema.safeParse(JSON.parse(fs.readFileSync(this.installsFile, "utf8")));
+      return parsed.success ? parsed.data.installs : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /** "Also install into" records of `<scopeKey>/<id>` made on this machine (invalid entries dropped). */
+  installs(scopeKey: string, id: string): InstallRecord[] {
+    const raw = this.readInstalls()[`${scopeKey}/${id}`] ?? [];
+    const out: InstallRecord[] = [];
+    for (const item of raw) {
+      const parsed = InstallRecordSchema.safeParse(item);
+      if (parsed.success) out.push(parsed.data);
+    }
+    return out;
+  }
+
+  setInstalls(scopeKey: string, id: string, records: readonly InstallRecord[]): void {
+    const all = this.readInstalls();
+    const key = `${scopeKey}/${id}`;
+    if (records.length === 0) {
+      if (all[key] === undefined) return;
+      delete all[key];
+    } else all[key] = [...records].slice(-32);
+    const installs = Object.fromEntries(Object.entries(all).sort(([a], [b]) => a.localeCompare(b)));
+    atomicWriteFileSync(this.installsFile, `${JSON.stringify({ version: 1, installs }, null, 2)}\n`);
+    fs.chmodSync(this.installsFile, 0o600);
   }
 
   private writeTrust(trust: TrustFile): void {

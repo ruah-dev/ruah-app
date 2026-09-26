@@ -2,7 +2,10 @@
 // every time a session starts (CONTRACTS §15.5). Injection only: nothing here
 // writes another tool's configuration.
 //   Claude (Agent SDK)  mcpServers + plugins (a generated "ruah-ext" plugin holding the enabled
-//                       skills, plus plugin extensions) + rules appended to the system prompt
+//                       skills, plus plugin extensions) + rules appended to the system prompt.
+//                       A plugin whose MCP servers need secrets is loaded with skipMcpDiscovery
+//                       and its servers are started by Ruah (through the launcher), so Keychain
+//                       values reach them.
 //   ACP agents          session/new mcpServers; Cursor / Grok also get --plugin-dir; OpenCode gets
 //                       OPENCODE_CONFIG_CONTENT { skills.paths, instructions }
 // Stdio servers that need secrets start through `ruah app ext exec`, which reads
@@ -36,7 +39,8 @@ export type AcpMcpServer =
 
 export interface ResolvedSession {
   preview: SessionPreview;
-  claude: { mcpServers: Record<string, ClaudeMcpConfig>; plugins: string[]; systemPromptAppend?: string };
+  /** `pluginsWithoutMcp`: plugin folders (also in `plugins`) to load with skipMcpDiscovery (their servers are in mcpServers). */
+  claude: { mcpServers: Record<string, ClaudeMcpConfig>; plugins: string[]; pluginsWithoutMcp: string[]; systemPromptAppend?: string };
   acp: { mcpServers: AcpMcpServer[]; pluginDirs: string[]; env: Record<string, string> };
 }
 
@@ -58,6 +62,8 @@ export interface ResolveInput {
   launch: () => Launch;
   env?: NodeJS.ProcessEnv;
   home?: string;
+  /** A preview (GET /preview): compute only; never prune generated folders running sessions may use. */
+  preview?: boolean;
 }
 
 const RULES_MAX_BYTES = 64 * 1024;
@@ -126,8 +132,18 @@ function expandPluginRoot(value: string, pluginRoot: string | undefined): string
   return pluginRoot === undefined ? value : value.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot);
 }
 
-/** The generated plugin folder holding the enabled skills (content-addressed; reused while unchanged). */
-export function skillsPlugin(store: ExtensionsStore, agent: ExtensionAgent, skills: readonly { entry: SkillEntry; power: boolean }[]): string | undefined {
+/** Env names a server needs from outside its file (no literal value): Keychain or environment. */
+function secretNamesOf(server: BundledServer): string[] {
+  const literals = literalEnv(server);
+  return server.env.filter((n) => literals[n] === undefined);
+}
+
+/**
+ * The generated plugin folder holding the enabled skills (content-addressed;
+ * reused while unchanged, and touched then so its age says when a session
+ * last used it). `prune`: remove other generated folders unused for a week.
+ */
+export function skillsPlugin(store: ExtensionsStore, agent: ExtensionAgent, skills: readonly { entry: SkillEntry; power: boolean }[], options: { prune?: boolean } = {}): string | undefined {
   if (skills.length === 0) return undefined;
   const used = new Set<string>();
   const planned = skills.map(({ entry, power }) => {
@@ -138,8 +154,16 @@ export function skillsPlugin(store: ExtensionsStore, agent: ExtensionAgent, skil
   });
   const hash = createHash("sha1").update(JSON.stringify(planned.map((p) => [p.name, p.entry.dir, p.entry.file, p.power]))).digest("hex").slice(0, 12);
   const dir = path.join(store.runtimeDir, `${agent}-${hash}`);
-  pruneRuntime(store.runtimeDir, dir);
-  if (fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) return dir;
+  if (options.prune !== false) pruneRuntime(store.runtimeDir, dir);
+  if (fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) {
+    try {
+      const now = new Date();
+      fs.utimesSync(dir, now, now);
+    } catch {
+      // read-only or gone: the folder is still usable
+    }
+    return dir;
+  }
   const tmp = `${dir}.tmp-${process.pid}-${Date.now()}`;
   const manifest = `${JSON.stringify({ name: PLUGIN_NAME, version: "1.0.0", description: "Skills enabled in Ruah (generated; do not edit)" }, null, 2)}\n`;
   fs.mkdirSync(path.join(tmp, ".claude-plugin"), { recursive: true });
@@ -232,6 +256,7 @@ export async function resolveSession(input: ResolveInput): Promise<ResolvedSessi
   const servers: { server: BundledServer; ev: Evaluated; pluginRoot?: string }[] = [];
   const skills: { entry: SkillEntry; power: boolean }[] = [];
   const plugins: string[] = [];
+  const pluginsWithoutMcp: string[] = [];
   const rules: string[] = [];
 
   for (const ev of active) {
@@ -249,8 +274,17 @@ export async function resolveSession(input: ResolveInput): Promise<ResolvedSessi
         else for (const entry of inspection?.skills ?? []) skills.push({ entry, power: true });
         break;
       case "plugin":
-        if (loadsPlugins(input.agent) && !(input.agent === "claude" && acpMode) && ev.path !== undefined) plugins.push(ev.path);
-        else {
+        if (loadsPlugins(input.agent) && !(input.agent === "claude" && acpMode) && ev.path !== undefined) {
+          plugins.push(ev.path);
+          const needSecrets = [...new Set(ev.servers.flatMap(secretNamesOf))];
+          if (needSecrets.length > 0 && input.agent === "claude") {
+            // The SDK loads the plugin without its MCP servers; Ruah starts them (Keychain values via the launcher).
+            pluginsWithoutMcp.push(ev.path);
+            for (const server of ev.servers) servers.push({ server, ev, pluginRoot: ev.path });
+          } else if (needSecrets.length > 0) {
+            notes.push(`${ext.id}: its MCP servers read ${needSecrets.join(", ")} from ${input.agent}'s own environment (the Keychain is not used when the agent loads the plugin itself)`);
+          }
+        } else {
           for (const server of ev.servers) servers.push({ server, ev, ...(ev.path !== undefined ? { pluginRoot: ev.path } : {}) });
           if (input.agent === "opencode") for (const entry of inspection?.skills ?? []) skills.push({ entry, power: false });
           else if ((inspection?.skills.length ?? 0) > 0) notes.push(`${ext.id}: its skills cannot be loaded by this agent`);
@@ -313,7 +347,7 @@ export async function resolveSession(input: ResolveInput): Promise<ResolvedSessi
 
   const pluginDirs: string[] = [...plugins];
   const skillDirs: string[] = [];
-  const bundle = input.agent === "kiro" ? undefined : skillsPlugin(input.store, input.agent, skills);
+  const bundle = input.agent === "kiro" ? undefined : skillsPlugin(input.store, input.agent, skills, { prune: input.preview !== true });
   if (bundle !== undefined) {
     if (loadsPlugins(input.agent) && !(input.agent === "claude" && acpMode)) pluginDirs.unshift(bundle);
     else if (input.agent === "opencode") skillDirs.push(path.join(bundle, "skills"));
@@ -337,7 +371,7 @@ export async function resolveSession(input: ResolveInput): Promise<ResolvedSessi
       skipped,
       notes,
     },
-    claude: { mcpServers: claudeServers, plugins: pluginDirs, ...(append !== undefined ? { systemPromptAppend: append } : {}) },
+    claude: { mcpServers: claudeServers, plugins: pluginDirs, pluginsWithoutMcp, ...(append !== undefined ? { systemPromptAppend: append } : {}) },
     acp: { mcpServers: acpServers, pluginDirs: acpMode ? pluginDirs : [], env: acpEnv },
   };
 }

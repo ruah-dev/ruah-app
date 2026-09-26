@@ -1,7 +1,10 @@
 // src/extensions/cli.ts — `ruah app ext …`: the extensions library without
-// the daemon. The project is the repo around the current directory (git
-// top-level, else the directory itself) or --repo <dir>. Secret values are
-// read from stdin (hidden when it is a terminal), never from arguments.
+// the daemon. The project is the git repo around the current directory (or a
+// folder with its own .ruah/extensions.json below $HOME), else --repo <dir>;
+// outside a repo there is no project (global extensions only). $HOME itself is
+// never a project: with the default RUAH_HOME its .ruah/extensions.json is the
+// global file. Secret values are read from stdin (hidden when it is a
+// terminal), never from arguments.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
@@ -28,7 +31,7 @@ const USAGE = `ruah app ext — skills, MCP servers, Kiro powers, plugins and ru
 
 Usage:
   ruah app ext list [--json]                       global + this project's extensions, per-agent state
-  ruah app ext featured [--json]                   the curated catalog (Claude Design, GitHub, Playwright, …)
+  ruah app ext featured [--json]                   the curated catalog (GitHub, Playwright, …; Claude Design is built into Claude Code)
   ruah app ext discover [--agent <id>] [--json]    what each agent already has configured itself (read-only)
   ruah app ext add <folder|git-url|featured:<id>> [--kind <k>] [--id <id>] [--name <n>]
                    [--ref <branch|tag>] [--subdir <path>] [--project] [--agent <id>]... [--json]
@@ -49,21 +52,40 @@ Usage:
 Options:
   --project        the extension lives in <repo>/.ruah/extensions.json (committable) instead of
                    $RUAH_HOME/extensions.json
-  --repo <dir>     the project folder (default: the git repo around the current directory)
+  --repo <dir>     the project folder (default: the git repo around the current directory;
+                   outside one there is no project and --project needs --repo)
   --agent <id>     ${EXTENSION_AGENTS.join(", ")}
   <k>              ${EXTENSION_KINDS.join(", ")}
 
 Adding never runs anything (git sources are only cloned, into $RUAH_HOME/extensions/src).
 An extension reaches an agent when you enable it for that agent; what it runs is shown first and
-re-approval is needed when it changes.
+re-approval is needed when it changes. A folder or git source that runs commands is not approved
+by \`add --agent\`: check \`show <id>\`, then \`enable <id>\`.
 `;
 
-function findRepoRoot(start: string): string {
-  let dir = path.resolve(start);
+function real(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * The project around `start`: the nearest folder with .git, or with its own
+ * .ruah/extensions.json (not Ruah's home, never $HOME or above); undefined
+ * when there is none.
+ */
+export function findRepoRoot(start: string, options: { home?: string | undefined; ruahHome: string }): string | undefined {
+  const home = options.home !== undefined && options.home.length > 0 ? real(options.home) : undefined;
+  const ruahDir = real(options.ruahHome);
+  let dir = real(start);
   for (;;) {
-    if (fs.existsSync(path.join(dir, ".git")) || fs.existsSync(path.join(dir, ".ruah", "extensions.json"))) return dir;
+    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    const atOrAboveHome = home !== undefined && (dir === home || path.relative(dir, home).split(path.sep)[0] !== "..");
+    if (!atOrAboveHome && fs.existsSync(path.join(dir, ".ruah", "extensions.json")) && real(path.join(dir, ".ruah")) !== ruahDir) return dir;
     const parent = path.dirname(dir);
-    if (parent === dir) return path.resolve(start);
+    if (parent === dir) return undefined;
     dir = parent;
   }
 }
@@ -137,6 +159,10 @@ export interface ExtCliDeps {
   out?: (line: string) => void;
   err?: (line: string) => void;
   readSecret?: (name: string) => Promise<string>;
+  /** $RUAH_HOME (default: ruahHome()). */
+  home?: string;
+  /** The user's home, where looking for a project stops (default: $HOME). */
+  userHome?: string;
 }
 
 export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Promise<number> {
@@ -185,14 +211,20 @@ export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Pr
   }
   const { values, positionals } = parsed;
   const cwd = deps.cwd ?? process.cwd();
-  const project: ProjectRef = projectRefFor(values.repo !== undefined ? path.resolve(cwd, values.repo) : findRepoRoot(cwd));
+  const home = deps.service?.store.home ?? deps.home ?? ruahHome();
+  const repoRoot = values.repo !== undefined ? path.resolve(cwd, values.repo) : findRepoRoot(cwd, { home: deps.userHome ?? process.env.HOME, ruahHome: home });
+  const project: ProjectRef | undefined = repoRoot !== undefined ? projectRefFor(repoRoot) : undefined;
   const scope: ExtensionScope = values.project === true ? "project" : "global";
+  if (scope === "project" && project === undefined) {
+    err("ruah app ext: --project needs a project: run it inside a git repository or pass --repo <dir>");
+    return 2;
+  }
   const agents = agentList(values.agent);
   if (typeof agents === "string") {
     err(`ruah app ext: ${agents}`);
     return 2;
   }
-  const service = deps.service ?? new ExtensionsService({ home: ruahHome() });
+  const service = deps.service ?? new ExtensionsService({ home });
   const json = values.json === true;
   const print = (value: unknown): void => out(JSON.stringify(value, null, 2));
 
@@ -217,8 +249,9 @@ export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Pr
         if (json) return print(featured), 0;
         for (const f of featured) {
           const runs = f.runs === undefined ? "" : f.runs.type === "stdio" ? `${f.runs.command} ${f.runs.args.join(" ")}` : f.runs.url;
-          out(`${f.id.padEnd(20)} ${f.kind.padEnd(6)} ${f.name}${f.added === true ? "  (added)" : ""}`);
+          out(`${f.id.padEnd(20)} ${f.kind.padEnd(6)} ${f.name}${f.added === true ? "  (added)" : ""}${f.builtin !== undefined ? `  (built into ${AGENT_NAMES[f.builtin]})` : ""}`);
           out(`${"".padEnd(28)}${f.description}`);
+          if (f.builtin !== undefined && f.notes !== undefined) out(`${"".padEnd(28)}${f.notes}`);
           if (runs.length > 0) out(`${"".padEnd(28)}runs: ${runs}${(f.env ?? []).length > 0 ? `  env: ${(f.env ?? []).join(", ")}` : ""}`);
         }
         return 0;
@@ -284,6 +317,9 @@ export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Pr
         out(`Added ${view.id} (${view.kind}, ${view.scope}). Nothing was run.`);
         printView(view, out);
         if (view.enabledFor.length === 0) out(`\nEnable it: ruah app ext enable ${view.id}${scope === "project" ? " --project" : ""} --agent claude`);
+        else if (view.status === "review") {
+          out(`\nIt runs commands (above); agents get it after you approve them: ruah app ext enable ${view.id}${scope === "project" ? " --project" : ""} ${view.enabledFor.map((a) => `--agent ${a}`).join(" ")}`);
+        }
         for (const s of view.secrets.filter((x) => !x.set && !x.fromEnv)) out(`Set ${s.name}: ruah app ext secret set ${view.id} ${s.name}${scope === "project" ? " --project" : ""}`);
         return 0;
       }
@@ -380,7 +416,7 @@ export async function runExt(argv: readonly string[], deps: ExtCliDeps = {}): Pr
         if (agent === undefined) return err("ruah app ext preview --agent <id>"), 2;
         const preview = await service.preview(agent, project);
         if (json) return print(preview), 0;
-        out(`${AGENT_NAMES[agent]} in ${project.root}:`);
+        out(`${AGENT_NAMES[agent]} in ${project?.root ?? "(no project: global extensions only)"}:`);
         for (const s of preview.servers) out(`  mcp    ${describeServer(s)}`);
         for (const p of preview.plugins) out(`  plugin ${p}`);
         for (const r of preview.rules) out(`  rule   ${r}`);

@@ -842,7 +842,13 @@ export class ClaudeSdkBridge implements AcpBridge {
       ...(Object.keys(mcpServers).length > 0 ? { mcpServers: mcpServers as NonNullable<ClaudeQueryOptions["mcpServers"]> } : {}),
       // §15: plugin folders (Ruah's generated skills plugin + plugin extensions).
       ...(extensions !== undefined && extensions.plugins.length > 0
-        ? { plugins: extensions.plugins.map((path) => ({ type: "local" as const, path })) }
+        ? {
+            plugins: extensions.plugins.map((path) => ({
+              type: "local" as const,
+              path,
+              ...(extensions.pluginsWithoutMcp?.includes(path) === true ? { skipMcpDiscovery: true } : {}),
+            })),
+          }
         : {}),
       permissionMode: this.mode,
       // Lets setMode() switch into bypassPermissions later; the mode itself

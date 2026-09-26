@@ -5,11 +5,11 @@
       "id": "claude-design",
       "kind": "mcp",
       "name": "Claude Design",
-      "description": "Anthropic's design MCP server: generate and iterate on UI designs and mockups from the agent.",
+      "description": "Anthropic's Claude Design: generate and iterate on UI designs and mockups from the agent.",
       "category": "Design",
       "homepage": "https://claude.ai",
-      "runs": { "type": "http", "url": "https://api.anthropic.com/v1/design/mcp" },
-      "notes": "Remote server with its own sign-in: run /design-login in Claude Code once (or finish the OAuth prompt the first time a session connects). Ruah never stores credentials for it. Other agents need remote-MCP (HTTP) support and their own OAuth.",
+      "builtin": "claude",
+      "notes": "Built into Claude Code: Claude sessions in Ruah have the Claude Design tool when your claude.ai account has Claude Design access. If it asks for design access, run /design login once in an interactive Claude Code session on this Mac. Its endpoint (api.anthropic.com/v1/design/mcp) accepts only Claude Code's own sign-in, so it cannot be added as an MCP server for other agents.",
       "suggestedFor": ["claude"]
     },
     {

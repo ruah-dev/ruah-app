@@ -23,6 +23,7 @@ const FeaturedSchema = z.object({
   optionalEnv: z.array(EnvNameSchema).optional(),
   notes: z.string().optional(),
   suggestedFor: z.array(z.enum(EXTENSION_AGENTS)).optional(),
+  builtin: z.enum(EXTENSION_AGENTS).optional(),
 });
 
 let cache: FeaturedExtension[] | undefined;
@@ -46,6 +47,7 @@ export function featuredCatalog(): FeaturedExtension[] {
       ...(f.optionalEnv !== undefined ? { optionalEnv: f.optionalEnv } : {}),
       ...(f.notes !== undefined ? { notes: f.notes } : {}),
       ...(f.suggestedFor !== undefined ? { suggestedFor: f.suggestedFor } : {}),
+      ...(f.builtin !== undefined ? { builtin: f.builtin } : {}),
     });
   }
   cache = list;

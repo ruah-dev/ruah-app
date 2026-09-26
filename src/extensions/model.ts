@@ -106,7 +106,11 @@ export function validateGitUrl(raw: string, options: { allowFile?: boolean } = {
     throw new ExtensionError(400, `not a git URL: ${value}`);
   }
   if (url.protocol === "https:" || url.protocol === "ssh:") {
-    if (url.password !== "") throw new ExtensionError(400, "credentials in the URL are not allowed");
+    // https://<token>@host/… carries a credential in the user name: it would be written into the
+    // (committable) extensions file and could show in clone errors. ssh:// keeps its login name.
+    if (url.password !== "" || (url.protocol === "https:" && url.username !== "")) {
+      throw new ExtensionError(400, "credentials in the URL are not allowed; let git's credential helper supply them");
+    }
     return url.toString();
   }
   if (url.protocol === "file:" && options.allowFile === true) return url.toString();
@@ -137,44 +141,124 @@ export function validateRuns(runs: McpRuns): McpRuns {
 
 // ---- fingerprint ------------------------------------------------------------------
 
+export function sha256Hex(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** JSON with object keys sorted at every level (hashes that do not depend on key order). */
+export function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v === undefined ? null : v)).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** The part of a server the fingerprint covers beyond "what it runs": literal env / header values (hashed, never shown). */
+export interface FingerprintServer {
+  name: string;
+  envValues: Record<string, string>;
+  headerValues: Record<string, string>;
+}
+
 /**
  * Hash of everything an extension would run: its kind, source, server
- * definitions (including bundled ones read from disk) and hook commands.
- * Approving (enabling) records it; a change needs a new approval.
+ * definitions (including bundled ones read from disk, with their literal env
+ * and header values: NODE_OPTIONS changes what a server runs), the commands a
+ * plugin runs (hooks, LSP servers, monitors) and `digest`, the hash of the
+ * runnable config files and of the script files those commands point to
+ * inside the extension folder (src/extensions/inspect.ts). Approving
+ * (enabling) records it; a change needs a new approval.
  */
-export function fingerprint(ext: Pick<Extension, "kind" | "source" | "runs" | "env">, what: WhatItRuns): string {
-  const payload = JSON.stringify({
+export function fingerprint(
+  ext: Pick<Extension, "kind" | "source" | "runs" | "env">,
+  what: WhatItRuns,
+  extra: { servers?: readonly FingerprintServer[]; digest?: string } = {},
+): string {
+  const payload = stableStringify({
     kind: ext.kind,
     source: ext.source,
     runs: ext.runs ?? null,
     env: [...(ext.env ?? [])].sort(),
     servers: what.servers.map((s) => ({ ...s, env: [...s.env].sort() })),
+    values: (extra.servers ?? []).map((s) => ({ name: s.name, env: sha256Hex(stableStringify(s.envValues)), headers: sha256Hex(stableStringify(s.headerValues)) })),
     hooks: what.hooks,
+    digest: extra.digest ?? null,
   });
-  return createHash("sha256").update(payload).digest("hex").slice(0, 32);
+  return sha256Hex(payload).slice(0, 32);
 }
 
 // ---- redaction (discovery shows other tools' configs) -------------------------------
 
-const SECRET_FLAG = /(token|key|secret|password|passwd|auth|credential|bearer)/i;
+const SECRET_FLAG = /(token|key|secret|password|passwd|auth|credential|bearer|cookie|(^|[^a-z])pat\b)/i;
 const SECRET_VALUE = /^(sk-|sk_|ghp_|gho_|ghs_|github_pat_|glpat-|xox[abprs]-|AKIA|AIza|ya29\.|eyJ)[A-Za-z0-9._-]{8,}|^[A-Fa-f0-9]{32,}$|^[A-Za-z0-9+/_-]{40,}={0,2}$/;
+/** Flags whose next argument is a header ("Name: value") or an env pair ("NAME=value"). */
+const HEADER_FLAGS = new Set(["--header", "-H", "--headers"]);
+const ENV_FLAGS = new Set(["-e", "--env", "--set-env", "--environment"]);
 
-/** Args with likely secrets masked: values of --token/--api-key-style flags and token-looking strings. */
+/** "Authorization: Bearer x" → "Authorization: ••••" when the header looks secret; "Bearer x" anywhere → "Bearer ••••". */
+function redactHeader(value: string): string {
+  const colon = /^([^:\s]+)\s*:\s*(.*)$/.exec(value);
+  if (colon !== null && (SECRET_FLAG.test(colon[1] ?? "") || /^(bearer|basic|token)\s/i.test(colon[2] ?? ""))) return `${colon[1]}: ••••`;
+  return redactBearer(value);
+}
+
+function redactBearer(value: string): string {
+  return value.replace(/\b(Bearer|Basic|Token)\s+[^\s"',]+/gi, "$1 ••••");
+}
+
+/** "NAME=value" → "NAME=••••" when NAME looks secret (docker -e, env pairs). */
+function redactEnvPair(value: string): string {
+  const pair = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(value);
+  if (pair !== null && (SECRET_FLAG.test(pair[1] ?? "") || SECRET_VALUE.test(pair[2] ?? ""))) return `${pair[1]}=••••`;
+  return value;
+}
+
+/**
+ * Args with likely secrets masked: values of --token/--api-key-style flags,
+ * `--header "Authorization: Bearer …"` (mcp-remote), `-e NAME=value` (docker),
+ * NAME=value pairs with a secret-looking NAME, "Bearer …" anywhere and
+ * token-looking strings.
+ */
 export function redactArgs(args: readonly string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? "";
+    const prev = args[i - 1] ?? "";
+    if (i > 0 && HEADER_FLAGS.has(prev)) {
+      out.push(redactHeader(arg));
+      continue;
+    }
+    if (i > 0 && ENV_FLAGS.has(prev)) {
+      out.push(redactEnvPair(arg));
+      continue;
+    }
     const eq = /^(--?[A-Za-z0-9_-]+)=(.*)$/.exec(arg);
     if (eq !== null && SECRET_FLAG.test(eq[1] ?? "")) {
       out.push(`${eq[1]}=••••`);
       continue;
     }
-    const prev = args[i - 1] ?? "";
+    if (eq !== null && HEADER_FLAGS.has(eq[1] ?? "")) {
+      out.push(`${eq[1]}=${redactHeader(eq[2] ?? "")}`);
+      continue;
+    }
     if (i > 0 && /^--?[A-Za-z0-9_-]+$/.test(prev) && SECRET_FLAG.test(prev) && !arg.startsWith("-")) {
       out.push("••••");
       continue;
     }
-    out.push(SECRET_VALUE.test(arg) && !arg.includes("/") ? "••••" : redactUrl(arg));
+    if (SECRET_VALUE.test(arg) && !arg.includes("/")) {
+      out.push("••••");
+      continue;
+    }
+    const pair = redactEnvPair(arg);
+    if (pair !== arg) {
+      out.push(pair);
+      continue;
+    }
+    out.push(redactBearer(redactUrl(arg)));
   }
   return out;
 }

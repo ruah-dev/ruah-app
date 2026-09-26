@@ -6,7 +6,8 @@
 //     agent, which records the fingerprint of what it runs; a change (edited
 //     .mcp.json, pulled commit, someone else's project file) needs a new approval;
 //   - secret VALUES only go to the Keychain; files hold names;
-//   - other tools' configs are written only by installInto(), per request.
+//   - other tools' configs are written only by installInto(), per request, and
+//     undone only from this machine's records (never from a project file).
 import { realpathSync } from "node:fs";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -113,6 +114,11 @@ export class ExtensionsService {
     return project?.root;
   }
 
+  /** The open project, unless its .ruah folder is Ruah's home (then its extensions file is the global one). */
+  private usable(project: ProjectRef | undefined): ProjectRef | undefined {
+    return project !== undefined && this.store.isProjectRoot(project.root) ? project : undefined;
+  }
+
   private evaluateRef(id: string, scope: ExtensionScope, project: ProjectRef | undefined): Evaluated {
     const root = this.root(scope, project);
     const ext = this.store.get(scope, root, id);
@@ -144,6 +150,14 @@ export class ExtensionsService {
 
   async view(ev: Evaluated): Promise<ExtensionView> {
     const runs = ev.ext.runs ?? ev.servers[0]?.runs;
+    const support = supportMatrix(ev.ext.kind, ev.ext.kind === "mcp" ? runs : undefined);
+    // Cursor / Grok load a plugin folder themselves: its servers read secrets from their own environment.
+    if (ev.ext.kind === "plugin" && ev.servers.some((s) => secretNames(s).length > 0)) {
+      for (const agent of ["cursor", "grok"] as const) {
+        support[agent] = { ...support[agent], note: `${support[agent].note}. Its MCP servers read ${[...new Set(ev.servers.flatMap(secretNames))].join(", ")} from ${AGENT_NAMES[agent]}'s own environment, not from the Keychain` };
+      }
+    }
+    const installs = this.store.installs(ev.scopeKey, ev.ext.id);
     return {
       ...ev.ext,
       scope: ev.scope,
@@ -152,11 +166,14 @@ export class ExtensionsService {
       ...(ev.statusDetail !== undefined ? { statusDetail: ev.statusDetail } : {}),
       what: ev.what,
       secrets: await this.secretStatus(ev),
-      support: supportMatrix(ev.ext.kind, ev.ext.kind === "mcp" ? runs : undefined),
+      support,
+      fingerprint: ev.fingerprint,
+      ...(installs.length > 0 ? { installedInto: installs } : {}),
     };
   }
 
-  async list(project: ProjectRef | undefined): Promise<ExtensionsResponse> {
+  async list(projectRef: ProjectRef | undefined): Promise<ExtensionsResponse> {
+    const project = this.usable(projectRef);
     const errors: ExtensionsResponse["errors"] = [];
     const installed: ExtensionView[] = [];
     const global = this.store.read("global");
@@ -176,7 +193,8 @@ export class ExtensionsService {
     };
   }
 
-  featured(project: ProjectRef | undefined): FeaturedExtension[] {
+  featured(projectRef: ProjectRef | undefined): FeaturedExtension[] {
+    const project = this.usable(projectRef);
     const added = new Set<string>();
     for (const e of this.store.read("global").extensions) if (e.source.type === "featured") added.add(e.source.id);
     if (project !== undefined) for (const e of this.store.read("project", project.root).extensions) if (e.source.type === "featured") added.add(e.source.id);
@@ -199,6 +217,7 @@ export class ExtensionsService {
       case "featured": {
         const entry = featuredEntry(src.id);
         if (entry === undefined) throw new ExtensionError(404, `no featured extension "${src.id}"`);
+        if (entry.builtin !== undefined) throw new ExtensionError(422, `${entry.name} is built into ${AGENT_NAMES[entry.builtin]}; nothing to add. ${entry.notes ?? ""}`.trim());
         const env = [...(entry.env ?? []), ...(entry.optionalEnv ?? [])];
         draft = {
           id: entry.id,
@@ -266,12 +285,15 @@ export class ExtensionsService {
 
     const enableFor = (body.enableFor ?? []).filter((agent) => supportFor(ext.kind, agent, ext.runs).delivery !== "none");
     const stored: Extension = { ...parsed.data, enabledFor: enableFor };
-    this.store.update(scope, root, (list) => [...list, stored]);
     const ev = evaluate(this.store, stored, scope, project?.root, project?.id);
-    if (enableFor.length > 0) {
-      if (ev.status === "missing" || ev.status === "invalid") throw new ExtensionError(409, `${id}: ${ev.statusDetail ?? ev.status}`);
-      this.store.approve(ev.scopeKey, id, ev.fingerprint);
-    }
+    if (enableFor.length > 0 && (ev.status === "missing" || ev.status === "invalid")) throw new ExtensionError(409, `${id}: ${ev.statusDetail ?? ev.status}`);
+    this.store.update(scope, root, (list) => [...list, stored]);
+    // Approve now only what the request itself spelled out (an MCP command or URL, a featured entry)
+    // or what runs nothing. A folder or a clone that runs commands stays in review: the user approves
+    // it after seeing what it runs (enable with its fingerprint).
+    const runsSomething = ev.servers.some((s) => s.runs.type === "stdio") || ev.what.hooks.length > 0;
+    const spelledOut = src.type === "inline" || src.type === "featured";
+    if (enableFor.length > 0 && (spelledOut || !runsSomething)) this.store.approve(ev.scopeKey, id, ev.fingerprint);
     return this.view(evaluate(this.store, stored, scope, project?.root, project?.id));
   }
 
@@ -288,12 +310,23 @@ export class ExtensionsService {
     return this.view(this.evaluateRef(id, scope, project));
   }
 
-  async remove(id: string, scope: ExtensionScope, project: ProjectRef | undefined, options: { uninstall?: boolean } = {}): Promise<{ notes: string[] }> {
+  async remove(id: string, scope: ExtensionScope, projectRef: ProjectRef | undefined, options: { uninstall?: boolean } = {}): Promise<{ notes: string[] }> {
+    const project = scope === "project" ? projectRef : this.usable(projectRef);
     const ev = this.evaluateRef(id, scope, project);
     const notes: string[] = [];
-    if (options.uninstall !== false && (ev.ext.installedInto ?? []).length > 0) {
-      notes.push(...(await uninstallRecords(ev.ext.installedInto ?? [], { ...(this.options.runner !== undefined ? { runner: this.options.runner } : {}), claudeBin: this.options.claudeBin })));
+    // Only this machine's records (never anything a project file says was installed).
+    const installs = this.store.installs(ev.scopeKey, id);
+    if (options.uninstall !== false && installs.length > 0) {
+      notes.push(
+        ...(await uninstallRecords(installs, {
+          ...(this.options.runner !== undefined ? { runner: this.options.runner } : {}),
+          claudeBin: this.options.claudeBin,
+          home: this.env.HOME ?? homedir(),
+          env: this.env,
+        })),
+      );
     }
+    this.store.setInstalls(ev.scopeKey, id, []);
     for (const secret of await this.secretStatus(ev)) {
       if (!secret.set) continue;
       try {
@@ -317,10 +350,17 @@ export class ExtensionsService {
 
   // ---- enable / disable -----------------------------------------------------------------
 
-  /** Enables for `agents` and approves what it runs now. */
-  async enable(id: string, scope: ExtensionScope, agents: readonly ExtensionAgent[], project: ProjectRef | undefined): Promise<ExtensionView> {
+  /**
+   * Enables for `agents` and approves what it runs now. `fingerprint`: the one
+   * the user reviewed (ExtensionView.fingerprint); a mismatch means it changed
+   * in between and is refused (409) instead of approved unseen.
+   */
+  async enable(id: string, scope: ExtensionScope, agents: readonly ExtensionAgent[], project: ProjectRef | undefined, options: { fingerprint?: string } = {}): Promise<ExtensionView> {
     const ev = this.evaluateRef(id, scope, project);
     if (ev.status === "missing" || ev.status === "invalid") throw new ExtensionError(409, `${id}: ${ev.statusDetail ?? ev.status}`);
+    if (options.fingerprint !== undefined && options.fingerprint !== ev.fingerprint) {
+      throw new ExtensionError(409, `what ${id} runs changed since it was shown; review it again`);
+    }
     const runs = ev.ext.runs ?? ev.servers[0]?.runs;
     for (const agent of agents) {
       if (supportFor(ev.ext.kind, agent, runs).delivery === "none") throw new ExtensionError(422, `${AGENT_NAMES[agent]} cannot use a ${ev.ext.kind}: ${supportFor(ev.ext.kind, agent, runs).note}`);
@@ -370,28 +410,34 @@ export class ExtensionsService {
 
   async installInto(id: string, scope: ExtensionScope, target: InstallTarget, targetScope: ExtensionScope, project: ProjectRef | undefined): Promise<InstallResult & { extension: ExtensionView }> {
     const ev = this.evaluateRef(id, scope, project);
-    if (targetScope === "project" && project === undefined) throw new ExtensionError(409, "no project is open");
+    if (ev.status === "review") throw new ExtensionError(409, `${id} needs review (${ev.statusDetail ?? "not approved"}); approve what it runs first`);
+    if (targetScope === "project" && this.usable(project) === undefined) throw new ExtensionError(409, "no project is open");
+    const previous = this.store.installs(ev.scopeKey, id);
     const result = await installInto(ev, {
       target,
       targetScope,
       root: project?.root,
       home: this.env.HOME ?? homedir(),
+      env: this.env,
+      previous,
       ...(this.options.runner !== undefined ? { runner: this.options.runner } : {}),
       claudeBin: this.options.claudeBin,
       ...(this.options.now !== undefined ? { now: this.options.now } : {}),
     });
-    const records = [...(ev.ext.installedInto ?? []).filter((r) => !result.records.some((n) => n.path === r.path && JSON.stringify(n.key) === JSON.stringify(r.key))), ...result.records].slice(-32);
-    this.store.update(scope, this.root(scope, project), (list) => list.map((e) => (e.id === id ? { ...e, installedInto: records } : e)));
+    const records = [...previous.filter((r) => !result.records.some((n) => n.path === r.path && JSON.stringify(n.key) === JSON.stringify(r.key))), ...result.records].slice(-32);
+    this.store.setInstalls(ev.scopeKey, id, records);
     return { ...result, extension: await this.view(this.evaluateRef(id, scope, project)) };
   }
 
   // ---- sessions ------------------------------------------------------------------------------------
 
-  resolveFor(agent: ExtensionAgent, project: ProjectRef | undefined, options: { viaAcp?: boolean } = {}): Promise<ResolvedSession> {
+  resolveFor(agent: ExtensionAgent, projectRef: ProjectRef | undefined, options: { viaAcp?: boolean; preview?: boolean } = {}): Promise<ResolvedSession> {
+    const project = this.usable(projectRef);
     return resolveSession({
       store: this.store,
       agent,
       ...(options.viaAcp === true ? { viaAcp: true } : {}),
+      ...(options.preview === true ? { preview: true } : {}),
       root: project?.root,
       projectId: project?.id,
       secrets: this.secrets,
@@ -400,8 +446,9 @@ export class ExtensionsService {
     });
   }
 
+  /** What a session would get (GET /preview, `ext preview`): never prunes generated folders sessions may use. */
   async preview(agent: ExtensionAgent, project: ProjectRef | undefined): Promise<SessionPreview> {
-    return (await this.resolveFor(agent, project)).preview;
+    return (await this.resolveFor(agent, project, { preview: true })).preview;
   }
 
   /** What a bridge for `agentId` in `root` calls when a session starts (AgentCatalog `extensions`). */
@@ -419,6 +466,7 @@ export class ExtensionsService {
               sdk: {
                 mcpServers: resolved.claude.mcpServers,
                 plugins: resolved.claude.plugins,
+                ...(resolved.claude.pluginsWithoutMcp.length > 0 ? { pluginsWithoutMcp: resolved.claude.pluginsWithoutMcp } : {}),
                 ...(resolved.claude.systemPromptAppend !== undefined ? { append: resolved.claude.systemPromptAppend } : {}),
               },
               notes,
@@ -435,6 +483,11 @@ export class ExtensionsService {
       },
     };
   }
+}
+
+/** Env names a server needs from outside its file (Keychain / environment), i.e. without a literal value. */
+function secretNames(server: Evaluated["servers"][number]): string[] {
+  return server.env.filter((name) => server.envValues[name] === undefined || /\$\{/.test(server.envValues[name] ?? ""));
 }
 
 export function scopeKeyFor(scope: ExtensionScope, project: ProjectRef | undefined): string {
