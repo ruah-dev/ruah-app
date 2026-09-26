@@ -113,6 +113,26 @@ export class SettingsStore {
     return this.features();
   }
 
+  /** §20: the folder the new project wizard proposes (the parent of the last project created in the app). */
+  newProjectParent(): string | undefined {
+    const value = this.load().extra.newProject;
+    const dir = value !== null && typeof value === "object" ? (value as { parentDir?: unknown }).parentDir : undefined;
+    return typeof dir === "string" && dir.length > 0 && dir.length <= 4096 ? dir : undefined;
+  }
+
+  setNewProjectParent(dir: string): void {
+    if (this.newProjectParent() === dir) return;
+    const { settings, extra } = this.load();
+    const previous = extra.newProject !== null && typeof extra.newProject === "object" ? (extra.newProject as Record<string, unknown>) : {};
+    const nextExtra = { ...extra, newProject: { ...previous, parentDir: dir } };
+    this.cache = { settings, extra: nextExtra };
+    try {
+      atomicWriteFileSync(this.file, `${JSON.stringify({ ...nextExtra, version: 1, ...settings }, null, 2)}\n`);
+    } catch (err) {
+      this.options.onError?.(`ruah: writing ${this.file} failed: ${(err as Error).message}`);
+    }
+  }
+
   private load(): { settings: SavedAgentSettings; extra: Record<string, unknown> } {
     if (this.cache !== undefined) return this.cache;
     let raw: unknown = {};

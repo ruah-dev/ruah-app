@@ -7,10 +7,10 @@
 // Opens and creates run one at a time.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFile } from "node:child_process";
+import { homedir } from "node:os";
 import type { Architecture } from "../contracts/architecture.js";
 import type { ChatInfo, ProjectInfo, TurnRecord } from "../contracts/ws.js";
-import type { ProjectsList, RecentChat } from "../contracts/projects.js";
+import type { CreateProjectBody, CreateReport, NewProjectCheck, NewProjectDefaults, ProjectsList, RecentChat, ToolStatus } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { createArchitectureStore, type ArchitectureStore } from "../serve/architecture-store.js";
 import type { ProjectRuntime } from "../serve/session.js";
@@ -19,20 +19,15 @@ import { atomicWriteFileSync, expandHome, projectIdFor } from "./fs-util.js";
 import type { ProjectsStore } from "./projects-store.js";
 import { toChatInfo, type ChatStore } from "./chat-store.js";
 import type { ProjectScanOptions } from "./project-state.js";
+import { checkNewProject, createProjectFolder, ghToolStatus, gitToolStatus, suggestParentDir, type CreateDeps } from "./create.js";
+import { templateInfos } from "./templates/index.js";
+import type { ProjectsOverview } from "../contracts/overview.js";
+import { ProjectError } from "./project-names.js";
+
+export { emptyArchitecture, plainNameProblem, ProjectError, validateProjectName } from "./project-names.js";
 
 export const SYSTEM_FILE = "ruah.system.json";
 export const ARCHITECTURE_FILE = "architecture.json";
-
-/** An error with the HTTP status the endpoint answers. */
-export class ProjectError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ProjectError";
-  }
-}
 
 /** A multi-repo system opened from the folder holding ruah.system.json. */
 export interface SystemProject {
@@ -82,8 +77,14 @@ export interface ProjectServiceDeps {
   /** Watch architecture.json for changes (default true). */
   watch?: boolean;
   info?: (line: string) => void;
-  /** `git init` runner (tests); default execFile("git", ["init", "-q"]) without a shell. */
-  gitInit?: (dir: string) => Promise<void>;
+  /** §20 create: git / gh runner, env and executable lookup (tests); default execFile without a shell. */
+  create?: Omit<Partial<CreateDeps>, "version">;
+  /** §20: the remembered "create projects in" folder ($RUAH_HOME/settings.json `newProject.parentDir`). */
+  newProjectParent?: { get(): string | undefined; set(dir: string): void };
+  /** §20: the recent list changed without a switch (pin, reorder, tags, forget) — the daemon broadcasts it. */
+  onListChanged?: (recent: ProjectInfo[]) => void;
+  /** §20.5 GET /api/projects/overview (src/projects/overview.ts, wired by the daemon). */
+  overview?: { overview(limit?: number): Promise<ProjectsOverview>; invalidate(): void };
 }
 
 export interface OpenResult {
@@ -91,34 +92,11 @@ export interface OpenResult {
   /** Time spent in open (resolve, scan, load, switch), excluding agent startup. */
   ms: number;
   scanned: boolean;
+  /** §20: what create did (create only). */
+  created?: CreateReport;
 }
 
-const NAME_MAX = 255;
-
-/** A folder name for create: no path separators, not "." / "..", no control characters. */
-export function validateProjectName(raw: string): string {
-  const name = raw.trim();
-  if (name.length === 0) throw new ProjectError(400, "name is empty");
-  if (name.length > NAME_MAX) throw new ProjectError(400, `name is longer than ${NAME_MAX} characters`);
-  if (name === "." || name === "..") throw new ProjectError(400, "name cannot be . or ..");
-  if (/[/\\]/.test(name)) throw new ProjectError(400, "name must not contain path separators");
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f]/.test(name)) throw new ProjectError(400, "name must not contain control characters");
-  return name;
-}
-
-export function emptyArchitecture(name: string): Architecture {
-  return { version: 1, name, layers: [], nodes: [], edges: [], workflows: [] };
-}
-
-function defaultGitInit(dir: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    execFile("git", ["init", "-q"], { cwd: dir, timeout: 30_000 }, (err, _stdout, stderr) => {
-      if (err !== null) reject(new Error(`git init failed: ${String(stderr).trim() || err.message}`));
-      else resolve();
-    });
-  });
-}
+const GH_STATUS_TTL_MS = 60_000;
 
 /** architecture.json of a project that is not open (preview only; invalid or missing = null). */
 function readArchitecture(file: string): Architecture | null {
@@ -140,6 +118,7 @@ function isDirectory(p: string): boolean {
 
 export class ProjectService {
   private queue: Promise<unknown> = Promise.resolve();
+  private ghStatus: { at: number; value: Promise<NonNullable<ToolStatus["gh"]>> } | undefined;
 
   constructor(private readonly deps: ProjectServiceDeps) {}
 
@@ -159,43 +138,114 @@ export class ProjectService {
     return this.serialize(() => this.openNow(inputPath, options));
   }
 
-  /** Creates <parentDir>/<name> (+ optional git init) with an empty architecture.json, then opens it. */
-  create(body: { parentDir: string; name: string; git?: boolean | undefined }): Promise<OpenResult> {
+  /**
+   * §20: creates <parentDir>/<name> from a template (files, scanned map, optional
+   * git init + initial commit, system, `gh repo create` only when asked), remembers
+   * the parent folder, then opens it. See src/projects/create.ts.
+   */
+  create(body: CreateProjectBody): Promise<OpenResult> {
     return this.serialize(async () => {
-      const name = validateProjectName(body.name);
-      const parent = path.resolve(expandHome(body.parentDir.trim()));
-      let parentReal: string;
+      const created = await createProjectFolder(
+        {
+          parentDir: body.parentDir,
+          name: body.name,
+          template: body.template,
+          git: body.git,
+          commit: body.commit,
+          github: body.github,
+          system: body.system,
+          createParent: body.createParent,
+        },
+        // A relative location is taken from home, never from the daemon's own cwd.
+        { ...this.deps.create, version: this.deps.version, cwd: this.home() },
+      );
       try {
-        parentReal = fs.realpathSync(parent);
+        this.deps.newProjectParent?.set(path.dirname(created.path));
       } catch {
-        throw new ProjectError(404, `parent folder not found: ${parent}`);
+        // remembering the folder is a convenience
       }
-      if (!isDirectory(parentReal)) throw new ProjectError(400, `parent is not a folder: ${parent}`);
-      const target = path.join(parentReal, name);
-      if (fs.existsSync(target)) throw new ProjectError(409, `already exists: ${target}`);
-      try {
-        fs.mkdirSync(target);
-      } catch (err) {
-        throw new ProjectError(500, `cannot create ${target}: ${(err as Error).message}`);
-      }
-      if (body.git === true) {
-        try {
-          await (this.deps.gitInit ?? defaultGitInit)(target);
-        } catch (err) {
-          throw new ProjectError(500, `${(err as Error).message} (the folder ${target} was created)`);
-        }
-      }
-      atomicWriteFileSync(path.join(target, ARCHITECTURE_FILE), `${JSON.stringify(emptyArchitecture(name), null, 2)}\n`);
-      return this.openNow(target, {});
+      const opened = await this.openNow(created.path, {});
+      this.deps.overview?.invalidate();
+      return { ...opened, created };
     });
   }
 
+  /** §20 GET /api/projects/new: templates, the proposed folder, whether git can commit. */
+  async newProjectDefaults(): Promise<NewProjectDefaults> {
+    const home = this.home();
+    const parent = suggestParentDir({
+      remembered: this.deps.newProjectParent?.get(),
+      recentRoots: this.deps.projects.list().map((p) => p.root),
+      home,
+    });
+    return {
+      parentDir: parent.dir,
+      parentSource: parent.source,
+      home,
+      templates: templateInfos(),
+      git: await gitToolStatus(this.deps.create ?? {}),
+    };
+  }
+
+  /** §20 POST /api/projects/new/check. */
+  checkNewProject(body: { parentDir: string; name: string }): NewProjectCheck {
+    const home = this.home();
+    return checkNewProject(body, { home, cwd: home });
+  }
+
+  /** The daemon's home: `~/…` and relative wizard locations are taken from it. */
+  private home(): string {
+    return this.deps.create?.home ?? process.env.HOME ?? homedir();
+  }
+
+  /** §20 GET /api/projects/new/github: gh installed + logged in (cached a minute). */
+  githubStatus(): Promise<NonNullable<ToolStatus["gh"]>> {
+    const now = Date.now();
+    if (this.ghStatus === undefined || now - this.ghStatus.at > GH_STATUS_TTL_MS) {
+      this.ghStatus = { at: now, value: ghToolStatus(this.deps.create ?? {}) };
+    }
+    return this.ghStatus.value;
+  }
+
   pin(id: string, pinned: boolean): boolean {
-    return this.deps.projects.pin(id, pinned);
+    const ok = this.deps.projects.pin(id, pinned);
+    if (ok) this.listChanged();
+    return ok;
+  }
+
+  /** §20: the pinned order (ids first; see ProjectsStore.reorder). */
+  reorder(ids: readonly string[]): ProjectsList {
+    this.deps.projects.reorder(ids);
+    this.listChanged();
+    return this.list();
+  }
+
+  /** §20: a project's tags; undefined = unknown id. */
+  setTags(id: string, tags: readonly string[]): ProjectInfo | undefined {
+    const info = this.deps.projects.setTags(id, tags);
+    if (info !== undefined) this.listChanged();
+    return info;
+  }
+
+  /** §20.5: every recent project at a glance (503 without the overview service). */
+  overview(limit?: number): Promise<ProjectsOverview> {
+    if (this.deps.overview === undefined) return Promise.reject(new ProjectError(503, "the overview is not available"));
+    return this.deps.overview.overview(limit);
+  }
+
+  private listChanged(): void {
+    this.deps.overview?.invalidate();
+    try {
+      this.deps.onListChanged?.(this.list().recent);
+    } catch {
+      // a broken listener must not fail the change
+    }
   }
 
   forget(id: string): boolean {
-    return this.deps.projects.forget(id);
+    const ok = this.deps.projects.forget(id);
+    if (ok) this.listChanged();
+    return ok;
   }
 
   /** `id`, else the open project's id (409 when none is open). */

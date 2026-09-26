@@ -35,11 +35,14 @@ import {
 import { fetchContext, setFocus } from "./daemon";
 import { isCloudNodeId } from "./integrations";
 import { isExpandedId, requestExpansion, requestPeek } from "./expand";
+import { onboardingInput, shouldOnboard } from "./start-screen";
 
 export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
 
 const ONBOARDING_KEY = "ruah.onboarded.v1";
+/** The one-time "New to Ruah?" pointer shown when the first run opened a project (not "onboarded"). */
+const ONBOARDING_OFFERED_KEY = "ruah.onboarding.offered.v1";
 const OUTLINE_KEY = "ruah.map.outline.open";
 
 type Ctx = {
@@ -169,12 +172,38 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setOutlineOpenState(readFlag(OUTLINE_KEY));
-    if (!readFlag(ONBOARDING_KEY)) {
-      // First run: the start screen carries the introduction.
-      setOnboardingOpen(true);
-      setLauncherOpen(true);
-    }
   }, []);
+
+  // First run (lib/start-screen.ts): the "Getting started" card only on a true first run; the start
+  // screen itself shows because no project is open — never as an overlay over an open project on
+  // page load. Only dismissing the card marks the profile onboarded.
+  const onboardingDecided = useRef(false);
+  const { projectsLoaded, project: openProjectInfo, source: daemonSource, projectsSupported } = ws.daemon;
+  const recentCount = ws.daemon.recentProjects.length;
+  useEffect(() => {
+    if (onboardingDecided.current) return;
+    const verdict = shouldOnboard(
+      onboardingInput({ source: daemonSource, projectsLoaded, recentCount, projectOpen: !!openProjectInfo }, readFlag(ONBOARDING_KEY)),
+    );
+    if (verdict === "wait") return;
+    onboardingDecided.current = true;
+    if (verdict === "show") {
+      setOnboardingOpen(true);
+      // No daemon (the sample): the start screen isn't the page, so it opens over the sample map.
+      if (!projectsSupported) setLauncherOpen(true);
+    } else if (verdict === "offer") {
+      // A project opened on the very first run: the card waits on the start screen; one quiet
+      // pointer to it, never an overlay on the project.
+      setOnboardingOpen(true);
+      if (!readFlag(ONBOARDING_OFFERED_KEY)) {
+        writeFlag(ONBOARDING_OFFERED_KEY, true);
+        toast("New to Ruah?", {
+          description: "Getting started: three steps, one minute.",
+          action: { label: "Show me", onClick: () => setLauncherOpen(true) },
+        });
+      }
+    }
+  }, [projectsLoaded, recentCount, openProjectInfo, daemonSource, projectsSupported]);
 
   // Project changed: reset what the user was looking at. A new, empty project starts in Edit
   // mode so the element palette is right there.

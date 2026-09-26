@@ -10,7 +10,13 @@ import type {
   AttachmentInfo,
   AttachmentMeta,
   ClientMessage,
+  CreateProjectInput,
+  CreateResult,
+  GithubToolStatus,
   ModeState,
+  NewProjectCheck,
+  NewProjectDefaults,
+  ProjectsOverview,
   AgentChoiceState,
   ChatInfo,
   ModelState,
@@ -32,7 +38,7 @@ import { sampleFiles } from "@/data/sample-files";
 import { lruSet } from "./switching";
 import { markSwitchCached, markSwitchStart } from "./switch-timing";
 import { clearUnreadLocally, handleActivityMessage } from "./activity";
-import { pinnedOrder as reconcilePinnedOrder, sortProjectList } from "./rail";
+import { pinOrderIds, pinnedOrder as reconcilePinnedOrder, sortProjectList } from "./rail";
 import type { AppFeatures, NotificationTarget, ResumeInfo, ViewState } from "./contracts";
 
 export const CLIENT_ID = "architects-canvas/0.1.0";
@@ -509,12 +515,57 @@ export function basename(path: string) {
   return parts[parts.length - 1] || path;
 }
 
-// The pinned projects' order: the order they were pinned in, kept by the viewer. The daemon sorts
-// pinned projects by lastOpenedAt, which would renumber ⌘1…⌘9 (and move the rail's pinned tiles)
-// on every switch. Every list of projects reads `recentProjects`, so one order serves the rail, the
-// Advanced sidebar, the launchers, the project menu and the ⌘1…⌘9 keys.
+// The pinned projects' order (the ⌘1…⌘9 order everywhere). A §20 daemon stores it (`pinOrder`,
+// set on pin and by reorderPinned) and every list reads it from there. Older daemons sorted pinned
+// projects by lastOpenedAt, which renumbered ⌘1…⌘9 on every switch: for them the viewer keeps the
+// order it saw them pinned in (localStorage). On the first answer of a §20 daemon that locally
+// kept order is sent once (POST /api/projects/reorder), so the numbers people know survive the
+// upgrade. Every list of projects reads `recentProjects`, so one order serves the rail, the
+// Advanced sidebar, the launchers, the project menu, Home and the ⌘1…⌘9 keys.
 const PINNED_ORDER_KEY = "ruah.rail.pinned.v1";
+const PINNED_SYNCED_KEY = "ruah.rail.pinned.synced.v1";
 let pinnedIds: string[] = [];
+
+/** True when the daemon keeps the pin order itself (§20): every pinned project has `pinOrder`. */
+export function daemonKeepsPinOrder(list: readonly ProjectInfo[]): boolean {
+  const pinned = list.filter((p) => p.pinned);
+  return pinned.length > 0 && pinned.every((p) => typeof p.pinOrder === "number");
+}
+
+/** The open project's entry from a fresh list (pins, tags), so `state.project` never lags. */
+function projectPatchFrom(list: readonly ProjectInfo[]): Partial<DaemonState> {
+  const open = state.project;
+  if (!open) return {};
+  const fresh = list.find((p) => p.id === open.id);
+  if (!fresh) return {};
+  const { pinned: _p, pinOrder: _o, pinnedAt: _a, tags: _t, ...identity } = open;
+  const { pinned, pinOrder, pinnedAt, tags } = fresh;
+  return {
+    project: {
+      ...identity,
+      ...(pinned !== undefined ? { pinned } : {}),
+      ...(pinOrder !== undefined ? { pinOrder } : {}),
+      ...(pinnedAt !== undefined ? { pinnedAt } : {}),
+      ...(tags !== undefined ? { tags } : {}),
+    },
+  };
+}
+
+function readSynced(): boolean {
+  try {
+    return window.localStorage.getItem(PINNED_SYNCED_KEY) === "1";
+  } catch {
+    return true; // no storage: nothing kept locally to hand over
+  }
+}
+
+function markSynced() {
+  try {
+    window.localStorage.setItem(PINNED_SYNCED_KEY, "1");
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 function readPinnedOrder(): string[] | null {
   try {
@@ -535,8 +586,9 @@ function setPinnedOrder(next: string[]) {
   }
 }
 
-/** Pinned first (in pin order), then the rest most recently opened first. */
+/** Pinned first (in pin order: the daemon's when it keeps one, §20), then the rest most recently opened first. */
 export function sortProjects(list: ProjectInfo[]): ProjectInfo[] {
+  if (daemonKeepsPinOrder(list)) return sortProjectList(list, pinOrderIds(list));
   return sortProjectList(list, pinnedIds);
 }
 
@@ -785,6 +837,10 @@ function handle(msg: ServerMessage) {
       if (reopen !== null && (msg.project === null || !sameRoot(msg.project.root, reopen))) void openProject(reopen).catch(() => {});
       return;
     }
+    case "projects.changed":
+      // §20: pin / reorder / tags / forget in any window: one list, one ⌘1…⌘9 order everywhere.
+      set({ recentProjects: sortProjects(msg.recent), projectsLoaded: true, ...projectPatchFrom(msg.recent) });
+      return;
     case "chats":
       handleChats(msg.projectId, msg.chats, msg.activeChatId);
       return;
@@ -1218,7 +1274,20 @@ export async function refreshProjects(): Promise<void> {
   try {
     const res = await api<ProjectsResponse>("/api/projects");
     const recent = res.recent ?? [];
-    // The whole list: settle the pin order (another window may have pinned or unpinned meanwhile).
+    if (daemonKeepsPinOrder(recent)) {
+      // §20: the daemon's order. Once, hand over the order this viewer kept for an older daemon
+      // (after the list is set, so a failed handover still leaves the daemon's list showing).
+      set({ recentProjects: sortProjects(recent), projectsLoaded: true, ...projectPatchFrom(recent) });
+      if (!readSynced()) {
+        markSynced();
+        const local = readPinnedOrder();
+        const daemonOrder = pinOrderIds(recent);
+        const wanted = local ? reconcilePinnedOrder(local, daemonOrder) : daemonOrder;
+        if (wanted.some((id, i) => id !== daemonOrder[i])) void reorderPinned(wanted).catch(() => {});
+      }
+      return;
+    }
+    // Older daemon: settle the locally kept order (another window may have pinned or unpinned meanwhile).
     const pinned = sortProjectList(recent.filter((p) => p.pinned)).map((p) => p.id);
     setPinnedOrder(reconcilePinnedOrder(readPinnedOrder() ?? pinnedIds, pinned));
     set({ recentProjects: sortProjects(recent), projectsLoaded: true });
@@ -1304,20 +1373,13 @@ export async function openProject(
   }
 }
 
-export async function createProject(input: {
-  parentDir: string;
-  name: string;
-  git?: boolean;
-}): Promise<ProjectInfo> {
+/** §20 wizard: creates the folder from a template (git, system, GitHub as asked), then opens it. */
+export async function createProject(input: CreateProjectInput): Promise<CreateResult> {
   const parent = input.parentDir.trim().replace(/[\\/]+$/, "");
   const name = input.name.trim();
   beginSwitch(`${parent}/${name}`, name);
   try {
-    const info = await api<ProjectInfo>("/api/projects/create", {
-      parentDir: parent,
-      name,
-      ...(input.git !== undefined ? { git: input.git } : {}),
-    });
+    const info = await api<CreateResult>("/api/projects/create", { ...input, parentDir: parent, name });
     if (state.projectSwitch && state.project?.id !== info.id)
       set({ projectSwitch: { ...state.projectSwitch, root: info.root, name: info.name } });
     return info;
@@ -1329,20 +1391,99 @@ export async function createProject(input: {
 
 export async function pinProject(id: string, pinned: boolean): Promise<void> {
   const before = state.recentProjects;
+  const projectBefore = state.project;
   const orderBefore = pinnedIds;
   // A newly pinned project goes last (the next ⌘ number); the others keep theirs.
   setPinnedOrder(pinned ? [...pinnedIds.filter((x) => x !== id), id] : pinnedIds.filter((x) => x !== id));
+  const last = before.reduce((max, p) => (p.pinned && typeof p.pinOrder === "number" ? Math.max(max, p.pinOrder) : max), -1);
+  const keepsOrder = daemonKeepsPinOrder(before);
+  const apply = (p: ProjectInfo): ProjectInfo => {
+    if (p.id !== id || !!p.pinned === pinned) return p;
+    const { pinOrder: _o, pinnedAt: _a, ...rest } = p;
+    return pinned ? { ...rest, pinned: true, ...(keepsOrder || last >= 0 ? { pinOrder: last + 1 } : {}) } : { ...rest, pinned: false };
+  };
   set({
-    recentProjects: sortProjects(before.map((p) => (p.id === id ? { ...p, pinned } : p))),
-    ...(state.project?.id === id ? { project: { ...state.project, pinned } } : {}),
+    recentProjects: sortProjects(before.map(apply)),
+    ...(state.project?.id === id ? { project: apply(state.project) } : {}),
   });
   try {
     await api("/api/projects/pin", { id, pinned });
   } catch (err) {
     setPinnedOrder(orderBefore);
+    set({ recentProjects: before, project: projectBefore });
+    throw err;
+  }
+}
+
+/** §20: the pinned projects' order (drag to reorder); `ids` = pinned ids, first = ⌘1. */
+export async function reorderPinned(ids: string[]): Promise<void> {
+  const before = state.recentProjects;
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  const optimistic = before.map((p) => (p.pinned && rank.has(p.id) ? { ...p, pinOrder: rank.get(p.id)! } : p));
+  setPinnedOrder(reconcilePinnedOrder(ids, before.filter((p) => p.pinned).map((p) => p.id)));
+  set({ recentProjects: sortProjects(optimistic) });
+  try {
+    const res = await api<ProjectsResponse>("/api/projects/reorder", { ids });
+    set({ recentProjects: sortProjects(res.recent ?? []), projectsLoaded: true, ...projectPatchFrom(res.recent ?? []) });
+  } catch (err) {
     set({ recentProjects: before });
     throw err;
   }
+}
+
+/** §20: a project's free-form tags (groups); [] removes them. */
+export async function setProjectTags(id: string, tags: string[]): Promise<ProjectInfo> {
+  const before = state.recentProjects;
+  const withTags = (list: string[] | undefined) => (p: ProjectInfo): ProjectInfo => {
+    if (p.id !== id) return p;
+    const { tags: _t, ...rest } = p;
+    return list?.length ? { ...rest, tags: list } : rest;
+  };
+  const apply = withTags(tags);
+  set({ recentProjects: before.map(apply), ...(state.project?.id === id ? { project: apply(state.project) } : {}) });
+  try {
+    const info = await api<ProjectInfo>("/api/projects/tags", { id, tags });
+    // The daemon's spelling (trimmed, de-duplicated).
+    const settle = withTags(info.tags);
+    set({ recentProjects: state.recentProjects.map(settle), ...(state.project?.id === id ? { project: settle(state.project) } : {}) });
+    return info;
+  } catch (err) {
+    set({ recentProjects: before });
+    throw err;
+  }
+}
+
+/** §20 wizard: templates, the proposed folder, whether git can commit. */
+export function fetchNewProjectDefaults(): Promise<NewProjectDefaults> {
+  return api<NewProjectDefaults>("/api/projects/new");
+}
+
+/** §20 wizard: gh installed + logged in (asked only when the GitHub step shows). */
+export function fetchGithubStatus(): Promise<GithubToolStatus> {
+  return api<GithubToolStatus>("/api/projects/new/github");
+}
+
+/** §20 wizard: validation while typing (no side effects). */
+export function checkNewProject(parentDir: string, name: string): Promise<NewProjectCheck> {
+  return api<NewProjectCheck>("/api/projects/new/check", { parentDir, name });
+}
+
+/** §20.5 Home: every recent project at a glance (one batched request). */
+export function fetchOverview(limit = 24): Promise<ProjectsOverview> {
+  return api<ProjectsOverview>(`/api/projects/overview?limit=${limit}`);
+}
+
+/** §13.1: answer a waiting permission of any project (routed to the agent that asked). */
+export function answerPermissionAnywhere(requestId: string, answer: string | "cancel"): boolean {
+  if (state.turns.some((t) => t.permission?.requestId === requestId)) {
+    answerPermission(requestId, answer);
+    return true;
+  }
+  return send(
+    answer === "cancel"
+      ? { type: "permission.response", requestId, cancelled: true }
+      : { type: "permission.response", requestId, optionId: answer },
+  );
 }
 
 export async function forgetProject(id: string): Promise<void> {

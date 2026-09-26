@@ -13,6 +13,8 @@ import {
   MessagesSquare,
   Pin,
   PinOff,
+  GripVertical,
+  Hash,
   Search,
   Sparkles,
   X,
@@ -28,6 +30,8 @@ import { PhantomCompanion } from "@/components/brand/Phantom";
 import { OnboardingCard } from "@/components/workspace/Onboarding";
 import { KindBadge, ProjectTile, pinnedShortcut } from "@/components/projects/ProjectBits";
 import { useProjectActions } from "@/components/projects/useProjectActions";
+import { setTagsDialog } from "@/components/projects/TagsDialog";
+import { usePinReorder, type PinDragProps } from "@/components/projects/usePinReorder";
 import { setShellDialog, useShellDialogs } from "@/components/shell/shellState";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -80,6 +84,9 @@ function RecentRow({
   onPin,
   onForget,
   onHover,
+  onTags,
+  drag,
+  drop,
 }: {
   project: ProjectInfo;
   active: boolean;
@@ -89,17 +96,30 @@ function RecentRow({
   onPin: () => void;
   onForget: () => void;
   onHover: () => void;
+  /** §20: edit the project's groups. */
+  onTags?: () => void;
+  /** §20: pinned rows drag (or Alt+↑/↓) to reorder ⌘1…⌘9. */
+  drag?: PinDragProps | Record<string, never>;
+  drop?: "before" | "after" | null;
 }) {
+  const draggable = !!drag && "draggable" in drag;
   return (
     <div
       role="option"
       aria-selected={active}
       onMouseEnter={onHover}
+      {...drag}
       className={cn(
         "group/recent relative flex h-[calc(100%-4px)] items-center gap-3 rounded-xl px-3 transition-colors",
         active ? "bg-surface-2 shadow-[inset_0_0_0_1px_var(--color-hairline)]" : "hover:bg-surface-2/70",
       )}
     >
+      {drop ? (
+        <span aria-hidden className={cn("pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-primary", drop === "before" ? "-top-0.5" : "-bottom-0.5")} />
+      ) : null}
+      {draggable ? (
+        <GripVertical aria-hidden className="pointer-events-none absolute start-0 size-3.5 text-faint opacity-0 transition-opacity group-hover/recent:opacity-100" />
+      ) : null}
       <button
         type="button"
         onClick={onOpen}
@@ -112,6 +132,11 @@ function RecentRow({
         <span className="flex items-center gap-1.5">
           <span className="truncate text-ui font-medium text-foreground">{project.name}</span>
           <KindBadge kind={project.kind} />
+          {project.tags?.slice(0, 2).map((t) => (
+            <span key={t} className="shrink-0 rounded-pill bg-surface-3 px-1.5 text-[10.5px] text-muted-foreground">
+              {t}
+            </span>
+          ))}
           {current ? (
             <span className="shrink-0 rounded-pill bg-primary/12 px-1.5 text-[10.5px] font-medium text-brand">
               open
@@ -148,6 +173,21 @@ function RecentRow({
           </TooltipTrigger>
           <TooltipContent>{project.pinned ? "Unpin" : "Pin to top (⌘1…⌘9)"}</TooltipContent>
         </Tooltip>
+        {onTags ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Group ${project.name}`}
+                onClick={onTags}
+                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Hash className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Group: a client, “Job”…</TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -267,7 +307,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
             <ActionRow
               icon={FolderPlus}
               label="New project…"
-              hint="Empty map, optional git init"
+              hint="From a template, with git"
               shortcut="⌘N"
               onClick={actions.newProject}
               disabled={sample}
@@ -445,6 +485,7 @@ function AllProjectsDialog({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const pinned = projects.filter((p) => p.pinned);
+  const reorder = usePinReorder(pinned.map((p) => p.id));
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
     return projects.filter((p) => !q || p.name.toLowerCase().includes(q) || p.root.toLowerCase().includes(q));
@@ -466,7 +507,7 @@ function AllProjectsDialog({
         <div className="border-b border-hairline px-5 pt-4 pb-3">
           <DialogTitle className="text-ui font-medium">All projects</DialogTitle>
           <DialogDescription className="text-meta text-muted-foreground">
-            {projects.length} recent · pinned first
+            {projects.length} recent · pinned first{pinned.length > 1 ? " — drag a pinned one (or Alt+↑/↓) to change ⌘1…⌘9" : ""}
           </DialogDescription>
           <label className="mt-3 flex h-8 items-center gap-1.5 rounded-lg bg-surface-2 px-2 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
             <Search className="size-3.5 text-muted-foreground" />
@@ -519,6 +560,9 @@ function AllProjectsDialog({
                     onOpen={() => onOpen(p)}
                     onPin={() => onPin(p)}
                     onForget={() => onForget(p)}
+                    onTags={() => setTagsDialog(p.id)}
+                    // Reordering only while the list is not filtered (the order is the whole list's).
+                    {...(query.trim() ? {} : { drag: reorder.rowProps(p.id), drop: reorder.indicator(p.id) })}
                   />
                 );
               }}

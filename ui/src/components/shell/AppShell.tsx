@@ -14,6 +14,9 @@ import { useWorkbench } from "@/lib/workbench";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Launcher, AllProjectsHost } from "@/components/launcher/Launcher";
 import { NewProjectDialog, OpenFolderDialog } from "@/components/projects/ProjectDialogs";
+import { TagsDialog } from "@/components/projects/TagsDialog";
+import { useFirstRunHints } from "@/components/projects/firstRun";
+import { startScreenMode } from "@/lib/start-screen";
 import { SystemDialogs } from "@/components/system/SystemDialogs";
 import { ProjectMenu } from "@/components/projects/ProjectMenu";
 import { CommandLauncher } from "@/components/projects/CommandLauncher";
@@ -39,6 +42,7 @@ import { Rail } from "./Rail";
 import { TopBar, ActivityBell, AgentPill } from "./TopBar";
 import { RightPanel } from "./RightPanel";
 import { ResumeCard } from "./ResumeCard";
+import { NewProjectHints, useFirstPromptSender } from "./NewProjectHints";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useShellDialogs } from "./shellState";
 import { useSlots } from "./slots";
@@ -337,6 +341,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   useRecordChatVisits(daemon);
   useSwitchPaintProbe(daemon);
   useBuildReload();
+  useFirstPromptSender();
+  const firstRun = useFirstRunHints();
   const { saved, projectId } = useProjectView();
   const resume = useShellResume(projectId);
   const { dismissedFor, dismiss } = useResumeDismissal(projectId);
@@ -359,16 +365,24 @@ export function AppShell({ children }: { children: ReactNode }) {
       <NewProjectDialog />
       <SystemDialogs />
       <AllProjectsHost />
+      <TagsDialog />
       <ShortcutsDialog />
     </>
   );
 
-  const launcherState = daemon.projectsSupported && daemon.project === null && !switching;
-  if (launcherState || (wb.launcherOpen && !switching)) {
+  // The start screen covers the shell only without an open project, or when asked for (§20:
+  // never on page load over an open project — lib/start-screen.ts).
+  const startScreen = startScreenMode({
+    projectsSupported: daemon.projectsSupported,
+    projectOpen: daemon.project !== null,
+    switching: !!switching,
+    launcherOpen: wb.launcherOpen,
+  });
+  if (startScreen !== "none") {
     return (
       <>
         {dialogs}
-        <Launcher overlay={!launcherState} />
+        <Launcher overlay={startScreen === "overlay"} />
       </>
     );
   }
@@ -376,9 +390,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // A cached target renders the real page at once; only a first visit shows the skeleton.
   const content = switching && !switching.preview ? <SwitchingContent name={switching.name} /> : children;
   const hideContent = terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon";
+  // A project the wizard just created shows its first-run hints (on its map, where they point)
+  // instead of "Where you left off" — on no page while they are pending.
+  const hintsPending = !isMobile && !!firstRun && firstRun.projectId === daemon.project?.id && !switching;
+  const showHints = hintsPending && pathname === "/map";
   const showResume =
     !isMobile &&
     !skipResume &&
+    !hintsPending &&
     shouldShowResumeCard({
       resume: resume.entry,
       projectId,
@@ -442,6 +461,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               {showResume && resume.entry ? (
                 <div className="pointer-events-none absolute bottom-5 left-5 z-30 flex max-w-full">
                   <ResumeCard resume={resume.entry} view={saved} onDismiss={() => dismiss(resume.entry?.lastViewedAt ?? null)} />
+                </div>
+              ) : null}
+              {showHints ? (
+                // Beside the Map's element palette (Edit mode, top-left, 14 rem wide), never over it.
+                <div className={cn("pointer-events-none absolute bottom-5 z-30 flex max-w-full", wb.editing ? "left-[15.5rem]" : "left-5")}>
+                  <NewProjectHints />
                 </div>
               ) : null}
             </div>

@@ -1,16 +1,22 @@
 // src/serve/projects-http.ts — CONTRACTS §5.3 endpoints: GET /api/projects,
 // POST /api/projects/{open,create,pin,forget}, GET /api/chats/recent, plus the
 // switching helpers GET /api/projects/preview and GET /api/chats/history, and
-// GET/POST /api/projects/scan-options (§11, per-project scan options). Every
+// GET/POST /api/projects/scan-options (§11, per-project scan options). §20: the
+// new project wizard (GET /api/projects/new, GET …/new/github, POST …/new/check),
+// POST /api/projects/{reorder,tags} and GET /api/projects/overview. Every
 // POST passes the same Origin check as /ws (403 otherwise; CSRF defence for a
-// localhost daemon). Bodies are JSON, at most 64 KiB.
+// localhost daemon), and so do the §20 GETs that run git / gh. Bodies are JSON,
+// at most 64 KiB.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { z } from "zod";
 import {
   CreateProjectBodySchema,
   ForgetProjectBodySchema,
+  NewProjectCheckBodySchema,
   OpenProjectBodySchema,
   PinProjectBodySchema,
+  ProjectTagsBodySchema,
+  ReorderProjectsBodySchema,
   ScanOptionsBodySchema,
 } from "../contracts/projects.js";
 import { ProjectError, type ProjectService } from "../projects/service.js";
@@ -56,6 +62,19 @@ export async function parseBody<T extends z.ZodTypeAny>(req: IncomingMessage, sc
   return parsed.data as z.infer<T>;
 }
 
+/**
+ * A browser request another site made without CORS (`<img src>`, `fetch(…, { mode:
+ * "no-cors" })`): such a GET carries no Origin header, so the Origin check lets it through
+ * like curl — but the browser still says where it came from in Sec-Fetch-Site. The viewer's
+ * own GETs are same-origin (no Origin, `same-origin`) or CORS from an allowed origin (Origin
+ * set); curl and tests send no Sec-Fetch-Site at all.
+ */
+export function crossSiteWithoutOrigin(req: IncomingMessage): boolean {
+  if (req.headers.origin !== undefined) return false;
+  const site = req.headers["sec-fetch-site"];
+  return site === "cross-site" || site === "same-site";
+}
+
 function fail(res: ServerResponse, err: unknown): void {
   if (err instanceof ProjectError) {
     sendJson(res, err.status, { error: err.message });
@@ -87,6 +106,21 @@ export function handleProjectsRequest(
   if (req.method === "GET") {
     if (pathname === "/api/projects") {
       sendJson(res, 200, service.list());
+      return true;
+    }
+    // §20: these run git / gh — refused for cross-site pages like a POST.
+    if (pathname === "/api/projects/new" || pathname === "/api/projects/new/github" || pathname === "/api/projects/overview") {
+      if (!originOk(req.headers.origin) || crossSiteWithoutOrigin(req)) {
+        sendJson(res, 403, { error: "origin not allowed" });
+        return true;
+      }
+      const answer =
+        pathname === "/api/projects/new"
+          ? service.newProjectDefaults()
+          : pathname === "/api/projects/new/github"
+            ? service.githubStatus()
+            : service.overview(Number.parseInt(url.searchParams.get("limit") ?? "", 10) || undefined);
+      answer.then((body) => sendJson(res, 200, body)).catch((err: unknown) => fail(res, err));
       return true;
     }
     if (pathname === "/api/projects/preview") {
@@ -142,7 +176,25 @@ export function handleProjectsRequest(
       case "/api/projects/create": {
         const body = await parseBody(req, CreateProjectBodySchema);
         const result = await service.create(body);
-        sendJson(res, 200, result.project);
+        // The ProjectInfo as before, plus what was done (§20).
+        sendJson(res, 200, { ...result.project, ...(result.created !== undefined ? { created: result.created } : {}) });
+        return;
+      }
+      case "/api/projects/new/check": {
+        const body = await parseBody(req, NewProjectCheckBodySchema);
+        sendJson(res, 200, service.checkNewProject(body));
+        return;
+      }
+      case "/api/projects/reorder": {
+        const body = await parseBody(req, ReorderProjectsBodySchema);
+        sendJson(res, 200, service.reorder(body.ids));
+        return;
+      }
+      case "/api/projects/tags": {
+        const body = await parseBody(req, ProjectTagsBodySchema);
+        const info = service.setTags(body.id, body.tags);
+        if (info === undefined) throw new ProjectError(404, `unknown project: ${body.id}`);
+        sendJson(res, 200, info);
         return;
       }
       case "/api/projects/pin": {

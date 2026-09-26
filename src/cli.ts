@@ -18,6 +18,11 @@ Usage:
                                    Electron (RUAH_APP_DEV=1 forces that)
   ruah app serve [<repo>] [options] serve the viewer + agent daemon
                                    (no <repo>: start screen, open a project from the viewer)
+  ruah app new <name> [--in <dir>] [--template <id>] [--no-git] [--gh private|public] [--json]
+                                   create a project from a template (empty, web-vite-react,
+                                   node-api-ts, static-site, pnpm-monorepo, infra-terraform):
+                                   files, scanned map, git init + first commit; \`gh repo create\`
+                                   only with --gh (\`ruah app new --help\` for all options)
   ruah app scan <repo> [options]    scan a repo into architecture.json
   ruah app infra <repo> [--json] [--kind <k>]...
                                    print the infrastructure as code the scan finds (resources,
@@ -319,7 +324,7 @@ async function openDesktop(repo: string | undefined): Promise<number> {
 }
 
 /** The subcommands; a folder with one of these names opens only as `open <dir>` or `./<dir>`. */
-const COMMANDS = new Set(["serve", "scan", "infra", "system", "export", "mcp", "cloud", "resume", "usage", "activity"]);
+const COMMANDS = new Set(["serve", "scan", "infra", "system", "export", "mcp", "cloud", "resume", "usage", "activity", "new"]);
 
 /**
  * Whether argv[0] opens the desktop app: nothing, `open`, or a directory that
@@ -361,6 +366,10 @@ async function main(argv: readonly string[]): Promise<number> {
     }
     case "scan": {
       return await scan(rest);
+    }
+    case "new": {
+      const { runNew } = await import("./projects/run-new.js");
+      return await runNew(rest, pkg.version);
     }
     case "infra": {
       return await infra(rest);
