@@ -181,7 +181,7 @@ function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: A
               <AgentMark name={a.name} className="size-5 text-[9px]" />
               <span className="text-ui text-foreground">{a.name}</span>
               {isCurrent ? (
-                <span className="rounded-pill bg-ai/15 px-1.5 text-micro font-medium text-ai">current</span>
+                <span className="rounded-pill pill-ai px-1.5 text-micro font-medium">current</span>
               ) : (
                 <WarmDot warm={a.warm} error={a.warmError} />
               )}

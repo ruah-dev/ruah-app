@@ -372,6 +372,40 @@ html[data-theme="contrast"] .grain::after {
   background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
 }
 
+/* Pills and chips: the role colour on a 12 % tint of itself, mixed over the PAGE background so the
+   chip is opaque. The WCAG check holds each role on a 15 % tint over background (≥ 4.5:1, 7:1 in
+   high contrast); a translucent tint instead took the colour of what was under it and fell to
+   ~4.1:1 on raised panels (surface-2 / surface-3) and hovered rows. `in srgb` is plain alpha
+   compositing — the same math as design/color.ts `over`, so the check is exact. */
+@utility pill-brand {
+  color: var(--brand);
+  background-color: color-mix(in srgb, var(--brand) 12%, var(--background));
+}
+@utility pill-primary {
+  color: var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 12%, var(--background));
+}
+@utility pill-ai {
+  color: var(--ai);
+  background-color: color-mix(in srgb, var(--ai) 12%, var(--background));
+}
+@utility pill-ok {
+  color: var(--ok);
+  background-color: color-mix(in srgb, var(--ok) 12%, var(--background));
+}
+@utility pill-warn {
+  color: var(--warn);
+  background-color: color-mix(in srgb, var(--warn) 12%, var(--background));
+}
+@utility pill-bad {
+  color: var(--bad);
+  background-color: color-mix(in srgb, var(--bad) 12%, var(--background));
+}
+@utility pill-info {
+  color: var(--info);
+  background-color: color-mix(in srgb, var(--info) 12%, var(--background));
+}
+
 /* Warm card: tone + hairline + soft warm shadow (website tool cards / DoubleBezelCard). */
 @utility card-warm {
   background: var(--color-card);

@@ -206,7 +206,7 @@ export function ChatsPage() {
                   <span className="max-w-[50%] shrink-0 truncate text-ui font-medium text-foreground">{r.name}</span>
                   <KindBadge kind={kindOf(r.projectId)} />
                   {r.projectId === daemon.project?.id ? (
-                    <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-micro font-medium text-primary">
+                    <span className="shrink-0 rounded-[5px] pill-primary px-1.5 text-micro font-medium">
                       current
                     </span>
                   ) : null}

@@ -153,7 +153,7 @@ function EstimateRow({ estimate }: { estimate: UsageEstimate }) {
       label="Ruah estimate"
       hint={`Turns run through Ruah only, ${estimate.basis}. Cost is what the agent reported${priced ? ", plus your model prices" : ""}${partialCost ? "; turns without a cost count tokens only" : ""}.`}
     >
-      <span className="me-1.5 rounded-sm bg-ai/12 px-1 py-px text-micro font-medium tracking-wide text-ai uppercase">
+      <span className="me-1.5 rounded-sm pill-ai px-1 py-px text-micro font-medium tracking-wide uppercase">
         estimate
       </span>
       {estimate.turns} {estimate.turns === 1 ? "turn" : "turns"} · {formatTokens(tokens)} tokens
@@ -214,7 +214,7 @@ export function AgentLimitCard({
             {agent.name}
           </h3>
           {agent.plan ? (
-            <span className="shrink-0 rounded-full bg-primary/12 px-2 py-px text-caption font-medium text-primary">
+            <span className="shrink-0 rounded-full pill-primary px-2 py-px text-caption font-medium">
               {agent.plan}
             </span>
           ) : null}

@@ -288,7 +288,7 @@ export function AgentModelPicker({
                         )}
                         {a.name}
                         {isCurrent ? (
-                          <span className="rounded-pill bg-ai/15 px-1.5 text-micro font-medium text-ai">current</span>
+                          <span className="rounded-pill pill-ai px-1.5 text-micro font-medium">current</span>
                         ) : null}
                         {!isCurrent && a.warm === "cold" && a.warmError ? (
                           <span className="min-w-0 truncate text-micro font-normal text-faint" title={a.warmError}>

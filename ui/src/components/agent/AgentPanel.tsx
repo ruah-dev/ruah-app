@@ -200,7 +200,7 @@ export function AgentPanel({
             <span
               className={cn(
                 "grid size-10 place-items-center rounded-full",
-                dropReason ? "bg-warn/15 text-warn" : "bg-primary/15 text-primary",
+                dropReason ? "pill-warn" : "pill-primary",
               )}
             >
               <ImagePlus className="size-5" />

@@ -31,7 +31,7 @@ export function LinkBadge({ manual, source }: { manual: boolean; source?: string
       title={title}
       className={cn(
         "inline-flex h-4 shrink-0 items-center rounded px-1 text-micro font-medium tracking-wide uppercase",
-        manual ? "bg-primary/15 text-primary" : "bg-foreground/[0.07] text-muted-foreground",
+        manual ? "pill-primary" : "bg-foreground/[0.07] text-muted-foreground",
       )}
     >
       {manual ? "manual" : "auto"}

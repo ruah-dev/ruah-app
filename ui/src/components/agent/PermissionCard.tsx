@@ -5,8 +5,8 @@ import { useEffect } from "react";
 import { ShieldQuestion, Wrench } from "lucide-react";
 import type { PermissionRequest } from "@/lib/daemon";
 import { answerPermission } from "@/lib/daemon";
-import { cn } from "@/lib/utils";
 import { iconByKind } from "./ToolCallRow";
+import { primaryButton, quietButton, solidButton } from "@/components/ui/controls";
 
 const verbByKind: Record<string, string> = {
   edit: "Allow this edit?",
@@ -66,7 +66,7 @@ export function PermissionCard({
       className="rounded-xl border border-warn/35 bg-surface-1 p-3 shadow-card"
     >
       <div className="flex items-center gap-2">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-warn/15 text-warn">
+        <span aria-hidden className="grid size-6 shrink-0 place-items-center rounded-md pill-warn">
           <ShieldQuestion className="size-3.5" />
         </span>
         <p className="text-ui font-medium text-foreground">
@@ -80,11 +80,14 @@ export function PermissionCard({
       </div>
       <div className="mt-2.5 flex min-w-0 items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 ring-1 ring-hairline">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate text-ui-sm text-foreground/90">{call.title}</span>
+        <span className="min-w-0 truncate text-ui-sm text-foreground/90" title={call.title}>
+          {call.title}
+        </span>
         {loc && !call.title.includes(loc.path) ? (
           <button
             type="button"
             onClick={() => onOpenPath?.(loc.path)}
+            title={`Open ${loc.path}`}
             className="min-w-0 shrink truncate font-mono text-caption text-primary hover:underline"
           >
             {loc.path}
@@ -105,14 +108,7 @@ export function PermissionCard({
               type="button"
               disabled={request.answering}
               onClick={() => answerPermission(request.requestId, o.optionId)}
-              className={cn(
-                "h-7 rounded-lg px-2.5 text-label font-medium transition-colors disabled:opacity-50",
-                isPrimary
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : o.kind.startsWith("reject")
-                    ? "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    : "bg-surface-3 text-foreground hover:bg-surface-4",
-              )}
+              className={isPrimary ? primaryButton : o.kind.startsWith("reject") ? quietButton : solidButton}
             >
               {o.name}
             </button>

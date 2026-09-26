@@ -835,7 +835,7 @@ function SuggestionRow({ s, busy, onAccept, onReject }: { s: StoredSuggestion; b
         <span className="min-w-0 flex-1 truncate font-mono text-ui text-foreground">{edgeText(s)}</span>
         {s.kind ? <span className="text-meta text-faint">{s.kind}</span> : null}
         <span
-          className={cn("rounded-pill px-1.5 text-caption tabular-nums", pct >= 80 ? "bg-ok/15 text-ok" : pct >= 50 ? "bg-warn/15 text-warn" : "bg-surface-3 text-muted-foreground")}
+          className={cn("rounded-pill px-1.5 text-caption tabular-nums", pct >= 80 ? "pill-ok" : pct >= 50 ? "pill-warn" : "bg-surface-3 text-muted-foreground")}
           title="Agent's confidence"
         >
           {pct}%

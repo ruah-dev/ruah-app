@@ -228,10 +228,10 @@ export function Pill({
     <span
       className={cn(
         "inline-flex h-5 max-w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-meta whitespace-nowrap",
-        tone === "ok" && "bg-ok/12 text-ok",
-        tone === "warn" && "bg-warn/12 text-warn",
-        tone === "bad" && "bg-bad/12 text-bad",
-        tone === "idle" && "bg-info/12 text-info",
+        tone === "ok" && "pill-ok",
+        tone === "warn" && "pill-warn",
+        tone === "bad" && "pill-bad",
+        tone === "idle" && "pill-info",
         className,
       )}
     >

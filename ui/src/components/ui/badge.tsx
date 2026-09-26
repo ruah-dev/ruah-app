@@ -16,13 +16,14 @@ const badgeVariants = cva(
         outline: "text-foreground",
         // Neutral count / metadata chip (no status): muted text on the raised surface.
         neutral: "border-hairline bg-surface-2 font-medium text-muted-foreground",
-        // Design-system badges: one per semantic role — a pill, the role's colour on its tint.
-        brand: "rounded-pill border-brand/35 bg-brand/12 font-medium text-brand",
-        ai: "rounded-pill border-ai/35 bg-ai/12 font-medium text-ai",
-        ok: "rounded-pill border-ok/35 bg-ok/12 font-medium text-ok",
-        warn: "rounded-pill border-warn/35 bg-warn/12 font-medium text-warn",
-        bad: "rounded-pill border-bad/35 bg-bad/12 font-medium text-bad",
-        info: "rounded-pill border-info/35 bg-info/12 font-medium text-info",
+        // Design-system badges: one per semantic role — a pill, the role's colour on its tint
+        // (opaque `pill-*`, so it reads the same on every surface; styles.css).
+        brand: "rounded-pill border-brand/35 pill-brand font-medium",
+        ai: "rounded-pill border-ai/35 pill-ai font-medium",
+        ok: "rounded-pill border-ok/35 pill-ok font-medium",
+        warn: "rounded-pill border-warn/35 pill-warn font-medium",
+        bad: "rounded-pill border-bad/35 pill-bad font-medium",
+        info: "rounded-pill border-info/35 pill-info font-medium",
       },
     },
     defaultVariants: {

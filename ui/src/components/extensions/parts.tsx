@@ -49,11 +49,11 @@ export function Chip({ children, tone = "muted", title }: { children: ReactNode;
       className={cn(
         "inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta whitespace-nowrap",
         tone === "muted" && "bg-foreground/[0.06] text-muted-foreground",
-        tone === "ok" && "bg-ok/12 text-ok",
-        tone === "warn" && "bg-warn/12 text-warn",
-        tone === "bad" && "bg-bad/12 text-bad",
-        tone === "ai" && "bg-ai/12 text-ai",
-        tone === "info" && "bg-info/12 text-info",
+        tone === "ok" && "pill-ok",
+        tone === "warn" && "pill-warn",
+        tone === "bad" && "pill-bad",
+        tone === "ai" && "pill-ai",
+        tone === "info" && "pill-info",
       )}
     >
       {children}

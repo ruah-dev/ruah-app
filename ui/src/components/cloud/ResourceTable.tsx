@@ -44,7 +44,7 @@ export function ScopeBadge({ resource: r }: { resource: CloudResource }) {
   if (!s) return null;
   const label = s.in ? scopeBadge(s) : s.excluded ? "removed" : s.confidence === "weak" ? "looks related" : undefined;
   if (!label) return null;
-  const tone = s.confidence === "manual" ? "bg-primary/12 text-primary" : s.in ? "bg-ok/12 text-ok" : "bg-foreground/[0.06] text-muted-foreground";
+  const tone = s.confidence === "manual" ? "pill-primary" : s.in ? "pill-ok" : "bg-foreground/[0.06] text-muted-foreground";
   return (
     <span
       title={s.reasons.join("\n") || label}

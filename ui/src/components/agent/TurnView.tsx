@@ -99,13 +99,13 @@ export function DiffBlock({
       <pre className="max-h-72 overflow-auto border-t border-hairline py-1.5 font-mono text-meta leading-[1.6]">
         {oldLines.map((l, i) => (
           <div key={`o${i}`} className="flex bg-bad/[0.07] px-3">
-            <span className="w-4 shrink-0 text-bad/80 select-none">−</span>
+            <span className="w-4 shrink-0 text-bad select-none">−</span>
             <code className="whitespace-pre text-foreground/75">{l}</code>
           </div>
         ))}
         {newLines.map((l, i) => (
           <div key={`n${i}`} className="flex bg-ok/[0.07] px-3">
-            <span className="w-4 shrink-0 text-ok/80 select-none">+</span>
+            <span className="w-4 shrink-0 text-ok select-none">+</span>
             <code className="whitespace-pre text-foreground/90">{l}</code>
           </div>
         ))}
