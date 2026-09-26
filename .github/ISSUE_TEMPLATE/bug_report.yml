@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in Ruah does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Security problems do not belong here**: use the Security tab → "Report a vulnerability" (see SECURITY.md).
+        Before you paste logs or screenshots, remove tokens, account ids, client or project names and anything else private: issues are public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: "I opened a project with a Terraform folder, the map showed …, I expected …"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps. A public or made-up repo that shows the problem helps most.
+      placeholder: |
+        1. `ruah app scan ./demo`
+        2. Open it in Ruah, click …
+        3. …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Map / scan / drill-in
+        - Agents (Claude Code, Cursor, Grok, Kiro, OpenCode)
+        - Projects, chats, launcher
+        - Terminal / live preview
+        - Cloud providers / integrations
+        - Extensions (skills, MCP servers, …)
+        - Usage and limits
+        - Desktop app (install, Dock, windows, notifications)
+        - CLI (`ruah app …`)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ruah version
+      description: "`ruah app --version`, or Ruah → About Ruah"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and chip
+      placeholder: "macOS 26.0, Apple M3"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`ruah app doctor` output (optional)"
+      description: Which agents and CLIs Ruah finds. Check it for anything private before posting.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: "Help → Show Logs in Finder (`~/Library/Logs/Ruah/daemon.log`). Only the relevant lines, with private details removed."
+      render: text

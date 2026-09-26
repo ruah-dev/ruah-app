@@ -1,0 +1,31 @@
+name: Feature request
+description: An idea that would make Ruah better for your daily work.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+      placeholder: "When I switch between three client projects I lose track of …"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it could work, in the app and/or as a `ruah app …` command. Mockups welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Workarounds you use now, or other tools that do this well.
+  - type: checkboxes
+    id: fit
+    attributes:
+      label: Fit
+      description: Ruah features are modular (a library plus a CLI that works without the app), optional in the app, and read-only toward cloud accounts unless you act.
+      options:
+        - label: This could work as an optional feature (off or quiet when the tool it needs is missing).
