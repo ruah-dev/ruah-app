@@ -70,11 +70,27 @@ export interface RejectedSuggestion {
   rejectedAt: string;
 }
 
+/** A permission request the running agent turn waits on (§20.2). */
+export interface WaitingPermission {
+  requestId: string;
+  toolCall: { toolCallId: string; title: string; kind: string };
+  options: { optionId: string; name: string; kind: "allow_once" | "allow_always" | "reject_once" | "reject_always" }[];
+}
+
+export interface RunningSuggestions {
+  startedAt: string;
+  agentId: string;
+  /** Daemons before §20.2 send neither of these. */
+  turnId?: string;
+  deadline?: string;
+  waitingPermission?: WaitingPermission;
+}
+
 export interface SuggestionsView {
   pending: StoredSuggestion[];
   rejected: RejectedSuggestion[];
   lastRun: { at: string; agentId?: string; proposed: number; dropped: number; error?: string } | null;
-  running: { startedAt: string; agentId: string } | null;
+  running: RunningSuggestions | null;
 }
 
 // ---- HTTP -----------------------------------------------------------------------------------
@@ -106,6 +122,7 @@ export const systemApi = {
   suggestions: (o: string | null) => call<SuggestionsView>(o, "/api/system/suggestions"),
   runSuggestions: (o: string | null, body: { minConfidence?: number } = {}) =>
     call<SuggestionsView>(o, "/api/system/suggestions/run", body),
+  cancelSuggestions: (o: string | null) => call<SuggestionsView>(o, "/api/system/suggestions/cancel", {}),
   accept: (o: string | null, id: string) =>
     call<{ edge: ArchEdge; suggestions: SuggestionsView }>(o, "/api/system/suggestions/accept", { id }),
   reject: (o: string | null, id: string) => call<SuggestionsView>(o, "/api/system/suggestions/reject", { id }),

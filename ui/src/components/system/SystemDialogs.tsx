@@ -11,13 +11,16 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  ShieldQuestion,
   Sparkles,
+  Square,
   Trash2,
   Undo2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useDaemonSelector } from "@/lib/daemon";
+import { answerPermission, useDaemonSelector } from "@/lib/daemon";
+import { useProjectActivity } from "@/lib/activity";
 import { useWorkbench } from "@/lib/workbench";
 import { absoluteTime, prettyPath, relativeTime } from "@/lib/time";
 import type { ArchEdge } from "@/lib/contracts";
@@ -30,6 +33,7 @@ import {
   useSystemDialog,
   type GithubRepo,
   type RepoStatus,
+  type RunningSuggestions,
   type StoredSuggestion,
   type SuggestionsView,
   type SystemStatus,
@@ -438,9 +442,23 @@ function ManageSystemDialog({ open, tab }: { open: boolean; tab: "repos" | "conn
 }
 
 /** Repos of the open system: git state, last scan, add / remove / rename / rescan. Movable as a page section. */
+/**
+ * Why a repo cannot be renamed right now: an agent turn of this system is running (it would save
+ * the old element ids into its chat when it finishes — the daemon refuses with 409 too).
+ */
+function useRenameBlocked(): string | null {
+  const projectId = useDaemonSelector((s) => s.project?.id ?? null);
+  const activity = useProjectActivity(projectId);
+  const localTurn = useDaemonSelector((s) => s.turns.some((t) => !t.stopReason));
+  return (activity?.running ?? 0) > 0 || localTurn
+    ? "An agent is working in this system. Rename when it has finished (or stop it) — its chat would keep the old ids."
+    : null;
+}
+
 export function ReposPanel() {
   const origin = useOrigin();
   const pick = useFolderPicker();
+  const renameBlocked = useRenameBlocked();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -504,6 +522,7 @@ export function ReposPanel() {
                 key={r.id}
                 repo={r}
                 busy={busy}
+                renameBlocked={renameBlocked}
                 onRename={(newId) => run(`rename:${r.id}`, () => systemApi.renameRepo(origin, r.id, newId), `Renamed ${r.id} to ${newId}`)}
                 onRescan={() => run(`rescan:${r.id}`, () => systemApi.rescanRepo(origin, r.id), `Rescanned ${r.id}`)}
                 onRemove={() => run(`remove:${r.id}`, () => systemApi.removeRepo(origin, r.id), `Removed ${r.id} from the system (its folder is untouched)`)}
@@ -512,6 +531,7 @@ export function ReposPanel() {
           </tbody>
         </table>
       </div>
+      {renameBlocked ? <p className="text-meta text-muted-foreground">Renaming is paused: {renameBlocked}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         {pick ? (
           <Button
@@ -560,12 +580,14 @@ export function ReposPanel() {
 function RepoRow({
   repo: r,
   busy,
+  renameBlocked,
   onRename,
   onRescan,
   onRemove,
 }: {
   repo: RepoStatus;
   busy: string | null;
+  renameBlocked: string | null;
   onRename: (newId: string) => Promise<void>;
   onRescan: () => Promise<void>;
   onRemove: () => Promise<void>;
@@ -587,7 +609,7 @@ function RepoRow({
             }}
           >
             <Input autoFocus value={id} onChange={(e) => setId(e.target.value)} className={cn(fieldClass, "h-7 w-36 font-mono", !REPO_ID_RE.test(id) && "border-bad")} />
-            <Button type="submit" variant="ghost" size="sm" className="size-7 p-0" disabled={!valid} aria-label="Save id">
+            <Button type="submit" variant="ghost" size="sm" className="size-7 p-0" disabled={!valid || renameBlocked !== null} title={renameBlocked ?? undefined} aria-label="Save id">
               <Check className="size-3.5" />
             </Button>
             <Button type="button" variant="ghost" size="sm" className="size-7 p-0" aria-label="Cancel" onClick={() => (setEditing(false), setId(r.id))}>
@@ -643,7 +665,15 @@ function RepoRow({
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" className="size-7 p-0" title="Rename id" aria-label={`Rename ${r.id}`} disabled={busy !== null} onClick={() => setEditing(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0 disabled:pointer-events-auto"
+                title={renameBlocked ?? "Rename id"}
+                aria-label={renameBlocked ? `Rename ${r.id} (unavailable: ${renameBlocked})` : `Rename ${r.id}`}
+                disabled={busy !== null || renameBlocked !== null}
+                onClick={() => setEditing(true)}
+              >
                 <Pencil className="size-3.5" />
               </Button>
               <Button variant="ghost" size="sm" className="size-7 p-0" title="Rescan this repo" aria-label={`Rescan ${r.id}`} disabled={busy !== null || !r.exists} onClick={() => void onRescan()}>
@@ -786,7 +816,19 @@ export function ConnectionsPanel() {
           Optional second pass: {agentName} reads the repos (read-only) and proposes edges with evidence. It runs as a normal
           turn in the current chat. Accepted edges are kept on every rescan; rejected ones are not proposed again.
         </p>
-        {view.lastRun?.error ? <p className="rounded-lg bg-bad/10 px-3 py-2 text-ui-sm text-bad">Last run failed: {view.lastRun.error}</p> : null}
+        {view.running ? (
+          <RunningSuggestionsNotice
+            running={view.running}
+            agentName={agentName}
+            busy={busy !== null}
+            onCancel={() => void act("cancel", () => systemApi.cancelSuggestions(origin), "Stopped Suggest connections")}
+            onAnswered={() => window.setTimeout(() => void refresh(), 400)}
+          />
+        ) : view.lastRun?.error === "cancelled" ? (
+          <p className="text-ui-sm text-muted-foreground">The last run was stopped before it finished.</p>
+        ) : view.lastRun?.error ? (
+          <p className="rounded-lg bg-bad/10 px-3 py-2 text-ui-sm text-bad">Last run failed: {view.lastRun.error}</p>
+        ) : null}
         {view.pending.length === 0 && !view.running ? (
           <p className="text-ui-sm text-muted-foreground">{view.lastRun ? "Nothing to review." : "No suggestions yet."}</p>
         ) : null}
@@ -822,6 +864,81 @@ export function ConnectionsPanel() {
             </ul>
           ) : null}
         </section>
+      ) : null}
+    </div>
+  );
+}
+
+function elapsed(since: string, now: number): string {
+  const s = Math.max(0, Math.round((now - Date.parse(since)) / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+/**
+ * §20.2: what the running pass is doing — how long it has run and when it stops on its own, the
+ * permission its agent waits on (answerable right here), and Stop.
+ */
+function RunningSuggestionsNotice({
+  running,
+  agentName,
+  busy,
+  onCancel,
+  onAnswered,
+}: {
+  running: RunningSuggestions;
+  agentName: string;
+  busy: boolean;
+  onCancel: () => void;
+  onAnswered: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const waiting = running.waitingPermission;
+  const left = running.deadline ? Math.max(0, Date.parse(running.deadline) - now) : null;
+  return (
+    <div className={cn("space-y-2 rounded-xl border px-3 py-2.5", waiting ? "border-warn/40 bg-warn/[0.07]" : "border-hairline bg-surface-1")}>
+      <div className="flex items-center gap-2 text-ui-sm">
+        <Loader2 className="size-3.5 shrink-0 animate-spin text-ai" aria-hidden />
+        <span className="min-w-0 flex-1 text-foreground">
+          {agentName} is reading the repos · {elapsed(running.startedAt, now)}
+          {left !== null ? (
+            <span className="text-muted-foreground"> · stops on its own in {Math.ceil(left / 60_000)} min</span>
+          ) : null}
+        </span>
+        {running.turnId ? (
+          <Button size="sm" variant="ghost" className={smallBtn} disabled={busy} onClick={onCancel}>
+            <Square className="size-3" /> Stop
+          </Button>
+        ) : null}
+      </div>
+      {waiting ? (
+        <div className="space-y-1.5">
+          <p className="flex items-start gap-1.5 text-ui-sm text-foreground">
+            <ShieldQuestion className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
+            <span>
+              Waiting for your permission: <span className="font-mono text-[12px]">{waiting.toolCall.title}</span>
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-1.5 ps-5">
+            {waiting.options.map((o) => (
+              <Button
+                key={o.optionId}
+                size="sm"
+                variant={o.kind.startsWith("allow") ? "outline" : "ghost"}
+                className={smallBtn}
+                onClick={() => {
+                  answerPermission(waiting.requestId, o.optionId);
+                  onAnswered();
+                }}
+              >
+                {o.name}
+              </Button>
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   );

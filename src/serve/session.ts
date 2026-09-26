@@ -126,6 +126,19 @@ export interface SessionHubOptions {
   maxBackgroundTurns?: number;
 }
 
+/** A daemon-started turn (runTaskTurn): its id at once (to cancel it), its answer when it finishes. */
+export interface TaskTurn {
+  turnId: string;
+  result: Promise<TaskTurnResult>;
+}
+
+/** A permission request a running turn waits on (answered with permission.response). */
+export interface PendingPermission {
+  requestId: string;
+  toolCall: ToolCallView;
+  options: PermissionOption[];
+}
+
 /** What a daemon-started turn (runTaskTurn) answered. */
 export interface TaskTurnResult {
   turnId: string;
@@ -1186,7 +1199,7 @@ export class SessionHub {
    * as a rejection) when no project is open or the agent is not idle (no
    * queueing), so a caller can answer "busy" before anything starts.
    */
-  runTaskTurn(task: { text: string; prompt: string }): Promise<TaskTurnResult> {
+  runTaskTurn(task: { text: string; prompt: string }): TaskTurn {
     const open = this.open;
     const entry = this.entry;
     if (open === null) throw new Error(NO_PROJECT_MESSAGE);
@@ -1217,7 +1230,27 @@ export class SessionHub {
     this.turns.set(turnId, recording);
     this.options.activity?.turnStarted(this.activityContext(recording), false);
     this.broadcast({ type: "turn.started", turnId, contextPack: task.prompt, text: task.text });
-    return result;
+    return { turnId, result };
+  }
+
+  /**
+   * A turn of `projectId` that is running or waiting for its agent (any chat,
+   * foreground or background), or undefined. Changes that rewrite the
+   * project's stored chats (a system repo rename, §12.4) wait for it: the
+   * turn would store its old element ids when it finishes.
+   */
+  runningTurn(projectId: string): { turnId: string; text: string } | undefined {
+    for (const recording of this.turns.values()) {
+      if (!recording.finalized && recording.projectId === projectId) return { turnId: recording.record.turnId, text: recording.record.text };
+    }
+    return undefined;
+  }
+
+  /** The permission requests `turnId` waits on (oldest first); empty when none or unknown. */
+  pendingPermissions(turnId: string): PendingPermission[] {
+    const recording = this.turns.get(turnId);
+    if (recording === undefined || recording.finalized) return [];
+    return [...recording.pending].map(([requestId, request]) => ({ requestId, toolCall: request.toolCall, options: request.options }));
   }
 
   /**

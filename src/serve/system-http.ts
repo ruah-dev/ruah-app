@@ -24,7 +24,7 @@ import type { Runner } from "../integrations/exec.js";
 import { ProjectError, type ProjectService } from "../projects/service.js";
 import type { ArchitectureStore } from "./architecture-store.js";
 import { parseBody, sendJson } from "./projects-http.js";
-import type { TaskTurnResult } from "./session.js";
+import type { PendingPermission, TaskTurn } from "./session.js";
 import { systemHandleFor, type SystemHandle } from "../system/open.js";
 import {
   acceptPending,
@@ -53,8 +53,16 @@ export interface SystemHost {
   project(): ProjectInfo | null;
   readonly store: ArchitectureStore | null;
   agentId(): string;
-  runTaskTurn(task: { text: string; prompt: string }): Promise<TaskTurnResult>;
+  runTaskTurn(task: { text: string; prompt: string }): TaskTurn;
+  /** A turn of the project that is running or queued (rename waits for it). */
+  runningTurn(projectId: string): { turnId: string; text: string } | undefined;
+  /** Permission requests the turn waits on. */
+  pendingPermissions(turnId: string): PendingPermission[];
+  cancelTurn(turnId: string): Promise<void>;
 }
+
+/** Default upper bound on one "Suggest connections" run (RUAH_SUGGEST_TIMEOUT_MS overrides). */
+export const DEFAULT_SUGGEST_TIMEOUT_MS = 10 * 60_000;
 
 export interface SystemServiceDeps {
   host: SystemHost;
@@ -69,13 +77,47 @@ export interface SystemServiceDeps {
   runner?: Runner;
   /** gh runner (tests); default execFile. */
   ghRunner?: Runner;
+  /** Upper bound on one "Suggest connections" run; default RUAH_SUGGEST_TIMEOUT_MS, else 10 min. */
+  suggestTimeoutMs?: number;
+}
+
+/** The running "Suggest connections" pass, as the viewer sees it. */
+export interface RunningSuggestions {
+  startedAt: string;
+  agentId: string;
+  /** The agent turn (cancel it with POST …/suggestions/cancel). */
+  turnId?: string;
+  /** When the run is stopped if it has not finished (ISO). */
+  deadline: string;
+  /** What the agent waits for you to allow (answer it in the dialog or the chat); absent when nothing. */
+  waitingPermission?: PendingPermission;
 }
 
 export interface SuggestionsView {
   pending: ReturnType<typeof livePending>;
   rejected: ReturnType<typeof readSuggestionsFile>["rejected"];
   lastRun: ReturnType<typeof readSuggestionsFile>["lastRun"] | null;
-  running: { startedAt: string; agentId: string } | null;
+  running: RunningSuggestions | null;
+}
+
+interface RunState {
+  startedAt: string;
+  agentId: string;
+  turnId?: string;
+  deadline: number;
+  /** Ends the run now with this error (cancel, timeout); the agent turn is cancelled. */
+  stop?: (reason: string) => void;
+  /** Settles once the run is over and recorded. */
+  settled?: Promise<void>;
+}
+
+function suggestTimeoutFromEnv(): number {
+  const raw = Number.parseInt(process.env.RUAH_SUGGEST_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(raw) && raw >= 1000 ? raw : DEFAULT_SUGGEST_TIMEOUT_MS;
+}
+
+function minutes(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`;
 }
 
 function toProjectError(err: unknown): unknown {
@@ -87,7 +129,7 @@ function toProjectError(err: unknown): unknown {
 }
 
 export class SystemService {
-  private readonly running = new Map<string, { startedAt: string; agentId: string }>();
+  private readonly running = new Map<string, RunState>();
 
   constructor(private readonly deps: SystemServiceDeps) {}
 
@@ -159,6 +201,13 @@ export class SystemService {
   async renameRepo(id: string, newId: string): Promise<SystemStatus> {
     const handle = this.current();
     if (this.running.has(handle.dir)) throw new ProjectError(409, "Suggest connections is running; rename when it has finished");
+    // A running turn stores its record (element ids included) when it finishes: after the rename
+    // rewrote the chats, that would bring the old ids back. So wait for it (or stop it).
+    const project = this.deps.host.project();
+    const turn = project !== null ? this.deps.host.runningTurn(project.id) : undefined;
+    if (turn !== undefined) {
+      throw new ProjectError(409, "An agent turn is running in this system. Rename the repo when it has finished (or stop it): the turn would save the old ids back into its chat.");
+    }
     renameRepo(handle.dir, id, newId, this.deps.home !== undefined ? { home: this.deps.home } : {});
     const info = this.deps.host.project();
     if (info !== null) this.deps.chats?.reload(info.id);
@@ -184,8 +233,34 @@ export class SystemService {
       pending: livePending(file, handle.store.current()),
       rejected: file.rejected,
       lastRun: file.lastRun ?? null,
-      running: this.running.get(handle.dir) ?? null,
+      running: this.runningView(handle.dir),
     };
+  }
+
+  private runningView(dir: string): RunningSuggestions | null {
+    const state = this.running.get(dir);
+    if (state === undefined) return null;
+    const waiting = state.turnId !== undefined ? this.deps.host.pendingPermissions(state.turnId)[0] : undefined;
+    return {
+      startedAt: state.startedAt,
+      agentId: state.agentId,
+      ...(state.turnId !== undefined ? { turnId: state.turnId } : {}),
+      deadline: new Date(state.deadline).toISOString(),
+      ...(waiting !== undefined ? { waitingPermission: waiting } : {}),
+    };
+  }
+
+  /**
+   * POST /api/system/suggestions/cancel: stops the running pass at once (its
+   * agent turn is cancelled; lastRun records it). 409 when nothing runs.
+   */
+  async cancelSuggestions(): Promise<SuggestionsView> {
+    const handle = this.current();
+    const state = this.running.get(handle.dir);
+    if (state === undefined) throw new ProjectError(409, "Suggest connections is not running");
+    state.stop?.("cancelled");
+    await state.settled;
+    return this.suggestions(handle);
   }
 
   /**
@@ -201,21 +276,53 @@ export class SystemService {
     if (sys.repos.length < 2) throw new ProjectError(409, "add at least two repos before suggesting connections");
     const host = this.deps.host;
     const agentId = host.agentId();
+    const timeoutMs = this.deps.suggestTimeoutMs ?? suggestTimeoutFromEnv();
+    const state: RunState = { startedAt: new Date().toISOString(), agentId, deadline: Date.now() + timeoutMs };
     let startError: unknown;
     const runAgent: RunAgent = (prompt) => {
-      let turn: Promise<TaskTurnResult>;
+      let task: TaskTurn;
       try {
-        turn = host.runTaskTurn({ text: `Suggest connections between the ${sys.repos.length} repos of ${sys.name}`, prompt });
+        task = host.runTaskTurn({ text: `Suggest connections between the ${sys.repos.length} repos of ${sys.name}`, prompt });
       } catch (err) {
         startError = err;
         throw err;
       }
-      return turn.then((r) => {
-        if (r.stopReason !== "end_turn") throw new Error(`the agent stopped (${r.stopReason})${r.error !== undefined ? `: ${r.error}` : ""}`);
-        return r.text;
+      state.turnId = task.turnId;
+      return new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const finish = (fn: () => void): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          delete state.stop;
+          fn();
+        };
+        // Stopping does not wait for the agent: the run ends now, the turn is cancelled behind it.
+        const stop = (reason: string): void =>
+          finish(() => {
+            host.cancelTurn(task.turnId).catch(() => {});
+            reject(new Error(reason));
+          });
+        const timer = setTimeout(() => {
+          const waiting = host.pendingPermissions(task.turnId)[0];
+          stop(
+            waiting !== undefined
+              ? `timed out after ${minutes(timeoutMs)} waiting for your permission (${waiting.toolCall.title})`
+              : `timed out after ${minutes(timeoutMs)}`,
+          );
+        }, timeoutMs);
+        timer.unref?.();
+        state.stop = stop;
+        task.result.then(
+          (r) =>
+            finish(() => {
+              if (r.stopReason !== "end_turn") reject(new Error(`the agent stopped (${r.stopReason})${r.error !== undefined ? `: ${r.error}` : ""}`));
+              else resolve(r.text);
+            }),
+          (err: unknown) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
+        );
       });
     };
-    const state = { startedAt: new Date().toISOString(), agentId };
     this.running.set(handle.dir, state);
     // runAgent is called synchronously inside runSuggestPass (before its first await): a busy agent is known here.
     const pass = runSuggestPass(sys, runAgent, {
@@ -233,7 +340,7 @@ export class SystemService {
       pass.catch(() => {});
       throw new ProjectError(409, startError instanceof Error ? startError.message : String(startError));
     }
-    pass.then(done, (err: unknown) => {
+    state.settled = pass.then(done, (err: unknown) => {
       done();
       try {
         recordSuggestionRun(handle.dir, [], { agentId, error: err instanceof Error ? err.message : String(err) });
@@ -409,6 +516,10 @@ export function handleSystemRequest(
       case "/api/system/suggestions/run": {
         const body = await parseBody(req, RunSuggestionsBodySchema);
         sendJson(res, 202, service.runSuggestions(body));
+        return;
+      }
+      case "/api/system/suggestions/cancel": {
+        sendJson(res, 200, await service.cancelSuggestions());
         return;
       }
       case "/api/system/suggestions/accept": {
