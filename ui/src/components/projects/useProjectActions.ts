@@ -72,7 +72,25 @@ export function useProjectActions() {
         await openProject(path, { ...(name ? { name } : {}), ...(projectId ? { projectId } : {}) });
         return true;
       } catch (err) {
-        toast.error(`Couldn't open ${name ?? basename(path)}`, { description: message(err) });
+        const label = name ?? basename(path);
+        // A recent project whose folder was moved or deleted: offer to drop it from the list
+        // (it stayed in the launcher, failing the same way on every click).
+        const missing = projectId !== undefined && /folder not found|no such file|ENOENT/i.test(message(err));
+        toast.error(`Couldn't open ${label}`, {
+          description: missing ? `${message(err)} — moved or deleted? Remove it from the recent list, or open it again from its new place (⌘O).` : message(err),
+          ...(missing
+            ? {
+                action: {
+                  label: "Remove from recents",
+                  onClick: () =>
+                    void forgetProject(projectId).then(
+                      () => toast(`Removed ${label} from recent projects`, { description: "The folder itself is untouched." }),
+                      (e: unknown) => toast.error(`Couldn't remove ${label}`, { description: message(e) }),
+                    ),
+                },
+              }
+            : {}),
+        });
         return false;
       }
     },
