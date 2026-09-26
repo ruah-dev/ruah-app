@@ -117,7 +117,7 @@ export function handleEnginesRequest(
         return;
       }
       if (method === "GET" && url.pathname === "/api/engines/verify/state") {
-        json(res, 200, { nodes: engines.verifyState() });
+        json(res, 200, engines.verifyStateOf());
         return;
       }
       if (method === "POST" && url.pathname === "/api/engines/verify/sync") {

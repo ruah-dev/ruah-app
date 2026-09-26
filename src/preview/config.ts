@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { PreviewFileSchema, type PreviewFile } from "../contracts/preview.js";
 import { atomicWriteFileSync } from "../projects/fs-util.js";
+import { ensureRuahGitignore } from "../projects/repo-files.js";
 
 export const PREVIEW_FILE = path.join(".ruah", "preview.json");
 const MAX_BYTES = 64 * 1024;
@@ -114,6 +115,9 @@ export function writePreviewChoice(root: string, patch: PreviewChoicePatch): Pre
   } catch {
     before = undefined;
   }
-  if (before !== text) atomicWriteFileSync(file, text);
+  if (before !== text) {
+    atomicWriteFileSync(file, text);
+    ensureRuahGitignore(root);
+  }
   return checked;
 }

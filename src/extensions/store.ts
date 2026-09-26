@@ -22,6 +22,7 @@ import {
   type InstallRecord,
 } from "../contracts/extensions.js";
 import { atomicWriteFileSync } from "../projects/fs-util.js";
+import { ensureRuahGitignore } from "../projects/repo-files.js";
 import { ExtensionError, slugify } from "./model.js";
 
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -135,6 +136,7 @@ export class ExtensionsStore {
       if (next.length === 0 && scope === "project" && !fs.existsSync(current.file)) return next;
       atomicWriteFileSync(current.file, after);
       if (scope === "global") fs.chmodSync(current.file, 0o600);
+      else if (root !== undefined) ensureRuahGitignore(root);
     }
     return next;
   }

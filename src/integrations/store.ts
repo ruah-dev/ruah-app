@@ -13,6 +13,7 @@ import {
   type WorkLink,
 } from "../contracts/integrations.js";
 import { projectIdFor } from "../projects/fs-util.js";
+import { ensureRuahGitignore } from "../projects/repo-files.js";
 
 /** CONTRACTS.md §5.1: sha1(realpath(root)).slice(0, 12). */
 export function projectIdOf(root: string): string {
@@ -140,5 +141,6 @@ export function updateLink(projectRoot: string, link: WorkLink, linked: boolean)
   if (exists === linked) return current;
   const next = linked ? [...current, link] : current.filter((l) => !same(l));
   atomicWrite(linksFileOf(projectRoot), formatLinks(next));
+  ensureRuahGitignore(projectRoot);
   return readLinks(projectRoot);
 }

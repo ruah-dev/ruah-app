@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ArchEdge, Architecture } from "../contracts/architecture.js";
 import { acceptSuggestion, type SuggestedEdge } from "./suggest.js";
+import { ensureRuahGitignore } from "../projects/repo-files.js";
 
 export const SUGGESTIONS_FILE = path.join(".ruah", "suggestions.json");
 
@@ -131,6 +132,7 @@ export function writeSuggestionsFile(systemDir: string, file: SuggestionsFile): 
   const tmp = `${target}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tmp, `${JSON.stringify(file, null, 2)}\n`);
   fs.renameSync(tmp, target);
+  ensureRuahGitignore(systemDir);
 }
 
 function edgeExists(arch: Architecture, s: { from: string; to: string; label?: string | undefined }): boolean {

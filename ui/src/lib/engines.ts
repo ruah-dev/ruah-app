@@ -1,6 +1,6 @@
 // ui/src/lib/engines.ts — client for /api/engines/*
 import { useCallback, useEffect, useState } from "react";
-import { useDaemon } from "./daemon";
+import { sameRoot, useDaemonSelector } from "./daemon";
 
 export type VerifyBadge = "pass" | "fail" | "unverifiable" | "error" | "idle";
 
@@ -12,19 +12,27 @@ export interface NodeVerifyState {
   verifiedAt?: string;
 }
 
+/**
+ * The open project's verify badges (polled every 4 s, and after each turn). Scoped to the
+ * project: a switch clears them at once, and an answer about another project (a poll that was in
+ * flight during the switch; the daemon names the root it answered for) is dropped.
+ */
 export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] {
-  const daemon = useDaemon();
-  const [nodes, setNodes] = useState<Record<string, NodeVerifyState>>({});
-  const connected = daemon.source === "daemon" && daemon.connection === "open";
+  const connected = useDaemonSelector((s) => s.source === "daemon" && s.connection === "open");
+  // No badges while a switch is under way (a previewed target shows the new map already).
+  const root = useDaemonSelector((s) => (s.source === "daemon" && !s.projectSwitch ? (s.project?.root ?? s.root) : null));
+  const [state, setState] = useState<{ root: string | null; nodes: Record<string, NodeVerifyState> }>({ root: null, nodes: {} });
   const refresh = useCallback(() => {
-    if (!connected) return;
+    if (!connected || !root) return;
+    const asked = root;
     void fetch("/api/engines/verify/state")
       .then((r) => (r.ok ? r.json() : null))
-      .then((body: { nodes?: Record<string, NodeVerifyState> } | null) => {
-        if (body?.nodes) setNodes(body.nodes);
+      .then((body: VerifyStateAnswer | null) => {
+        const nodes = verifyAnswerFor(asked, body);
+        if (nodes) setState({ root: asked, nodes });
       })
       .catch(() => {});
-  }, [connected]);
+  }, [connected, root]);
   useEffect(() => {
     refresh();
     const t = setInterval(refresh, 4000);
@@ -39,7 +47,30 @@ export function useVerifyState(): [Record<string, NodeVerifyState>, () => void] 
     window.addEventListener("ruah:turn-finished", onFinished);
     return () => window.removeEventListener("ruah:turn-finished", onFinished);
   }, [connected, refresh]);
-  return [nodes, refresh];
+  return [connected ? visibleVerifyNodes(state, root) : EMPTY_NODES, refresh];
+}
+
+const EMPTY_NODES: Record<string, NodeVerifyState> = {};
+
+/** GET /api/engines/verify/state (`root` since §20.4). */
+export interface VerifyStateAnswer {
+  root?: string | null;
+  nodes?: Record<string, NodeVerifyState>;
+}
+
+/** The badges of an answer to a poll made for `asked`; undefined when it is about another project. */
+export function verifyAnswerFor(asked: string, body: VerifyStateAnswer | null): Record<string, NodeVerifyState> | undefined {
+  if (!body?.nodes) return undefined;
+  if (body.root !== undefined && body.root !== null && !sameRoot(body.root, asked)) return undefined;
+  return body.nodes;
+}
+
+/** What the map shows: the badges only while they belong to the open project (none mid-switch). */
+export function visibleVerifyNodes(
+  state: { root: string | null; nodes: Record<string, NodeVerifyState> },
+  current: string | null,
+): Record<string, NodeVerifyState> {
+  return current !== null && state.root !== null && sameRoot(state.root, current) ? state.nodes : EMPTY_NODES;
 }
 
 export async function runVerify(nodeId: string): Promise<NodeVerifyState | { error: string }> {
