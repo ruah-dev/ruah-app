@@ -7,7 +7,8 @@
 //   init <folder> [--repo <path>|<id>=<path>]… [--name <n>] [--force]
 //   add [<system>] <path | <id>=<path> | gh:owner/name> [--id <id>] [--into <dir>]
 //   remove <id>                      take a repo out of the system (files untouched)
-//   rename <id> <new-id>             rename a repo id everywhere Ruah stores it
+//   rename <id> <new-id> [--offline] rename a repo id everywhere Ruah stores it (refused while a
+//                                    running daemon reports an agent turn in the system)
 //   status [<system>] [--json]       branch, ahead/behind, dirty, last scan, nodes
 //   signals [<system>] [--json]      deterministic cross-repo edges (zero tokens)
 //   scan [<system>] [--out <path>] [--dry-run]   write <system>/architecture.json
@@ -25,6 +26,8 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import type { ArchEdge, Architecture } from "../contracts/architecture.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { ruahHome } from "../usage/log.js";
+import { projectIdFor } from "../projects/fs-util.js";
+import { DEFAULT_DAEMON_URL, fetchLive } from "../resume/run-resume.js";
 import { loadSystem, SystemFileError, type LoadedSystem } from "./config.js";
 import { buildSystemArchitecture } from "./build.js";
 import {
@@ -65,6 +68,8 @@ export interface SystemCliHooks {
 }
 
 class UsageError extends Error {}
+/** The command is fine but has to wait (a running agent turn): exit 1, not the usage-error 2. */
+class BusyError extends Error {}
 
 /** `<id>=<path>` (no slash before the "="), else a plain path. */
 function repoSpec(spec: string): RepoInput {
@@ -156,11 +161,35 @@ function remove(argv: string[]): number {
   return 0;
 }
 
-function rename(argv: string[]): number {
-  const p = parse(argv, {});
+async function rename(argv: string[]): Promise<number> {
+  const p = parse(argv, { offline: { type: "boolean", default: false }, daemon: { type: "string" } });
   const [from, to, ...extra] = p.positionals;
-  if (from === undefined || to === undefined || extra.length > 0) throw new UsageError("rename: usage: ruah app system rename <id> <new-id> [--system <dir>]");
-  const r = renameRepo(systemDir(undefined, p.values.system), from, to, { home: ruahHome() });
+  if (from === undefined || to === undefined || extra.length > 0) throw new UsageError("rename: usage: ruah app system rename <id> <new-id> [--system <dir>] [--daemon <url> | --offline]");
+  const dir = systemDir(undefined, p.values.system);
+  // A daemon's running turn in this system stores its (old) element ids when it finishes, after
+  // the rename rewrote the chats: ask a running daemon first (CONTRACTS §12.4).
+  if (p.values.offline !== true) {
+    const url = typeof p.values.daemon === "string" ? p.values.daemon : (process.env.RUAH_DAEMON_URL?.trim() || DEFAULT_DAEMON_URL);
+    const live = await fetchLive(url);
+    const system = load(dir);
+    let real = system.dir;
+    try {
+      real = fs.realpathSync(system.dir);
+    } catch {
+      // keep the resolved path
+    }
+    const counts = live?.get(projectIdFor(real));
+    if (counts !== undefined && counts.running > 0) {
+      throw new BusyError(
+        `an agent turn is running in this system (daemon at ${url}); rename when it has finished — it would save the old ids back into its chat`,
+      );
+    }
+    if (live === undefined) {
+      // The app picks another port when 4177 is taken: say what was not checked.
+      err(`note: no Ruah daemon answered at ${url}, so running agent turns were not checked; if Ruah runs on another port, pass --daemon <url>`);
+    }
+  }
+  const r = renameRepo(dir, from, to, { home: ruahHome() });
   err(
     `renamed ${from} -> ${to} in ${r.system.file}` +
       `${r.architecture ? ", the system map" : ""}${r.suggestions ? ", suggestions" : ""}` +
@@ -419,7 +448,7 @@ export async function runSystem(argv: readonly string[], version: string, hooks:
       case "remove":
         return remove(rest);
       case "rename":
-        return rename(rest);
+        return await rename(rest);
       case "status":
         return await status(rest, hooks);
       case "signals":
@@ -435,6 +464,10 @@ export async function runSystem(argv: readonly string[], version: string, hooks:
         return 2;
     }
   } catch (e) {
+    if (e instanceof BusyError) {
+      err(`${sub ?? ""}: ${e.message}`);
+      return 1;
+    }
     if (e instanceof UsageError || e instanceof SystemManageError || e instanceof SystemFileError) {
       err(`${sub ?? ""}: ${e.message}`);
       return 2;

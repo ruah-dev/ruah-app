@@ -40,7 +40,7 @@ import type {
   WarmState,
 } from "../contracts/ws.js";
 import { DEFAULT_MAX_BACKGROUND_TURNS, editedFiles, type ActivityContext, type ActivityService } from "./activity.js";
-import { DEFAULT_FEATURES } from "../projects/settings-store.js";
+import { DEFAULT_FEATURES, type FeaturesPatch } from "../projects/settings-store.js";
 import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
@@ -124,6 +124,19 @@ export interface SessionHubOptions {
   activity?: ActivityService;
   /** §13.1 turns allowed to keep running outside the open project (default 3; at most maxLiveBridges - 1). */
   maxBackgroundTurns?: number;
+}
+
+/** A daemon-started turn (runTaskTurn): its id at once (to cancel it), its answer when it finishes. */
+export interface TaskTurn {
+  turnId: string;
+  result: Promise<TaskTurnResult>;
+}
+
+/** A permission request a running turn waits on (answered with permission.response). */
+export interface PendingPermission {
+  requestId: string;
+  toolCall: ToolCallView;
+  options: PermissionOption[];
 }
 
 /** What a daemon-started turn (runTaskTurn) answered. */
@@ -466,7 +479,7 @@ export class SessionHub {
   }
 
   /** settings.set: feature flags in settings.json; every viewer gets a new activity.snapshot. */
-  setFeatures(patch: Partial<AppFeatures>, socket?: WebSocket): void {
+  setFeatures(patch: FeaturesPatch, socket?: WebSocket): void {
     const settings = this.options.settings;
     if (settings === undefined) {
       if (socket !== undefined) this.error(socket, "bad_message", "settings are not available");
@@ -1198,7 +1211,7 @@ export class SessionHub {
    * as a rejection) when no project is open or the agent is not idle (no
    * queueing), so a caller can answer "busy" before anything starts.
    */
-  runTaskTurn(task: { text: string; prompt: string }): Promise<TaskTurnResult> {
+  runTaskTurn(task: { text: string; prompt: string }): TaskTurn {
     const open = this.open;
     const entry = this.entry;
     if (open === null) throw new Error(NO_PROJECT_MESSAGE);
@@ -1229,7 +1242,27 @@ export class SessionHub {
     this.turns.set(turnId, recording);
     this.options.activity?.turnStarted(this.activityContext(recording), false);
     this.broadcast({ type: "turn.started", turnId, contextPack: task.prompt, text: task.text });
-    return result;
+    return { turnId, result };
+  }
+
+  /**
+   * A turn of `projectId` that is running or waiting for its agent (any chat,
+   * foreground or background), or undefined. Changes that rewrite the
+   * project's stored chats (a system repo rename, §12.4) wait for it: the
+   * turn would store its old element ids when it finishes.
+   */
+  runningTurn(projectId: string): { turnId: string; text: string } | undefined {
+    for (const recording of this.turns.values()) {
+      if (!recording.finalized && recording.projectId === projectId) return { turnId: recording.record.turnId, text: recording.record.text };
+    }
+    return undefined;
+  }
+
+  /** The permission requests `turnId` waits on (oldest first); empty when none or unknown. */
+  pendingPermissionsForTurn(turnId: string): PendingPermission[] {
+    const recording = this.turns.get(turnId);
+    if (recording === undefined || recording.finalized) return [];
+    return [...recording.pending].map(([requestId, request]) => ({ requestId, toolCall: request.toolCall, options: request.options }));
   }
 
   /**
@@ -1746,9 +1779,24 @@ interface SocketSession {
   alive: boolean;
 }
 
-export function attachSession(hub: SessionHub, socket: WebSocket): void {
+/**
+ * Sockets whose upgrade came from a page on another origin than the daemon's
+ * own (another localhost port, an --allow-origin site). The /ws Origin rule
+ * lets them in; they may not change protected settings (§21.1: reading an
+ * agent app's saved login), the same line src/serve/local-mutation.ts draws
+ * for HTTP.
+ */
+const foreignOriginSockets = new WeakSet<WebSocket>();
+
+export interface AttachSessionOptions {
+  /** False when the upgrade's Origin is not the daemon's own origin (default true: the CLI and tests send none). */
+  ownOrigin?: boolean;
+}
+
+export function attachSession(hub: SessionHub, socket: WebSocket, options: AttachSessionOptions = {}): void {
   const session: SocketSession = { socket, hello: false, alive: true };
   hub.sockets.add(socket);
+  if (options.ownOrigin === false) foreignOriginSockets.add(socket);
 
   socket.on("close", () => {
     session.alive = false;
@@ -1903,10 +1951,15 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
       return;
     }
     case "settings.set": {
+      if (message.usage !== undefined && foreignOriginSockets.has(socket)) {
+        hub.error(socket, "bad_message", "settings.set: reading an app's saved login can only be changed from the viewer this daemon serves");
+        return;
+      }
       hub.setFeatures(
         {
           ...(message.backgroundAgents !== undefined ? { backgroundAgents: message.backgroundAgents } : {}),
           ...(message.notifications !== undefined ? { notifications: message.notifications } : {}),
+          ...(message.usage?.readAppLogins !== undefined ? { usage: { readAppLogins: message.usage.readAppLogins } } : {}),
         },
         socket,
       );

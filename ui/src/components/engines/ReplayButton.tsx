@@ -1,28 +1,17 @@
 // Replay one assistant turn with ruah-watch. Opens an in-app frame, or reveals the file.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Clapperboard } from "lucide-react";
-import { engineStatus, watchReplay, type EngineToolStatus } from "@/lib/engines";
+import { engineUrl, useEngineTool, watchReplay } from "@/lib/engines";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export function ReplayButton({ projectId, chatId, turnId }: { projectId: string; chatId: string; turnId: string }) {
-  const [tool, setTool] = useState<EngineToolStatus | null>(null);
+  const { tool } = useEngineTool("watch");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<string | null>(null);
   const [filePath, setFilePath] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void engineStatus().then((status) => {
-      if (!cancelled) setTool(status["watch"] ?? { installed: false, install: "npm i -g @ruah-dev/cli @ruah-dev/watch" });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const installed = tool?.installed === true;
-  const install = tool?.install ?? "npm i -g @ruah-dev/cli @ruah-dev/watch";
 
   async function replay() {
     setBusy(true);
@@ -34,25 +23,28 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
         return;
       }
       setFilePath(result.path);
-      setView(`/api/engines/watch/view?name=${encodeURIComponent(result.name)}`);
+      setView(engineUrl(`/api/engines/watch/view?name=${encodeURIComponent(result.name)}`) ?? null);
     } finally {
       setBusy(false);
     }
   }
+
+  // Quiet when ruah-watch is missing: not a disabled button and its install command under every
+  // turn of every chat (Guard and Optimize show the ruah toolkit's install command once).
+  if (!installed) return null;
 
   return (
     <>
       <button
         type="button"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-        disabled={!installed || busy}
-        title={installed ? "Replay this turn" : install}
+        disabled={busy}
+        title="Replay this turn"
         onClick={() => void replay()}
       >
         <Clapperboard className="size-3.5" />
         {busy ? "Rendering…" : "Replay"}
       </button>
-      {tool && !installed ? <span className="text-[11px] text-muted-foreground">{install}</span> : null}
       {error ? <span className="text-[11px] text-bad">{error}</span> : null}
       <Dialog open={view !== null} onOpenChange={(open) => { if (!open) setView(null); }}>
         <DialogContent className="max-w-3xl">

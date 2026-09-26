@@ -264,6 +264,25 @@ export class KubernetesIntegration extends CliCloudAdapter {
 
   protected async check(bin: string, account: string | undefined): Promise<CheckResult> {
     const hint = `kubectl${account !== undefined ? ` --context ${account}` : ""} cluster-info`;
+    if (account === undefined) {
+      // No context at all (kubectl installed, no kubeconfig): not set up — not a cluster that is
+      // down. kubectl would try localhost:8080 and fail on every status read.
+      let contexts: CliAccount[] | undefined;
+      try {
+        contexts = await this.accounts(bin);
+      } catch {
+        contexts = undefined; // an unreadable kubeconfig: the version call below says why
+      }
+      if (contexts !== undefined && contexts.length === 0) {
+        return {
+          ok: false, status: "not_connected",
+          // setupHint is shown (and can be run) as a command, so it must be a real, harmless one
+          // (no placeholder: `<context>` is a redirection in a shell); the fix goes in the detail.
+          detail: "no contexts in your kubeconfig — add your cluster with its provider's CLI (aws eks update-kubeconfig, gcloud container clusters get-credentials, doctl kubernetes cluster kubeconfig save, kind create cluster)",
+          setupHint: "kubectl config get-contexts",
+        };
+      }
+    }
     try {
       const version = obj(await this.json(bin, ["version", "-o", "json", "--request-timeout=5s", ...this.contextArgs(account)]));
       const server = str(obj(version?.serverVersion)?.gitVersion);

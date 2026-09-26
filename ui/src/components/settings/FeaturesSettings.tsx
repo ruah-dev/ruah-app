@@ -11,6 +11,7 @@ import { setViewerPref, useViewerPrefs } from "@/lib/preferences";
 import { useWorkspace } from "@/lib/workspace";
 import { Switch } from "@/components/ui/switch";
 import { Segmented } from "@/components/map/MapPage";
+import { setReadAppLogins } from "@/components/usage/agentLimitsStore";
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -63,6 +64,31 @@ function ScanInfraSwitch() {
   );
 }
 
+/** §21.1: off by default; saved by the daemon, so every window (and the Cursor limits card) follows. */
+function ReadAppLoginsSwitch({ enabled }: { enabled: boolean }) {
+  const { daemon } = useWorkspace();
+  const activity = useActivity();
+  const usage = activity.settings.usage;
+  const [pending, setPending] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (pending !== null && usage?.readAppLogins === pending) setPending(null);
+  }, [pending, usage?.readAppLogins]);
+  return (
+    <Switch
+      checked={pending ?? usage?.readAppLogins ?? false}
+      disabled={!enabled || !usage || usage.source === "env" || pending !== null}
+      aria-label="Read Cursor's saved login to show plan usage"
+      onCheckedChange={(on) => {
+        setPending(on);
+        setReadAppLogins(on, daemon.httpOrigin).catch((err: unknown) => {
+          setPending(null);
+          toast.error("Couldn't change the setting", { description: message(err) });
+        });
+      }}
+    />
+  );
+}
+
 export function FeaturesSettings() {
   const { daemon } = useWorkspace();
   const activity = useActivity();
@@ -78,7 +104,8 @@ export function FeaturesSettings() {
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           Everything here is optional — turn off what you do not use. Each part also works on its own from the CLI
           (<code className="font-mono">ruah app resume</code>, <code className="font-mono">ruah app activity</code>,{" "}
-          <code className="font-mono">ruah app scan --no-infra</code>, <code className="font-mono">ruah app cloud</code>).
+          <code className="font-mono">ruah app scan --no-infra</code>, <code className="font-mono">ruah app cloud</code>,{" "}
+          <code className="font-mono">ruah app usage settings</code>).
         </p>
       </div>
       <div className="card-warm divide-y divide-hairline px-4">
@@ -113,6 +140,18 @@ export function FeaturesSettings() {
           }
         >
           <ScanInfraSwitch />
+        </Row>
+        <Row
+          label="Read Cursor's saved login to show plan usage"
+          hint={
+            activity.settings.usage?.source === "env"
+              ? `Set by RUAH_USAGE_READ_LOGINS=${activity.settings.usage.readAppLogins ? "1" : "0"}; unset it to choose here.`
+              : activity.settings.usage
+                ? "Cursor's included usage and on-demand spend come from cursor.com with the Cursor app's login. The token stays in memory and is never stored. Off: Cursor shows its tier only."
+                : "Needs a newer Ruah daemon."
+          }
+        >
+          <ReadAppLoginsSwitch enabled={flags} />
         </Row>
         <Row label="Live cloud status" hint="Refresh cloud health while the Cloud page is open. Off: only when you sync.">
           <Switch

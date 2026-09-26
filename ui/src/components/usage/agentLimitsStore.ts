@@ -113,6 +113,31 @@ export function refreshAgentLimits(agentId?: string) {
   if (origin) void load(origin, { ...(agentId ? { agentId } : {}), refresh: true });
 }
 
+/** §21.1: the daemon's answer to GET/POST /api/usage/settings. */
+export interface UsageSettingsView {
+  readAppLogins: boolean;
+  source: "settings" | "env" | "default";
+}
+
+/**
+ * §21.1: allow (or stop) reading the Cursor app's saved login for plan usage. Saved by the daemon
+ * in settings.json; the daemon drops the old reading, so the card is re-read right away.
+ */
+export async function setReadAppLogins(on: boolean, originOverride?: string | null): Promise<UsageSettingsView> {
+  const origin = originOverride ?? snapshot.origin;
+  if (!origin) throw new Error("No daemon connected");
+  const r = await fetch(`${origin}/api/usage/settings`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ readAppLogins: on }),
+  });
+  const body = (await r.json().catch(() => ({}))) as Partial<UsageSettingsView> & { error?: string };
+  if (r.status === 404) throw new Error("This setting needs a newer Ruah daemon");
+  if (!r.ok || typeof body.readAppLogins !== "boolean") throw new Error(body.error ?? `${r.status} ${r.statusText}`);
+  if (snapshot.origin === origin) void load(origin, { agentId: "cursor", refresh: true });
+  return { readAppLogins: body.readAppLogins, source: body.source ?? "settings" };
+}
+
 /** Mounted consumers per scope ("*" = every agent, else one agent id). */
 const scopes = new Map<string, number>();
 let pollTimer: ReturnType<typeof setInterval> | undefined;

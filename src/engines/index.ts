@@ -4,18 +4,23 @@ import { detectSpecsForNode, runConv } from "./conv.js";
 import { runEvalOnNode } from "./eval.js";
 import { runGuardAudit, runGuardScan } from "./guard.js";
 import { runOptUsage } from "./opt.js";
-import { engineStatus, type EngineCliDeps } from "./cli.js";
+import { engineStatus, resolveEngineInvocation, type EngineCliDeps } from "./cli.js";
+import { projectCacheDir } from "../projects/repo-files.js";
 import { readReplayHtml, renderChatTurn } from "./watch.js";
 import { ruahHome } from "../usage/log.js";
 import * as path from "node:path";
 import {
+  hasVerifyCriteria,
+  legacyRepoFiles,
   loadVerifyState,
+  removePlaceholderVerifyJson,
   runVerifyForNode,
   syncVerifyJson,
+  type LegacyRepoFiles,
   type NodeVerifyState,
 } from "./verify.js";
 
-export type { NodeVerifyState, VerifyBadge } from "./verify.js";
+export type { LegacyRepoFiles, NodeVerifyState, VerifyBadge } from "./verify.js";
 export { badgeFromReport } from "./verify.js";
 
 export interface EnginesDeps {
@@ -30,7 +35,8 @@ export interface EnginesDeps {
 }
 
 export class EnginesService {
-  private readonly nodeState = new Map<string, NodeVerifyState>();
+  /** Latest verify result per project root, then node id (a switch never shows another project's). */
+  private readonly nodeState = new Map<string, Map<string, NodeVerifyState>>();
 
   constructor(private readonly deps: EnginesDeps) {}
 
@@ -40,16 +46,41 @@ export class EnginesService {
     return root;
   }
 
-  verifyState(): Record<string, NodeVerifyState> {
+  /** $RUAH_HOME/projects/<id>/cache: verify badges and criteria slices, eval runs (§21.3). */
+  private cacheDir(root: string): string {
+    return projectCacheDir(this.homeDir(), root);
+  }
+
+  /**
+   * The open project's node badges, with the root they belong to (the viewer drops a stale
+   * answer), and what an older Ruah left in the repo for the user to decide on (§21.3).
+   */
+  verifyStateOf(): { root: string | null; nodes: Record<string, NodeVerifyState>; legacy?: LegacyRepoFiles } {
     const root = this.deps.root();
-    if (!root) return {};
-    const disk = loadVerifyState(root);
-    return { ...disk, ...Object.fromEntries(this.nodeState) };
+    if (!root) return { root: null, nodes: {} };
+    const cache = this.cacheDir(root);
+    const disk = loadVerifyState(root, cache);
+    const legacy = legacyRepoFiles(root, cache);
+    return { root, nodes: { ...disk, ...Object.fromEntries(this.nodeState.get(root) ?? []) }, ...(legacy !== undefined ? { legacy } : {}) };
+  }
+
+  /** "Remove it": deletes `.ruah/verify.json` only when it is the old placeholder (409 otherwise). */
+  removeVerifyPlaceholder(): { removed: true; path: string } {
+    const root = this.requireRoot();
+    if (!removePlaceholderVerifyJson(root)) {
+      throw Object.assign(new Error(".ruah/verify.json is not the placeholder an older Ruah wrote; nothing was removed"), { status: 409 });
+    }
+    return { removed: true, path: path.join(root, ".ruah", "verify.json") };
+  }
+
+  verifyState(): Record<string, NodeVerifyState> {
+    return this.verifyStateOf().nodes;
   }
 
   syncVerify(workflows?: Parameters<typeof syncVerifyJson>[0]["workflows"]): {
     path: string;
     criteriaCount: number;
+    written: boolean;
   } {
     const root = this.requireRoot();
     const arch = this.deps.architecture();
@@ -59,16 +90,24 @@ export class EnginesService {
 
   async runVerify(nodeId: string): Promise<NodeVerifyState> {
     const root = this.requireRoot();
-    const state = await runVerifyForNode({ root, nodeId, ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}) });
-    this.nodeState.set(nodeId, state);
+    const state = await runVerifyForNode({ root, nodeId, stateDir: this.cacheDir(root), ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}) });
+    let states = this.nodeState.get(root);
+    if (states === undefined) this.nodeState.set(root, (states = new Map()));
+    states.set(nodeId, state);
     return state;
   }
 
-  /** Fire-and-forget after an agent turn; never throws into the session hub. */
+  /**
+   * Fire-and-forget after an agent turn; never throws into the session hub.
+   * Quiet unless the repo has criteria (.ruah/verify.json, synced by the user)
+   * and ruah verify is installed: nothing is written for a repo that never
+   * opted in.
+   */
   afterTurn(nodeId: string | undefined): void {
     if (!nodeId) return;
     const root = this.deps.root();
     if (!root) return;
+    if (!hasVerifyCriteria(root) || resolveEngineInvocation("verify", this.deps.cli ?? {}) === null) return;
     void this.runVerify(nodeId).catch((err) => {
       this.deps.debug?.(
         `verify after turn failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -127,7 +166,7 @@ export class EnginesService {
 
   async runEval(nodeId: string, prompt: string) {
     const root = this.requireRoot();
-    return runEvalOnNode({ root, nodeId, prompt, ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}) });
+    return runEvalOnNode({ root, nodeId, prompt, outDir: path.join(this.cacheDir(root), "evals"), ...(this.deps.cli !== undefined ? { deps: this.deps.cli } : {}) });
   }
 
   detectConv(nodeId: string) {

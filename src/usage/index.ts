@@ -10,6 +10,7 @@ import { summarizeUsage } from "./summary.js";
 import type { UsageLimitsService } from "./limits.js";
 import type { AgentLimitsReport } from "../contracts/agent-limits.js";
 import { AgentLimitsService, defaultProviders } from "./limits/index.js";
+import { resolveUsageSettings, type UsageSettingsView } from "./settings.js";
 
 export { UsageLog, ruahHome, parseUsageLine, type UsageRecord } from "./log.js";
 export { summarizeUsage } from "./summary.js";
@@ -42,6 +43,15 @@ export interface UsageApi {
   limits(): Promise<UsageLimits>;
   /** Per-agent plan limits (CONTRACTS §16); optional so older fakes still fit. */
   agentLimits?(request: { agentId?: string; refresh?: boolean }): Promise<AgentLimitsReport>;
+  /** §21.1 usage settings (whether an agent app's saved login may be read); optional for older fakes. */
+  usageSettings?(): UsageSettingsView;
+  setUsageSettings?(patch: { readAppLogins: boolean }): UsageSettingsView;
+}
+
+/** Where the usage settings live (the daemon's SettingsStore; tests pass a fake). */
+export interface UsageSettingsSource {
+  get(): UsageSettingsView;
+  set(patch: { readAppLogins: boolean }): UsageSettingsView;
 }
 
 export function usageRecord(turn: FinishedTurn, finishedAt: Date): UsageRecord {
@@ -84,8 +94,11 @@ export class UsageService implements UsageSink, UsageApi {
       version?: string;
       /** The daemon's debug log (RUAH_DEBUG=1): provider failures land here. */
       debug?: (line: string) => void;
+      /** §21.1: the saved usage settings; without it reading app logins follows RUAH_USAGE_READ_LOGINS (default off). */
+      settings?: UsageSettingsSource;
     } = {},
   ) {
+    const settings = options.settings;
     this.agentLimitsService =
       options.agentLimits ??
       new AgentLimitsService({
@@ -94,9 +107,24 @@ export class UsageService implements UsageSink, UsageApi {
         context: {
           ...(options.now !== undefined ? { now: options.now } : {}),
           ...(options.debug !== undefined ? { debug: options.debug } : {}),
+          ...(settings !== undefined ? { appLogins: () => settings.get() } : {}),
           version: options.version ?? "0.0.0",
         },
       });
+  }
+
+  usageSettings(): UsageSettingsView {
+    return this.options.settings?.get() ?? resolveUsageSettings(process.env, undefined);
+  }
+
+  /** Saves the setting; readings made under the old one are dropped by the caller's change hook (run-serve) or here. */
+  setUsageSettings(patch: { readAppLogins: boolean }): UsageSettingsView {
+    const settings = this.options.settings;
+    if (settings === undefined) throw new Error("usage settings are not available");
+    const before = settings.get();
+    const after = settings.set(patch);
+    if (before.readAppLogins !== after.readAppLogins) this.agentLimitsService.invalidate("cursor");
+    return after;
   }
 
   recordTurn(turn: FinishedTurn): void {

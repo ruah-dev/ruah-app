@@ -44,8 +44,9 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
       </div>
       {status && !status.initialized ? (
         <p className="text-[12px] text-faint">
-          ruah isn't set up here. See <Link to="/tasks" className="text-foreground/90 hover:underline">Tasks</Link>{" "}
-          to initialise it.
+          {status.reason === "not_git" ? "Tasks need a git repository — this folder isn't one. " : "ruah isn't set up here. "}
+          See <Link to="/tasks" className="text-foreground/90 hover:underline">Tasks</Link>{" "}
+          {status.reason === "not_git" ? "for the fix." : "to initialise it."}
         </p>
       ) : mine.length ? (
         <ul>

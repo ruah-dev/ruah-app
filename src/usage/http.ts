@@ -1,20 +1,47 @@
 // src/usage/http.ts — GET /api/usage/summary and GET /api/usage/limits
-// (CONTRACTS.md §2.3), GET /api/usage/agents (§16). Returns false for any
-// other path.
+// (CONTRACTS.md §2.3), GET /api/usage/agents (§16), GET/POST
+// /api/usage/settings (§21.1: may Ruah read an agent app's saved login).
+// Returns false for any other path.
 //
 // These GETs are not free: /limits and /agents start agent CLIs (the Claude
 // probe, kiro-cli acp, grok, cursor-agent) and /agents sends the Cursor app's
 // saved login to cursor.com. So another web page must not be able to trigger
 // them (a cross-site <img> or no-cors fetch: refused by Origin / Sec-Fetch-Site)
 // nor read them through DNS rebinding (refused by the Host check).
+//
+// POST /api/usage/settings turns that reading on, so it takes the stricter
+// rule of src/serve/local-mutation.ts (as extensions do): only the viewer this
+// daemon serves (its own origin, application/json, loopback) or a client with
+// no Origin — never another localhost port or an --allow-origin site.
 import { isIP } from "node:net";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { UsageRangeSchema } from "../contracts/usage.js";
 import type { UsageApi } from "./index.js";
 import { UnknownAgentError } from "./limits/service.js";
 import { limitsAgentId } from "./limits/estimate.js";
+import { localMutationRefusal } from "../serve/local-mutation.js";
 
-const PATHS = new Set(["/api/usage/summary", "/api/usage/limits", "/api/usage/agents"]);
+const PATHS = new Set(["/api/usage/summary", "/api/usage/limits", "/api/usage/agents", "/api/usage/settings"]);
+const SETTINGS_BODY_MAX = 4 * 1024;
+
+/** `{ readAppLogins: boolean }`, or a reason it is not. */
+async function readSettingsBody(req: IncomingMessage): Promise<{ readAppLogins: boolean } | string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > SETTINGS_BODY_MAX) return "body too large";
+    chunks.push(chunk as Buffer);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    return "invalid JSON body";
+  }
+  const value = body !== null && typeof body === "object" ? (body as { readAppLogins?: unknown }).readAppLogins : undefined;
+  return typeof value === "boolean" ? { readAppLogins: value } : "readAppLogins must be true or false";
+}
 
 /** Who may call the usage endpoints (the daemon passes its --allow-origin rule and bind address). */
 export interface UsageAccess {
@@ -75,7 +102,8 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 export function handleUsageRequest(req: IncomingMessage, res: ServerResponse, url: URL, usage: UsageApi | undefined, access?: UsageAccess): boolean {
   const pathname = url.pathname;
   if (!PATHS.has(pathname)) return false;
-  if (req.method !== "GET") {
+  const settingsPath = pathname === "/api/usage/settings";
+  if (req.method !== "GET" && !(settingsPath && req.method === "POST")) {
     json(res, 405, { error: "method not allowed" });
     return true;
   }
@@ -91,6 +119,30 @@ export function handleUsageRequest(req: IncomingMessage, res: ServerResponse, ur
   const fail = (err: unknown): void => {
     json(res, 500, { error: err instanceof Error ? err.message : String(err) });
   };
+  if (settingsPath) {
+    if (usage.usageSettings === undefined || usage.setUsageSettings === undefined) {
+      json(res, 404, { error: "usage settings are not available" });
+      return true;
+    }
+    if (req.method === "GET") {
+      json(res, 200, usage.usageSettings());
+      return true;
+    }
+    const strict = localMutationRefusal(req, access?.originAllowed ?? loopbackOrigin, "this setting");
+    if (strict !== undefined) {
+      json(res, strict.status, { error: strict.error });
+      return true;
+    }
+    const setSettings = usage.setUsageSettings.bind(usage);
+    readSettingsBody(req).then((body) => {
+      if (typeof body === "string") {
+        json(res, 400, { error: body });
+        return;
+      }
+      json(res, 200, setSettings(body));
+    }, fail);
+    return true;
+  }
   if (pathname === "/api/usage/summary") {
     const range = UsageRangeSchema.safeParse(url.searchParams.get("range") ?? "7d");
     if (!range.success) {

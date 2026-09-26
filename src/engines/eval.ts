@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveBin } from "../integrations/exec.js";
-import { runEngineJson, type EngineCliDeps } from "./cli.js";
+import { engineInstallCommand, resolveEngineInvocation, runEngineJson, type EngineCliDeps } from "./cli.js";
 
 export interface EvalExecutorSpec {
   name: string;
@@ -35,6 +35,8 @@ export interface EvalRunRequest {
   prompt: string;
   criteria?: Array<Record<string, unknown>>;
   deps?: EngineCliDeps;
+  /** Where the spec and results go: $RUAH_HOME/projects/<id>/cache/evals — never the repo (§21.3). */
+  outDir: string;
 }
 
 export async function runEvalOnNode(req: EvalRunRequest): Promise<
@@ -66,7 +68,10 @@ export async function runEvalOnNode(req: EvalRunRequest): Promise<
       },
     ] as Array<Record<string, unknown>>);
 
-  const dir = path.join(req.root, ".ruah", "evals");
+  if (resolveEngineInvocation("eval", req.deps ?? {}) === null) {
+    return { ok: false, status: 424, error: `ruah eval is not installed. ${engineInstallCommand("eval")}` };
+  }
+  const dir = req.outDir;
   fs.mkdirSync(dir, { recursive: true });
   const safeId = req.nodeId.replace(/[^a-zA-Z0-9:_-]/g, "_");
   const specPath = path.join(dir, `node-${safeId}.json`);

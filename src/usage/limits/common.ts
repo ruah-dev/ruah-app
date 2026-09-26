@@ -3,6 +3,7 @@
 // interface, and small defensive helpers for untyped JSON.
 import type { AgentLimits, AgentLimitsStatus, LimitMeter } from "../../contracts/agent-limits.js";
 import { defaultRunner, redact, type Runner } from "../../integrations/exec.js";
+import { envReadLogins, resolveUsageSettings, type UsageSettingsView } from "../settings.js";
 
 export type FetchLike = (url: string, init?: { headers?: Record<string, string>; signal?: AbortSignal; method?: "GET" }) => Promise<{
   status: number;
@@ -25,6 +26,19 @@ export interface LimitsContext {
    * pass it to the CLIs and requests they start, so nothing outlives the read.
    */
   signal?: AbortSignal;
+  /**
+   * §21.1: whether an agent app's saved login may be read (the Cursor app's,
+   * for its plan usage). Asked at every read, so a changed setting applies at
+   * once. Default: RUAH_USAGE_READ_LOGINS, else off.
+   */
+  appLogins?: () => UsageSettingsView;
+}
+
+/** The effective app-login setting of a read: RUAH_USAGE_READ_LOGINS, else the context's, else off. */
+export function appLoginSetting(ctx: LimitsContext): UsageSettingsView {
+  const fromEnv = envReadLogins(ctx.env);
+  if (fromEnv !== undefined) return { readAppLogins: fromEnv, source: "env" };
+  return ctx.appLogins?.() ?? resolveUsageSettings(ctx.env, undefined);
 }
 
 /** Run options for a provider's CLI call: its timeout plus the read's abort signal. */

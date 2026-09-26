@@ -7,7 +7,9 @@ import { join } from "node:path";
 import type { PreviewStatus } from "../src/contracts/preview.js";
 import { ServerMessageSchema } from "../src/contracts/ws.js";
 import { isLocalPreviewUrl, PreviewStatusSchema } from "../src/contracts/preview.js";
-import { formatPreviewFile, readPreviewFile, writePreviewChoice } from "../src/preview/config.js";
+import { formatPreviewFile, localPreviewFileOf, readLocalPreviewFile, readPreviewFile, writeLocalPreviewChoice, writePreviewChoice } from "../src/preview/config.js";
+import { projectIdFor } from "../src/projects/fs-util.js";
+import { ruahHome } from "../src/usage/log.js";
 import { composePorts, detectPreview, frameworkOf, packageManagerFor, runScript, selectCandidate } from "../src/preview/detect.js";
 import { handlePreviewRequest } from "../src/preview/http.js";
 import { PreviewManager, type PreviewProject } from "../src/preview/manager.js";
@@ -16,7 +18,7 @@ import { ProcessRunner } from "../src/preview/runner.js";
 import { formatDetection, runPreview } from "../src/preview/cli.js";
 import { parseEnvBlock } from "../src/preview/shell-env.js";
 import { injectLiveReload, LIVE_PATH, resolveStaticPath, startStaticServer, staticHostAllowed } from "../src/preview/static-server.js";
-import { crashReason, findUrls, LineSplitter, stripAnsi } from "../src/preview/url.js";
+import { cleanLogLine, crashReason, findUrls, LineSplitter, stripAnsi } from "../src/preview/url.js";
 import { parseYaml } from "../src/scan/mini-yaml.js";
 import { TerminalManager } from "../src/terminal/manager.js";
 import type { PtyBackend, PtyExitEvent, PtyProcess, PtySpawnInput } from "../src/terminal/pty.js";
@@ -91,6 +93,43 @@ describe("url discovery", () => {
     expect(stripAnsi("\u001b[31merror\u001b[0m \u001b]8;;x\u0007link\u001b]8;;\u0007")).toBe("error link");
     expect(crashReason(["starting", "Error: listen EADDRINUSE: address already in use :::3000", "    at Server.setupListenHandle", "exit"])).toContain("EADDRINUSE");
     expect(crashReason(["one", "two"])).toBe("two");
+    // Regression: Node's dump of the error object came after the message, and `code: 'EADDRINUSE',`
+    // (then npm's update notice) was reported instead of what happened.
+    const node = [
+      "> dev",
+      "> vite",
+      "node:events:487",
+      "      throw er; // Unhandled 'error' event",
+      "      ^",
+      "Error: listen EADDRINUSE: address already in use ::1:5173",
+      "    at Server.setupListenHandle [as _listen2] (node:net:2008:16)",
+      "Emitted 'error' event on Server instance at:",
+      "    at emitErrorNT (node:net:2044:8) {",
+      "  code: 'EADDRINUSE',",
+      "  errno: -48,",
+      "  syscall: 'listen',",
+      "  address: '::1',",
+      "  port: 5173",
+      "}",
+      "Node.js v25.9.0",
+      "⠙npm notice",
+      "npm notice New minor version of npm available! 11.12.1 -> 11.20.0",
+      "npm notice",
+      "⠙",
+    ];
+    expect(crashReason(node)).toBe("Error: listen EADDRINUSE: address already in use ::1:5173");
+    expect(crashReason(["Traceback (most recent call last):", '  File "app.py", line 1, in <module>', "ModuleNotFoundError: No module named 'flask'"])).toBe(
+      "ModuleNotFoundError: No module named 'flask'",
+    );
+    // The kept log (crash panel, "Ask agent to fix"): no spinner frames, alone or glued to a line.
+    expect(cleanLogLine("\u2819")).toBe("");
+    expect(cleanLogLine("\u2819\u2839npm notice  ")).toBe("npm notice");
+    expect(cleanLogLine("\u001b[32m  ➜  Local:\u001b[0m   http://localhost:5173/")).toBe("  ➜  Local:   http://localhost:5173/");
+    // A spinner frame glued to npm's notice is still npm's notice.
+    expect(crashReason(["ready in 300 ms", "\u2819npm notice", "\u2819"])).toBe("ready in 300 ms");
+    expect(crashReason(["  VITE v6.0.0", "[vite] Internal server error: Failed to resolve import \"./x.js\"", "npm notice"])).toBe(
+      '[vite] Internal server error: Failed to resolve import "./x.js"',
+    );
   });
 });
 
@@ -282,6 +321,19 @@ describe("preview.json", () => {
     writePreviewChoice(root, { command: null, url: null });
     expect(existsSync(file)).toBe(false);
     expect(formatPreviewFile({ version: 1, dir: ".", command: "x" })).toBe('{\n  "version": 1,\n  "command": "x"\n}\n');
+  });
+
+  test("this computer's choice: same format, never in the repo, an unreadable file is replaced", () => {
+    const home = tempDir();
+    const file = localPreviewFileOf(home, "abc123");
+    expect(file).toBe(join(home, "projects", "abc123", "preview.json"));
+    expect(writeLocalPreviewChoice(file, { command: "make serve", dir: "web" })).toEqual({ version: 1, command: "make serve", dir: "web" });
+    expect(readLocalPreviewFile(file)).toEqual({ version: 1, command: "make serve", dir: "web" });
+    writeFileSync(file, "{ nope");
+    expect(readLocalPreviewFile(file)).toBeNull();
+    expect(writeLocalPreviewChoice(file, { candidate: "web#dev" })).toEqual({ version: 1, candidate: "web#dev" });
+    expect(writeLocalPreviewChoice(file, { candidate: null })).toBeNull();
+    expect(existsSync(file)).toBe(false);
   });
 
   test("the fixed url must be http(s) on this computer (never javascript:, file:, data: or another host)", () => {
@@ -494,10 +546,13 @@ function managerFor(root: string, extra: Partial<ConstructorParameters<typeof Pr
   const { usePty, ...rest } = extra;
   const current: { value: PreviewProject | null } = { value: { id: "p1", name: "p1", root } };
   const statuses: PreviewStatus[] = [];
+  // Each manager remembers choices in its own folder (the default, $RUAH_HOME, is shared by the run).
+  const localChoice = join(tempDir(), "preview.json");
   const m = new PreviewManager({
     version: "test",
     project: () => current.value,
     sweep: false,
+    localChoiceFile: () => localChoice,
     ...(usePty === true ? {} : { runner: new ProcessRunner() }),
     env: async () => ({ PATH: process.env.PATH ?? "/usr/bin", HOME: process.env.HOME ?? "/tmp" }),
     onStatus: (s) => statuses.push(s),
@@ -505,7 +560,7 @@ function managerFor(root: string, extra: Partial<ConstructorParameters<typeof Pr
     ...rest,
   });
   cleanups.push(() => m.shutdownAll(500));
-  return { m, current, statuses };
+  return { m, current, statuses, localChoice };
 }
 
 describe("preview manager", () => {
@@ -566,9 +621,36 @@ describe("preview manager", () => {
     await expect(m.start({ candidate: "nope#dev" })).rejects.toMatchObject({ status: 404 });
     expect(() => m.choose({ command: "rm -rf /" })).toThrow(/token/);
     expect(m.choose({ candidate: "b#dev" }).selected).toBe("b#dev");
+    // Remembered on this computer: nothing lands in the repo.
+    expect(existsSync(join(root, ".ruah"))).toBe(false);
     current.value = null;
     await expect(m.start()).rejects.toMatchObject({ status: 409 });
     expect(m.status()).toBeNull();
+  });
+
+  test("§21.3: a pick is remembered on this computer; only saveToRepo writes .ruah/preview.json", async () => {
+    const root = tempDir();
+    write(root, "a/package.json", pkg({ dev: "node -e \"process.exit(0)\"" }));
+    write(root, "b/package.json", pkg({ dev: "node -e \"process.exit(0)\"" }));
+    const { m, localChoice } = managerFor(root);
+    await m.start({ candidate: "a#dev", remember: true });
+    await m.stop();
+    expect(readLocalPreviewFile(localChoice)).toEqual({ version: 1, candidate: "a#dev" });
+    expect(existsSync(join(root, ".ruah"))).toBe(false);
+    expect(m.detect()).toMatchObject({ selected: "a#dev", choiceFrom: "local" });
+    // The explicit "Save to the repo": the committable file (+ its .gitignore); this computer's copy goes.
+    await m.start({ candidate: "b#dev", saveToRepo: true });
+    await m.stop();
+    expect(readPreviewFile(root).config).toEqual({ version: 1, candidate: "b#dev" });
+    expect(existsSync(localChoice)).toBe(false);
+    expect(m.detect()).toMatchObject({ selected: "b#dev", choiceFrom: "repo" });
+    // A later pick on this computer wins over the repo's, and the repo file is left as it is.
+    expect(m.choose({ candidate: "a#dev" })).toMatchObject({ selected: "a#dev", choiceFrom: "local" });
+    expect(readPreviewFile(root).config).toEqual({ version: 1, candidate: "b#dev" });
+    // Forgetting this computer's pick falls back to the repo's.
+    expect(m.choose({ candidate: null, command: null })).toMatchObject({ selected: "b#dev", choiceFrom: "repo" });
+    expect(m.choose({ candidate: null, saveToRepo: true })).toMatchObject({ selected: null, choice: null });
+    expect(existsSync(join(root, ".ruah", "preview.json"))).toBe(false);
   });
 
   test("tool availability comes from the dev servers' PATH (the shell environment), not the daemon's", async () => {
@@ -805,7 +887,8 @@ describe("preview in a terminal tab", () => {
 describe("preview HTTP", () => {
   async function serve(root: string | null, token = "secret-token") {
     const current: { value: PreviewProject | null } = { value: root === null ? null : { id: "p1", name: "p1", root } };
-    const m = new PreviewManager({ version: "t", project: () => current.value, sweep: false, runner: new ProcessRunner(), env: async () => ({ PATH: process.env.PATH ?? "" }) });
+    const localChoice = join(tempDir(), "preview.json");
+    const m = new PreviewManager({ version: "t", project: () => current.value, sweep: false, runner: new ProcessRunner(), env: async () => ({ PATH: process.env.PATH ?? "" }), localChoiceFile: () => localChoice });
     cleanups.push(() => m.shutdownAll(300));
     const server = http.createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -906,14 +989,22 @@ describe("ruah app preview", () => {
     expect(await runPreview(["--detect", tempDir()], "t")).toBe(1);
   });
 
-  test("--pick --remember saves the choice", async () => {
+  test("--pick --remember keeps the choice on this computer; --save-to-repo writes .ruah/preview.json", async () => {
     const root = tempDir();
     write(root, "apps/a/package.json", pkg({ dev: "node -e \"process.exit(0)\"" }));
     write(root, "apps/b/package.json", pkg({ dev: "vite" }));
     capture();
     // The picked script exits at once (0 before any URL): reported, exit 1.
     await runPreview(["--pick", "apps/a#dev", "--remember", root], "t");
+    const local = localPreviewFileOf(ruahHome(), projectIdFor(root));
+    cleanups.push(() => rmSync(local, { force: true }));
+    expect(readLocalPreviewFile(local)).toEqual({ version: 1, candidate: "apps/a#dev" });
+    expect(existsSync(join(root, ".ruah"))).toBe(false);
+    expect(detectPreview(root, { localChoiceFile: local })).toMatchObject({ selected: "apps/a#dev", choiceFrom: "local" });
+    await runPreview(["--pick", "apps/a#dev", "--save-to-repo", root], "t");
     expect(readPreviewFile(root).config).toEqual({ version: 1, candidate: "apps/a#dev" });
+    expect(existsSync(local)).toBe(false);
+    expect(detectPreview(root, { localChoiceFile: local })).toMatchObject({ selected: "apps/a#dev", choiceFrom: "repo" });
   });
 
   test("formatDetection marks the selection and missing tools", () => {

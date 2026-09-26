@@ -3,6 +3,7 @@
 // once-per-window toast decision, and merging a one-agent refresh into the report.
 import { describe, expect, it } from "vitest";
 import {
+  cardAction,
   elapsedShare,
   formatDuration,
   formatDurationShort,
@@ -136,5 +137,17 @@ describe("agent limits model", () => {
     expect(parseLimitSettings(null)).toEqual({ thresholds: { warn: 80, critical: 95 }, toasts: true });
     expect(parseLimitSettings('{"thresholds":{"warn":70,"critical":90},"toasts":false}')).toEqual({ thresholds: { warn: 70, critical: 90 }, toasts: false });
     expect(parseLimitSettings("not json")).toEqual({ thresholds: { warn: 80, critical: 95 }, toasts: true });
+  });
+
+  it("does not repeat the saved-login switch in the card's action line (§21.1)", () => {
+    const action = "Turn on “Read Cursor's saved login” here or in Settings → Features, or open cursor.com/dashboard.";
+    const off = { action, appLogin: { readAppLogins: false, source: "default" as const, app: "the Cursor app" } };
+    expect(cardAction(off)).toBeUndefined();
+    expect(cardAction({ ...off, appLogin: { ...off.appLogin, source: "settings" as const } })).toBeUndefined();
+    // Locked by RUAH_USAGE_READ_LOGINS=0: the switch cannot help, the action says what can.
+    expect(cardAction({ ...off, appLogin: { ...off.appLogin, source: "env" as const } })).toBe(action);
+    // Allowed (a failed read says why), or an agent without the switch: the action stays.
+    expect(cardAction({ action: "Log in again.", appLogin: { readAppLogins: true, source: "settings", app: "the Cursor app" } })).toBe("Log in again.");
+    expect(cardAction({ action: "Run claude /login." })).toBe("Run claude /login.");
   });
 });

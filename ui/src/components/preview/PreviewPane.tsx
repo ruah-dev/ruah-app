@@ -269,7 +269,23 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
               onOpenChange={setMenuOpen}
               onPick={(c) => startCandidate(c, true)}
               onCustom={() => setCustomOpen(true)}
-              onForget={() => void previewActions.choose(projectId, { candidate: null, command: null })}
+              onForget={() =>
+                void previewActions.choose(projectId, { candidate: null, command: null, ...(detection?.choiceFrom === "repo" ? { saveToRepo: true } : {}) })
+              }
+              onSaveToRepo={() => {
+                const choice = detection?.choice;
+                if (!choice) return;
+                void previewActions
+                  .choose(projectId, {
+                    ...(choice.candidate !== undefined ? { candidate: choice.candidate } : {}),
+                    ...(choice.command !== undefined ? { command: choice.command, dir: choice.dir ?? "." } : {}),
+                    ...(choice.url !== undefined ? { url: choice.url } : {}),
+                    saveToRepo: true,
+                  })
+                  .then((saved) => {
+                    if (saved) toast("Saved to .ruah/preview.json", { description: "Commit it to share the choice with your team." });
+                  });
+              }}
               onRedetect={() => void previewActions.refresh(projectId)}
               onShowLogs={showLogs}
             />
@@ -406,7 +422,7 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
           open={customOpen}
           onOpenChange={setCustomOpen}
           initial={detection?.choice?.command ? { command: detection.choice.command, dir: detection.choice.dir ?? "." } : undefined}
-          onRun={({ command, dir, remember }) => void previewActions.start(projectId, { command, dir, remember })}
+          onRun={({ command, dir, remember, saveToRepo }) => void previewActions.start(projectId, { command, dir, remember, saveToRepo })}
         />
       ) : null}
       <LogsDialog open={logsOpen} onOpenChange={setLogsOpen} />

@@ -2,9 +2,11 @@
 //   GET  /api/preview                 the open project's status (409 without a project)
 //   GET  /api/preview/detect          candidates, the saved choice and what a start would run
 //   GET  /api/preview/logs?lines=     the last output lines (≤ 500)
-//   POST /api/preview/start   { candidate? | command?, dir?, remember? }
+//   POST /api/preview/start   { candidate? | command?, dir?, remember?, saveToRepo? }
 //   POST /api/preview/stop | /api/preview/restart
-//   POST /api/preview/choice  { candidate?, command?, dir?, url? }   → .ruah/preview.json
+//   POST /api/preview/choice  { candidate?, command?, dir?, url?, saveToRepo? }
+//        → this computer's choice ($RUAH_HOME/projects/<id>/preview.json), or with
+//          saveToRepo the repo's .ruah/preview.json (§21.3)
 // POSTs pass the /ws Origin rule (403), are not cross-site browser requests
 // (Sec-Fetch-Site, when sent, is same-origin or none: the previewed app itself, on
 // another localhost port, cannot drive its own dev server) and come from a loopback

@@ -22,6 +22,7 @@ import type { ArchEdge, ArchNode, Architecture } from "../contracts/architecture
 import { validateArchitecture } from "../contracts/validate.js";
 import { scanRepo } from "../scan/index.js";
 import { projectIdFor } from "../projects/fs-util.js";
+import { ensureRuahGitignore } from "../projects/repo-files.js";
 import {
   loadSystem,
   parseSystemFile,
@@ -496,6 +497,7 @@ export function rebuildSystem(target: string | LoadedSystem, opts: RebuildOption
   }
   try {
     atomicWrite(path.join(sys.dir, SCAN_STATE_FILE), `${JSON.stringify(state, null, 2)}\n`);
+    ensureRuahGitignore(sys.dir);
   } catch {
     // status then shows no scan time; never fails a build
   }

@@ -6,10 +6,12 @@
 // (state.vscdb `cursorAuth/accessToken`, read-only through sqlite3).
 //
 // The token is only ever in memory for the one GET: never logged, never
-// persisted, never part of an error message. RUAH_USAGE_READ_LOGINS=0 turns
-// the app-login read off (the card then shows the tier only). cursor-agent's
-// own login lives in the macOS Keychain, which Ruah does not read (it would
-// prompt).
+// persisted, never part of an error message. Reading the app's login is
+// **opt-in** (CONTRACTS §21.1): off until the user allows it in the app
+// (`usage.readAppLogins` in settings.json); RUAH_USAGE_READ_LOGINS=0/1
+// overrides the saved choice. While it is off the card shows the tier and
+// says why the numbers are missing. cursor-agent's own login lives in the
+// macOS Keychain, which Ruah does not read (it would prompt).
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -18,6 +20,7 @@ import { resolveAgentBinary } from "../../acp/presets.js";
 import { resolveBin } from "../../integrations/exec.js";
 import {
   agentLimits,
+  appLoginSetting,
   clampPercent,
   isoFrom,
   num,
@@ -254,8 +257,20 @@ export function parseCursorUsage(body: unknown): CursorUsage | undefined {
 
 // ---------- provider ----------
 
-function readLogins(env: NodeJS.ProcessEnv): boolean {
-  return env.RUAH_USAGE_READ_LOGINS?.trim() !== "0";
+/** Why the numbers are missing while reading the app's login is off, and what to do. */
+export function appLoginOffReason(source: "settings" | "env" | "default"): { reason: string; action: string } {
+  if (source === "env") {
+    return {
+      reason: "Plan usage is read with the Cursor app's saved login, and RUAH_USAGE_READ_LOGINS=0 turns that off for this Ruah.",
+      action: "Unset RUAH_USAGE_READ_LOGINS to choose in the app, or open cursor.com/dashboard.",
+    };
+  }
+  return {
+    reason:
+      "Included usage, on-demand spend and the reset date come from cursor.com with the Cursor app's saved login, and Ruah reads that login only when you allow it.",
+    action:
+      "Allow it with “Read Cursor's saved login” in Ruah (Cursor's limits card or Settings → Features) or `ruah app usage settings --read-app-logins on`, or open cursor.com/dashboard.",
+  };
 }
 
 async function fetchUsage(ctx: LimitsContext, cookie: string): Promise<{ kind: "ok"; body: unknown } | { kind: "rejected"; reason: string } | { kind: "failed"; reason: string }> {
@@ -326,6 +341,8 @@ export function cursorProvider(): LimitsProvider {
         });
       }
       const tier = about.tier;
+      const setting = appLoginSetting(ctx);
+      const appLogin = { readAppLogins: setting.readAppLogins, source: setting.source, app: "the Cursor app" };
       const partial = (reason: string, action?: string): AgentLimits =>
         agentLimits(CURSOR_ID, CURSOR_NAME, "partial", {
           checkedAt,
@@ -335,9 +352,12 @@ export function cursorProvider(): LimitsProvider {
           reason,
           ...(action !== undefined ? { action } : {}),
           dashboardUrl: DASHBOARD,
+          appLogin,
         });
-      if (!readLogins(ctx.env)) {
-        return partial("Included usage needs the Cursor app's login, and reading it is turned off (RUAH_USAGE_READ_LOGINS=0).", "Open cursor.com/dashboard to see included usage.");
+      // Opt-in (§21.1): without the user's go-ahead the app's login is not even opened.
+      if (!setting.readAppLogins) {
+        const off = appLoginOffReason(setting.source);
+        return partial(off.reason, off.action);
       }
       const app = await readCursorAppAuth(ctx);
       if (app.kind === "missing") {
@@ -362,7 +382,7 @@ export function cursorProvider(): LimitsProvider {
       const fetched = await fetchUsage(ctx, cookie);
       if (fetched.kind === "rejected") return partial(fetched.reason, "Open the Cursor app once to refresh its login.");
       if (fetched.kind === "failed") {
-        return agentLimits(CURSOR_ID, CURSOR_NAME, "error", { checkedAt, source: SOURCE_USAGE, loggedIn: about.loggedIn, plan: tier, reason: fetched.reason, dashboardUrl: DASHBOARD });
+        return agentLimits(CURSOR_ID, CURSOR_NAME, "error", { checkedAt, source: SOURCE_USAGE, loggedIn: about.loggedIn, plan: tier, reason: fetched.reason, dashboardUrl: DASHBOARD, appLogin });
       }
       const usage = parseCursorUsage(fetched.body);
       if (usage === undefined || usage.meters.length === 0) {
@@ -376,6 +396,7 @@ export function cursorProvider(): LimitsProvider {
         meters: usage.meters,
         ...(usage.onDemand !== undefined ? { onDemand: usage.onDemand } : {}),
         dashboardUrl: DASHBOARD,
+        appLogin,
       });
     },
   };

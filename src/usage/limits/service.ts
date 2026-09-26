@@ -47,6 +47,8 @@ export class AgentLimitsService {
   private readonly inflight = new Map<string, Promise<AgentLimits>>();
   /** Providers whose read was given up on (timeout) but has not settled yet. */
   private readonly settling = new Set<string>();
+  /** Bumped by invalidate(): a read started before it is not cached. */
+  private readonly generation = new Map<string, number>();
 
   constructor(private readonly options: AgentLimitsServiceOptions) {
     this.ctx = defaultContext(options.context);
@@ -54,6 +56,19 @@ export class AgentLimitsService {
 
   get agentIds(): string[] {
     return this.options.providers.map((p) => p.id);
+  }
+
+  /**
+   * Forgets an agent's readings (cached and last good), so the next report
+   * reads it again — after a setting it depends on changed (§21.1: reading
+   * the Cursor app's login turned on or off).
+   */
+  invalidate(agentId: string): void {
+    this.cache.delete(agentId);
+    this.good.delete(agentId);
+    // A read already running answers its own callers but is not cached any more.
+    this.inflight.delete(agentId);
+    this.generation.set(agentId, (this.generation.get(agentId) ?? 0) + 1);
   }
 
   async report(request: { agentId?: string; refresh?: boolean } = {}): Promise<AgentLimitsReport> {
@@ -76,13 +91,17 @@ export class AgentLimitsService {
     if (running !== undefined) return running;
     // A timed-out read is still winding down: do not stack a second one on it.
     if (cached !== undefined && this.settling.has(provider.id)) return Promise.resolve(cached.value);
-    const run = this.readFresh(provider).finally(() => this.inflight.delete(provider.id));
+    const run = this.readFresh(provider).finally(() => {
+      if (this.inflight.get(provider.id) === run) this.inflight.delete(provider.id);
+    });
     this.inflight.set(provider.id, run);
     return run;
   }
 
   private async readFresh(provider: LimitsProvider): Promise<AgentLimits> {
     const timeoutMs = this.options.readTimeoutMs ?? 60_000;
+    const generation = this.generation.get(provider.id) ?? 0;
+    const current = (): boolean => (this.generation.get(provider.id) ?? 0) === generation;
     const abort = new AbortController();
     let timedOut = false;
     let reading: Promise<AgentLimits>;
@@ -96,7 +115,7 @@ export class AgentLimitsService {
       (late) => {
         this.settling.delete(provider.id);
         // A reading that still arrives after the timeout replaces its error (not with another error).
-        if (timedOut && late.status !== "error") this.store(provider, late);
+        if (timedOut && late.status !== "error" && current()) this.store(provider, late);
       },
       () => this.settling.delete(provider.id),
     );
@@ -122,6 +141,7 @@ export class AgentLimitsService {
     } finally {
       clearTimeout(timer);
     }
+    if (!current()) return value;
     return this.store(provider, value, timedOut ? this.options.timeoutRetryMs ?? 60_000 : undefined);
   }
 

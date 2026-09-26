@@ -4,7 +4,7 @@
 // (device width, auto-reload). A useSyncExternalStore store like lib/terminal.ts; nothing
 // runs at module load. The pure helpers at the bottom are tested in ui/test/preview.test.ts.
 import { useEffect, useSyncExternalStore } from "react";
-import { onDaemonMessage, resolveDaemonUrls, useDaemonSelector } from "./daemon";
+import { daemonSnapshot, onDaemonMessage, resolveDaemonUrls, SAMPLE_MODE_MESSAGE, useDaemonSelector } from "./daemon";
 import type { PreviewCandidate, PreviewDetection, PreviewFile, PreviewStatus } from "./preview-types";
 
 export type { PreviewCandidate, PreviewDetection, PreviewFile, PreviewStatus } from "./preview-types";
@@ -109,6 +109,8 @@ export class PreviewApiError extends Error {
 }
 
 function origin(): string {
+  // The bundled sample never reaches a daemon: a start would run the real project's dev server.
+  if (daemonSnapshot().source === "sample") throw new PreviewApiError(SAMPLE_MODE_MESSAGE, 0);
   const urls = resolveDaemonUrls();
   if (!urls) throw new PreviewApiError("The daemon is not reachable.", 0);
   return urls.httpOrigin;
@@ -194,12 +196,15 @@ export const previewActions = {
     }
   },
 
-  /** A candidate id, your own command (+ folder), or nothing: the saved / obvious choice. */
-  start(projectId: string, body: { candidate?: string; command?: string; dir?: string; remember?: boolean } = {}) {
+  /**
+   * A candidate id, your own command (+ folder), or nothing: the saved / obvious choice.
+   * `remember` keeps it on this computer; `saveToRepo` writes `.ruah/preview.json` (§21.3).
+   */
+  start(projectId: string, body: { candidate?: string; command?: string; dir?: string; remember?: boolean; saveToRepo?: boolean } = {}) {
     return run(projectId, "start", async () => {
       const status = await api<PreviewStatus>("/api/preview/start", { method: "POST", body, withToken: body.command !== undefined });
       noteStatus(status);
-      if (body.remember) void previewActions.refresh(projectId);
+      if (body.remember || body.saveToRepo) void previewActions.refresh(projectId);
       return status;
     });
   },
@@ -220,8 +225,8 @@ export const previewActions = {
     });
   },
 
-  /** Saves the project's choice (.ruah/preview.json); null clears a field. */
-  choose(projectId: string, patch: { candidate?: string | null; command?: string | null; dir?: string | null; url?: string | null }) {
+  /** Saves the project's choice on this computer, or with `saveToRepo` in `.ruah/preview.json`; null clears a field. */
+  choose(projectId: string, patch: { candidate?: string | null; command?: string | null; dir?: string | null; url?: string | null; saveToRepo?: boolean }) {
     return run(projectId, "choose", async () => {
       const detection = await api<PreviewDetection>("/api/preview/choice", { method: "POST", body: patch, withToken: typeof patch.command === "string" });
       set({ detections: { ...state.detections, [projectId]: detection } });

@@ -81,6 +81,18 @@ export interface AgentLimits {
   checkedAt: string;
   stale?: boolean;
   dashboardUrl?: string;
+  /** §21.1: plan usage needs the agent app's saved login; whether reading it is allowed (card switch). */
+  appLogin?: { readAppLogins: boolean; source: "settings" | "env" | "default"; app: string };
+}
+
+/**
+ * The card's "what to do" line. While the §21.1 switch is on the card and off, the daemon's action
+ * ("turn on Read Cursor's saved login here or in Settings …") would only repeat the switch right
+ * above it; when the environment decides, the switch is locked and the action says how to change it.
+ */
+export function cardAction(agent: Pick<AgentLimits, "action" | "appLogin">): string | undefined {
+  if (agent.appLogin && !agent.appLogin.readAppLogins && agent.appLogin.source !== "env") return undefined;
+  return agent.action;
 }
 
 export interface AgentLimitsReport {

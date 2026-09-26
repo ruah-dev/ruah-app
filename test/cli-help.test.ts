@@ -23,3 +23,11 @@ describe("help flags on subcommands without their own help", () => {
     });
   }
 });
+
+describe("the main help lists the daily-driver options (CONTRACTS §21)", () => {
+  it("names usage settings and system rename --offline", () => {
+    const out = execFileSync(process.execPath, [cli, "help"], { cwd, encoding: "utf8", timeout: 10_000, env: { ...process.env, RUAH_HOME: join(cwd, "home") } });
+    expect(out).toContain("ruah app usage settings [--read-app-logins on|off]");
+    expect(out).toContain("rename <id> <new-id> [--offline]");
+  });
+});

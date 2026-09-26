@@ -57,6 +57,9 @@ export interface ServeHooks {
   openSystemProject?: OpenSystemProject;
 }
 
+/** How often settings.json is checked for changes made by another process (the CLI). */
+const SETTINGS_REFRESH_MS = 3000;
+
 function envInt(name: string, fallback: number, min: number): number {
   const raw = process.env[name];
   const value = raw !== undefined ? Number.parseInt(raw, 10) : Number.NaN;
@@ -141,10 +144,20 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   const onError = (line: string): void => {
     process.stderr.write(`${line}\n`);
   };
+  // §21.1: set from the Cursor limits card over HTTP; every window's Settings → Features follows.
+  let broadcastFeatures: () => void = () => {};
   const usage = new UsageService(new UsageLog(home), limits, {
     onError,
     version,
     debug,
+    settings: {
+      get: () => settings.usageSettings(),
+      set: (patch) => {
+        const next = settings.updateFeatures({ usage: patch }).usage;
+        broadcastFeatures();
+        return next;
+      },
+    },
     workflows: () => {
       const arch = hubRef?.store?.current();
       return arch?.workflows.map((w) => ({ id: w.id, steps: w.steps }));
@@ -162,6 +175,15 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     features: () => settings.features(),
     maxBackgroundTurns: envInt("RUAH_MAX_BACKGROUND_TURNS", DEFAULT_MAX_BACKGROUND_TURNS, 0),
   });
+  broadcastFeatures = () => activity.broadcastSnapshot();
+  // Readings made under the old app-login setting are dropped, whichever path changed it; a
+  // change made by another process (`ruah app usage settings`) also reaches every window.
+  settings.onFeaturesChange((before, after, cause) => {
+    if (before.usage.readAppLogins !== after.usage.readAppLogins) usage.agentLimitsService.invalidate("cursor");
+    if (cause === "file") broadcastFeatures();
+  });
+  // settings.json is re-read when it changes on disk (one stat every few seconds).
+  setInterval(() => settings.refresh(), SETTINGS_REFRESH_MS).unref();
   const attachments = new AttachmentStore(home);
   const engines = new EnginesService({
     root: () => hubRef?.project()?.root ?? null,

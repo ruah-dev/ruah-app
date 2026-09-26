@@ -115,7 +115,7 @@ export type ClientMessage =
   // §13: clear unread markers (a chat, or the whole project); save the view state; feature flags
   | { type: "activity.read"; projectId: string; chatId?: string }
   | { type: "view.save"; projectId: string; view: ViewState }
-  | { type: "settings.set"; backgroundAgents?: boolean; notifications?: NotificationMode };
+  | { type: "settings.set"; backgroundAgents?: boolean; notifications?: NotificationMode; usage?: { readAppLogins?: boolean } }
 
 // ---------- daemon -> viewer ----------
 export type ServerMessage =
@@ -405,9 +405,17 @@ export interface ProjectActivity {
 }
 
 export type NotificationMode = "background" | "always" | "off";
+/** §21.1: may Ruah read an agent app's saved login (the Cursor app's) to show plan usage. */
+export interface UsageSettingsView {
+  readAppLogins: boolean;
+  /** "env": RUAH_USAGE_READ_LOGINS decides (the switch is locked). */
+  source: "settings" | "env" | "default";
+}
 export interface AppFeatures {
   backgroundAgents: boolean;
   notifications: NotificationMode;
+  /** Absent from daemons before §21.1. */
+  usage?: UsageSettingsView;
 }
 
 /** §13.5: viewer-owned, opaque to the daemon (a JSON object, ≤ 16 KB serialized). */

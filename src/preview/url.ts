@@ -16,6 +16,18 @@ export function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "");
 }
 
+/** A terminal spinner frame in front of a line (npm's `⠙`). */
+const SPINNER_PREFIX = /^[\u2801-\u28ff]+/;
+
+/**
+ * One line of dev-server output as the preview keeps it: no colours or links, no spinner frames
+ * (npm draws `⠙` in front of its lines and alone on its last one), no trailing space. Empty when
+ * nothing is left.
+ */
+export function cleanLogLine(raw: string): string {
+  return stripAnsi(raw).replace(SPINNER_PREFIX, "").replace(/\s+$/, "");
+}
+
 export interface UrlHit {
   url: string;
   port: number;
@@ -93,16 +105,34 @@ export class LineSplitter {
   }
 }
 
-/** The line that best explains a crash (the last error-looking one), else the last non-empty line. */
+/** Lines that never say why: stack frames, Node's error-object dump, npm's footer and notices, spinners. */
+const CRASH_NOISE =
+  /^(?:at\s|\{$|\}$|\^+$|Node\.js v\d|Emitted 'error' event|throw er;|npm notice|npm (?:ERR!|error) (?:A complete log|Log files|errno|code|path|command|signal|workspace|location|lifecycle)|[⠁-⣿]+\S*$)/i;
+/** A property of a dumped error object: `code: 'EADDRINUSE',`, `errno: -48,`. */
+const CRASH_PROPERTY = /^['"]?[\w$]+['"]?:\s+(?:'[^']*'|"[^"]*"|-?\d+(?:\.\d+)?|true|false|null|undefined|\[[^\]]*\]),?$/;
+/** A thrown error's own message: `Error: listen EADDRINUSE …`, `ModuleNotFoundError: No module …`. */
+const CRASH_THROWN = /^(?:Uncaught\s+)?(?:[A-Z][\w.]*)?(?:Error|Exception)(?:\s\[[\w-]+\])?:\s+\S/;
+
+/**
+ * The line that best explains a crash: the last thrown error's own message (`Error: …`), else the
+ * last error-looking line, else the last line that says anything — never a stack frame, the dump
+ * of the error object, Node's version banner or npm's footer and update notice.
+ */
 export function crashReason(lines: readonly string[]): string | undefined {
-  const tail = lines.slice(-80);
+  const tail = lines.slice(-80).map((l) => l.trim().replace(SPINNER_PREFIX, "").trim());
+  const useful = (line: string): boolean => line.length > 0 && !CRASH_NOISE.test(line) && !CRASH_PROPERTY.test(line);
+  // The error the process died of, when it says so (its dump and frames follow it).
   for (let i = tail.length - 1; i >= 0; i -= 1) {
-    const line = (tail[i] ?? "").trim();
-    if (/\b(error|exception|failed|cannot|can't|not found|EADDRINUSE|ENOENT|EACCES|panic|traceback)\b/i.test(line)) return line.slice(0, 300);
+    const line = tail[i] ?? "";
+    if (CRASH_THROWN.test(line)) return line.slice(0, 300);
   }
   for (let i = tail.length - 1; i >= 0; i -= 1) {
-    const line = (tail[i] ?? "").trim();
-    if (line.length > 0) return line.slice(0, 300);
+    const line = tail[i] ?? "";
+    if (useful(line) && /\b(error|exception|failed|cannot|can't|not found|EADDRINUSE|ENOENT|EACCES|panic|traceback)\b/i.test(line)) return line.slice(0, 300);
+  }
+  for (let i = tail.length - 1; i >= 0; i -= 1) {
+    const line = tail[i] ?? "";
+    if (useful(line)) return line.slice(0, 300);
   }
   return undefined;
 }

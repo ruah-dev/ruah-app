@@ -12,14 +12,15 @@
 //     project's virtualenv / uv / poetry; Rails (bin/dev, bin/rails), Jekyll;
 //     Go with air (or `go run .`); Hugo; docker compose;
 //   - a plain index.html → the built-in static server with live reload.
-// The saved choice (.ruah/preview.json) wins; otherwise one obvious candidate
-// is selected and several comparable ones (monorepos) are left to the user.
+// The saved choice (this computer's, else the repo's .ruah/preview.json) wins;
+// otherwise one obvious candidate is selected and several comparable ones
+// (monorepos) are left to the user.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PreviewCandidate, PreviewDetection, PreviewFile } from "../contracts/preview.js";
 import { parseYaml, yamlGet, yamlKeys, yamlList, yamlString, yamlStrings, type YamlValue } from "../scan/mini-yaml.js";
 import { globToRegexSource, IGNORED_DIRS } from "../scan/walk.js";
-import { readPreviewFile } from "./config.js";
+import { readLocalPreviewFile, readPreviewFile } from "./config.js";
 
 export type PackageManager = "pnpm" | "yarn" | "npm" | "bun";
 
@@ -30,6 +31,8 @@ export interface DetectOptions {
   maxDirs?: number;
   /** Multi-repo system (§12): each repo is detected too, its folders prefixed "<id>/". */
   repos?: readonly { id: string; root: string }[];
+  /** This computer's choice (`$RUAH_HOME/projects/<id>/preview.json`, §21.3): wins over the repo's. */
+  localChoiceFile?: string | undefined;
 }
 
 const MAX_JSON_BYTES = 512 * 1024;
@@ -652,7 +655,7 @@ function candidatesIn(ctx: DirContext): PreviewCandidate[] {
 
 // ---------------------------------------------------------------- detection
 
-export function customCandidate(choice: Pick<PreviewFile, "command" | "dir">): PreviewCandidate {
+export function customCandidate(choice: Pick<PreviewFile, "command" | "dir">, reason = ".ruah/preview.json"): PreviewCandidate {
   return {
     id: "custom",
     title: "Your command",
@@ -661,7 +664,7 @@ export function customCandidate(choice: Pick<PreviewFile, "command" | "dir">): P
     framework: "custom",
     kind: "custom",
     hmr: false,
-    reason: ".ruah/preview.json",
+    reason,
     score: 100,
   };
 }
@@ -703,8 +706,10 @@ export function detectPreview(root: string, options: DetectOptions = {}): Previe
     if (!c.available && INSTALL_HINT[c.needs] !== undefined) c.install = INSTALL_HINT[c.needs];
   }
   const read = readPreviewFile(absRoot);
-  const choice = read.config;
-  if (choice?.command !== undefined) unique.unshift(customCandidate(choice));
+  const local = options.localChoiceFile !== undefined ? readLocalPreviewFile(options.localChoiceFile) : null;
+  const choice = local ?? read.config;
+  const choiceFrom = local !== null ? ("local" as const) : read.config !== null ? ("repo" as const) : undefined;
+  if (choice?.command !== undefined) unique.unshift(customCandidate(choice, choiceFrom === "local" ? "saved on this computer" : ".ruah/preview.json"));
   unique.sort((a, b) => b.score - a.score || (a.dir === b.dir ? 0 : a.dir === "." ? -1 : b.dir === "." ? 1 : a.dir.localeCompare(b.dir)) || a.id.localeCompare(b.id));
   const dirs = new Set(unique.filter((c) => c.kind !== "custom").map((c) => c.dir));
   const pkgRoot = exists(path.join(absRoot, "package.json"));
@@ -715,6 +720,7 @@ export function detectPreview(root: string, options: DetectOptions = {}): Previe
     ...(pkgRoot ? { packageManager: packageManagerFor(absRoot, ".") } : {}),
     selected: selectCandidate(unique, choice),
     choice,
+    ...(choiceFrom !== undefined ? { choiceFrom } : {}),
     ...(read.error !== undefined ? { configError: read.error } : {}),
     truncated,
   };

@@ -13,13 +13,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PreviewCandidate, PreviewDetection, PreviewStartBody, PreviewStatus } from "../contracts/preview.js";
 import type { TerminalManager } from "../terminal/manager.js";
-import { writePreviewChoice, type PreviewChoicePatch } from "./config.js";
+import { localPreviewFileOf, writeLocalPreviewChoice, writePreviewChoice, type PreviewChoicePatch } from "./config.js";
+import { ruahHome } from "../usage/log.js";
 import { customCandidate, detectPreview } from "./detect.js";
 import { checkHttp as defaultCheckHttp, findFreePort, isPortOpen, type HttpCheck } from "./probe.js";
 import { ProcessRunner, PtyRunner, type RunningProcess, type Runner } from "./runner.js";
 import { previewEnv } from "./shell-env.js";
 import { startStaticServer, type StaticServer } from "./static-server.js";
-import { LineSplitter, crashReason, findUrls, stripAnsi } from "./url.js";
+import { LineSplitter, cleanLogLine, crashReason, findUrls } from "./url.js";
 
 export const DEFAULT_PREVIEW_IDLE_MS = 10 * 60 * 1000;
 export const PREVIEW_LOG_LINES = 500;
@@ -91,6 +92,12 @@ export interface PreviewManagerOptions {
   /** Runner override (tests, the CLI's foreground mode). */
   runner?: Runner;
   checkHttp?: (url: string, timeoutMs?: number) => Promise<HttpCheck>;
+  /**
+   * Where a project's choice is remembered on this computer (§21.3; default
+   * `$RUAH_HOME/projects/<id>/preview.json`). The repo's `.ruah/preview.json`
+   * is written only on an explicit `saveToRepo`.
+   */
+  localChoiceFile?: (project: PreviewProject) => string;
 }
 
 interface Entry {
@@ -198,7 +205,30 @@ export class PreviewManager {
     return detectPreview(project.root, {
       pathEnv: pathEnv ?? this.options.pathEnv?.() ?? this.shellPath ?? process.env.PATH,
       ...(project.repos !== undefined ? { repos: project.repos } : {}),
+      localChoiceFile: this.localChoiceFile(project),
     });
+  }
+
+  private localChoiceFile(project: PreviewProject): string {
+    return this.options.localChoiceFile?.(project) ?? localPreviewFileOf(ruahHome(), project.id);
+  }
+
+  /**
+   * Remembers a choice: on this computer by default; with `saveToRepo` in the
+   * repo's `.ruah/preview.json` (and this computer's copy is dropped, so the
+   * saved one applies). 409 on an invalid repo file.
+   */
+  private remember(project: PreviewProject, patch: PreviewChoicePatch, saveToRepo: boolean): void {
+    try {
+      if (saveToRepo) {
+        writePreviewChoice(project.root, patch);
+        writeLocalPreviewChoice(this.localChoiceFile(project), { candidate: null, command: null, url: null });
+      } else {
+        writeLocalPreviewChoice(this.localChoiceFile(project), patch);
+      }
+    } catch (err) {
+      throw new PreviewError(409, err instanceof Error ? err.message : String(err));
+    }
   }
 
   /**
@@ -218,19 +248,19 @@ export class PreviewManager {
 
   // ------------------------------------------------------------ actions
 
-  /** Saves the project's choice in `.ruah/preview.json` (a command needs `allowCommand`). */
-  choose(patch: PreviewChoicePatch, opts: { allowCommand?: boolean } = {}): PreviewDetection {
+  /**
+   * Saves the project's choice: on this computer, or with `saveToRepo` in
+   * `.ruah/preview.json` (a command needs `allowCommand`).
+   */
+  choose(patch: PreviewChoicePatch & { saveToRepo?: boolean | undefined }, opts: { allowCommand?: boolean } = {}): PreviewDetection {
     const project = this.requireProject();
-    if (typeof patch.command === "string" && opts.allowCommand !== true) throw new PreviewError(403, "a custom command needs the terminal token");
-    if (typeof patch.candidate === "string") {
+    const { saveToRepo, ...choice } = patch;
+    if (typeof choice.command === "string" && opts.allowCommand !== true) throw new PreviewError(403, "a custom command needs the terminal token");
+    if (typeof choice.candidate === "string") {
       const detection = this.detect(project);
-      if (!detection.candidates.some((c) => c.id === patch.candidate && c.kind !== "custom")) throw new PreviewError(404, `unknown candidate "${patch.candidate}"`, detection);
+      if (!detection.candidates.some((c) => c.id === choice.candidate && c.kind !== "custom")) throw new PreviewError(404, `unknown candidate "${choice.candidate}"`, detection);
     }
-    try {
-      writePreviewChoice(project.root, patch);
-    } catch (err) {
-      throw new PreviewError(409, err instanceof Error ? err.message : String(err));
-    }
+    this.remember(project, choice, saveToRepo === true);
     return this.detect(project);
   }
 
@@ -247,7 +277,7 @@ export class PreviewManager {
     let candidate: PreviewCandidate;
     if (body.command !== undefined) {
       if (opts.allowCommand !== true) throw new PreviewError(403, "a custom command needs the terminal token");
-      candidate = customCandidate({ command: body.command, dir: body.dir ?? "." });
+      candidate = customCandidate({ command: body.command, dir: body.dir ?? "." }, "your command");
     } else if (body.candidate !== undefined) {
       const hit = detection.candidates.find((c) => c.id === body.candidate);
       if (hit === undefined) throw new PreviewError(404, `unknown candidate "${body.candidate}"`, detection);
@@ -263,12 +293,8 @@ export class PreviewManager {
       }
       candidate = hit;
     }
-    if (body.remember === true) {
-      try {
-        writePreviewChoice(project.root, candidate.kind === "custom" ? { command: candidate.command, dir: candidate.dir } : { candidate: candidate.id });
-      } catch (err) {
-        throw new PreviewError(409, err instanceof Error ? err.message : String(err));
-      }
+    if (body.remember === true || body.saveToRepo === true) {
+      this.remember(project, candidate.kind === "custom" ? { command: candidate.command, dir: candidate.dir } : { candidate: candidate.id }, body.saveToRepo === true);
     }
     const entry = this.entryFor(project);
     const current = entry.status.candidate;
@@ -414,7 +440,7 @@ export class PreviewManager {
   }
 
   private appendLine(entry: Entry, raw: string): void {
-    const line = stripAnsi(raw).replace(/\s+$/, "");
+    const line = cleanLogLine(raw);
     if (line.length === 0) return;
     entry.logs.push(line.length > 2000 ? `${line.slice(0, 2000)}…` : line);
     if (entry.logs.length > PREVIEW_LOG_LINES) entry.logs.splice(0, entry.logs.length - PREVIEW_LOG_LINES);

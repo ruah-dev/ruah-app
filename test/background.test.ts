@@ -241,7 +241,7 @@ function project(name: string): Project {
 function setup(opts: { home?: string; maxLiveBridges?: number; warmTtlMs?: number; maxBackgroundTurns?: number; backgroundAgents?: boolean } = {}) {
   const home = opts.home ?? tempDir("ruah-bg-home-");
   const chats = new ChatStore(home);
-  const settings = new SettingsStore(home);
+  const settings = new SettingsStore(home, { env: {} });
   if (opts.backgroundAgents !== undefined) settings.updateFeatures({ backgroundAgents: opts.backgroundAgents });
   const log = new ActivityLog(home);
   const names = new Map<string, { name: string; root: string }>();
@@ -496,11 +496,26 @@ describe("background agents (§13.1)", () => {
 
   it("settings.json backgroundAgents:false (and settings.set) turn background turns off", async () => {
     const { hub, socket, open, settings } = setup();
-    expect(settings.features()).toEqual({ backgroundAgents: true, notifications: "background" });
+    const offByDefault = { readAppLogins: false, source: "default" };
+    expect(settings.features()).toEqual({ backgroundAgents: true, notifications: "background", usage: offByDefault });
     socket.sent = [];
     socket.receive({ type: "settings.set", backgroundAgents: false, notifications: "off" });
-    expect(settings.features()).toEqual({ backgroundAgents: false, notifications: "off" });
-    expect(socket.last("activity.snapshot")?.settings).toEqual({ backgroundAgents: false, notifications: "off" });
+    expect(settings.features()).toEqual({ backgroundAgents: false, notifications: "off", usage: offByDefault });
+    expect(socket.last("activity.snapshot")?.settings).toEqual({ backgroundAgents: false, notifications: "off", usage: offByDefault });
+    // §21.1: reading an agent app's saved login is switched over the same message.
+    socket.receive({ type: "settings.set", usage: { readAppLogins: true } });
+    expect(socket.last("activity.snapshot")?.settings.usage).toEqual({ readAppLogins: true, source: "settings" });
+    socket.receive({ type: "settings.set", usage: { readAppLogins: false } });
+    // A socket opened from another origin (another localhost port) may not switch it on.
+    const foreign = new FakeSocket();
+    attachSession(hub, foreign as unknown as WebSocket, { ownOrigin: false });
+    foreign.receive({ type: "hello", protocol: 1, client: "test/0" });
+    foreign.sent = [];
+    foreign.receive({ type: "settings.set", usage: { readAppLogins: true } });
+    expect(foreign.last("error")).toMatchObject({ code: "bad_message" });
+    expect(foreign.last("error")?.message).toContain("viewer this daemon serves");
+    expect(settings.usageSettings().readAppLogins).toBe(false);
+    foreign.close();
     expect(hub.maxBackgroundTurns()).toBe(0);
     const a = project("repo-a");
     const b = project("repo-b");
@@ -512,7 +527,11 @@ describe("background agents (§13.1)", () => {
     expect(socket.sent[0]).toMatchObject({ type: "turn.finished", turnId: "t1", stopReason: "cancelled" });
     expect(hub.backgroundTurns()).toEqual([]);
     // Persisted: a new store reads the same flags.
-    expect(new SettingsStore(path.dirname(settings.file)).features()).toEqual({ backgroundAgents: false, notifications: "off" });
+    expect(new SettingsStore(path.dirname(settings.file), { env: {} }).features()).toEqual({
+      backgroundAgents: false,
+      notifications: "off",
+      usage: { readAppLogins: false, source: "settings" },
+    });
   });
 
   it("a queued prompt (agent still starting) survives the switch and is sent once the agent is up", async () => {
@@ -566,7 +585,7 @@ describe("activity feed (§13.2)", () => {
     const second = setup({ home: first.home });
     const snapshot = second.socket.last("activity.snapshot");
     expect(snapshot).toBeDefined();
-    expect(snapshot?.settings).toEqual({ backgroundAgents: true, notifications: "background" });
+    expect(snapshot?.settings).toEqual({ backgroundAgents: true, notifications: "background", usage: { readAppLogins: false, source: "default" } });
     expect(snapshot?.maxBackgroundTurns).toBe(3);
     expect(snapshot?.recent.map((e) => e.kind)).toEqual(["turn.started", "turn.finished"]);
     expect(second.activity.projectActivity(a.id)).toMatchObject({ unread: 1, chats: { [chatId]: 1 }, running: 0 });

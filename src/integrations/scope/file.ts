@@ -6,6 +6,7 @@
 // invalid file is reported, treated as empty and never overwritten.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { ensureRuahGitignore } from "../../projects/repo-files.js";
 import {
   ScopeFileSchema,
   type ScopeAccount,
@@ -176,6 +177,7 @@ export function updateScopeFile(root: string, mutate: (config: ScopeConfig) => S
     // An untouched project (nothing to say) keeps no file.
     if (!current.exists && text === formatScopeFile(emptyScopeConfig())) return next;
     atomicWrite(current.path, text);
+    ensureRuahGitignore(root);
   }
   return next;
 }

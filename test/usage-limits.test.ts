@@ -46,9 +46,11 @@ import {
   type LimitsProvider,
 } from "../src/usage/limits/index.js";
 import { decodeJwtPayload, tokenExpired } from "../src/usage/limits/cursor.js";
-import { parseCompactNumber, isoFrom, planName } from "../src/usage/limits/common.js";
+import { agentLimits, parseCompactNumber, isoFrom, planName } from "../src/usage/limits/common.js";
+import { SettingsStore } from "../src/projects/settings-store.js";
+import { resolveUsageSettings, type UsageSettingsView } from "../src/usage/settings.js";
 import type { Spawner } from "../src/usage/limits/stdio-rpc.js";
-import { runUsage, runUsageLimits } from "../src/usage/run-usage.js";
+import { runUsage, runUsageLimits, runUsageSettings } from "../src/usage/run-usage.js";
 import { opensDesktop } from "../src/cli.js";
 
 const FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "usage-limits");
@@ -340,7 +342,18 @@ describe("Cursor limits", () => {
     expect(cursorStateDbPath({ HOME: "/h" }, "linux")).toBe("/h/.config/Cursor/User/globalStorage/state.vscdb");
   });
 
-  function cursorSetup(options: { email?: string | null; token?: string; status?: number; body?: string; about?: string; aboutFails?: boolean } = {}) {
+  function cursorSetup(
+    options: {
+      email?: string | null;
+      token?: string;
+      status?: number;
+      body?: string;
+      about?: string;
+      aboutFails?: boolean;
+      /** §21.1: the saved "read the app's login" choice; default: allowed (undefined = no setting at all). */
+      appLogins?: UsageSettingsView | undefined;
+    } = { appLogins: { readAppLogins: true, source: "settings" } },
+  ) {
     const bins = stubBins(["cursor-agent", "sqlite3"]);
     const db = path.join(bins.dir, "state.vscdb");
     writeFileSync(db, "");
@@ -364,9 +377,93 @@ describe("Cursor limits", () => {
       return { status, ok: status >= 200 && status < 300, text: async () => options.body ?? fixture("cursor-usage-summary-pro-plus.json") };
     };
     const debug: string[] = [];
-    const context = ctx({ env: { ...bins.env, RUAH_CURSOR_STATE_DB: db }, run, fetch, debug: (l) => debug.push(l) });
+    const allowed = "appLogins" in options ? options.appLogins : { readAppLogins: true, source: "settings" as const };
+    const context = ctx({
+      env: { ...bins.env, RUAH_CURSOR_STATE_DB: db },
+      run,
+      fetch,
+      debug: (l) => debug.push(l),
+      ...(allowed !== undefined ? { appLogins: () => allowed } : {}),
+    });
     return { context, calls, requests, token, debug };
   }
+
+  it("§21.1: never opens the Cursor app's login until the user allows it", async () => {
+    // No setting at all (the default): tier only, the reason says why, nothing read or fetched.
+    const fresh = cursorSetup({ appLogins: undefined });
+    const off = valid(await cursorProvider().read(fresh.context));
+    expect(off).toMatchObject({
+      status: "partial",
+      plan: "Pro+",
+      reason: expect.stringContaining("only when you allow it"),
+      action: expect.stringContaining("Read Cursor's saved login"),
+      appLogin: { readAppLogins: false, source: "default", app: "the Cursor app" },
+    });
+    expect(off.meters).toEqual([]);
+    expect(fresh.calls.some((c) => c.startsWith("sqlite3"))).toBe(false);
+    expect(fresh.requests).toHaveLength(0);
+
+    // Saved off: the same.
+    const savedOff = cursorSetup({ appLogins: { readAppLogins: false, source: "settings" } });
+    expect(await cursorProvider().read(savedOff.context)).toMatchObject({ status: "partial", appLogin: { readAppLogins: false, source: "settings" } });
+    expect(savedOff.calls.some((c) => c.startsWith("sqlite3"))).toBe(false);
+
+    // RUAH_USAGE_READ_LOGINS=1 turns it on without a saved choice (no hook: the env decides).
+    const envOn = cursorSetup({ appLogins: undefined });
+    envOn.context.env.RUAH_USAGE_READ_LOGINS = "1";
+    expect(await cursorProvider().read(envOn.context)).toMatchObject({ status: "ok", appLogin: { readAppLogins: true, source: "env" } });
+    expect(envOn.requests).toHaveLength(1);
+
+    // Allowed: the card still says so (its switch shows on).
+    const on = cursorSetup();
+    expect(await cursorProvider().read(on.context)).toMatchObject({ status: "ok", appLogin: { readAppLogins: true, source: "settings" } });
+  });
+
+  it("§21.1: the saved setting, the environment override and the service invalidation", async () => {
+    const home = tempDir("ruah-usage-settings-");
+    const store = new SettingsStore(home, { env: {} });
+    expect(store.usageSettings()).toEqual({ readAppLogins: false, source: "default" });
+    const changes: string[] = [];
+    store.onFeaturesChange((before, after, cause) => changes.push(`${before.usage.readAppLogins}->${after.usage.readAppLogins} (${cause})`));
+    expect(store.updateFeatures({ usage: { readAppLogins: true } }).usage).toEqual({ readAppLogins: true, source: "settings" });
+    store.updateFeatures({ usage: { readAppLogins: true } }); // unchanged: no event
+    expect(changes).toEqual(["false->true (update)"]);
+    const saved = JSON.parse(readFileSync(path.join(home, "settings.json"), "utf8")) as { usage?: unknown };
+    expect(saved.usage).toEqual({ readAppLogins: true });
+    // Another process (the CLI) changes the file: a long-lived store sees it.
+    writeFileSync(path.join(home, "settings.json"), JSON.stringify({ version: 1, usage: { readAppLogins: false } }));
+    utimesSync(path.join(home, "settings.json"), new Date(), new Date(Date.now() + 5_000));
+    expect(store.usageSettings()).toEqual({ readAppLogins: false, source: "settings" });
+    // ...and tells its listeners (the daemon drops the Cursor reading and updates every window).
+    expect(changes).toEqual(["false->true (update)", "true->false (file)"]);
+    store.refresh(); // unchanged file: no event
+    expect(changes).toHaveLength(2);
+    // The environment wins over the saved value, both ways.
+    expect(new SettingsStore(home, { env: { RUAH_USAGE_READ_LOGINS: "1" } }).usageSettings()).toEqual({ readAppLogins: true, source: "env" });
+    store.updateFeatures({ usage: { readAppLogins: true } });
+    expect(new SettingsStore(home, { env: { RUAH_USAGE_READ_LOGINS: "0" } }).usageSettings()).toEqual({ readAppLogins: false, source: "env" });
+    expect(resolveUsageSettings({ RUAH_USAGE_READ_LOGINS: "maybe" }, undefined)).toEqual({ readAppLogins: false, source: "default" });
+
+    // The service drops a reading made under the old setting.
+    let allowed = false;
+    let reads = 0;
+    const provider: LimitsProvider = {
+      id: "cursor",
+      name: "Cursor Agent",
+      ttlMs: 60_000,
+      read: async (c) => {
+        reads += 1;
+        return agentLimits("cursor", "Cursor Agent", c.appLogins?.().readAppLogins === true ? "ok" : "partial", { checkedAt: new Date(NOW).toISOString(), source: "test" });
+      },
+    };
+    const service = new AgentLimitsService({ providers: [provider], context: { now: () => NOW, appLogins: () => ({ readAppLogins: allowed, source: "settings" }) } });
+    expect((await service.report()).agents[0]?.status).toBe("partial");
+    allowed = true;
+    expect((await service.report()).agents[0]?.status).toBe("partial"); // cached
+    service.invalidate("cursor");
+    expect((await service.report()).agents[0]?.status).toBe("ok");
+    expect(reads).toBe(2);
+  });
 
   it("reads tier + included usage with one read-only GET", async () => {
     const { context, calls, requests, token, debug } = cursorSetup();
@@ -872,6 +969,77 @@ describe("GET /api/usage/agents", () => {
     expect((await get("/api/usage/agents", { host: `ruah.lan:${port}` })).status).toBe(200);
     expect((await get("/api/usage/agents", { host: `[::1]:${port}` })).status).toBe(200);
     expect(calls).toBe(6);
+  });
+});
+
+describe("§21.1 usage settings over HTTP and the CLI", () => {
+  let server: Server | undefined;
+  afterEach(async () => {
+    const s = server;
+    server = undefined;
+    if (s !== undefined) await new Promise<void>((resolve) => s.close(() => resolve()));
+  });
+  it("GET/POST /api/usage/settings: saved, re-read, other sites refused, bad bodies 400", async () => {
+    const home = tempDir("ruah-usage-http-settings-");
+    const store = new SettingsStore(home, { env: {} });
+    let invalidated = 0;
+    const service = new UsageService(new UsageLog(home), new UsageLimitsService({ agents: () => [], currentAgentId: () => "claude", currentBridge: () => undefined }), {
+      agentLimits: Object.assign(new AgentLimitsService({ providers: [] }), { invalidate: () => void (invalidated += 1) }),
+      settings: { get: () => store.usageSettings(), set: (patch) => store.updateFeatures({ usage: patch }).usage },
+    });
+    const access = { originAllowed: (origin: string | undefined) => origin === undefined || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) };
+    server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (!handleUsageRequest(req, res, url, service, access)) {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/usage/settings`;
+    const own = new URL(base).origin;
+    const post = (body: string, origin?: string, type = "application/json") =>
+      fetch(base, { method: "POST", headers: { "content-type": type, ...(origin !== undefined ? { origin } : {}) }, body });
+    expect(await (await fetch(base)).json()).toEqual({ readAppLogins: false, source: "default" });
+    expect((await post(JSON.stringify({ readAppLogins: true }), "https://evil.example")).status).toBe(403);
+    // Stricter than the read rule: another localhost port (a dev server in the Preview) may not turn it on,
+    const otherPort = await post(JSON.stringify({ readAppLogins: true }), "http://localhost:5173");
+    expect(otherPort.status).toBe(403);
+    expect(((await otherPort.json()) as { error: string }).error).toContain("viewer this daemon serves");
+    // nor may a no-preflight text/plain POST, even from the daemon's own origin.
+    expect((await post(JSON.stringify({ readAppLogins: true }), own, "text/plain")).status).toBe(415);
+    expect((await post(JSON.stringify({ readAppLogins: true }), undefined, "text/plain")).status).toBe(415);
+    expect(store.usageSettings().readAppLogins).toBe(false);
+    expect(existsSync(path.join(home, "settings.json"))).toBe(false);
+    expect((await post("{", own)).status).toBe(400);
+    expect((await post(JSON.stringify({ readAppLogins: "yes" }))).status).toBe(400);
+    const on = await post(JSON.stringify({ readAppLogins: true }), own);
+    expect(on.status).toBe(200);
+    expect(await on.json()).toEqual({ readAppLogins: true, source: "settings" });
+    expect(invalidated).toBe(1);
+    expect(JSON.parse(readFileSync(path.join(home, "settings.json"), "utf8"))).toMatchObject({ usage: { readAppLogins: true } });
+    expect((await fetch(base, { method: "PUT" })).status).toBe(405);
+  });
+
+  it("ruah app usage settings shows and changes the choice in $RUAH_HOME", () => {
+    const home = tempDir("ruah-usage-cli-settings-");
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = { out: (t: string) => out.push(t), err: (t: string) => err.push(t), env: { RUAH_HOME: home } };
+    expect(runUsageSettings([], io)).toBe(0);
+    expect(out.join("")).toContain("saved login for plan usage: off (default)");
+    out.length = 0;
+    expect(runUsageSettings(["--read-app-logins", "on", "--json"], io)).toBe(0);
+    expect(JSON.parse(out.join(""))).toEqual({ readAppLogins: true, source: "settings" });
+    expect(new SettingsStore(home, { env: {} }).usageSettings().readAppLogins).toBe(true);
+    out.length = 0;
+    expect(runUsageSettings([], { ...io, env: { RUAH_HOME: home, RUAH_USAGE_READ_LOGINS: "0" } })).toBe(0);
+    expect(out.join("")).toContain("off (set by RUAH_USAGE_READ_LOGINS");
+    // The variable wins: say how to use the saved choice, not the --read-app-logins hint that would not help.
+    expect(out.join("")).toContain("The saved choice is on. To use it, unset the variable: unset RUAH_USAGE_READ_LOGINS");
+    expect(out.join("")).not.toContain("--read-app-logins on");
+    expect(runUsageSettings(["--read-app-logins", "maybe"], io)).toBe(2);
+    expect(err.join("")).toContain("on or off");
   });
 });
 

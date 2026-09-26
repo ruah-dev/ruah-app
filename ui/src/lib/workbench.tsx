@@ -33,6 +33,7 @@ import {
   parseDiagramId,
 } from "./architecture";
 import { fetchContext, setFocus } from "./daemon";
+import { quickAddPosition } from "./architecture-edit";
 import { isCloudNodeId } from "./integrations";
 import { isExpandedId, requestExpansion, requestPeek } from "./expand";
 import { onboardingInput, shouldOnboard } from "./start-screen";
@@ -470,7 +471,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       },
       addNodeAt: (kind, x, y, placed = true) => {
         if (!ws.editable) return;
-        const node = makeNode(kind, x, y);
+        // A palette click (not a drop): next to what is on the level, not on top of it.
+        const ref = parseDiagramId(activeDiagram.id);
+        const at = !placed && ref?.mode === "architecture" && architecture ? quickAddPosition(architecture, ref.parentId) : { x, y };
+        const node = makeNode(kind, at.x, at.y);
         ws.addNode(activeDiagram.id, node, placed);
         setSelectedNodeId(node.id);
         setSelectedEdge(null);

@@ -2893,3 +2893,169 @@ behind), 2 bad arguments.
   `ruah.rail.group.v1`); the open project always keeps its tile, projects of other groups are
   counted in the "+N" tile, and ⌘1…⌘9 stay the global pin numbers. With no shared tag there is
   no switcher.
+
+---
+
+## 21. Daily-driver fixes: opt-ins, safe renames, repo hygiene (2026-09-26)
+
+Additions and behaviour changes from the daily-driver fixes. Everything is backwards
+compatible: new fields are optional for older daemons and viewers, which ignore them.
+
+### 21.1 Reading an agent app's saved login is opt-in
+
+Cursor's plan usage (§16.2) needs the **Cursor app's** saved login (`state.vscdb`
+`cursorAuth/accessToken`). Ruah reads it only when the user allowed it:
+
+- Saved as `usage.readAppLogins` (boolean) in `$RUAH_HOME/settings.json`, **default off**.
+  `RUAH_USAGE_READ_LOGINS` (`1/true/on/yes`, `0/false/off/no`) overrides the saved value for
+  one process and locks the switch in the app. `SettingsStore` re-reads the file when another
+  process (the CLI) changed it — a daemon checks every 3 s — and a change found that way is
+  handled like one made in the app (the Cursor reading is dropped, every window gets a new
+  `activity.snapshot`).
+- `UsageSettingsView = { readAppLogins: boolean; source: "settings" | "env" | "default" }`.
+- WS (§13.6): `settings.set` takes `usage?: { readAppLogins?: boolean }`; `AppFeatures` (in
+  `activity.snapshot`) gains `usage: UsageSettingsView`. A socket whose upgrade `Origin` is not
+  the daemon's own origin (another localhost port, an `--allow-origin` site) gets
+  `error` `bad_message` for a `settings.set` carrying `usage`, and nothing changes.
+- HTTP: `GET /api/usage/settings` → `UsageSettingsView`, with the checks of every
+  `/api/usage/*` route: a loopback / IP-literal / bound Host (DNS rebinding), an allowed
+  `Origin` when there is one (403), and no `Sec-Fetch-Site: cross-site` without one.
+  `POST /api/usage/settings` `{ readAppLogins: boolean }` (JSON ≤ 4 KiB; 400 otherwise) →
+  `UsageSettingsView` takes the stricter rule of extension changes (§17.3,
+  `src/serve/local-mutation.ts`): a loopback peer and Host, `Content-Type: application/json`
+  (415 otherwise, so a no-preflight `text/plain` POST fails), `Sec-Fetch-Site` same-origin or
+  none, and an `Origin`, when sent, that is the Host's own (403) — only the viewer this
+  daemon serves, or a client without an Origin. Changing it drops the cached Cursor reading,
+  so the card is re-read at once, and every window's Settings → Features follows.
+- `AgentLimits.appLogin?: { readAppLogins; source; app }` on the Cursor card. While off, the
+  card shows the tier, `status: "partial"`, a `reason` saying the numbers need the app's
+  login, and the switch ("Read Cursor's saved login to show plan usage — the token stays in
+  memory and is never stored"); the app is not even opened.
+- CLI: `ruah app usage settings [--read-app-logins on|off] [--json]` (same file, no daemon;
+  a running daemon picks the change up); `ruah app usage limits` follows the saved value.
+  While `RUAH_USAGE_READ_LOGINS` is set it prints the saved choice and how to unset the
+  variable instead of the `--read-app-logins` hint.
+
+### 21.2 System repos: no rename under a running turn; Suggest connections stops
+
+- `POST /api/system/repos/rename` answers **409** (with the reason) while any turn of the
+  system (any chat, foreground or background) runs or waits for its agent: the turn stores
+  its record (element ids included) when it finishes and would write the old ids back.
+  `ruah app system rename` asks a running daemon first (`--daemon <url>`, default
+  `RUAH_DAEMON_URL` / §13 default) and refuses the same way (exit 1); `--offline` skips the
+  check. When no daemon answers it renames and says so on stderr (the desktop app uses
+  another port when 4177 is taken: pass `--daemon`).
+- "Suggest connections" is capped: `RUAH_SUGGEST_TIMEOUT_MS` (≥ 1000, default 10 min). On
+  timeout or cancel the run ends at once, its agent turn is cancelled, and `lastRun.error`
+  says why ("timed out after 10 min waiting for your permission (…)", "cancelled").
+- `POST /api/system/suggestions/cancel` `{}` → `SuggestionsView` (409 when nothing runs).
+- `SuggestionsView.running` gains `turnId?`, `deadline` (ISO) and `waitingPermission?` (the
+  first permission request the turn waits on, as in `permission.request`: `requestId`,
+  `toolCall`, `options`). The Connections tab shows it with its answer buttons, the time
+  left and a Stop button.
+
+### 21.3 What Ruah writes into a repository
+
+Only committable files, and only on an explicit user action:
+
+| File | Written by |
+| --- | --- |
+| `.ruah/verify.json` | Sync criteria (never by a verify run) |
+| `.ruah/cloud.json` | cloud scope changes (§14) |
+| `.ruah/extensions.json` | enabling / editing a project extension (§17) |
+| `.ruah/preview.json` | "Save to the repo" in the Preview (off by default; §18) |
+| `.ruah/links.json` | linking a work item (§6) |
+| `.ruah/suggestions.json`, `.ruah/system-scan.json` | a system folder (§12) |
+
+- Caches and run outputs live in `$RUAH_HOME/projects/<projectId>/cache` (the id of the real
+  path): verify badges (`verify-nodes.json`), per-node criteria slices, eval specs and
+  results (`cache/evals`). A missing `ruah eval` writes nothing.
+- The Preview's pick is remembered on this computer, in
+  `$RUAH_HOME/projects/<projectId>/preview.json` (same format as §18.3), which wins over the
+  repo's file. `POST /api/preview/start` `remember: true` and `POST /api/preview/choice` write
+  there; `saveToRepo: true` on either writes `.ruah/preview.json` instead (and drops this
+  computer's copy). `PreviewDetection.choiceFrom?: "local" | "repo"` says where `choice` came
+  from. The viewer offers "Save to the repo (.ruah/preview.json)" — a checkbox, off by default,
+  in the custom-command dialog and an item in the command menu. CLI: `ruah app preview
+  --remember` keeps the pick in `$RUAH_HOME`, `--save-to-repo` writes the repo file.
+- Verify after an agent turn runs only when the repo has criteria (`.ruah/verify.json` with
+  more than the placeholder older versions wrote) and `ruah verify` is installed. An explicit
+  Verify without criteria answers `unverifiable` with the fix and writes nothing. Sync
+  criteria with nothing to sync writes nothing either: `POST /api/engines/verify/sync` →
+  `{ path, criteriaCount: 0, written: false }` (`written: true` otherwise).
+- Whenever Ruah writes a committable file into a repo's `.ruah/`, it makes sure
+  `.ruah/.gitignore` ignores `.cache/` (created with a two-line header, or one line appended;
+  never rewritten) — except while a `.ruah/.cache/` folder exists: after the migration below
+  what is left there is the user's, and must not silently drop out of git. Reads and the
+  migration never create or change `.ruah/.gitignore`.
+- Migration, once per project (recorded in `$RUAH_HOME/projects/<projectId>/cache/
+  repo-migration.json`, on the first verify read): the old `.ruah/.cache/verify-nodes.json` is
+  merged into the home cache and deleted, the `verify-<node>.json` criteria slices are
+  deleted, the old eval specs and results in `.ruah/evals/` (`node-<id>.json`,
+  `results-<id>-<ms>.json`) are moved to `cache/evals`, and each of those folders — and
+  `.ruah/` — is removed when that leaves it empty. Only Ruah's own files are touched, and
+  never one git tracks (`git ls-files`, asked only when an old folder exists): a committed
+  file is copied to the home cache but stays, reported as a leftover. Later reads write
+  nothing, in the repo or in `$RUAH_HOME`.
+- `GET /api/engines/verify/state` adds `legacy?: { placeholderCriteria?: ".ruah/verify.json";
+  leftover?: string[] }`: the repo's `.ruah/verify.json` is exactly the placeholder older
+  versions wrote on their own, and Ruah's old cache files still in the repo (committed, or
+  not deletable). The
+  viewer shows it once per project and session: "Remove" calls
+  `POST /api/engines/verify/remove-placeholder` `{}` → `{ removed: true, path }` (409, nothing
+  removed, unless the file is exactly that placeholder; `.ruah/` goes when that leaves it
+  empty); "Keep" stops asking for that project (viewer `localStorage`).
+- Not changed: `architecture.json` at the repo root is the map itself
+  (architecture-as-code, DESIGN-NOTES "Data"); a folder without one is scanned and gets one
+  when it is opened.
+
+### 21.4 Verify state is per project
+
+`GET /api/engines/verify/state` answers `{ root: string | null, nodes }` (was `{ nodes }`):
+the daemon keeps results per project root. The viewer clears badges on a switch (and during
+one) and drops an answer whose `root` is not the open project's.
+
+### 21.5 The bundled sample never reaches a daemon
+
+While the viewer shows the bundled sample ("Explore the sample", or no daemon yet), nothing
+it does reaches a daemon. Engine calls (guard, opt, eval, conv, replay), the projects API
+(`daemon.ts` `api()`), preview actions, the system dialogs and the draw.io export answer with
+`SAMPLE_MODE_MESSAGE` instead; the integrations, extensions, usage and drill-in (expand)
+clients are bound to the daemon's origin only while `source === "daemon"`, so they make no
+request at all. All engine calls go to the daemon's origin (not relative URLs). A daemon's
+first `project` frame drops the sample (map, turns, drafts), whatever project it names —
+including none (launcher).
+
+### 21.6 Engine status reads the toolkit (addition to §8)
+
+`GET /api/engines/status` finds the toolkit behind the `ruah` bin (an npm symlink into
+`@ruah-dev/cli`, or the shell shim Homebrew installs) and reads its `@ruah-dev/*`
+`package.json` files the way ruah-cli discovers namespaces (real folders only; `orch` and
+`conv` from the CLI itself). Nothing is spawned; the answer is cached until that folder
+changes. Each entry gains `via?: "ruah" | "bin" | "workspace"` when installed. A `ruah`
+that cannot be inspected is still tried, as before. The viewer re-reads status when the
+daemon connects or the project changes (one shared read per 15 s; failures not cached).
+
+### 21.7 Tasks outside a git repository (addition to §6)
+
+`GET /api/ruah/status` answers `{ initialized: false, reason, hint }` without running ruah
+when there is nothing to show: `reason` ∈ `cli_missing | no_project | not_git |
+not_initialized` (`not_git`: no `.git` folder or file up the tree; checked without a spawn).
+Workflows are empty there, mutations answer 409 with the fix, and the ruah integration card
+says so. Any other ruah failure is one readable line (no colours, source excerpt, stack
+frames or Node banner).
+
+### 21.8 Smaller behaviour changes from the sweep
+
+- §9 Kubernetes: kubectl with no context at all (no kubeconfig) is `not_connected` ("no
+  contexts in your kubeconfig — add your cluster with its provider's CLI (…)", hint
+  `kubectl config get-contexts`: a real, harmless command, since the card can run it)
+  instead of an `error` from asking localhost:8080; it is no longer listed as "could not
+  read".
+- §18 preview logs: kept lines lose spinner frames (`⠙`) as well as colours; a line left
+  empty is dropped. The crash reason prefers the thrown error's own message and never picks a
+  stack frame, the error object's dump, Node's banner or npm's footer / notices.
+- §12.1: writing `.ruah/system-scan.json` also ensures `.ruah/.gitignore` (§21.3).
+- Viewer: a page opened with `?daemon=` keeps using that daemon after in-app navigation;
+  a palette click adds the element right of the level's elements (drag-and-drop is unchanged);
+  the Replay button is hidden while `ruah watch` is not installed.

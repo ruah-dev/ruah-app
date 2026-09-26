@@ -125,6 +125,19 @@ export const AgentLimitsSchema = z.object({
   stale: z.boolean().optional(),
   /** The provider's own usage page. */
   dashboardUrl: z.string().optional(),
+  /**
+   * §21.1: set on agents whose plan usage needs the agent app's saved login
+   * (Cursor): whether reading it is allowed and what decided that. The card
+   * shows its switch from this.
+   */
+  appLogin: z
+    .object({
+      readAppLogins: z.boolean(),
+      source: z.enum(["settings", "env", "default"]),
+      /** The app whose login it is ("the Cursor app"). */
+      app: z.string(),
+    })
+    .optional(),
 });
 export type AgentLimits = z.infer<typeof AgentLimitsSchema>;
 

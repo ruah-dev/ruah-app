@@ -18,6 +18,37 @@ import { projectIdOf } from "./store.js";
 
 const SETUP_HINT = "npm i -g @ruah-dev/cli";
 const INIT_HINT = "ruah init";
+const NOT_GIT_HINT = "ruah runs tasks on git worktrees, so it needs a git repository: run `git init` in the project folder, or open a repository.";
+
+/** The git work tree `dir` is in (walks up to a `.git` folder or file); undefined outside one. No spawn. */
+export function gitRootOf(dir: string): string | undefined {
+  let current = path.resolve(dir);
+  for (;;) {
+    if (fs.existsSync(path.join(current, ".git"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/**
+ * A ruah CLI failure as one readable line: colours, the "✗" mark, Node stack
+ * frames and internals dropped; "not a git repository" said plainly.
+ */
+export function ruahFailureMessage(raw: string): string {
+  const all = stripAnsi(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  // An uncaught Node error prints the source excerpt first, then "Error: message", then frames.
+  const thrown = all.find((l) => /^(?:[A-Z]\w*)?Error(?: \[[\w-]+\])?: /.test(l));
+  const lines = thrown !== undefined
+    ? [thrown.replace(/^(?:[A-Z]\w*)?Error(?: \[[\w-]+\])?: /, "")]
+    : all.filter((l) => !/^at\s/.test(l) && !/node:internal|^\^+$|^Node\.js v\d/.test(l) && !/^(?:file:\/\/)?[\w/.@-]+\.(?:m?js|c?js|ts):\d+$/.test(l));
+  const text = lines.join(" ").replace(/^[✗✖×]\s*/u, "").replace(/\s+/g, " ").trim();
+  if (/not a git repository/i.test(text)) return "this folder is not a git repository (ruah needs one: `git init`)";
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+}
 const MUTATION_TIMEOUT_MS = 120_000;
 
 /** Starts a long-running command detached from the daemon; returns the log file. */
@@ -92,12 +123,14 @@ export async function activeRuahTasks(
   deps: { runner?: Runner; bin?: string | undefined; timeoutMs?: number } = {},
 ): Promise<RuahResume> {
   if (!fs.existsSync(path.join(root, ".ruah"))) return { initialized: false };
+  // ruah needs git; outside a work tree it only prints an error.
+  if (gitRootOf(root) === undefined) return { initialized: false };
   const bin = deps.bin ?? resolveBin("ruah");
   if (bin === undefined) return { initialized: true, tasks: [], error: `ruah CLI not installed — ${SETUP_HINT}` };
   const runner = deps.runner ?? defaultRunner;
   try {
     const result = await runner(bin, ["task", "list", "--json"], { cwd: root, timeoutMs: deps.timeoutMs ?? 5000 });
-    if (result.code !== 0) return { initialized: true, tasks: [], error: `ruah task list: ${cliMessage(result)}` };
+    if (result.code !== 0) return { initialized: true, tasks: [], error: `ruah task list: ${ruahFailureMessage(`${result.stderr}\n${result.stdout}`) || cliMessage(result)}` };
     const json = parseJson(stripAnsi(result.stdout));
     const entries = Array.isArray(json) ? json : Object.values(obj(json) ?? {});
     const tasks: RuahTaskSummary[] = [];
@@ -153,6 +186,7 @@ export class RuahIntegration implements Integration {
     const version = await this.version(bin);
     const v = version !== undefined ? `ruah v${version}` : "ruah";
     if (project === null) return this.base({ detail: `${v} · no project open` });
+    if (gitRootOf(project.root) === undefined) return this.base({ detail: `${v} · this folder is not a git repository`, setupHint: "git init" });
     if (!isInitialized(project.root)) return this.base({ detail: `${v} · this repo is not initialized for ruah`, setupHint: INIT_HINT });
     return this.base({ status: "connected", detail: `${v} · initialized` });
   }
@@ -170,6 +204,7 @@ export class RuahIntegration implements Integration {
     const bin = this.bin();
     if (bin === undefined) throw new IntegrationError(424, `ruah CLI not installed — ${SETUP_HINT}`);
     if (project === null) throw new IntegrationError(409, "no project open");
+    if (gitRootOf(project.root) === undefined) throw new IntegrationError(409, NOT_GIT_HINT);
     if (!isInitialized(project.root)) throw new IntegrationError(409, `ruah is not initialized in this repo — run: ${INIT_HINT}`);
     return { bin, root: project.root };
   }
@@ -181,15 +216,24 @@ export class RuahIntegration implements Integration {
     } catch (err) {
       throw new IntegrationError(504, err instanceof CliError ? err.message : "ruah failed");
     }
-    if (result.code !== 0) throw new IntegrationError(422, `ruah ${args[0] ?? ""} ${args[1] ?? ""}: ${cliMessage(result)}`.replace(/\s+:/, ":"));
+    if (result.code !== 0) {
+      const why = ruahFailureMessage(`${result.stderr}\n${result.stdout}`) || cliMessage(result);
+      throw new IntegrationError(422, `ruah ${args[0] ?? ""} ${args[1] ?? ""}: ${why}`.replace(/\s+:/, ":"));
+    }
     return stripAnsi(result.stdout);
   }
 
+  /**
+   * `ruah status --json`, or why there is nothing to show (`reason`: the CLI
+   * is missing, no project, not a git repository, ruah not initialized) —
+   * never the CLI's raw output.
+   */
   async status(project: ProjectContext | null): Promise<unknown> {
     const bin = this.bin();
-    if (bin === undefined) return { initialized: false, hint: SETUP_HINT };
-    if (project === null) return { initialized: false, hint: "open a project first" };
-    if (!isInitialized(project.root)) return { initialized: false, hint: INIT_HINT };
+    if (bin === undefined) return { initialized: false, reason: "cli_missing", hint: SETUP_HINT };
+    if (project === null) return { initialized: false, reason: "no_project", hint: "open a project first" };
+    if (gitRootOf(project.root) === undefined) return { initialized: false, reason: "not_git", hint: NOT_GIT_HINT };
+    if (!isInitialized(project.root)) return { initialized: false, reason: "not_initialized", hint: INIT_HINT };
     const json = obj(parseJson(await this.ruah(bin, project.root, ["status", "--json"])));
     if (json === undefined) throw new IntegrationError(502, "ruah status: unexpected (non-JSON) output");
     return { initialized: true, ...json };
@@ -241,7 +285,7 @@ export class RuahIntegration implements Integration {
 
   async workflows(project: ProjectContext | null): Promise<{ workflows: { name: string; path: string }[] }> {
     const bin = this.bin();
-    if (bin === undefined || project === null || !isInitialized(project.root)) return { workflows: [] };
+    if (bin === undefined || project === null || gitRootOf(project.root) === undefined || !isInitialized(project.root)) return { workflows: [] };
     const json = parseJson(await this.ruah(bin, project.root, ["workflow", "list", "--json"]));
     const workflows = arr(json)
       .map((w) => ({ name: str(obj(w)?.name), path: str(obj(w)?.path) }))

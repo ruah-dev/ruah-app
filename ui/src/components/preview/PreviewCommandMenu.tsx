@@ -1,8 +1,8 @@
 // The command picker: every detected way to run the project (grouped per app in a monorepo),
-// your own command, forgetting the saved choice. Picking one runs it and remembers it for the
-// project (.ruah/preview.json, committable).
+// your own command, forgetting the saved choice. Picking one runs it and remembers it on this
+// computer; only "Save to the repo" writes the committable .ruah/preview.json (§21.3).
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronDown, FolderOpen, RefreshCw, SquareTerminal, Undo2, Zap } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, FileDown, FolderOpen, RefreshCw, SquareTerminal, Undo2, Zap } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,15 +38,16 @@ export function CustomCommandDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: { command?: string | undefined; dir?: string | undefined } | undefined;
-  onRun: (input: { command: string; dir: string; remember: boolean }) => void;
+  onRun: (input: { command: string; dir: string; remember: boolean; saveToRepo: boolean }) => void;
 }) {
   const [command, setCommand] = useState(initial?.command ?? "");
   const [dir, setDir] = useState(initial?.dir ?? ".");
   const [remember, setRemember] = useState(true);
+  const [saveToRepo, setSaveToRepo] = useState(false);
   const submit = () => {
     const c = command.trim();
     if (!c) return;
-    onRun({ command: c, dir: dir.trim() || ".", remember });
+    onRun({ command: c, dir: dir.trim() || ".", remember: remember && !saveToRepo, saveToRepo });
     onOpenChange(false);
   };
   return (
@@ -88,8 +89,18 @@ export function CustomCommandDialog({
             />
           </label>
           <label className="flex items-center gap-2 text-ui-sm text-muted-foreground">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-[var(--primary)]" />
-            Remember for this project <span className="font-mono text-meta text-faint">(.ruah/preview.json)</span>
+            <input
+              type="checkbox"
+              checked={remember || saveToRepo}
+              disabled={saveToRepo}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="accent-[var(--primary)]"
+            />
+            Remember for this project on this computer
+          </label>
+          <label className="flex items-center gap-2 text-ui-sm text-muted-foreground">
+            <input type="checkbox" checked={saveToRepo} onChange={(e) => setSaveToRepo(e.target.checked)} className="accent-[var(--primary)]" />
+            Save to the repo <span className="font-mono text-meta text-faint">(.ruah/preview.json, committable)</span>
           </label>
           <DialogFooter>
             <button
@@ -120,6 +131,8 @@ export interface PreviewCommandMenuProps {
   onPick: (candidate: PreviewCandidate) => void;
   onCustom: () => void;
   onForget: () => void;
+  /** Writes this computer's choice into the repo (`.ruah/preview.json`), an explicit action. */
+  onSaveToRepo: () => void;
   onRedetect: () => void;
   onShowLogs: () => void;
   /** Controlled, so "Change…" elsewhere in the pane can open it. */
@@ -127,7 +140,7 @@ export interface PreviewCommandMenuProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function PreviewCommandMenu({ status, detection, busy, onPick, onCustom, onForget, onRedetect, onShowLogs, open, onOpenChange }: PreviewCommandMenuProps) {
+export function PreviewCommandMenu({ status, detection, busy, onPick, onCustom, onForget, onSaveToRepo, onRedetect, onShowLogs, open, onOpenChange }: PreviewCommandMenuProps) {
   const selected = detection?.candidates.find((c) => c.id === detection.selected) ?? null;
   const current = status?.candidate ?? selected;
   const meta = stateMeta(status);
@@ -182,9 +195,16 @@ export function PreviewCommandMenu({ status, detection, busy, onPick, onCustom, 
         <DropdownMenuItem onSelect={onRedetect} className="gap-2">
           <RefreshCw className="size-3.5 text-muted-foreground" /> Detect again
         </DropdownMenuItem>
+        {detection?.choice && detection.choiceFrom !== "repo" ? (
+          <DropdownMenuItem onSelect={onSaveToRepo} className="gap-2">
+            <FileDown className="size-3.5 text-muted-foreground" /> Save to the repo
+            <span className="ml-auto font-mono text-meta text-faint">.ruah/preview.json</span>
+          </DropdownMenuItem>
+        ) : null}
         {detection?.choice ? (
           <DropdownMenuItem onSelect={onForget} className="gap-2">
-            <Undo2 className="size-3.5 text-muted-foreground" /> Forget the saved choice
+            <Undo2 className="size-3.5 text-muted-foreground" />{" "}
+            {detection.choiceFrom === "repo" ? "Forget the choice saved in the repo" : "Forget the saved choice"}
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
