@@ -2,9 +2,11 @@
 // even-pace mark, "resets in 3d 4h" with the absolute time on hover), on-demand spend, what the
 // agent's CLI recorded locally, Ruah's own estimate, and the source with a refresh. Agents with
 // nothing to measure get a compact card that says why and what to do.
-import { Fragment, type ReactNode } from "react";
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
+import { ArrowUpRight, KeyRound, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { AgentMark } from "@/components/agent/ComposerControls";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { costOf, usePrices } from "@/lib/usage";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,7 @@ import {
   type Severity,
   type UsageEstimate,
 } from "./agentLimitsModel";
+import { setReadAppLogins } from "./agentLimitsStore";
 
 const FILL: Record<Severity, string> = {
   normal: "var(--primary)",
@@ -175,6 +178,54 @@ function localPeriod(since: string | null, checkedAt: string): string {
   return Number.isFinite(days) && days > 0 ? `last ${days} days` : "recent";
 }
 
+/**
+ * §20.1: the opt-in for reading the agent app's saved login (Cursor's plan usage). Off by default;
+ * locked while RUAH_USAGE_READ_LOGINS decides.
+ */
+export function AppLoginSwitch({ appLogin }: { appLogin: NonNullable<AgentLimits["appLogin"]> }) {
+  const id = useId();
+  const [pending, setPending] = useState<boolean | null>(null);
+  const checked = pending ?? appLogin.readAppLogins;
+  const locked = appLogin.source === "env";
+  // Saved: the switch holds the new position until the re-read card reports it (or 20 s pass).
+  useEffect(() => {
+    if (pending === null) return;
+    if (appLogin.readAppLogins === pending) {
+      setPending(null);
+      return;
+    }
+    const t = setTimeout(() => setPending(null), 20_000);
+    return () => clearTimeout(t);
+  }, [pending, appLogin.readAppLogins]);
+  return (
+    <div className="flex items-start gap-3 rounded-lg bg-foreground/[0.035] px-3 py-2.5">
+      <KeyRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-[12.5px] leading-relaxed">
+        <span className="block text-foreground">Read Cursor&apos;s saved login to show plan usage</span>
+        <span className="block text-muted-foreground">
+          {locked
+            ? `Set by RUAH_USAGE_READ_LOGINS=${appLogin.readAppLogins ? "1" : "0"} for this Ruah.`
+            : "The token stays in memory for one read-only request to cursor.com and is never stored."}
+        </span>
+      </label>
+      <Switch
+        id={id}
+        checked={checked}
+        disabled={locked || pending !== null}
+        aria-label="Read Cursor's saved login to show plan usage"
+        onCheckedChange={(on) => {
+          setPending(on);
+          setReadAppLogins(on).catch((err: unknown) => {
+            setPending(null);
+            toast.error("Couldn't change the setting", { description: err instanceof Error ? err.message : String(err) });
+          });
+        }}
+        className="mt-0.5"
+      />
+    </div>
+  );
+}
+
 function StatusPill({ agent }: { agent: AgentLimits }) {
   const label = agent.stale ? "Stale" : STATUS_LABEL[agent.status];
   if (!label) return null;
@@ -270,6 +321,8 @@ export function AgentLimitCard({
           {agent.estimate ? <EstimateRow estimate={agent.estimate} /> : null}
         </div>
       ) : null}
+
+      {agent.appLogin ? <AppLoginSwitch appLogin={agent.appLogin} /> : null}
 
       {agent.reason || agent.action ? (
         <div className={cn("flex flex-col gap-1 text-[12.5px] leading-relaxed", hasBody && "border-t border-hairline pt-3")}>

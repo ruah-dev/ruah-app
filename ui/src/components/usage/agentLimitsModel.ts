@@ -81,6 +81,8 @@ export interface AgentLimits {
   checkedAt: string;
   stale?: boolean;
   dashboardUrl?: string;
+  /** §20.1: plan usage needs the agent app's saved login; whether reading it is allowed (card switch). */
+  appLogin?: { readAppLogins: boolean; source: "settings" | "env" | "default"; app: string };
 }
 
 export interface AgentLimitsReport {

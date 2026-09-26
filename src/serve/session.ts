@@ -40,7 +40,7 @@ import type {
   WarmState,
 } from "../contracts/ws.js";
 import { DEFAULT_MAX_BACKGROUND_TURNS, editedFiles, type ActivityContext, type ActivityService } from "./activity.js";
-import { DEFAULT_FEATURES } from "../projects/settings-store.js";
+import { DEFAULT_FEATURES, type FeaturesPatch } from "../projects/settings-store.js";
 import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
@@ -454,7 +454,7 @@ export class SessionHub {
   }
 
   /** settings.set: feature flags in settings.json; every viewer gets a new activity.snapshot. */
-  setFeatures(patch: Partial<AppFeatures>, socket?: WebSocket): void {
+  setFeatures(patch: FeaturesPatch, socket?: WebSocket): void {
     const settings = this.options.settings;
     if (settings === undefined) {
       if (socket !== undefined) this.error(socket, "bad_message", "settings are not available");
@@ -1895,6 +1895,7 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
         {
           ...(message.backgroundAgents !== undefined ? { backgroundAgents: message.backgroundAgents } : {}),
           ...(message.notifications !== undefined ? { notifications: message.notifications } : {}),
+          ...(message.usage?.readAppLogins !== undefined ? { usage: { readAppLogins: message.usage.readAppLogins } } : {}),
         },
         socket,
       );

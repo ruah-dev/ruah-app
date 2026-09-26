@@ -1693,8 +1693,8 @@ export function setScanOptions(patch: Partial<ScanOptions> & { id?: string }): P
   return api("/api/projects/scan-options", patch);
 }
 
-/** Feature flags in ~/.ruah/settings.json (§13.6); every viewer gets a new activity.snapshot. */
-export function setFeatureFlags(patch: Partial<AppFeatures>): boolean {
+/** Feature flags in ~/.ruah/settings.json (§13.6, §20.1); every viewer gets a new activity.snapshot. */
+export function setFeatureFlags(patch: Partial<Omit<AppFeatures, "usage">> & { usage?: { readAppLogins?: boolean } }): boolean {
   return send({ type: "settings.set", ...patch });
 }
 

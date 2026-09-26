@@ -222,10 +222,21 @@ export type ProjectActivity = z.infer<typeof ProjectActivitySchema>;
 
 export const NotificationModeSchema = z.enum(["background", "always", "off"]);
 export type NotificationMode = z.infer<typeof NotificationModeSchema>;
-/** Feature flags in $RUAH_HOME/settings.json (§13.6). */
+/**
+ * §20.1: whether Ruah reads an agent app's saved login to show plan usage
+ * (`usage.readAppLogins` in settings.json, default off); `source` says what
+ * decided it — RUAH_USAGE_READ_LOGINS ("env") wins over the saved value.
+ */
+export const UsageSettingsViewSchema = z.object({
+  readAppLogins: z.boolean(),
+  source: z.enum(["settings", "env", "default"]),
+});
+export type UsageSettingsView = z.infer<typeof UsageSettingsViewSchema>;
+/** Feature flags in $RUAH_HOME/settings.json (§13.6, §20.1). */
 export const AppFeaturesSchema = z.object({
   backgroundAgents: z.boolean(),
   notifications: NotificationModeSchema,
+  usage: UsageSettingsViewSchema,
 });
 export type AppFeatures = z.infer<typeof AppFeaturesSchema>;
 
@@ -275,7 +286,13 @@ export const ClientMessageSchema = z.union([
   // §13.5: the viewer's opaque per-project view state (a JSON object, ≤ 16 KB)
   z.object({ type: z.literal("view.save"), projectId: z.string().max(64), view: z.unknown() }),
   // §13.6: feature flags (settings.json)
-  z.object({ type: z.literal("settings.set"), backgroundAgents: z.boolean().optional(), notifications: NotificationModeSchema.optional() }),
+  z.object({
+    type: z.literal("settings.set"),
+    backgroundAgents: z.boolean().optional(),
+    notifications: NotificationModeSchema.optional(),
+    /** §20.1 */
+    usage: z.object({ readAppLogins: z.boolean().optional() }).optional(),
+  }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 

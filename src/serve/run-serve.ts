@@ -140,10 +140,20 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   const onError = (line: string): void => {
     process.stderr.write(`${line}\n`);
   };
+  // §20.1: set from the Cursor limits card over HTTP; every window's Settings → Features follows.
+  let broadcastFeatures: () => void = () => {};
   const usage = new UsageService(new UsageLog(home), limits, {
     onError,
     version,
     debug,
+    settings: {
+      get: () => settings.usageSettings(),
+      set: (patch) => {
+        const next = settings.updateFeatures({ usage: patch }).usage;
+        broadcastFeatures();
+        return next;
+      },
+    },
     workflows: () => {
       const arch = hubRef?.store?.current();
       return arch?.workflows.map((w) => ({ id: w.id, steps: w.steps }));
@@ -160,6 +170,11 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     projectIds: () => projectsStore.list().map((p) => p.id),
     features: () => settings.features(),
     maxBackgroundTurns: envInt("RUAH_MAX_BACKGROUND_TURNS", DEFAULT_MAX_BACKGROUND_TURNS, 0),
+  });
+  broadcastFeatures = () => activity.broadcastSnapshot();
+  // Readings made under the old app-login setting are dropped, whichever path changed it.
+  settings.onFeaturesChange((before, after) => {
+    if (before.usage.readAppLogins !== after.usage.readAppLogins) usage.agentLimitsService.invalidate("cursor");
   });
   const attachments = new AttachmentStore(home);
   const engines = new EnginesService({
