@@ -245,7 +245,8 @@ describe("ExtensionsService", () => {
     expect(claude.claude.systemPromptAppend).toContain("Answer briefly.");
 
     const cursor = await svc.resolveFor("cursor", project);
-    expect(cursor.acp.pluginDirs).toEqual([plugin.replace(/claude-/, "cursor-")]);
+    // Only the plugin folder's own name changes (the temp dir may itself contain "claude-").
+    expect(cursor.acp.pluginDirs).toEqual([path.join(path.dirname(plugin), path.basename(plugin).replace(/^claude-/, "cursor-"))]);
     expect(withPluginDirs("cursor", ["acp"], ["/p"])).toEqual(["--plugin-dir", "/p", "acp"]);
     expect(withPluginDirs("grok", ["agent", "stdio"], ["/p"])).toEqual(["agent", "--plugin-dir", "/p", "stdio"]);
 
