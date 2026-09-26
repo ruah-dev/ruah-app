@@ -179,33 +179,22 @@ function TaskRow({
   );
 }
 
-const RUAH_PITCH =
-  "ruah runs coding agents on isolated git worktrees with file locks, so several tasks run at once without stepping on each other.";
-
-/** What the "not set up" state says for the daemon's hint: the command to run, or what to do. */
-export function notInitializedCopy(hint: string | undefined): { title: string; body: string; command: string | null } {
-  const h = (hint ?? "").trim();
-  if (/^(npm|pnpm|brew|bun) /.test(h))
-    return { title: "ruah isn't installed", body: `${RUAH_PITCH} Install it once, then check again:`, command: h };
-  if (/^open a project/i.test(h))
-    return { title: "Open a project first", body: `${RUAH_PITCH} Tasks belong to a repository: open one from the project menu.`, command: null };
-  return { title: "ruah isn't set up in this repository", body: `${RUAH_PITCH} Set it up once in the repo root:`, command: h || "ruah init" };
-}
-
 /** ruah isn't initialised: the trio scene shows what it is for — agents working side by side. */
 function NotInitialized({ hint }: { hint?: string | undefined }) {
-  const copy = notInitializedCopy(hint);
   return (
     <GhostState
       scene="trio"
       size="lg"
       eyebrow="Parallel agents"
-      title={copy.title}
-      body={copy.body}
+      title={<>ruah isn&apos;t set up in this repository</>}
+      body={
+        hint ??
+        "ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once without stepping on each other. Initialise it once in the repo root:"
+      }
       className="mx-auto max-w-lg px-6"
     >
-      {copy.command ? <CopyCommand command={copy.command} runnable className="mt-2 w-full max-w-xs text-left" /> : null}
-      <button type="button" className={cn(quietButton, "mt-1")} onClick={() => void loadRuah()}>
+      <CopyCommand command="ruah init" className="mt-2 w-full max-w-xs text-left" />
+      <button type="button" className={quietButton} onClick={() => void loadRuah()}>
         <RefreshCw className="size-3.5" /> Check again
       </button>
     </GhostState>
