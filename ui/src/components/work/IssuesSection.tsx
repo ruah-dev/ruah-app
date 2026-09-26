@@ -32,6 +32,7 @@ import {
 } from "@/components/integrations/common";
 import { CreateIssueDialog } from "./CreateIssueDialog";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ok"; items: WorkItem[] };
 
@@ -93,17 +94,17 @@ function LinkIssuePopover({
             value={q}
             onValueChange={setQ}
             placeholder="Search issues by key or text…"
-            className="h-9 text-[13px]"
+            className="h-9 text-ui"
           />
           <CommandList className="max-h-72">
             {searching && results.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-5 text-[12.5px] text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 py-5 text-ui-sm text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" /> Searching…
               </div>
             ) : null}
-            {error ? <p className="px-3 py-4 text-[12.5px] text-bad">{error}</p> : null}
+            {error ? <p className="px-3 py-4 text-ui-sm text-bad">{error}</p> : null}
             {!searching && !error ? (
-              <CommandEmpty className="py-5 text-center text-[12.5px] text-muted-foreground">
+              <CommandEmpty className="py-5 text-center text-ui-sm text-muted-foreground">
                 No issues found.
               </CommandEmpty>
             ) : null}
@@ -117,10 +118,10 @@ function LinkIssuePopover({
                       value={`${it.provider}:${it.id}`}
                       disabled={already || linking !== null}
                       onSelect={() => void link(it)}
-                      className="gap-2 text-[13px]"
+                      className="gap-2 text-ui"
                     >
                       <ProviderGlyph id={it.provider} />
-                      <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground">{it.id}</span>
+                      <span className="shrink-0 font-mono text-meta text-muted-foreground">{it.id}</span>
                       <span className="min-w-0 flex-1 truncate">{it.title}</span>
                       {linking === it.id ? (
                         <Loader2 className="size-3.5 animate-spin" />
@@ -148,14 +149,14 @@ function IssueRow({ item, onUnlink }: { item: WorkItem; onUnlink: () => void }) 
           href={item.url}
           target="_blank"
           rel="noreferrer"
-          className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-foreground/90 hover:underline"
+          className="flex min-w-0 items-center gap-1.5 text-ui-sm text-foreground/90 hover:underline"
           title={`${item.id} — open in ${item.provider === "jira" ? "Jira" : "GitHub"}`}
         >
-          <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground">{item.id}</span>
+          <span className="shrink-0 font-mono text-meta text-muted-foreground">{item.id}</span>
           <span className="truncate">{item.title}</span>
         </a>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px] text-muted-foreground">
-          <Pill tone={workStatusTone(item.status)} className="h-4 px-1 text-[11px]">
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-meta text-muted-foreground">
+          <Pill tone={workStatusTone(item.status)} className="h-4 px-1 text-caption">
             {item.status}
           </Pill>
           {item.assignee ? <span className="truncate">{item.assignee}</span> : <span className="text-faint">Unassigned</span>}
@@ -235,8 +236,8 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
   return (
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
-        <h3 className="text-[12px] font-medium text-muted-foreground">Issues</h3>
-        {items.length ? <span className="text-[11.5px] text-faint">{items.length}</span> : null}
+        <h3 className="text-label font-medium text-muted-foreground">Issues</h3>
+        {items.length ? <span className="text-meta text-faint">{items.length}</span> : null}
         <span className="flex-1" />
         {connected ? (
           <>
@@ -267,11 +268,13 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
       </div>
 
       {load.status === "loading" ? (
-        <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" /> Loading issues…
-        </p>
+        <div role="status" aria-live="polite" className="space-y-2">
+          <span className="sr-only">Loading issues…</span>
+          <Skeleton className="h-3 w-3/4 rounded" />
+          <Skeleton className="h-3 w-1/2 rounded" />
+        </div>
       ) : load.status === "error" ? (
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           {connected ? `Couldn't load issues: ${load.message}` : null}
           {!connected ? (
             <>
@@ -286,7 +289,7 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
           ))}
         </ul>
       ) : (
-        <p className={cn("text-[12px] text-faint")}>
+        <p className={cn("text-label text-faint")}>
           {connected ? (
             "No linked issues."
           ) : (

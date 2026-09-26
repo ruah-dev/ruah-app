@@ -44,11 +44,11 @@ export function ScopeBadge({ resource: r }: { resource: CloudResource }) {
   if (!s) return null;
   const label = s.in ? scopeBadge(s) : s.excluded ? "removed" : s.confidence === "weak" ? "looks related" : undefined;
   if (!label) return null;
-  const tone = s.confidence === "manual" ? "bg-primary/12 text-primary" : s.in ? "bg-ok/12 text-ok" : "bg-foreground/[0.06] text-muted-foreground";
+  const tone = s.confidence === "manual" ? "pill-primary" : s.in ? "pill-ok" : "bg-foreground/[0.06] text-muted-foreground";
   return (
     <span
       title={s.reasons.join("\n") || label}
-      className={cn("inline-flex h-4 max-w-[10rem] min-w-0 shrink-[2] items-center truncate rounded px-1.5 text-[10.5px] font-medium max-lg:hidden", tone)}
+      className={cn("inline-flex h-4 max-w-[10rem] min-w-0 shrink-[2] items-center truncate rounded px-1.5 text-micro font-medium max-lg:hidden", tone)}
     >
       {label}
     </span>
@@ -125,7 +125,7 @@ function groupBy<T>(list: T[], key: (t: T) => string): Map<string, T[]> {
 
 function Tags({ tags }: { tags: Record<string, string> | undefined }) {
   const entries = Object.entries(tags ?? {});
-  if (!entries.length) return <span className="text-[12px] text-muted-foreground/40">—</span>;
+  if (!entries.length) return <span className="text-label text-muted-foreground/40">—</span>;
   const shown = entries.slice(0, 2);
   const all = entries.map(([k, v]) => (v ? `${k}=${v}` : k)).join("\n");
   return (
@@ -133,13 +133,13 @@ function Tags({ tags }: { tags: Record<string, string> | undefined }) {
       {shown.map(([k, v]) => (
         <span
           key={k}
-          className="min-w-0 truncate rounded bg-foreground/[0.055] px-1.5 py-px font-mono text-[11px] text-muted-foreground"
+          className="min-w-0 truncate rounded bg-foreground/[0.055] px-1.5 py-px font-mono text-caption text-muted-foreground"
         >
           {v ? `${k}:${v}` : k}
         </span>
       ))}
       {entries.length > 2 ? (
-        <span className="shrink-0 text-[11px] text-faint">+{entries.length - 2}</span>
+        <span className="shrink-0 text-caption text-faint">+{entries.length - 2}</span>
       ) : null}
     </span>
   );
@@ -207,7 +207,7 @@ export function ResourceTable({
       <div
         className={cn(
           COLS,
-          "h-8 shrink-0 border-b border-hairline px-5 text-[11.5px] text-muted-foreground max-md:px-3",
+          "h-8 shrink-0 border-b border-hairline px-5 text-meta text-muted-foreground max-md:px-3",
         )}
         role="row"
       >
@@ -282,16 +282,16 @@ function RowView({
     return (
       <div className="flex h-full items-end gap-2 px-5 pb-1.5 max-md:px-3">
         <ProviderGlyph id={row.provider} className="mb-px size-4" />
-        <span className="text-[13px] font-medium text-foreground">{providerLabel(row.provider)}</span>
-        <span className="text-[12px] text-muted-foreground">{row.count}</span>
-        {row.down ? <span className="text-[12px] text-bad">· {row.down} down</span> : null}
-        {row.degraded ? <span className="text-[12px] text-warn">· {row.degraded} degraded</span> : null}
+        <span className="text-ui font-medium text-foreground">{providerLabel(row.provider)}</span>
+        <span className="text-label text-muted-foreground">{row.count}</span>
+        {row.down ? <span className="text-label text-bad">· {row.down} down</span> : null}
+        {row.degraded ? <span className="text-label text-warn">· {row.degraded} degraded</span> : null}
         <span className="flex-1" />
         <button
           type="button"
           onClick={() => onSyncProvider(row.provider)}
           disabled={!!syncing}
-          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
           Sync {providerLabel(row.provider)}
@@ -302,8 +302,8 @@ function RowView({
   if (row.kind === "region") {
     return (
       <div className="flex h-full items-end gap-2 border-b border-hairline px-5 pb-1.5 ps-11 max-md:px-3">
-        <span className="font-mono text-[12px] text-foreground/80">{row.region}</span>
-        <span className="text-[11.5px] text-faint">{row.count}</span>
+        <span className="font-mono text-label text-foreground/80">{row.region}</span>
+        <span className="text-meta text-faint">{row.count}</span>
       </div>
     );
   }
@@ -313,10 +313,10 @@ function RowView({
     return (
       <div className="flex h-full items-center gap-2 px-5 ps-11 max-md:px-3">
         <Icon className={cn("size-3.5", style.color)} />
-        <span className="text-[12px] font-medium text-muted-foreground">
+        <span className="text-label font-medium text-muted-foreground">
           {CLOUD_TYPE_LABEL[row.type as keyof typeof CLOUD_TYPE_LABEL] ?? row.type}
         </span>
-        <span className="text-[11.5px] text-faint">{row.count}</span>
+        <span className="text-meta text-faint">{row.count}</span>
       </div>
     );
   }
@@ -342,22 +342,22 @@ function RowView({
           <button
             type="button"
             onClick={() => onSelect(r.id)}
-            className="min-w-0 truncate text-left text-[13px] text-foreground hover:underline"
+            className="min-w-0 truncate text-left text-ui text-foreground hover:underline"
             title={`${r.id} — show details`}
           >
             {r.name}
           </button>
         ) : (
-          <span className="min-w-0 truncate text-[13px] text-foreground" title={r.id}>
+          <span className="min-w-0 truncate text-ui text-foreground" title={r.id}>
             {r.name}
           </span>
         )}
-        <span className="shrink-0 font-mono text-[11px] text-faint">{r.service}</span>
+        <span className="shrink-0 font-mono text-caption text-faint">{r.service}</span>
         <ScopeBadge resource={r} />
       </span>
       <span
         role="cell"
-        className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted-foreground"
+        className="flex min-w-0 items-center gap-1.5 text-ui-sm text-muted-foreground"
         title={healthTitle(r)}
       >
         <StatusDot tone={tone} />
@@ -374,11 +374,11 @@ function RowView({
               {HEALTH_LABEL[r.health]}
             </span>
             {r.replicas ? (
-              <span className="shrink-0 font-mono text-[11px] text-faint">
+              <span className="shrink-0 font-mono text-caption text-faint">
                 {r.replicas.ready}/{r.replicas.desired}
               </span>
             ) : null}
-            {detail ? <span className="min-w-0 truncate text-[12px] text-faint">{detail}</span> : null}
+            {detail ? <span className="min-w-0 truncate text-label text-faint">{detail}</span> : null}
           </>
         ) : (
           <span className="truncate">{r.status ?? "—"}</span>

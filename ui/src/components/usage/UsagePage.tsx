@@ -2,8 +2,9 @@
 // segmented controls, a big total with per-agent shares beside a layered chart, a totals row and
 // a model / time breakdown table. t3code's environments, Effect atoms and RPC are replaced by the
 // daemon's /api/usage endpoints (src/lib/usage.ts).
-import { useMemo, useState } from "react";
-import { RefreshCw, SlidersHorizontal } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { MessageSquare, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import {
   bucketOf,
@@ -21,9 +22,10 @@ import {
 } from "@/lib/usage";
 import { useWorkspace } from "@/lib/workspace";
 import { PageHeader } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { Skeleton } from "@/components/ui/skeleton";
+import { iconButton, primaryButton, quietButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 import { UsageChart, type ChartColumn } from "./UsageChart";
 import { AgentLimitsPanel } from "./AgentLimitsPanel";
@@ -53,19 +55,30 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="eyebrow">{label}</span>
-      <span className="heading text-[20px] text-foreground tabular-nums">{value}</span>
+      <span className="heading text-display text-foreground tabular-nums">{value}</span>
     </div>
   );
 }
 
 /** No data yet: the Accountant (charting) waits for turns; a failure brings the detective. */
-function EmptyState({ title, body, failed = false }: { title: string; body: string; failed?: boolean }) {
+function EmptyState({
+  title,
+  body,
+  failed = false,
+  action,
+}: {
+  title: string;
+  body: string;
+  failed?: boolean;
+  action?: ReactNode;
+}) {
   return (
     <GhostState
       pose={failed ? "detective" : "charting"}
       eyebrow={failed ? "Couldn't load" : "Usage"}
       title={title}
       body={body}
+      actions={action}
       className="py-20"
       live={failed ? "polite" : undefined}
     />
@@ -169,12 +182,15 @@ export function UsagePage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Usage">
         <Segmented
+          kind="tabs"
+          label="Show"
           value={metric}
           options={METRIC_OPTIONS}
           onChange={(v: UsageMetric) => setPref({ metric: v })}
         />
         {/* The period does not apply to Limits: it stays in place, disabled, so nothing shifts. */}
         <Segmented
+          label="Period"
           value={range}
           options={RANGE_OPTIONS.map((o) => ({ ...o, disabled: showingLimits }))}
           onChange={(v: UsageRange) => setPref({ range: v })}
@@ -185,7 +201,7 @@ export function UsagePage() {
           aria-label="Model prices"
           title="Model prices"
           onClick={() => setPricesOpen(true)}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={iconButton}
         >
           <SlidersHorizontal className="size-3.5" />
         </button>
@@ -194,7 +210,7 @@ export function UsagePage() {
           aria-label="Refresh"
           title="Refresh"
           onClick={refresh}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className={iconButton}
         >
           <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
         </button>
@@ -203,19 +219,30 @@ export function UsagePage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 max-md:px-4">
           {showingLimits ? (
-            <AgentLimitsPanel />
+            <AgentLimitsPanel refreshButton={false} />
           ) : summary.status === "loading" ? (
             <UsageSkeleton />
           ) : summary.status !== "ok" || !model ? (
             <EmptyState
               failed={summary.status === "error"}
-              title="No usage recorded yet"
+              title={summary.status === "error" ? "Couldn't load usage" : "No usage recorded yet"}
               body={
                 summary.status === "error"
-                  ? `The daemon did not answer: ${summary.message}`
+                  ? `The daemon did not answer: ${summary.message.replace(/\.$/, "")}. Check that Ruah is still running, then try again.`
                   : daemon.source === "daemon"
                     ? "Tokens and cost appear here after the agent has worked on a few turns."
                     : "Usage comes from the Ruah daemon. Start ruah app serve <repo> to record it."
+              }
+              action={
+                summary.status === "error" ? (
+                  <button type="button" className={quietButton} onClick={refreshSummary}>
+                    <RefreshCw className="size-3.5" /> Try again
+                  </button>
+                ) : daemon.source === "daemon" && daemon.project ? (
+                  <Link to="/agent" className={primaryButton}>
+                    <MessageSquare className="size-3.5" /> Ask agent
+                  </Link>
+                ) : undefined
               }
             />
           ) : (
@@ -226,7 +253,7 @@ export function UsagePage() {
                     <span className="text-[34px] leading-none font-semibold tracking-tight text-foreground tabular-nums">
                       {metric === "cost" ? formatUsd(model.totalCost) : formatTokens(model.totalTokens)}
                     </span>
-                    <span className="text-[12px] text-muted-foreground">
+                    <span className="text-label text-muted-foreground">
                       {formatCount(data!.totals.turns)} turns
                       {metric === "cost"
                         ? model.unpricedShare > 0
@@ -245,15 +272,15 @@ export function UsagePage() {
                     return (
                       <div key={a.agentId} className="flex flex-col gap-1">
                         <div className="flex items-baseline justify-between gap-4">
-                          <span className="flex min-w-0 items-center gap-2 text-[13px] text-foreground">
+                          <span className="flex min-w-0 items-center gap-2 text-ui text-foreground">
                             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: model.colors.get(a.agentId) }} />
                             <AgentMark name={model.labels.get(a.agentId) ?? a.agentId} />
                             <span className="truncate">{model.labels.get(a.agentId)}</span>
-                            <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums">
+                            <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
                               {formatCount(a.turns)} {a.turns === 1 ? "turn" : "turns"}
                             </span>
                           </span>
-                          <span className="shrink-0 text-[13px] font-medium tabular-nums">
+                          <span className="shrink-0 text-ui font-medium tabular-nums">
                             {metric === "cost" ? formatUsd(a.cost) : formatTokens(a.tokens)}
                           </span>
                         </div>
@@ -263,7 +290,7 @@ export function UsagePage() {
                             style={{ width: `${Math.max(2, share * 100)}%`, backgroundColor: model.colors.get(a.agentId) }}
                           />
                         </span>
-                        <span className="text-[12px] text-muted-foreground">
+                        <span className="text-label text-muted-foreground">
                           {metric === "cost"
                             ? `${formatPercent(share)} of cost · ${formatTokens(a.tokens)} tokens`
                             : `${formatPercent(share)} of tokens · ${formatUsd(a.cost)}`}
@@ -273,7 +300,7 @@ export function UsagePage() {
                   })}
                 </div>
                 <div className="flex min-w-0 flex-col gap-3">
-                  <h2 className="text-[13px] font-medium text-foreground">
+                  <h2 className="text-ui font-medium text-foreground">
                     {range === "24h" ? "Hourly" : "Daily"} {metric === "tokens" ? "tokens" : "cost"}
                   </h2>
                   <UsageChart
@@ -289,7 +316,7 @@ export function UsagePage() {
               </section>
 
               <section className="flex flex-col gap-2">
-                <h2 className="text-[13px] font-medium text-foreground">Totals</h2>
+                <h2 className="text-ui font-medium text-foreground">Totals</h2>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
                   <Metric label="Input" value={formatTokens(data!.totals.inputTokens)} />
                   <Metric label="Output" value={formatTokens(data!.totals.outputTokens)} />
@@ -303,17 +330,17 @@ export function UsagePage() {
                 <section className="grid gap-6 md:grid-cols-2">
                   {(data!.byNode?.length ?? 0) > 0 ? (
                     <div className="flex flex-col gap-2">
-                      <h2 className="text-[13px] font-medium text-foreground">Cost by element</h2>
-                      <p className="text-[12px] text-muted-foreground">From ~/.ruah/usage.jsonl turns that recorded a nodeId.</p>
-                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                      <h2 className="text-ui font-medium text-foreground">Cost by element</h2>
+                      <p className="text-label text-muted-foreground">From ~/.ruah/usage.jsonl turns that recorded a nodeId.</p>
+                      <ul className="divide-y divide-hairline/60 text-ui">
                         {data!.byNode!.slice(0, 12).map((row) => (
                           <li key={row.nodeId} className="flex items-baseline justify-between gap-3 py-2">
-                            <span className="truncate font-mono text-[12px]" title={row.nodeId}>
+                            <span className="truncate font-mono text-label" title={row.nodeId}>
                               {row.nodeId}
                             </span>
                             <span className="shrink-0 tabular-nums">
                               {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
-                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                              <span className="ms-2 text-caption text-muted-foreground">{formatCount(row.turns)} turns</span>
                             </span>
                           </li>
                         ))}
@@ -322,17 +349,17 @@ export function UsagePage() {
                   ) : null}
                   {(data!.byWorkflow?.length ?? 0) > 0 ? (
                     <div className="flex flex-col gap-2">
-                      <h2 className="text-[13px] font-medium text-foreground">Cost by workflow</h2>
-                      <p className="text-[12px] text-muted-foreground">Sum of element costs for steps in each architecture workflow.</p>
-                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                      <h2 className="text-ui font-medium text-foreground">Cost by workflow</h2>
+                      <p className="text-label text-muted-foreground">Sum of element costs for steps in each architecture workflow.</p>
+                      <ul className="divide-y divide-hairline/60 text-ui">
                         {data!.byWorkflow!.map((row) => (
                           <li key={row.workflowId} className="flex items-baseline justify-between gap-3 py-2">
-                            <span className="truncate font-mono text-[12px]" title={row.workflowId}>
+                            <span className="truncate font-mono text-label" title={row.workflowId}>
                               {row.workflowId}
                             </span>
                             <span className="shrink-0 tabular-nums">
                               {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
-                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                              <span className="ms-2 text-caption text-muted-foreground">{formatCount(row.turns)} turns</span>
                             </span>
                           </li>
                         ))}
@@ -344,8 +371,9 @@ export function UsagePage() {
 
               <section className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[13px] font-medium text-foreground">Breakdown</h2>
+                  <h2 className="text-ui font-medium text-foreground">Breakdown</h2>
                   <Segmented
+                    label="Breakdown by"
                     value={breakdown}
                     onChange={setBreakdown}
                     options={[
@@ -355,7 +383,7 @@ export function UsagePage() {
                   />
                 </div>
                 {breakdown === "model" ? (
-                  <table className="w-full table-fixed text-[13px]">
+                  <table className="w-full table-fixed text-ui">
                     <colgroup>
                       <col className="w-2/5" />
                       <col className="w-1/5" />
@@ -363,7 +391,7 @@ export function UsagePage() {
                       <col className="w-1/5" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b border-hairline text-left text-[12px] text-muted-foreground">
+                      <tr className="border-b border-hairline text-left text-label text-muted-foreground">
                         <th className="py-2 font-normal">Model</th>
                         <th className="py-2 text-right font-normal">Cost</th>
                         <th className="py-2 text-right font-normal">Share</th>
@@ -401,9 +429,9 @@ export function UsagePage() {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full table-fixed text-[13px]">
+                  <table className="w-full table-fixed text-ui">
                     <thead>
-                      <tr className="border-b border-hairline text-left text-[12px] text-muted-foreground">
+                      <tr className="border-b border-hairline text-left text-label text-muted-foreground">
                         <th className="w-2/5 py-2 font-normal">{range === "24h" ? "Hour" : "Day"}</th>
                         {model.agents.map((a) => (
                           <th key={a} className="py-2 text-right font-normal">{model.labels.get(a)}</th>

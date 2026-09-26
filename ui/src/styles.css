@@ -29,12 +29,20 @@
  * The app's dark theme is lifted above the design system's (#111110) so panels and borders stay
  * clearly visible for long working sessions (the user asked for "dark, but more visible").
  *
- * Type + rhythm scale. New UI uses these names instead of arbitrary sizes:
- *   text-meta 11.5 · text-label 12 · text-ui-sm 12.5 · text-ui 13 · text-body 13.5 ·
- *   text-title 15;  h-row 28px (list rows) · h-row-lg 32px (nav, inputs) · h-bar 48px (headers).
+ * Type + rhythm scale. UI uses these names, never arbitrary sizes (lib/utils.ts TYPE_SCALE teaches
+ * tailwind-merge the same list; ui/test/type-scale.test.ts keeps components on it):
+ *   text-micro 10.5 (counters, axis ticks) · text-caption 11 (mono meta, small chips) ·
+ *   text-meta 11.5 · text-label 12 · text-ui-sm 12.5 (controls) · text-ui 13 (rows, body of the
+ *   chrome) · text-body 13.5 (chat prose) · text-title-sm 14 (card titles) · text-title 15 (page
+ *   titles) · text-headline 16 (section / empty-state headlines) · text-display 20 (first run);
+ *   h-row 28px (list rows, controls) · h-row-lg 32px (nav, inputs) · h-bar 48px (headers).
  *   `heading` is the title style (semibold, tight tracking); pair it with a size.
  */
 @theme {
+  --text-micro: 10.5px;
+  --text-micro--line-height: 1.3;
+  --text-caption: 11px;
+  --text-caption--line-height: 1.4;
   --text-meta: 11.5px;
   --text-meta--line-height: 1.35;
   --text-label: 12px;
@@ -45,8 +53,14 @@
   --text-ui--line-height: 1.45;
   --text-body: 13.5px;
   --text-body--line-height: 1.6;
+  --text-title-sm: 14px;
+  --text-title-sm--line-height: 1.35;
   --text-title: 15px;
   --text-title--line-height: 1.35;
+  --text-headline: 16px;
+  --text-headline--line-height: 1.3;
+  --text-display: 20px;
+  --text-display--line-height: 1.25;
   --spacing-row: 1.75rem;
   --spacing-row-lg: 2rem;
   --spacing-bar: 3rem;
@@ -339,7 +353,7 @@ html[data-theme="contrast"] .grain::after {
 
 /* Small uppercase kicker above a headline ("The toolchain" on the website). */
 @utility eyebrow {
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -356,6 +370,40 @@ html[data-theme="contrast"] .grain::after {
 @utility divider {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--hairline) 20%, var(--hairline) 80%, transparent);
+}
+
+/* Pills and chips: the role colour on a 12 % tint of itself, mixed over the PAGE background so the
+   chip is opaque. The WCAG check holds each role on a 15 % tint over background (≥ 4.5:1, 7:1 in
+   high contrast); a translucent tint instead took the colour of what was under it and fell to
+   ~4.1:1 on raised panels (surface-2 / surface-3) and hovered rows. `in srgb` is plain alpha
+   compositing — the same math as design/color.ts `over`, so the check is exact. */
+@utility pill-brand {
+  color: var(--brand);
+  background-color: color-mix(in srgb, var(--brand) 12%, var(--background));
+}
+@utility pill-primary {
+  color: var(--primary);
+  background-color: color-mix(in srgb, var(--primary) 12%, var(--background));
+}
+@utility pill-ai {
+  color: var(--ai);
+  background-color: color-mix(in srgb, var(--ai) 12%, var(--background));
+}
+@utility pill-ok {
+  color: var(--ok);
+  background-color: color-mix(in srgb, var(--ok) 12%, var(--background));
+}
+@utility pill-warn {
+  color: var(--warn);
+  background-color: color-mix(in srgb, var(--warn) 12%, var(--background));
+}
+@utility pill-bad {
+  color: var(--bad);
+  background-color: color-mix(in srgb, var(--bad) 12%, var(--background));
+}
+@utility pill-info {
+  color: var(--info);
+  background-color: color-mix(in srgb, var(--info) 12%, var(--background));
 }
 
 /* Warm card: tone + hairline + soft warm shadow (website tool cards / DoubleBezelCard). */

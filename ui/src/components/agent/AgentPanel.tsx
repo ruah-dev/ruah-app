@@ -10,6 +10,7 @@ import { contextPathOf } from "@/lib/architecture";
 import { cancel, resetSession, sendPrompt, type DaemonState } from "@/lib/daemon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { scrollBehavior } from "@/lib/motion";
 import { Composer, imageBlockedReason, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
 
@@ -129,7 +130,7 @@ export function AgentPanel({
     const el = document.getElementById(`turn-${focusTurnId}`);
     if (!el) return;
     stickRef.current = false;
-    el.scrollIntoView({ block: "start", behavior: "smooth" });
+    el.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [focusTurnId]);
 
   const send = (text: string, attachments: AttachmentMeta[] = []) => {
@@ -200,15 +201,15 @@ export function AgentPanel({
             <span
               className={cn(
                 "grid size-10 place-items-center rounded-full",
-                dropReason ? "bg-warn/15 text-warn" : "bg-primary/15 text-primary",
+                dropReason ? "pill-warn" : "pill-primary",
               )}
             >
               <ImagePlus className="size-5" />
             </span>
-            <p className="heading text-[14px] text-foreground">
+            <p className="heading text-title-sm text-foreground">
               {dropReason ? "Can't attach images here" : "Drop images to attach"}
             </p>
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-label text-muted-foreground">
               {dropReason ?? "PNG, JPEG, GIF or WebP · up to 10 MB each · 8 per message"}
             </p>
           </div>
@@ -241,10 +242,10 @@ export function AgentPanel({
               <PhantomPose pose="sleeping" size={80} noGlow />
             )}
             <div className="space-y-1.5">
-              <p className="heading text-[16px] text-foreground">
+              <p className="heading text-headline text-foreground">
                 {node ? `Ask about ${node.label}` : "Ask Ruah about this codebase"}
               </p>
-              <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+              <p className="text-ui-sm leading-relaxed text-muted-foreground">
                 {!connected
                   ? "The agent runs inside the Ruah daemon. Start `ruah app serve <repo>` and open the page it serves."
                   : node
@@ -259,7 +260,7 @@ export function AgentPanel({
                     key={s}
                     type="button"
                     onClick={() => send(s)}
-                    className="rounded-pill border border-hairline bg-surface-1 px-3 py-1.5 text-[12.5px] text-muted-foreground transition-colors hover:border-ai/45 hover:bg-ai/10 hover:text-foreground"
+                    className="rounded-pill border border-hairline bg-surface-1 px-3 py-1.5 text-ui-sm text-muted-foreground transition-colors hover:border-ai/45 hover:bg-ai/10 hover:text-foreground"
                   >
                     {s}
                   </button>

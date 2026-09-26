@@ -257,7 +257,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         {node ? (
           <div className="flex px-3 pt-2.5">
             <span
-              className="group/chip flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-ai/10 ps-1.5 pe-1 text-[11.5px] text-foreground/90 ring-1 ring-ai/25"
+              className="group/chip flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-ai/10 ps-1.5 pe-1 text-meta text-foreground/90 ring-1 ring-ai/25"
               title={contextPath}
             >
               {KindIcon ? <KindIcon className={cn("size-3 shrink-0", kind!.color)} /> : null}
@@ -279,7 +279,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             <button
               type="button"
               onClick={onPickContext}
-              className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <AtSign className="size-3" />
               Add context
@@ -308,7 +308,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           }}
           placeholder={placeholder}
           aria-label="Message the agent"
-          className="block max-h-[220px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-2.5 pb-1 text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-faint disabled:cursor-not-allowed"
+          className="block max-h-[220px] min-h-[44px] w-full resize-none bg-transparent px-4 pt-2.5 pb-1 text-body leading-relaxed text-foreground outline-none placeholder:text-faint disabled:cursor-not-allowed"
         />
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <input
@@ -399,15 +399,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         </div>
       </div>
       {reason ? (
-        <p className="px-3 text-center text-[11.5px] text-faint">{reason}</p>
+        <p className="px-3 text-center text-meta text-faint">{reason}</p>
       ) : failed ? (
-        <p className="px-3 text-center text-[11.5px] text-bad">
+        <p className="px-3 text-center text-meta text-bad">
           An image failed to upload — remove it to send.
         </p>
       ) : imagesBlocked ? (
-        <p className="px-3 text-center text-[11.5px] text-warn">{imageReason}</p>
+        <p className="px-3 text-center text-meta text-warn">{imageReason}</p>
       ) : notice ? (
-        <p className="px-3 text-center text-[11.5px] text-muted-foreground" role="status">
+        <p className="px-3 text-center text-meta text-muted-foreground" role="status">
           {notice}
         </p>
       ) : null}
@@ -428,19 +428,19 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       <AlertDialog open={pendingAgent !== null} onOpenChange={(o) => !o && setPendingAgent(null)}>
         <AlertDialogContent className="max-w-sm rounded-xl border-hairline bg-popover p-5">
           <AlertDialogHeader>
-            <AlertDialogTitle className="heading text-[15px]">
+            <AlertDialogTitle className="heading text-title">
               Switch to {pendingName ?? "another agent"}?
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-[13px]">
+            <AlertDialogDescription className="text-ui">
               This stops the current turn and starts a new session.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-8 rounded-lg border-hairline bg-transparent text-[13px]">
+            <AlertDialogCancel className="h-8 rounded-lg border-hairline bg-transparent text-ui">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              className="h-8 rounded-lg text-[13px]"
+              className="h-8 rounded-lg text-ui"
               onClick={() => {
                 if (pendingAgent)
                   setAgentModel(pendingAgent.agentId, pendingAgent.modelId);

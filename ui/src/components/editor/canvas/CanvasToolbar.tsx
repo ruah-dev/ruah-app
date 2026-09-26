@@ -6,12 +6,12 @@ import type { DiagramNode } from "@/data/graphs";
 import { kindStyles, symbolStyle } from "@/components/explorer/kinds";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { iconButton } from "@/components/ui/controls";
 import { filterKindOf, type CanvasFilters } from "./view-model";
 
 export type SearchHit = { id: string; label: string; where: string };
 
-const btn =
-  "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
+const btn = iconButton;
 
 function Row({ children, active, onClick, title }: { children: ReactNode; active: boolean; onClick: () => void; title?: string }) {
   return (
@@ -20,7 +20,7 @@ function Row({ children, active, onClick, title }: { children: ReactNode; active
       title={title}
       onClick={onClick}
       className={cn(
-        "flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12.5px] transition-colors hover:bg-accent",
+        "flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui-sm transition-colors hover:bg-accent",
         active ? "text-foreground" : "text-faint line-through decoration-faint/60",
       )}
     >
@@ -67,13 +67,13 @@ export function FilterMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" className={cn(btn, "flex w-auto gap-1 px-2 text-[12px]", active ? "text-primary" : "")} aria-label="Filters" title="Filter, focus and group">
+        <button type="button" className={cn(btn, "flex w-auto gap-1 px-2 text-label", active ? "text-primary" : "")} aria-label="Filters" title="Filter, focus and group">
           <Filter className="size-3.5" />
           {active ? <span className="tabular-nums">{active}</span> : null}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 border-hairline p-1.5" onOpenAutoFocus={(e) => e.preventDefault()}>
-        <p className="px-2 pt-1 pb-1 text-[11.5px] font-medium text-muted-foreground">Focus on the selection</p>
+        <p className="px-2 pt-1 pb-1 text-meta font-medium text-muted-foreground">Focus on the selection</p>
         <div className="flex gap-1 px-1 pb-2">
           {([0, 1, 2] as const).map((h) => (
             <button
@@ -82,7 +82,7 @@ export function FilterMenu({
               disabled={h > 0 && !hasSelection}
               onClick={() => onChange({ ...filters, hops: h })}
               className={cn(
-                "h-7 flex-1 rounded-md text-[12px] transition-colors disabled:opacity-40",
+                "h-7 flex-1 rounded-md text-label transition-colors disabled:opacity-40",
                 filters.hops === h ? "bg-primary/15 text-primary ring-1 ring-primary/40" : "bg-surface-2 text-muted-foreground hover:text-foreground",
               )}
             >
@@ -90,7 +90,7 @@ export function FilterMenu({
             </button>
           ))}
         </div>
-        <p className="px-2 pt-1 pb-1 text-[11.5px] font-medium text-muted-foreground">Kinds</p>
+        <p className="px-2 pt-1 pb-1 text-meta font-medium text-muted-foreground">Kinds</p>
         <div className="max-h-44 overflow-y-auto">
           {kinds.map(([k, v]) => {
             const style = v.node.symbol ? symbolStyle(v.node.symbol.kind) : kindStyles[v.node.kind];
@@ -103,14 +103,14 @@ export function FilterMenu({
               >
                 <Icon className={cn("size-3.5 shrink-0", style.color)} />
                 <span className="truncate">{v.label}</span>
-                <span className="ms-auto text-[11px] text-faint tabular-nums">{v.n}</span>
+                <span className="ms-auto text-caption text-faint tabular-nums">{v.n}</span>
               </Row>
             );
           })}
         </div>
         {layers.length ? (
           <>
-            <p className="px-2 pt-2 pb-1 text-[11.5px] font-medium text-muted-foreground">Layers</p>
+            <p className="px-2 pt-2 pb-1 text-meta font-medium text-muted-foreground">Layers</p>
             <div className="max-h-44 overflow-y-auto">
               {layers.map(([l, n]) => (
                 <div key={l} className="flex items-center gap-0.5">
@@ -120,14 +120,14 @@ export function FilterMenu({
                     title="Show / hide"
                   >
                     <span className="truncate">{l}</span>
-                    <span className="ms-auto text-[11px] text-faint tabular-nums">{n}</span>
+                    <span className="ms-auto text-caption text-faint tabular-nums">{n}</span>
                   </Row>
                   <button
                     type="button"
                     title={filters.collapsedLayers.has(l) ? "Expand the group" : "Collapse into one card"}
                     onClick={() => onChange({ ...filters, collapsedLayers: toggle(filters.collapsedLayers, l) })}
                     className={cn(
-                      "h-7 shrink-0 rounded-md px-1.5 text-[11px] transition-colors hover:bg-accent",
+                      "h-7 shrink-0 rounded-md px-1.5 text-caption transition-colors hover:bg-accent",
                       filters.collapsedLayers.has(l) ? "text-primary" : "text-faint",
                     )}
                   >
@@ -142,7 +142,7 @@ export function FilterMenu({
           <button
             type="button"
             onClick={() => onChange({ hiddenKinds: new Set(), hiddenLayers: new Set(), collapsedLayers: new Set(), hops: 0 })}
-            className="mt-1.5 h-7 w-full rounded-md text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="mt-1.5 h-7 w-full rounded-md text-label text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             Reset
           </button>
@@ -197,9 +197,9 @@ export function SearchBar({
           }}
           placeholder="Find on this map…"
           aria-label="Find on this map"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-ui text-foreground outline-none placeholder:text-faint"
         />
-        <span className="shrink-0 px-1 text-[11.5px] text-muted-foreground tabular-nums">
+        <span className="shrink-0 px-1 text-meta text-muted-foreground tabular-nums">
           {query ? (count ? `${index + 1} of ${count}` : "none here") : ""}
         </span>
         <button type="button" className={btn} aria-label="Previous match" disabled={count < 2} onClick={() => onStep(-1)}>
@@ -214,16 +214,16 @@ export function SearchBar({
       </div>
       {query && elsewhere.length ? (
         <div className="border-t border-hairline p-1">
-          <p className="px-2 pt-0.5 pb-1 text-[11px] text-faint">Elsewhere in the map</p>
+          <p className="px-2 pt-0.5 pb-1 text-caption text-faint">Elsewhere in the map</p>
           {elsewhere.map((h, i) => (
             <button
               key={h.id}
               type="button"
               onClick={() => onReveal(h.id)}
-              className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-[12.5px] text-foreground/90 transition-colors hover:bg-accent"
+              className="flex h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-ui-sm text-foreground/90 transition-colors hover:bg-accent"
             >
               <span className="truncate">{h.label}</span>
-              <span className="ms-auto max-w-[55%] shrink-0 truncate font-mono text-[11px] text-faint">{h.where}</span>
+              <span className="ms-auto max-w-[55%] shrink-0 truncate font-mono text-caption text-faint">{h.where}</span>
               {i === 0 && count === 0 ? <CornerDownLeft className="size-3 shrink-0 text-faint" /> : null}
             </button>
           ))}

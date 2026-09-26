@@ -6,21 +6,29 @@
 //   only when the view leaves the rendered window or the zoom crosses a level-of-detail step.
 // - Level of detail: full cards → compact bar + name → tiny blocks; edge labels on demand.
 // - Focus: search (⌘F), kind / layer filters, n-hop neighbourhood, collapsible layer groups,
-//   selection emphasis (others stay ≥ 60 %), arrow-key navigation, minimap, fit-to-selection.
+//   selection emphasis (others stay at 80 %, where their text still passes WCAG), arrow-key navigation, minimap, fit-to-selection.
 // - Drill: chip / double-click / Enter zooms into the element and opens its level; Backspace /
 //   ⌥↑ goes back up.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronsDownUp, Maximize2, Minus, MousePointer2, Plus } from "lucide-react";
 import type { DiagramNode as NodeType, NodeKind } from "@/data/graphs";
 import type { Diagram } from "@/lib/workspace";
+import { edgeLabelScale } from "./canvas/display";
 import { NODE_H, NODE_W, groupIcon as GroupIcon } from "@/components/explorer/kinds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/motion";
+import { pageShortcutBlocked } from "@/lib/key-targets";
 import {
   boundsOf,
   clampZoom,
   contains,
+  asFramed,
   fitCamera,
+  FIT_ALL,
+  panBy,
+  restoredCamera,
+  zoomAround,
   grow,
   intersects,
   lodFor,
@@ -88,9 +96,6 @@ const CULL_ABOVE = 160;
 const K_STEP = 1.25;
 const quantize = (k: number) => Math.pow(K_STEP, Math.round(Math.log(k) / Math.log(K_STEP)));
 
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
 type ViewState = { lod: Lod; kq: number; cull: Box | null };
 
 export function EditorCanvas({
@@ -140,11 +145,13 @@ export function EditorCanvas({
   const [query, setQuery] = useState("");
   const [matchIdx, setMatchIdx] = useState(0);
 
-  const panRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
+  const panRef = useRef<{ x: number; y: number; cx: number; cy: number; moved?: boolean } | null>(null);
   const dragRef = useRef<{ id: string; dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
   const lastDragMoved = useRef(false);
   const movingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const anim = useRef<number | null>(null);
+  // Where the running camera animation ends (a framed target is re-framed if the canvas resizes).
+  const animTarget = useRef<Camera | null>(null);
   const cams = useRef(new Map<string, Camera>());
   const prevLevel = useRef<{ id: string; depth: number } | null>(null);
   const pendingDrill = useRef<{ from: string; cam: Camera; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -159,6 +166,11 @@ export function EditorCanvas({
     [diagram.nodes, diagram.edges, diagram.groups, filters, selectedNodeId],
   );
   const boxes = useMemo(() => new Map(vm.nodes.map((n) => [n.id, nodeBox(n)])), [vm.nodes]);
+  const laneCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of vm.nodes) if (n.layer) m.set(n.layer, (m.get(n.layer) ?? 0) + 1);
+    return m;
+  }, [vm.nodes]);
   const routes = useMemo(() => routeEdges(boxes, vm.edges), [boxes, vm.edges]);
   const nodeById = useMemo(() => new Map(vm.nodes.map((n) => [n.id, n])), [vm.nodes]);
   const big = vm.nodes.length > CULL_ABOVE;
@@ -237,6 +249,7 @@ export function EditorCanvas({
   const stopAnim = () => {
     if (anim.current !== null) cancelAnimationFrame(anim.current);
     anim.current = null;
+    animTarget.current = null;
   };
 
   const animateTo = useCallback(
@@ -248,8 +261,16 @@ export function EditorCanvas({
       }
       const from = { ...cam.current };
       const t0 = performance.now();
+      animTarget.current = target;
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / ms);
+        if (t >= 1) {
+          // The last frame is the target itself, so a framed target stays framed.
+          anim.current = null;
+          animTarget.current = null;
+          applyCamera(target);
+          return;
+        }
         const e = 1 - Math.pow(1 - t, 3);
         const k = Math.exp(Math.log(from.k) + (Math.log(target.k) - Math.log(from.k)) * e);
         // Keep the eased zoom and pan consistent: interpolate the world point at the viewport centre.
@@ -259,7 +280,7 @@ export function EditorCanvas({
         const cx = c0.x + (c1.x - c0.x) * e;
         const cy = c0.y + (c1.y - c0.y) * e;
         applyCamera({ k, x: w / 2 - cx * k, y: h / 2 - cy * k });
-        anim.current = t < 1 ? requestAnimationFrame(step) : null;
+        anim.current = requestAnimationFrame(step);
       };
       anim.current = requestAnimationFrame(step);
     },
@@ -267,10 +288,11 @@ export function EditorCanvas({
   );
 
   const fitBox = useCallback(
-    (b: Box | null, opts: { animate?: boolean; maxK?: number } = {}) => {
+    (b: Box | null, opts: { animate?: boolean; maxK?: number; framed?: boolean } = {}) => {
       const { w, h } = size.current;
       if (!b || w === 0) return;
-      const target = fitCamera(b, w, h, { pad: 56, maxK: opts.maxK ?? 1 });
+      const fit = fitCamera(b, w, h, { pad: FIT_ALL.pad, maxK: opts.maxK ?? FIT_ALL.maxK });
+      const target = opts.framed ? asFramed(fit) : fit;
       if (opts.animate) animateTo(target);
       else applyCamera(target);
     },
@@ -282,7 +304,8 @@ export function EditorCanvas({
     return boundsOf(bs);
   }, [boxes, vm.groups]);
 
-  const fitAll = useCallback((animate = false) => fitBox(allBounds(), { animate }), [fitBox, allBounds]);
+  // The whole level: a framed camera, kept framed across canvas resizes until the user moves it.
+  const fitAll = useCallback((animate = false) => fitBox(allBounds(), { animate, framed: true }), [fitBox, allBounds]);
 
   const fitSelection = useCallback(() => {
     const id = selectedNodeId && boxes.has(selectedNodeId) ? selectedNodeId : null;
@@ -325,9 +348,24 @@ export function EditorCanvas({
   useLayoutEffect(() => {
     const el = shellRef.current;
     if (!el) return;
+    // The last size the canvas had on screen (it measures 0 × 0 while another page is shown).
+    let shown = { w: 0, h: 0 };
     const measure = () => {
       const r = el.getBoundingClientRect();
       size.current = { w: r.width, h: r.height };
+      if (r.width > 0 && r.height > 0) {
+        const prev = shown;
+        shown = { w: r.width, h: r.height };
+        // A framed map stays framed when the canvas changes size (window resized, the side panel
+        // or the terminal opened): refit instead of leaving part of it off screen. A map the user
+        // panned or zoomed is not framed (geometry.ts Camera) and stays where they put it.
+        if (prev.w > 0 && (Math.abs(prev.w - r.width) > 1 || Math.abs(prev.h - r.height) > 1)) {
+          if (cam.current.framed || animTarget.current?.framed) {
+            stopAnim();
+            fitRef.current(false);
+          }
+        }
+      }
       scheduleRecull();
       scheduleMinimap();
     };
@@ -361,9 +399,10 @@ export function EditorCanvas({
     setHoverEdge(null);
     setMatchIdx(0);
     stopAnim();
-    const saved = cams.current.get(diagram.id) ?? recallCamera(diagram.id);
-    if (saved && dir !== "in") applyCamera(saved);
-    else fitRef.current(false);
+    // The saved camera as the user left it; a saved frame is framed again for today's size.
+    const next = restoredCamera(cams.current.get(diagram.id) ?? recallCamera(diagram.id), dir === "in");
+    if (next === "fit") fitRef.current(false);
+    else applyCamera(next);
     const stage = stageRef.current;
     if (stage && dir !== "none" && !prefersReducedMotion() && typeof stage.animate === "function") {
       stage.animate(
@@ -383,9 +422,9 @@ export function EditorCanvas({
     () =>
       onCamerasReset(() => {
         cams.current.clear();
-        const seeded = recallCamera(levelId.current);
-        if (seeded) applyCamera(seeded);
-        else fitRef.current(false);
+        const next = restoredCamera(recallCamera(levelId.current), false);
+        if (next === "fit") fitRef.current(false);
+        else applyCamera(next);
       }),
     [applyCamera],
   );
@@ -415,12 +454,8 @@ export function EditorCanvas({
       const rect = shellRef.current?.getBoundingClientRect();
       const sx = clientX - (rect?.left ?? 0);
       const sy = clientY - (rect?.top ?? 0);
-      const c = cam.current;
-      const k = clampZoom(c.k * factor);
       lastZoomAt.current = performance.now();
-      const wx = (sx - c.x) / c.k;
-      const wy = (sy - c.y) / c.k;
-      applyCamera({ k, x: sx - wx * k, y: sy - wy * k });
+      applyCamera(zoomAround(cam.current, sx, sy, factor));
     },
     [applyCamera],
   );
@@ -439,7 +474,7 @@ export function EditorCanvas({
         const c = cam.current;
         const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
         const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
-        applyCamera({ ...c, x: c.x - dx * unit, y: c.y - dy * unit });
+        applyCamera(panBy(c, -dx * unit, -dy * unit));
       }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
@@ -467,7 +502,12 @@ export function EditorCanvas({
     const move = (e: PointerEvent) => {
       if (panRef.current) {
         const d = panRef.current;
-        applyCamera({ ...cam.current, x: d.cx + (e.clientX - d.x), y: d.cy + (e.clientY - d.y) });
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        // A click on the background (deselect) is not a pan: its jitter keeps a framed map framed.
+        if (!d.moved && Math.hypot(dx, dy) < 3) return;
+        d.moved = true;
+        applyCamera({ k: cam.current.k, x: d.cx + dx, y: d.cy + dy });
         return;
       }
       const drag = dragRef.current;
@@ -635,6 +675,10 @@ export function EditorCanvas({
       const target = e.target as HTMLElement | null;
       const typing = !!target && (/input|textarea|select/i.test(target.tagName) || target.isContentEditable);
       const mod = e.metaKey || e.ctrlKey;
+      // Leave the key to whoever has it (lib/key-targets.ts): a menu or popover that just closed on
+      // Esc (Radix calls preventDefault first — Esc must not also go up a level), an open dialog,
+      // a focused button / tab / radio with its own Enter, Space and arrows.
+      if (pageShortcutBlocked(e)) return;
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setSearchOpen(true);
@@ -831,35 +875,17 @@ export function EditorCanvas({
           className="absolute top-0 left-0 origin-top-left"
           style={{ transform: `translate3d(${cam.current.x}px, ${cam.current.y}px, 0) scale(${cam.current.k})`, ["--inv-k" as string]: 1 / view.kq }}
         >
-          {visibleGroups.map((g) => {
-            const layer = g.id.replace(/^layer:/, "");
-            return (
-              <div
-                key={g.id}
-                className="group/frame absolute rounded-2xl border border-dashed border-group/35 bg-group/[0.03]"
-                style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
-              >
-                <span
-                  className="absolute bottom-[calc(100%-0.6em)] left-3 flex origin-bottom-left items-center gap-1.5 rounded-md bg-canvas px-1.5 font-medium tracking-wide whitespace-nowrap text-group uppercase"
-                  style={{ fontSize: "max(11px, min(96px, calc(11px * var(--inv-k, 1))))" }}
-                >
-                  <GroupIcon className="size-[1em]" />
-                  {g.label}
-                  <button
-                    type="button"
-                    data-ui
-                    title="Collapse into one card"
-                    aria-label={`Collapse ${g.label}`}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => toggleGroup(layer)}
-                    className="grid size-[1.3em] place-items-center rounded text-group/70 opacity-0 transition-opacity group-hover/frame:opacity-100 hover:bg-group/15 hover:text-group"
-                  >
-                    <ChevronsDownUp className="size-[0.95em]" />
-                  </button>
-                </span>
-              </div>
-            );
-          })}
+          {/* Lanes: a quiet solid frame under everything (dashed is for deployment links and
+              collapsed groups); their headers are drawn above the edges (below), so a link
+              crossing a lane never cuts through its name. */}
+          {visibleGroups.map((g) => (
+            <div
+              key={g.id}
+              data-lane={g.id}
+              className="absolute rounded-2xl border border-group/25 bg-group/[0.035]"
+              style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
+            />
+          ))}
 
           <EdgeLayer
             edges={vm.edges}
@@ -867,6 +893,7 @@ export function EditorCanvas({
             cull={cull}
             lod={view.lod}
             labels={view.kq >= 0.9 ? "all" : view.kq >= 0.45 ? "focus" : "none"}
+            labelScale={edgeLabelScale(view.kq)}
             focusId={edgeFocus}
             selectedEdge={selectedEdge}
             hoverEdge={hoverEdge}
@@ -891,6 +918,38 @@ export function EditorCanvas({
             </svg>
           ) : null}
 
+          {visibleGroups.map((g) => {
+            const layer = g.id.replace(/^layer:/, "");
+            const members = laneCounts.get(layer) ?? 0;
+            return (
+              <div
+                key={`h:${g.id}`}
+                className="group/lane pointer-events-none absolute"
+                style={{ left: g.x, top: g.y, width: g.w, height: 0 }}
+              >
+                <span
+                  className="pointer-events-auto absolute bottom-[calc(100%-0.62em)] left-3 flex origin-bottom-left items-center gap-1.5 rounded-md bg-canvas px-1.5 font-semibold tracking-[0.08em] whitespace-nowrap text-group uppercase shadow-[0_0_0_1px_var(--color-canvas)]"
+                  style={{ fontSize: "max(11px, min(96px, calc(11px * var(--inv-k, 1))))" }}
+                >
+                  <GroupIcon className="size-[1em]" />
+                  {g.label}
+                  {members > 0 ? <span className="font-normal tracking-normal text-faint tabular-nums">{members}</span> : null}
+                  <button
+                    type="button"
+                    data-ui
+                    title="Collapse into one card"
+                    aria-label={`Collapse ${g.label}`}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => toggleGroup(layer)}
+                    className="grid size-[1.3em] place-items-center rounded text-group/70 opacity-0 transition-opacity group-hover/lane:opacity-100 focus-visible:opacity-100 hover:bg-group/15 hover:text-group"
+                  >
+                    <ChevronsDownUp className="size-[0.95em]" />
+                  </button>
+                </span>
+              </div>
+            );
+          })}
+
           {visibleNodes.map((node) => (
             <NodeCard
               key={node.id}
@@ -913,8 +972,8 @@ export function EditorCanvas({
       {diagram.nodes.length === 0 && emptyHint && !notice ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="text-center">
-            <p className="heading text-[16px] text-foreground">Empty diagram</p>
-            <p className="mt-1 text-[12.5px] text-muted-foreground">
+            <p className="heading text-headline text-foreground">Empty diagram</p>
+            <p className="mt-1 text-ui-sm text-muted-foreground">
               {editable ? "Drag an element from the tray, double-click the canvas, or press N." : "Switch to Edit to add elements."}
             </p>
           </div>
@@ -932,7 +991,7 @@ export function EditorCanvas({
           <button
             type="button"
             onClick={() => setFilters(NO_FILTERS)}
-            className="control-glass absolute top-13 right-3 z-20 rounded-md px-2 py-1 text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="control-glass absolute top-13 right-3 z-20 rounded-md px-2 py-1 text-meta text-muted-foreground hover:text-foreground"
           >
             {vm.hidden} hidden by filters · show all
           </button>
@@ -969,6 +1028,7 @@ export function EditorCanvas({
             size="icon"
             className="size-6"
             aria-label="Zoom out"
+            title="Zoom out (⌘ scroll)"
             onClick={() => {
               const r = shellRef.current?.getBoundingClientRect();
               zoomAt((r?.left ?? 0) + size.current.w / 2, (r?.top ?? 0) + size.current.h / 2, 0.8);
@@ -976,7 +1036,7 @@ export function EditorCanvas({
           >
             <Minus className="size-3.5" />
           </Button>
-          <span ref={zoomLabelRef} className="w-10 text-center text-[11px] text-muted-foreground tabular-nums">
+          <span ref={zoomLabelRef} aria-live="off" className="w-10 text-center text-caption text-muted-foreground tabular-nums">
             {Math.round(cam.current.k * 100)}%
           </span>
           <Button
@@ -984,6 +1044,7 @@ export function EditorCanvas({
             size="icon"
             className="size-6"
             aria-label="Zoom in"
+            title="Zoom in (⌘ scroll)"
             onClick={() => {
               const r = shellRef.current?.getBoundingClientRect();
               zoomAt((r?.left ?? 0) + size.current.w / 2, (r?.top ?? 0) + size.current.h / 2, 1.25);
@@ -1002,14 +1063,14 @@ export function EditorCanvas({
           <div className="pointer-events-auto">{notice}</div>
         </div>
       ) : editable ? (
-        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-[11px] text-faint md:inline-flex">
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-caption text-faint md:inline-flex">
           <MousePointer2 className="size-3" />
           {linkFrom ? "Click a target element to connect · Esc cancels" : "Drag to move · N new · Del removes · ⌘ scroll zooms"}
         </span>
       ) : null}
 
       {selectedNode && editable && linkFrom === selectedNode.id ? (
-        <div className="control-glass absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-lg px-2.5 py-1 text-[12px] text-primary">
+        <div className="control-glass absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-lg px-2.5 py-1 text-label text-primary">
           connecting from {selectedNode.label}
         </div>
       ) : null}

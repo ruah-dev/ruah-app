@@ -36,8 +36,8 @@ export function LooksRelated({
         aria-expanded={open}
       >
         {open ? <ChevronDown className="size-3.5 text-muted-foreground" /> : <ChevronRight className="size-3.5 text-muted-foreground" />}
-        <span className="text-[13px] font-medium text-foreground">Looks related ({resources.length})</span>
-        <span className="truncate text-[12px] text-muted-foreground">
+        <span className="text-ui font-medium text-foreground">Looks related ({resources.length})</span>
+        <span className="truncate text-label text-muted-foreground">
           Named like this project, but nothing in the repo proves it. Add what is yours.
         </span>
       </button>
@@ -46,14 +46,14 @@ export function LooksRelated({
           {shown.map((r) => (
             <li key={r.id} className="flex items-center gap-2.5 py-1.5">
               <ProviderGlyph id={r.provider} />
-              <span className="min-w-0 truncate text-[13px] text-foreground" title={r.id}>
+              <span className="min-w-0 truncate text-ui text-foreground" title={r.id}>
                 {r.name}
               </span>
-              <span className="shrink-0 font-mono text-[11px] text-faint">
+              <span className="shrink-0 font-mono text-caption text-faint">
                 {providerLabel(r.provider)} · {r.service}
                 {r.account ? ` · ${r.account}` : ""}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{r.scope?.reasons[0]}</span>
+              <span className="min-w-0 flex-1 truncate text-label text-muted-foreground">{r.scope?.reasons[0]}</span>
               <button type="button" className={solidButton} disabled={disabled} onClick={() => onScope(r, "include")}>
                 <Plus className="size-3.5" /> Add
               </button>
@@ -149,20 +149,20 @@ export function AccountPicker({
 
   return (
     <section aria-label="Project accounts" className="rounded-xl border border-hairline bg-surface-1 px-4 py-3.5">
-      <p className="text-[13.5px] font-medium text-foreground">Which accounts does this project live in?</p>
-      <p className="mt-0.5 max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground">
+      <p className="text-body font-medium text-foreground">Which accounts does this project live in?</p>
+      <p className="mt-0.5 max-w-2xl text-ui-sm leading-relaxed text-muted-foreground">
         {defaultWhole ? "Nothing in the repo says where it runs yet. " : ""}Pick this project's accounts: only they are
         read for it, so other clients' resources never show up here. With <span className="text-foreground/90">whole account</span> on,
         everything in it counts as this project's; off, only what the repo proves (you can still add resources one by
-        one). Saved in the repo's <code className="font-mono text-[11.5px]">.ruah/cloud.json</code> — no secrets.
+        one). Saved in the repo's <code className="font-mono text-meta">.ruah/cloud.json</code> — no secrets.
       </p>
       {rows.length === 0 ? (
-        <p className="mt-3 text-[12.5px] text-muted-foreground">No cloud provider is connected.</p>
+        <p className="mt-3 text-ui-sm text-muted-foreground">No cloud provider is connected.</p>
       ) : (
         <ul className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {rows.map(({ provider, accounts }) => (
             <li key={provider.id}>
-              <p className="flex items-center gap-2 text-[12.5px] font-medium text-foreground">
+              <p className="flex items-center gap-2 text-ui-sm font-medium text-foreground">
                 <ProviderGlyph id={provider.id} /> {provider.name}
               </p>
               <ul className="mt-1 space-y-1 ps-5">
@@ -178,11 +178,11 @@ export function AccountPicker({
                         disabled={disabled}
                         onCheckedChange={(v) => toggle(provider.id, a.id, v === true)}
                       />
-                      <label htmlFor={id} className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90" title={a.id ?? a.label}>
+                      <label htmlFor={id} className="min-w-0 flex-1 truncate text-ui-sm text-foreground/90" title={a.id ?? a.label}>
                         {a.label}
                       </label>
                       {entry ? (
-                        <label className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                        <label className="flex shrink-0 items-center gap-1.5 text-meta text-muted-foreground">
                           <Switch
                             checked={!!entry.whole}
                             disabled={disabled}

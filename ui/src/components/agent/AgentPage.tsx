@@ -74,9 +74,9 @@ export function AgentPage() {
         />
       </div>
       <CommandDialog open={picking} onOpenChange={setPicking}>
-        <CommandInput placeholder="Add an element as context…" className="text-[13.5px]" />
+        <CommandInput placeholder="Add an element as context…" className="text-body" />
         <CommandList className="max-h-[min(60vh,420px)]">
-          <CommandEmpty className="py-6 text-center text-[13px] text-muted-foreground">
+          <CommandEmpty className="py-6 text-center text-ui text-muted-foreground">
             No element matches.
           </CommandEmpty>
           <CommandGroup heading="Elements">
@@ -91,11 +91,11 @@ export function AgentPage() {
                     wb.selectNode(n.id);
                     setPicking(false);
                   }}
-                  className="gap-2.5 rounded-md text-[13px]"
+                  className="gap-2.5 rounded-md text-ui"
                 >
                   <Icon className={cn("size-4", kind.color)} />
                   <span className="truncate">{n.name}</span>
-                  <span className="ms-auto truncate font-mono text-[11.5px] text-muted-foreground">
+                  <span className="ms-auto truncate font-mono text-meta text-muted-foreground">
                     {n.path ?? n.type}
                   </span>
                 </CommandItem>

@@ -75,14 +75,14 @@ export function RowDisclosure({
         />
         <span
           className={cn(
-            "min-w-0 truncate text-[12.5px]",
+            "min-w-0 truncate text-ui-sm",
             tone === "bad" ? "text-bad" : tone === "ai" ? "text-ai" : "text-muted-foreground",
           )}
         >
           {label}
         </span>
         {detail ? (
-          <span className="min-w-0 shrink truncate font-mono text-[11px] text-faint">
+          <span className="min-w-0 shrink truncate font-mono text-caption text-faint">
             {detail}
           </span>
         ) : null}
@@ -137,7 +137,7 @@ export function ToolCallRow({
               key={`${l.path}:${l.line ?? ""}:${i}`}
               type="button"
               onClick={() => onOpenPath?.(l.path)}
-              className="block max-w-full truncate text-left font-mono text-[11.5px] text-primary hover:underline"
+              className="block max-w-full truncate text-left font-mono text-meta text-primary hover:underline"
               title={l.path}
             >
               {l.path}
@@ -146,7 +146,7 @@ export function ToolCallRow({
           ))}
           {call.command ? (
             <div className="flex min-w-0 items-center gap-2">
-              <p className="min-w-0 truncate font-mono text-[11.5px] text-muted-foreground">
+              <p className="min-w-0 truncate font-mono text-meta text-muted-foreground">
                 $ {call.command}
               </p>
               {call.kind === "execute" ? (
@@ -154,7 +154,7 @@ export function ToolCallRow({
                   type="button"
                   onClick={() => runCommandInTerminal(call.command!)}
                   title="Open a terminal with this command typed in (press Enter to run it)"
-                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-primary hover:bg-accent"
+                  className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-caption text-primary hover:bg-accent"
                 >
                   <Terminal className="size-3" />
                   Run in terminal
@@ -163,7 +163,7 @@ export function ToolCallRow({
             </div>
           ) : null}
           {call.output ? (
-            <pre className="max-h-48 overflow-auto rounded-lg bg-surface-1 p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">
+            <pre className="max-h-48 overflow-auto rounded-lg bg-surface-1 p-2 font-mono text-caption leading-snug whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">
               {call.output}
             </pre>
           ) : null}

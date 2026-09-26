@@ -17,7 +17,7 @@ export async function downloadDrawio(httpOrigin: string | null): Promise<void> {
     return;
   }
   if (httpOrigin === null) {
-    toast.error("No daemon connected");
+    toast.error("Ruah isn't connected", { description: "Start the Ruah app (or ruah app serve), then export again." });
     return;
   }
   const pending = toast.loading("Exporting to draw.io…");
@@ -38,6 +38,10 @@ export async function downloadDrawio(httpOrigin: string | null): Promise<void> {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
     toast.success(`Exported ${name}`, { id: pending, description: "Open it in draw.io / diagrams.net." });
   } catch (err) {
-    toast.error("draw.io export failed", { id: pending, description: err instanceof Error ? err.message : String(err) });
+    const reason = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
+    toast.error("Couldn't export to draw.io", {
+      id: pending,
+      description: `${reason}. Try again, or run ruah app export drawio <repo> in a terminal.`,
+    });
   }
 }

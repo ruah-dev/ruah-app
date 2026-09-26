@@ -62,48 +62,10 @@ import { PhantomPose } from "@/components/brand/PhantomPose";
 import { DrawerToggle, PageDrawer } from "@/components/shell/PageDrawer";
 import { MapSidebarSection } from "@/components/shell/SidebarSections";
 
-export const iconButton =
-  "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40";
+import { iconButton } from "@/components/ui/controls";
+import { Segmented as KitSegmented, type SegmentedOption } from "@/components/ui/segmented";
 
-/** Small segmented control (Cursor / t3code style): muted track, raised active item. */
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  className,
-}: {
-  value: T;
-  options: readonly { value: T; label: string; disabled?: boolean | undefined; title?: string | undefined }[];
-  onChange: (v: T) => void;
-  className?: string;
-}) {
-  return (
-    <div
-      role="tablist"
-      className={cn("flex h-7 items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 ring-1 ring-hairline", className)}
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={value === o.value}
-          disabled={o.disabled}
-          title={o.title}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "h-6 rounded-md px-2.5 text-[12.5px] transition-colors disabled:opacity-40",
-            value === o.value
-              ? "bg-surface-4 text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+export { iconButton };
 
 function StatusIndicators() {
   const { daemon } = useWorkspace();
@@ -112,7 +74,7 @@ function StatusIndicators() {
       {daemon.source === "sample" ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="flex h-6 shrink-0 items-center rounded-md bg-warn/10 px-2 text-[11.5px] text-warn">
+            <span className="flex h-6 shrink-0 items-center rounded-md bg-warn/10 px-2 text-meta text-warn">
               Sample data
             </span>
           </TooltipTrigger>
@@ -123,7 +85,7 @@ function StatusIndicators() {
         </Tooltip>
       ) : null}
       {daemon.save === "pending" || daemon.save === "saving" ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-1.5 text-label text-muted-foreground">
           <Loader2 className="size-3 animate-spin" /> Saving
         </span>
       ) : null}
@@ -133,7 +95,7 @@ function StatusIndicators() {
             <button
               type="button"
               onClick={dismissError}
-              className="flex h-6 max-w-56 shrink-0 items-center gap-1.5 rounded-md bg-bad/10 px-2 text-[11.5px] text-bad"
+              className="flex h-6 max-w-56 shrink-0 items-center gap-1.5 rounded-md bg-bad/10 px-2 text-meta text-bad"
             >
               <AlertTriangle className="size-3 shrink-0" />
               <span className="truncate">
@@ -159,7 +121,8 @@ function EditToggle() {
   const ws = useWorkspace();
   const wb = useWorkbench();
   return (
-    <Segmented
+    <KitSegmented
+      label="Map mode"
       value={wb.editing ? "edit" : "view"}
       onChange={(v) => wb.setEditMode(v === "edit")}
       options={[
@@ -214,7 +177,7 @@ function CrumbMenu({ parentId, currentId }: { parentId: string | null; currentId
               <Icon className={cn("size-3.5", style.color)} />
               <span className="truncate">{n.name}</span>
               {drillable ? (
-                <span className="ms-auto flex items-center gap-0.5 font-mono text-[10.5px] text-faint">
+                <span className="ms-auto flex items-center gap-0.5 font-mono text-micro text-faint">
                   {kids ? kids : null}
                   <ChevronRight className="size-3" />
                 </span>
@@ -254,14 +217,14 @@ function Crumbs({ diagram }: { diagram: Diagram }) {
   const hasChildrenHere = inside && diagram.nodes.some((n) => n.drill);
   const canGoUp = items.length > 1;
   return (
-    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden text-[13px]">
+    <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-0.5 overflow-hidden text-ui">
       {canGoUp ? (
         <button
           type="button"
           onClick={() => wb.goUp()}
           title="Up one level (Backspace, Esc or ⌥↑)"
           aria-label="Up one level"
-          className="mr-1.5 flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-[12.5px] text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"
+          className="mr-1.5 flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-ui-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" /> Up
         </button>
@@ -319,7 +282,7 @@ function PaletteTray() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 shrink-0 items-center gap-2 px-3 text-left text-[12.5px] font-medium text-foreground"
+        className="flex h-9 shrink-0 items-center gap-2 px-3 text-left text-ui-sm font-medium text-foreground"
       >
         <Plus className="size-3.5 text-muted-foreground" />
         Add element
@@ -350,7 +313,10 @@ function EmptyMap() {
         description: r.nodes ? `${r.edges} links · ${Math.round(r.ms)} ms` : "Add them by hand from the palette.",
       });
     } catch (err) {
-      toast.error("Scan failed", { description: err instanceof Error ? err.message : String(err) });
+      const reason = (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
+      toast.error("Couldn't scan the project", {
+        description: `${reason}. Check that the folder still exists and is readable, then scan again.`,
+      });
     } finally {
       setScanning(false);
     }
@@ -360,8 +326,8 @@ function EmptyMap() {
       <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
         <PhantomPose pose={scanning ? "reading" : "mapping"} size={96} lively={scanning} label={scanning ? "Scanning the repo" : undefined} />
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium tracking-[0.14em] text-brand uppercase">{scanning ? "Scanning" : "New project"}</p>
-          <p className="heading text-[16px] text-foreground">An empty map</p>
+          <p className="text-caption font-medium tracking-[0.14em] text-brand uppercase">{scanning ? "Scanning" : "New project"}</p>
+          <p className="heading text-headline text-foreground">An empty map</p>
           <p className="text-ui-sm leading-relaxed text-muted-foreground">
             {wb.editing
               ? "Drag an element from the palette onto the canvas, double-click the canvas, or press N."
@@ -405,19 +371,19 @@ function LevelNotice({ diagram }: { diagram: Diagram }) {
   if (!entry || ws.architecture.nodes.some((n) => n.parent === ref.parentId)) return null;
   if (entry.status === "loading" && !entry.previous) {
     return (
-      <span className="control-glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground">
+      <span className="control-glass flex items-center gap-2 rounded-lg px-3 py-1.5 text-label text-muted-foreground">
         <Phantom expression="loading" size="xs" /> Reading {diagram.title} from disk…
       </span>
     );
   }
   if (entry.status === "error") {
-    return <span className="control-glass rounded-lg px-3 py-1.5 text-[12px] text-bad">{entry.error}</span>;
+    return <span className="control-glass rounded-lg px-3 py-1.5 text-label text-bad">{entry.error}</span>;
   }
   const exp = entry.status === "ok" ? entry.expansion : entry.previous;
   if (!exp) return null;
   const t = exp.truncated;
   return (
-    <span className="control-glass flex items-center gap-2 rounded-lg px-2.5 py-1 text-[11.5px] text-muted-foreground">
+    <span className="control-glass flex items-center gap-2 rounded-lg px-2.5 py-1 text-meta text-muted-foreground">
       <HardDrive className="size-3 text-faint" />
       Live from disk{exp.level === "file" ? " · symbols" : " · imports"}
       {t.children ? ` · showing ${exp.architecture.nodes.length} of ${exp.total.children}` : ""}
@@ -489,7 +455,7 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
       {emptyProject ? <EmptyMap /> : null}
       {ws.daemon.source === null ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
-          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-ui-sm text-muted-foreground">
             <Phantom expression="loading" size="sm" /> Connecting to the daemon…
           </p>
         </div>
@@ -586,7 +552,7 @@ function PaneView({ pane, first, last }: { pane: Pane; first: boolean; last: boo
                 <div
                   key={t.id}
                   className={cn(
-                    "group/tab flex h-7 shrink-0 items-center gap-1 rounded-md ps-2.5 pe-1 text-[12.5px]",
+                    "group/tab flex h-7 shrink-0 items-center gap-1 rounded-md ps-2.5 pe-1 text-ui-sm",
                     active ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -656,7 +622,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-hairline px-3">
-        <Segmented value={view} options={options} onChange={wb.setPanelView} />
+        <KitSegmented kind="tabs" label="Panel view" value={view} options={options} onChange={wb.setPanelView} />
         {view === "agent" ? <ChatSwitcher compact className="min-w-0 shrink" /> : null}
         <span className="flex-1" />
         {view === "agent" ? <NewSessionButton daemon={ws.daemon} /> : null}
@@ -697,6 +663,10 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
                 wb.clearSelection();
               }}
               onDiagramPatch={(patch) => ws.updateDiagram(wb.activeDiagram.id, patch)}
+              onSelectEdge={(edge) => {
+                wb.selectEdge(edge);
+                wb.selectNode(null);
+              }}
             />
           </div>
         ) : (
@@ -745,14 +715,14 @@ function MobileMap() {
           >
             <Icon className={cn("size-4 shrink-0", kind!.color)} />
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{node.label}</span>
-              <span className="block truncate font-mono text-[11px] text-muted-foreground">
+              <span className="block truncate text-ui font-medium">{node.label}</span>
+              <span className="block truncate font-mono text-caption text-muted-foreground">
                 {wb.contextPathFor(node)}
               </span>
             </span>
           </button>
         ) : (
-          <span className="flex-1 text-[12.5px] text-muted-foreground">Tap an element to select it</span>
+          <span className="flex-1 text-ui-sm text-muted-foreground">Tap an element to select it</span>
         )}
         <button
           type="button"
@@ -760,7 +730,7 @@ function MobileMap() {
             wb.setPanelView("agent");
             wb.setSheetOpen(true);
           }}
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-ai px-3.5 text-[13px] font-medium text-ai-foreground"
+          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-ai px-3.5 text-ui font-medium text-ai-foreground"
         >
           <Sparkles className="size-3.5" />
           {node ? "Ask" : "Agent"}

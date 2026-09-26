@@ -25,7 +25,7 @@ import {
   type RuahTaskAction,
 } from "@/lib/integrations";
 import { PageHeader } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,12 +45,14 @@ import {
   RemoteNotice,
   primaryButton,
   quietButton,
+  iconButton,
 } from "@/components/integrations/common";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { StatusTone } from "@/lib/integrations";
 import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
 import { GuardCard } from "@/components/engines/GuardCard";
 import { cn } from "@/lib/utils";
-import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import type { PhantomExpression } from "@/components/brand/Phantom";
 import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import { PhantomAgent, agentTintOf } from "@/components/brand/PhantomPose";
 
@@ -108,12 +110,12 @@ function TaskRow({
   return (
     <div role="row" className={cn(COLS, "min-h-11 border-b border-hairline px-5 py-1.5 max-md:px-3")}>
       <div role="cell" className="min-w-0">
-        <p className="flex items-center gap-1.5 truncate text-[13px] text-foreground" title={task.prompt ?? undefined}>
+        <p className="flex items-center gap-1.5 truncate text-ui text-foreground" title={task.prompt ?? undefined}>
           {task.parent ? <span className="text-faint">↳</span> : null}
-          <span className="truncate font-mono text-[12.5px]">{task.name}</span>
+          <span className="truncate font-mono text-ui-sm">{task.name}</span>
         </p>
         {task.prompt ? (
-          <p className="truncate text-[11.5px] text-muted-foreground">{task.prompt.split("\n")[0]}</p>
+          <p className="truncate text-meta text-muted-foreground">{task.prompt.split("\n")[0]}</p>
         ) : null}
       </div>
       <div role="cell">
@@ -121,24 +123,24 @@ function TaskRow({
           {st.label}
         </Pill>
       </div>
-      <div role="cell" className="flex min-w-0 items-center gap-1.5 font-mono text-[12px] text-muted-foreground">
+      <div role="cell" className="flex min-w-0 items-center gap-1.5 font-mono text-label text-muted-foreground">
         {agentTintOf(task.executor) ? <PhantomAgent agent={task.executor!} size={14} still /> : null}
         <span className="truncate">{task.executor ?? "—"}</span>
       </div>
       <div role="cell" className="min-w-0">
-        <p className="flex min-w-0 items-center gap-1 font-mono text-[12px] text-foreground/85">
+        <p className="flex min-w-0 items-center gap-1 font-mono text-label text-foreground/85">
           <GitBranch className="size-3 shrink-0 text-faint" />
           <span className="truncate" title={task.branch}>
             {task.branch ?? "—"}
           </span>
         </p>
         {task.worktree ? (
-          <p className="truncate font-mono text-[11px] text-faint" title={task.worktree}>
+          <p className="truncate font-mono text-caption text-faint" title={task.worktree}>
             {task.worktree}
           </p>
         ) : null}
       </div>
-      <div role="cell" className="min-w-0 truncate font-mono text-[11.5px] text-muted-foreground" title={files.join("\n")}>
+      <div role="cell" className="min-w-0 truncate font-mono text-meta text-muted-foreground" title={files.join("\n")}>
         {files.length ? (
           <>
             {files[0]}
@@ -148,7 +150,7 @@ function TaskRow({
           <span className="text-muted-foreground/40">—</span>
         )}
       </div>
-      <div role="cell" className="text-[12px] text-muted-foreground tabular-nums" title={age ?? undefined}>
+      <div role="cell" className="text-label text-muted-foreground tabular-nums" title={age ?? undefined}>
         {shortAge(age)}
       </div>
       <div role="cell" className="flex items-center justify-end gap-0.5">
@@ -163,10 +165,7 @@ function TaskRow({
                   aria-label={`${meta.label} ${task.name}`}
                   disabled={busy !== null}
                   onClick={() => onAction(a)}
-                  className={cn(
-                    "grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40",
-                    a === "cancel" && "hover:text-bad",
-                  )}
+                  className={cn(iconButton, a === "cancel" && "hover:text-bad")}
                 >
                   {busy === a ? <Loader2 className="size-3.5 animate-spin" /> : <Icon className="size-3.5" />}
                 </button>
@@ -237,6 +236,32 @@ function NotInitialized({ hint }: { hint?: string | undefined }) {
         <RefreshCw className="size-3.5" /> Check again
       </button>
     </GhostState>
+  );
+}
+
+/** The task table's shape while ruah answers (it polls every 5 s; the first read can take a moment). */
+function TasksSkeleton() {
+  return (
+    <div role="status" aria-live="polite" className="pt-4">
+      <span className="sr-only">Loading tasks…</span>
+      <div className="flex items-center gap-2 px-5 pb-3 max-md:px-3">
+        <Skeleton className="h-7 w-28 rounded-lg" />
+        <Skeleton className="h-5 w-20 rounded-md" />
+      </div>
+      <div className="border-t border-hairline">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className={cn(COLS, "h-11 border-b border-hairline px-5 max-md:px-3")}>
+            <Skeleton className="h-3 rounded" style={{ width: `${70 - ((i * 13) % 30)}%` }} />
+            <Skeleton className="h-5 w-16 rounded-md" />
+            <Skeleton className="h-3 w-16 rounded" />
+            <Skeleton className="h-3 w-3/4 rounded" />
+            <Skeleton className="h-3 w-1/2 rounded" />
+            <Skeleton className="h-3 w-6 rounded" />
+            <span />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -314,17 +339,18 @@ export function TasksPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Tasks">
         {status ? (
-          <span className="text-[12px] text-muted-foreground max-sm:hidden">
+          <span className="text-label text-muted-foreground max-sm:hidden">
             {running ? `${running} running · ` : ""}
             {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
             {status.currentBranch ? ` · on ${status.currentBranch}` : ""}
           </span>
         ) : null}
-        <GuardCard compact />
+        {status ? <GuardCard compact /> : null}
         <button
           type="button"
-          className={quietButton}
+          className={iconButton}
           aria-label="Refresh"
+          title="Refresh"
           onClick={() => {
             void loadRuah();
             void loadWorkflows();
@@ -332,9 +358,12 @@ export function TasksPage() {
         >
           <RefreshCw className={cn("size-3.5", s.ruah.status === "loading" && "animate-spin")} />
         </button>
-        <button type="button" className={primaryButton} disabled={!status} onClick={() => setCreateOpen(true)}>
-          <Plus className="size-3.5" /> New task
-        </button>
+        {/* Only where it can work: before ruah is set up the page's one action is the setup. */}
+        {status ? (
+          <button type="button" className={primaryButton} onClick={() => setCreateOpen(true)}>
+            <Plus className="size-3.5" /> New task
+          </button>
+        ) : null}
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -349,14 +378,13 @@ export function TasksPage() {
         ) : notInit ? (
           <NotInitialized hint={notInit.reason === "not_initialized" ? undefined : notInit.hint} />
         ) : !status ? (
-          <div className="grid h-40 place-items-center">
-            <Phantom expression="loading" size="md" label="Loading tasks" />
-          </div>
+          <TasksSkeleton />
         ) : (
           <div className="flex flex-col gap-8 pb-10">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2 px-5 pt-4 max-md:px-3">
                 <Segmented
+                  label="Tasks shown"
                   value={scope}
                   onChange={setScope}
                   options={[
@@ -375,7 +403,7 @@ export function TasksPage() {
                 </div>
                 <span className="flex-1" />
                 {status.baseBranch ? (
-                  <span className="font-mono text-[11.5px] text-muted-foreground">
+                  <span className="font-mono text-meta text-muted-foreground">
                     base {status.baseBranch}
                   </span>
                 ) : null}
@@ -389,7 +417,7 @@ export function TasksPage() {
               <div role="table" className="border-t border-hairline">
                 <div
                   role="row"
-                  className={cn(COLS, "h-8 border-b border-hairline px-5 text-[11.5px] text-muted-foreground max-md:px-3")}
+                  className={cn(COLS, "h-8 border-b border-hairline px-5 text-meta text-muted-foreground max-md:px-3")}
                 >
                   <span role="columnheader">Task</span>
                   <span role="columnheader">Status</span>
@@ -418,13 +446,20 @@ export function TasksPage() {
                     title={tasks.length ? "No open tasks" : "No tasks yet"}
                     body="Create one here, or from an element's Details on the Map — its files are locked for the agent."
                     className="px-6 py-12"
+                    actions={
+                      tasks.length ? null : (
+                        <button type="button" className={primaryButton} onClick={() => setCreateOpen(true)}>
+                          <Plus className="size-3.5" /> New task
+                        </button>
+                      )
+                    }
                   />
                 )}
                 {hidden > 0 && scope === "active" ? (
                   <button
                     type="button"
                     onClick={() => setScope("all")}
-                    className="w-full px-5 py-2 text-left text-[12px] text-muted-foreground hover:text-foreground"
+                    className="w-full px-5 py-2 text-left text-label text-muted-foreground hover:text-foreground"
                   >
                     {hidden} merged or cancelled hidden — show all
                   </button>
@@ -434,8 +469,8 @@ export function TasksPage() {
 
             <section className="space-y-2 px-5 max-md:px-3">
               <div className="flex items-center gap-2">
-                <h2 className="text-[13px] font-medium text-foreground">Workflows</h2>
-                <span className="text-[12px] text-muted-foreground">.ruah/workflows/*.md</span>
+                <h2 className="text-ui font-medium text-foreground">Workflows</h2>
+                <span className="text-label text-muted-foreground">.ruah/workflows/*.md</span>
               </div>
               {workflows.length ? (
                 <div className="divide-y divide-hairline border-y border-hairline">
@@ -447,13 +482,13 @@ export function TasksPage() {
                       <div key={w.name} className="flex min-h-11 items-center gap-3 py-1.5">
                         <Workflow className="size-4 shrink-0 text-faint" />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] text-foreground">{w.name}</p>
+                          <p className="truncate text-ui text-foreground">{w.name}</p>
                           {w.path ? (
-                            <p className="truncate font-mono text-[11px] text-faint">{w.path}</p>
+                            <p className="truncate font-mono text-caption text-faint">{w.path}</p>
                           ) : null}
                         </div>
                         {total ? (
-                          <span className="text-[12px] text-muted-foreground">
+                          <span className="text-label text-muted-foreground">
                             {(c["merged"] ?? 0) + (c["done"] ?? 0)}/{total} tasks done
                             {c["in-progress"] ? ` · ${c["in-progress"]} running` : ""}
                           </span>
@@ -472,7 +507,7 @@ export function TasksPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-[12.5px] text-muted-foreground">
+                <p className="text-ui-sm text-muted-foreground">
                   No workflows. Create one with{" "}
                   <span className="font-mono text-foreground/80">ruah workflow create &lt;name&gt;</span>.
                 </p>
@@ -485,14 +520,14 @@ export function TasksPage() {
       <AlertDialog open={pending !== null} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent className="max-w-sm rounded-xl border-hairline bg-popover p-5">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">
+            <AlertDialogTitle className="text-title">
               {pending?.kind === "workflow"
                 ? `Run ${pending.name}?`
                 : pending?.action === "merge"
                   ? `Merge ${pending.task.name}?`
                   : `Cancel ${pending?.kind === "task" ? pending.task.name : ""}?`}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-[13px]">
+            <AlertDialogDescription className="text-ui">
               {pending?.kind === "workflow"
                 ? "Creates the workflow's tasks and starts their agents in separate worktrees."
                 : pending?.action === "merge"
@@ -501,12 +536,12 @@ export function TasksPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-8 rounded-lg border-hairline bg-transparent text-[13px]">
+            <AlertDialogCancel className="h-8 rounded-lg border-hairline bg-transparent text-ui">
               Keep
             </AlertDialogCancel>
             <AlertDialogAction
               className={cn(
-                "h-8 rounded-lg text-[13px]",
+                "h-8 rounded-lg text-ui",
                 pending?.kind === "task" && pending.action === "cancel" && "bg-destructive text-destructive-foreground hover:bg-destructive/90",
               )}
               onClick={() => pending && void perform(pending)}

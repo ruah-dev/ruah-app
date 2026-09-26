@@ -190,6 +190,7 @@ export function RecentChatsSwitcher() {
     <div className="fixed inset-0 z-50 grid place-items-start justify-center bg-black/25 pt-[16vh]" onMouseDown={() => setOpen(false)}>
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Recent chats"
         onMouseDown={(e) => e.stopPropagation()}
         className="w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-hairline bg-popover shadow-2xl"
@@ -197,6 +198,10 @@ export function RecentChatsSwitcher() {
         <div className="flex h-10 items-center gap-2 border-b border-hairline px-3 text-ui-sm text-muted-foreground">
           <History className="size-3.5" />
           <span className="font-medium text-foreground">Recent chats</span>
+          {/* Keys are read on the window (focus stays where it was): say which chat is highlighted. */}
+          <span className="sr-only" aria-live="polite">
+            {rows[index] ? `${rows[index]!.title || "Untitled chat"}, ${rows[index]!.projectName}` : ""}
+          </span>
           <span className="ms-auto flex items-center gap-1 text-meta">
             {holding.current ? (
               <>

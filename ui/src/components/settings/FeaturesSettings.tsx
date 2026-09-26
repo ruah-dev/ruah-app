@@ -10,15 +10,15 @@ import { fetchScanOptions, setFeatureFlags, setScanOptions } from "@/lib/daemon"
 import { setViewerPref, useViewerPrefs } from "@/lib/preferences";
 import { useWorkspace } from "@/lib/workspace";
 import { Switch } from "@/components/ui/switch";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import { setReadAppLogins } from "@/components/usage/agentLimitsStore";
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-h-12 items-center gap-6 py-2.5 max-sm:flex-col max-sm:items-start max-sm:gap-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-foreground">{label}</p>
-        {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        <p className="text-ui text-foreground">{label}</p>
+        {hint ? <p className="text-label text-muted-foreground">{hint}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
@@ -101,7 +101,7 @@ export function FeaturesSettings() {
     <section className="flex flex-col gap-3">
       <div>
         <h2 className="heading text-title text-foreground">Features & behaviour</h2>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
+        <p className="mt-1 text-ui-sm text-muted-foreground">
           Everything here is optional — turn off what you do not use. Each part also works on its own from the CLI
           (<code className="font-mono">ruah app resume</code>, <code className="font-mono">ruah app activity</code>,{" "}
           <code className="font-mono">ruah app scan --no-infra</code>, <code className="font-mono">ruah app cloud</code>,{" "}
@@ -122,6 +122,7 @@ export function FeaturesSettings() {
         </Row>
         <Row label="Notifications" hint="When an agent finishes or asks for permission. Background: only for projects you are not looking at.">
           <Segmented
+            label="Notifications"
             value={activity.settings.notifications}
             onChange={(v: NotificationMode) => setFeatureFlags({ notifications: v })}
             options={[

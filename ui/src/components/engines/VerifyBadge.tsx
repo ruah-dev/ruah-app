@@ -1,5 +1,5 @@
 // Verify status badge on a map node. Unverifiable is never styled as pass. Colours are the
-// palette's status tokens (the WCAG check holds each on its own 15 % tint).
+// palette's status tokens as opaque pills (styles.css `pill-*`), so they read on any card.
 import { cn } from "@/lib/utils";
 import type { VerifyBadge } from "@/lib/engines";
 
@@ -12,10 +12,18 @@ const LABEL: Record<VerifyBadge, string> = {
 };
 
 const CLASS: Record<VerifyBadge, string> = {
-  pass: "bg-ok/15 text-ok border-ok/30",
-  fail: "bg-bad/15 text-bad border-bad/30",
-  unverifiable: "bg-warn/15 text-warn border-warn/30",
-  error: "bg-bad/15 text-bad border-bad/30",
+  pass: "pill-ok border-ok/30",
+  fail: "pill-bad border-bad/30",
+  unverifiable: "pill-warn border-warn/30",
+  error: "pill-bad border-bad/30",
+  idle: "",
+};
+
+const DOT: Record<VerifyBadge, string> = {
+  pass: "bg-ok",
+  fail: "bg-bad",
+  unverifiable: "bg-warn",
+  error: "bg-bad",
   idle: "",
 };
 
@@ -29,12 +37,22 @@ export function VerifyBadgeChip({
   compact?: boolean;
 }) {
   if (!badge || badge === "idle") return null;
+  if (compact) {
+    // Zoomed out, a word would cover the card's name: a status dot, the word on hover / to AT.
+    return (
+      <span
+        role="img"
+        aria-label={`Verify: ${LABEL[badge]}`}
+        title={detail ?? LABEL[badge]}
+        className={cn("block size-2.5 rounded-full ring-2 ring-card", DOT[badge])}
+      />
+    );
+  }
   return (
     <span
       title={detail ?? LABEL[badge]}
       className={cn(
-        "inline-flex items-center rounded border px-1.5 font-medium uppercase tracking-wide",
-        compact ? "text-[9px] leading-4" : "text-[10px] leading-5",
+        "inline-flex items-center rounded border px-1.5 text-micro leading-5 font-medium uppercase tracking-wide",
         CLASS[badge],
       )}
     >

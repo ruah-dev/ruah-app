@@ -9,6 +9,7 @@
 // Pure client state, no daemon calls; daemon.ts feeds it from its `architecture` handler.
 import { useSyncExternalStore } from "react";
 import type { Architecture, ArchNode, MapActor, MapChange } from "./contracts";
+import { prefersReducedMotion } from "./motion";
 
 export type Flash = "added" | "changed";
 
@@ -37,13 +38,10 @@ function setFlash(id: string, flash: Flash | null) {
   flashes = next;
 }
 
-const reducedMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /** Fades out the cards of removed elements (clones placed where the cards were). */
 function ghost(ids: string[]) {
-  if (typeof document === "undefined" || ids.length === 0 || reducedMotion()) return;
+  if (typeof document === "undefined" || ids.length === 0 || prefersReducedMotion()) return;
   for (const id of ids) {
     const escaped =
       typeof CSS !== "undefined" && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');

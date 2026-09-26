@@ -40,7 +40,7 @@ const AGENT_NAMES: Record<(typeof AGENTS)[number], string> = {
 type Section = "poses" | "expressions" | "agents" | "scenes" | "tones";
 
 function Caption({ children }: { children: React.ReactNode }) {
-  return <figcaption className="font-mono text-[10px] text-muted-foreground">{children}</figcaption>;
+  return <figcaption className="font-mono text-micro text-muted-foreground">{children}</figcaption>;
 }
 
 function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[number]; palette: PaletteId; section: Section; poseSize: number }) {
@@ -58,7 +58,7 @@ function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[
             <figure key={p} className="flex flex-col items-center gap-1 text-center">
               <PhantomPose pose={p} size={poseSize} noGlow lively />
               <Caption>{p}</Caption>
-              <span className="text-[10.5px] leading-tight text-faint">{POSES[p].role}</span>
+              <span className="text-micro leading-tight text-faint">{POSES[p].role}</span>
             </figure>
           ))}
         </div>
@@ -111,7 +111,7 @@ function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[
           </div>
           {AGENTS.map((a) => (
             <div key={a} className="flex items-center gap-2">
-              <span className="w-20 shrink-0 font-mono text-[10px] text-muted-foreground">{a}</span>
+              <span className="w-20 shrink-0 font-mono text-micro text-muted-foreground">{a}</span>
               {PHANTOM_EXPRESSIONS.filter((e) => e !== "tracking").map((e) => (
                 <PhantomAgent key={e} agent={a} expression={e} size="sm" />
               ))}
@@ -193,7 +193,7 @@ export function GhostSheet() {
                 key={p}
                 value={p}
                 className={cn(
-                  "h-7 rounded-lg px-2.5 text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "h-7 rounded-lg px-2.5 text-ui-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   palette === p ? "bg-surface-3 text-foreground ring-1 ring-hairline" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
@@ -211,14 +211,14 @@ export function GhostSheet() {
               aria-selected={section === s.id}
               onClick={() => setSection(s.id)}
               className={cn(
-                "h-7 rounded-md px-2.5 text-[12.5px] transition-colors",
+                "h-7 rounded-md px-2.5 text-ui-sm transition-colors",
                 section === s.id ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {s.label}
             </button>
           ))}
-          <span className="ms-auto flex items-center gap-1 text-[12px] text-muted-foreground">
+          <span className="ms-auto flex items-center gap-1 text-label text-muted-foreground">
             Pose size
             {[72, 96, 144, 200].map((n) => (
               <button

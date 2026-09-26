@@ -205,7 +205,7 @@ export function Markdown({
                 key={i}
                 className={cn(
                   "pt-1 font-semibold text-foreground",
-                  b.level <= 2 ? "text-[14.5px]" : "text-[13.5px]",
+                  b.level <= 2 ? "text-title-sm" : "text-body",
                 )}
               >
                 {inline(b.text, onOpenPath)}
@@ -257,11 +257,11 @@ export function Markdown({
             return (
               <div key={i} className="overflow-hidden rounded-lg bg-surface-1 ring-1 ring-hairline">
                 {b.lang ? (
-                  <div className="px-3 pt-2 font-mono text-[10.5px] text-muted-foreground">
+                  <div className="px-3 pt-2 font-mono text-micro text-muted-foreground">
                     {b.lang}
                   </div>
                 ) : null}
-                <pre className="overflow-x-auto px-3 py-2 font-mono text-[12px] leading-[1.6] text-foreground/90">
+                <pre className="overflow-x-auto px-3 py-2 font-mono text-label leading-[1.6] text-foreground/90">
                   <code>{b.text}</code>
                   {tail(i)}
                 </pre>

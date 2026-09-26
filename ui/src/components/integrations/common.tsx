@@ -125,7 +125,7 @@ export function CopyCommand({
   return (
     <div
       className={cn(
-        "group/cmd flex h-8 min-w-0 items-center gap-2 rounded-lg bg-surface-0 ps-2.5 pe-1 font-mono text-[12px] text-foreground/90 ring-1 ring-hairline",
+        "group/cmd flex h-8 min-w-0 items-center gap-2 rounded-lg bg-surface-0 ps-2.5 pe-1 font-mono text-label text-foreground/90 ring-1 ring-hairline",
         className,
       )}
     >
@@ -165,7 +165,7 @@ export function SetupCommands({ info, className }: { info: IntegrationInfo; clas
     <div className={cn("space-y-1.5", className)}>
       {commands.map((c) => (
         <div key={c.label} className="flex min-w-0 items-center gap-2">
-          <span className="w-12 shrink-0 text-[11.5px] text-muted-foreground">{c.label}</span>
+          <span className="w-12 shrink-0 text-meta text-muted-foreground">{c.label}</span>
           <CopyCommand command={c.command} runnable className="max-w-md min-w-0 flex-1" />
         </div>
       ))}
@@ -227,11 +227,11 @@ export function Pill({
   return (
     <span
       className={cn(
-        "inline-flex h-5 max-w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-[11.5px] whitespace-nowrap",
-        tone === "ok" && "bg-ok/12 text-ok",
-        tone === "warn" && "bg-warn/12 text-warn",
-        tone === "bad" && "bg-bad/12 text-bad",
-        tone === "idle" && "bg-info/12 text-info",
+        "inline-flex h-5 max-w-full shrink-0 items-center gap-1.5 rounded-md px-1.5 text-meta whitespace-nowrap",
+        tone === "ok" && "pill-ok",
+        tone === "warn" && "pill-warn",
+        tone === "bad" && "pill-bad",
+        tone === "idle" && "pill-info",
         className,
       )}
     >
@@ -297,8 +297,8 @@ export function Notice({
         )}
       />
       <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="text-[13px] font-medium text-foreground">{title}</p>
-        {body ? <div className="text-[12.5px] leading-relaxed break-words text-muted-foreground">{body}</div> : null}
+        <p className="text-ui font-medium text-foreground">{title}</p>
+        {body ? <div className="text-ui-sm leading-relaxed break-words text-muted-foreground">{body}</div> : null}
       </div>
       {action}
     </div>
@@ -313,12 +313,5 @@ export function IntegrationsLink({ children = "Integrations" }: { children?: Rea
   );
 }
 
-/** Small ghost button used across these pages (matches the shell's quiet controls). */
-export const quietButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-
-export const solidButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground transition-colors hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-40";
-
-export const primaryButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[12.5px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40";
+/** The shared compact controls (components/ui/controls.ts). */
+export { quietButton, solidButton, primaryButton, aiButton, iconButton, fieldClass } from "@/components/ui/controls";

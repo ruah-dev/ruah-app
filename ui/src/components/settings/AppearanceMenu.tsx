@@ -39,7 +39,7 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
         <span aria-hidden className="absolute end-1 bottom-1 size-1.5 rounded-full bg-primary ring-1 ring-background" />
       </PopoverTrigger>
       <PopoverContent side={side} align="end" sideOffset={6} className="w-72 rounded-xl border-hairline p-2 shadow-elevated">
-        <p className="px-1.5 pt-1 pb-1.5 text-[11px] font-medium tracking-[0.14em] text-faint uppercase">Theme</p>
+        <p className="px-1.5 pt-1 pb-1.5 text-caption font-medium tracking-[0.14em] text-faint uppercase">Theme</p>
         <RadioGroup.Root
           aria-label="Theme"
           value={theme}
@@ -51,7 +51,7 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
               key={t.value}
               value={t.value}
               className={cn(
-                "h-7 rounded-md text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                "h-7 rounded-md text-label outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                 theme === t.value ? "bg-primary/12 font-medium text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
@@ -59,7 +59,7 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
             </RadioGroup.Item>
           ))}
         </RadioGroup.Root>
-        <p className="px-1.5 pt-3 pb-1.5 text-[11px] font-medium tracking-[0.14em] text-faint uppercase">Palette</p>
+        <p className="px-1.5 pt-3 pb-1.5 text-caption font-medium tracking-[0.14em] text-faint uppercase">Palette</p>
         <RadioGroup.Root
           aria-label="Palette"
           value={palette}
@@ -81,13 +81,13 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
                   <span key={r} className="h-4 w-2.5" style={{ background: `var(--ph-${r})` }} />
                 ))}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">{PALETTES[id].label}</span>
+              <span className="min-w-0 flex-1 truncate text-ui-sm text-foreground">{PALETTES[id].label}</span>
               <Check className={cn("size-3.5 shrink-0 text-primary", palette !== id && "invisible")} />
             </RadioGroup.Item>
           ))}
         </RadioGroup.Root>
         <div className="mt-2 border-t border-hairline px-1.5 pt-2">
-          <Link to="/settings" className="text-[12px] text-muted-foreground hover:text-foreground">
+          <Link to="/settings" className="text-label text-muted-foreground hover:text-foreground">
             Previews in Settings → Appearance
           </Link>
         </div>

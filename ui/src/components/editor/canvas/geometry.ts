@@ -4,7 +4,13 @@ import type { DiagramEdge, DiagramNode } from "@/data/graphs";
 import { NODE_H, NODE_W } from "@/components/explorer/kinds";
 
 export type Box = { x: number; y: number; w: number; h: number };
-export type Camera = { x: number; y: number; k: number };
+/**
+ * Pan (x, y) and zoom (k). `framed`: the canvas framed the level itself ("Fit to view", a level
+ * opened fresh, a filter applied) — such a camera is fitted again when the canvas changes size or
+ * the view is restored at another window size. Any pan or zoom by the user drops it (panBy,
+ * zoomAround), so a map the user moved is left exactly where they put it.
+ */
+export type Camera = { x: number; y: number; k: number; framed?: true };
 
 export const MIN_ZOOM = 0.08;
 export const MAX_ZOOM = 2.2;
@@ -38,6 +44,37 @@ export function fitCamera(b: Box, vw: number, vh: number, opts: { pad?: number; 
     Math.max(opts.minK ?? MIN_ZOOM, Math.min((vw - pad * 2) / Math.max(1, b.w), (vh - pad * 2) / Math.max(1, b.h))),
   );
   return { k, x: vw / 2 - (b.x + b.w / 2) * k, y: vh / 2 - (b.y + b.h / 2) * k };
+}
+
+/** The fit options the canvas frames a level with ("Fit to view", a level opened fresh). */
+export const FIT_ALL = { pad: 56, maxK: 1 } as const;
+
+/** `c` marked as framed by the canvas (see Camera). */
+export function asFramed(c: Camera): Camera {
+  return { x: c.x, y: c.y, k: c.k, framed: true };
+}
+
+/** The camera moved by (dx, dy) screen pixels — the user's own position, never framed. */
+export function panBy(c: Camera, dx: number, dy: number): Camera {
+  return { k: c.k, x: c.x + dx, y: c.y + dy };
+}
+
+/** The camera zoomed by `factor` around the screen point (sx, sy) — never framed. */
+export function zoomAround(c: Camera, sx: number, sy: number, factor: number): Camera {
+  const k = clampZoom(c.k * factor);
+  const wx = (sx - c.x) / c.k;
+  const wy = (sy - c.y) / c.k;
+  return { k, x: sx - wx * k, y: sy - wy * k };
+}
+
+/**
+ * The camera a level opens with: its saved camera as the user left it, or "fit" — nothing saved,
+ * the level was drilled into (it opens framed), or the saved camera was a frame taken at another
+ * canvas size (it is framed again for the size the canvas has now).
+ */
+export function restoredCamera(saved: Camera | null | undefined, drilledIn: boolean): Camera | "fit" {
+  if (!saved || drilledIn || saved.framed) return "fit";
+  return saved;
 }
 
 /** The world rectangle visible through the camera. */

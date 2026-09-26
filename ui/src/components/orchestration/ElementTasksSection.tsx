@@ -33,8 +33,8 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
   return (
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
-        <h3 className="text-[12px] font-medium text-muted-foreground">Agent tasks</h3>
-        {mine.length ? <span className="text-[11.5px] text-faint">{mine.length}</span> : null}
+        <h3 className="text-label font-medium text-muted-foreground">Agent tasks</h3>
+        {mine.length ? <span className="text-meta text-faint">{mine.length}</span> : null}
         <span className="flex-1" />
         {status?.initialized ? (
           <button type="button" className={quietButton} onClick={() => setOpen(true)}>
@@ -43,7 +43,7 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
         ) : null}
       </div>
       {status && !status.initialized ? (
-        <p className="text-[12px] text-faint">
+        <p className="text-label text-faint">
           {status.reason === "not_git" ? "Tasks need a git repository — this folder isn't one. " : "ruah isn't set up here. "}
           See <Link to="/tasks" className="text-foreground/90 hover:underline">Tasks</Link>{" "}
           {status.reason === "not_git" ? "for the fix." : "to initialise it."}
@@ -53,24 +53,24 @@ export function ElementTasksSection({ node }: { node: DiagramNode }) {
           {mine.map((t) => (
             <li key={t.name} className="flex min-w-0 items-center gap-2 py-1">
               <ListChecks className="size-3.5 shrink-0 text-faint" />
-              <Link to="/tasks" className="min-w-0 truncate font-mono text-[12px] text-foreground/90 hover:underline">
+              <Link to="/tasks" className="min-w-0 truncate font-mono text-label text-foreground/90 hover:underline">
                 {t.name}
               </Link>
               <span className="flex-1" />
               <Pill
                 tone={t.status === "failed" ? "bad" : t.status === "done" ? "ok" : t.status === "in-progress" ? "warn" : "idle"}
-                className="h-4 px-1 text-[11px]"
+                className="h-4 px-1 text-caption"
               >
                 {t.status === "in-progress" ? "running" : t.status}
               </Pill>
-              <span className="w-8 shrink-0 text-right text-[11.5px] text-muted-foreground">
+              <span className="w-8 shrink-0 text-right text-meta text-muted-foreground">
                 {shortAge(t.startedAt ?? t.createdAt)}
               </span>
             </li>
           ))}
         </ul>
       ) : status ? (
-        <p className="text-[12px] text-faint">
+        <p className="text-label text-faint">
           No open tasks on these files. A task runs an agent in its own worktree with the files locked.
         </p>
       ) : null}

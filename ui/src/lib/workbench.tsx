@@ -331,7 +331,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
           }
           openDiagram(levelDiagramId(node.id));
         } else if (entry.status === "error") {
-          toast.error(`Cannot open ${node.label}`, { description: entry.error });
+          toast.error(`Couldn't open ${node.label}`, { description: entry.error });
         }
       });
     };

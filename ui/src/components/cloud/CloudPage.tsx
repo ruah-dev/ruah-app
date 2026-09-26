@@ -34,7 +34,7 @@ import {
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { PageHeader, PageMenu } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -58,6 +58,7 @@ import { CloudResourceView } from "./CloudDetails";
 import { ConnectProviders } from "./ConnectProviders";
 import { AccountPicker, LooksRelated } from "./ScopePanels";
 import { cn } from "@/lib/utils";
+import { SkeletonRows } from "@/components/ui/skeleton";
 
 function useNow(ms = 30_000) {
   const [now, setNow] = useState(() => Date.now());
@@ -104,7 +105,7 @@ function SyncMenu({
           {providers.map((p) => (
             <div key={p.id}>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[11.5px] font-normal text-muted-foreground">
+              <DropdownMenuLabel className="text-meta font-normal text-muted-foreground">
                 {p.name}
               </DropdownMenuLabel>
               {p.accounts?.length ? (
@@ -150,7 +151,7 @@ function HealthStrip({
   if (!counts.total) return null;
   const parts = STRIP.filter((p) => counts[p.health] > 0);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Live status">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui" aria-label="Live status">
       {parts.map((p, i) => {
         const bad = p.health === "down" || p.health === "degraded";
         const content = (
@@ -183,7 +184,7 @@ function HealthStrip({
       })}
       {live ? (
         <span
-          className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground"
+          className="flex items-center gap-1.5 text-meta text-muted-foreground"
           title="Refreshed automatically while this page is open"
         >
           <span className="relative flex size-2">
@@ -310,6 +311,8 @@ export function CloudPage() {
       <PageHeader title="Cloud">
         {sv.supported ? (
           <Segmented
+            kind="tabs"
+            label="Resources shown"
             className="shrink-0 whitespace-nowrap"
             value={view}
             onChange={(v) => {
@@ -334,14 +337,19 @@ export function CloudPage() {
             {scopeInfo?.accounts.length ? `Accounts (${scopeInfo.accounts.length})` : "Accounts"}
           </button>
         ) : null}
-        <span className="text-[12px] text-muted-foreground max-sm:hidden">
-          {s.syncing
-            ? "Syncing…"
-            : snapshot?.syncedAt
-              ? `Synced ${timeAgo(snapshot.syncedAt, now)}`
-              : "Never synced"}
-        </span>
-        <SyncMenu providers={cloudProviders} syncing={s.syncing} onSync={(o) => void sync(o)} />
+        {/* Nothing to sync before a provider is connected: the page's action is connecting one. */}
+        {noProviders ? null : (
+          <>
+            <span className="text-label text-muted-foreground max-sm:hidden">
+              {s.syncing
+                ? "Syncing…"
+                : snapshot?.syncedAt
+                  ? `Synced ${timeAgo(snapshot.syncedAt, now)}`
+                  : "Never synced"}
+            </span>
+            <SyncMenu providers={cloudProviders} syncing={s.syncing} onSync={(o) => void sync(o)} />
+          </>
+        )}
         {/* Secondary: the map's Cloud level (one row of controls; the rest in ⋯). */}
         <PageMenu>
           <DropdownMenuCheckboxItem checked={s.showCloudOnMap} onCheckedChange={(on) => setShowCloudOnMap(on === true)}>
@@ -353,15 +361,45 @@ export function CloudPage() {
         </PageMenu>
       </PageHeader>
 
+      {noProviders ? (
+        // First run: one message and the providers' setup — no filters or table over nothing.
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 pt-6 pb-10 max-md:px-4">
+            <RemoteNotice remote={s.cloud} what="Cloud" />
+            <GhostState
+              pose="plugging"
+              size="sm"
+              eyebrow="Not connected"
+              title="Connect a cloud provider"
+              body="Ruah reads what's deployed with each provider's own CLI, read-only. Log in to one below, then check again: its resources show up here and on the map."
+              className="py-6"
+            />
+            <ConnectProviders
+              title="Providers"
+              providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
+            />
+          </div>
+        </div>
+      ) : (
+        renderBody()
+      )}
+    </div>
+  );
+
+  // A plain function (not a component): the filter field keeps its focus across renders.
+  function renderBody() {
+    return (
+      <>
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
         <RemoteNotice remote={s.cloud} what="Cloud" />
-        {noProviders ? (
-          <ConnectProviders
-            providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
+        {syncError ? (
+          <Notice
+            tone="bad"
+            title="Couldn't sync"
+            body={`${syncError.replace(/\.$/, "")}. Check the provider's login in Integrations, then sync again.`}
           />
         ) : null}
-        {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}
-        {scopeError ? <Notice tone="bad" title="Could not change the project's scope" body={scopeError} /> : null}
+        {scopeError ? <Notice tone="bad" title="Couldn't change the project's scope" body={scopeError} /> : null}
         {scopeFileError ? (
           <Notice
             tone="warn"
@@ -387,7 +425,7 @@ export function CloudPage() {
           <Notice
             key={e.provider}
             tone="warn"
-            title={`${providerLabel(e.provider)} could not be read`}
+            title={`Couldn't read ${providerLabel(e.provider)}`}
             body={e.message}
           />
         ))}
@@ -400,18 +438,19 @@ export function CloudPage() {
         />
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-7 w-64 items-center gap-2 rounded-md bg-foreground/[0.045] px-2 max-sm:w-full">
+          <div className="flex h-7 w-64 items-center gap-2 rounded-lg bg-surface-2 px-2 ring-1 ring-hairline focus-within:ring-ring max-sm:w-full">
             <Search className="size-3.5 shrink-0 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter by name, region, tag, element…"
               aria-label="Filter resources"
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-faint"
+              className="min-w-0 flex-1 bg-transparent text-ui-sm text-foreground outline-none placeholder:text-faint"
             />
           </div>
           {providersInData.length > 1 ? (
             <Segmented
+              label="Provider"
               value={provider}
               onChange={setProvider}
               options={[
@@ -422,6 +461,7 @@ export function CloudPage() {
           ) : null}
           {counts.total ? (
             <Segmented
+              label="Health"
               value={healthFilter}
               onChange={setHealthFilter}
               options={[
@@ -431,6 +471,7 @@ export function CloudPage() {
             />
           ) : null}
           <Segmented
+            label="Linked to the map"
             value={linkFilter}
             onChange={setLinkFilter}
             options={[
@@ -441,7 +482,7 @@ export function CloudPage() {
           />
           <span className="flex-1" />
           {all.length ? (
-            <span className="text-[12px] text-muted-foreground">
+            <span className="text-label text-muted-foreground">
               {all.length} resources · {regions} {regions === 1 ? "region" : "regions"} · {linkedCount}{" "}
               linked
             </span>
@@ -462,7 +503,8 @@ export function CloudPage() {
             {...(sv.supported && writable ? { onScope: (r: CloudResource, a: ScopeResourceAction) => void onScope(r, a) } : {})}
             empty={
               s.cloud.status === "loading" ? (
-                <GhostState pose="cloud" title="Reading what's deployed…" className="h-full min-h-60 px-8" live="polite" />
+                // The table's shape while the providers answer (a sync can take a few seconds).
+                <SkeletonRows rows={6} label="Reading what's deployed" className="gap-3 px-5 py-4 max-md:px-3" />
               ) : (
                 <GhostState
                   className="h-full min-h-60 px-8"
@@ -502,7 +544,7 @@ export function CloudPage() {
                       ) : null}
                       {all.length === 0 && s.cloud.status === "error" ? (
                         <button type="button" className={quietButton} onClick={() => void loadCloud()}>
-                          Retry
+                          Try again
                         </button>
                       ) : null}
                     </>
@@ -521,6 +563,7 @@ export function CloudPage() {
           </aside>
         ) : null}
       </div>
-    </div>
-  );
+      </>
+    );
+  }
 }

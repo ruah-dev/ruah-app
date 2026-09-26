@@ -87,25 +87,25 @@ export function DiffBlock({
         className="flex h-8 w-full items-center gap-2 px-3 text-left transition-colors hover:bg-accent"
       >
         <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate font-mono text-[11.5px] text-foreground/90">
+        <span className="min-w-0 truncate font-mono text-meta text-foreground/90">
           {ev.path}
         </span>
-        <span className="ms-auto flex shrink-0 items-center gap-1.5 font-mono text-[11px]">
+        <span className="ms-auto flex shrink-0 items-center gap-1.5 font-mono text-caption">
           {ev.oldText === null ? <span className="text-muted-foreground">new</span> : null}
           <span className="text-ok">+{newLines.length}</span>
           {oldLines.length ? <span className="text-bad">−{oldLines.length}</span> : null}
         </span>
       </button>
-      <pre className="max-h-72 overflow-auto border-t border-hairline py-1.5 font-mono text-[11.5px] leading-[1.6]">
+      <pre className="max-h-72 overflow-auto border-t border-hairline py-1.5 font-mono text-meta leading-[1.6]">
         {oldLines.map((l, i) => (
           <div key={`o${i}`} className="flex bg-bad/[0.07] px-3">
-            <span className="w-4 shrink-0 text-bad/80 select-none">−</span>
+            <span className="w-4 shrink-0 text-bad select-none">−</span>
             <code className="whitespace-pre text-foreground/75">{l}</code>
           </div>
         ))}
         {newLines.map((l, i) => (
           <div key={`n${i}`} className="flex bg-ok/[0.07] px-3">
-            <span className="w-4 shrink-0 text-ok/80 select-none">+</span>
+            <span className="w-4 shrink-0 text-ok select-none">+</span>
             <code className="whitespace-pre text-foreground/90">{l}</code>
           </div>
         ))}
@@ -132,7 +132,7 @@ function PlanList({ entries }: { entries: PlanEntry[] }) {
                 ? CircleDot
                 : Circle;
           return (
-            <li key={i} className="flex items-start gap-2 text-[12.5px]">
+            <li key={i} className="flex items-start gap-2 text-ui-sm">
               <Icon
                 className={cn(
                   "mt-0.5 size-3.5 shrink-0",
@@ -215,11 +215,11 @@ export function TurnView({
       {/* user */}
       <div className="flex flex-col items-end gap-1">
         <TurnAttachments attachments={turn.attachments} />
-        <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-[13.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+        <div className="max-w-[88%] rounded-2xl bg-message px-3.5 py-2 text-body leading-relaxed whitespace-pre-wrap text-foreground">
           {turn.text}
         </div>
         {contextPath !== null ? (
-          <span className="max-w-[88%] truncate pe-1 font-mono text-[11px] text-faint">
+          <span className="max-w-[88%] truncate pe-1 font-mono text-caption text-faint">
             @{contextPath}
           </span>
         ) : null}
@@ -234,10 +234,10 @@ export function TurnView({
         label={running ? "Agent working" : face === "error" ? "Agent turn failed" : "Agent"}
         className="-ms-0.5 mt-0.5"
       />
-      <div className="min-w-0 flex-1 space-y-2 text-[13.5px] leading-relaxed text-foreground/90">
+      <div className="min-w-0 flex-1 space-y-2 text-body leading-relaxed text-foreground/90">
         {turn.contextPack ? (
           <RowDisclosure icon={FileCode2} label="Context sent to the agent" tone="ai">
-            <pre className="max-h-60 overflow-auto rounded-lg bg-ai/[0.06] p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap text-foreground/80 ring-1 ring-ai/25">
+            <pre className="max-h-60 overflow-auto rounded-lg bg-ai/[0.06] p-2 font-mono text-caption leading-snug whitespace-pre-wrap text-foreground/80 ring-1 ring-ai/25">
               {turn.contextPack}
             </pre>
           </RowDisclosure>
@@ -256,7 +256,7 @@ export function TurnView({
             case "thought":
               return (
                 <RowDisclosure key={i} icon={Brain} label="Thinking" tone="ai">
-                  <p className="pb-1 text-[12.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                  <p className="pb-1 text-ui-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
                     {s.text}
                   </p>
                 </RowDisclosure>
@@ -273,7 +273,7 @@ export function TurnView({
                 <p
                   key={i}
                   className={cn(
-                    "flex min-w-0 items-center gap-2 text-[12px]",
+                    "flex min-w-0 items-center gap-2 text-label",
                     denied ? "text-warn" : "text-muted-foreground",
                   )}
                 >
@@ -295,12 +295,12 @@ export function TurnView({
           <PermissionCard request={turn.permission} onOpenPath={onOpenPath} keyboard={keyboard} />
         ) : null}
         {showCursor && turn.waitingFor && segs.length === 0 ? (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground" role="status">
+          <p className="flex items-center gap-2 text-ui-sm text-muted-foreground" role="status">
             <Phantom expression="loading" size={14} />
             Waiting for {turn.waitingFor}…
           </p>
         ) : showCursor && (segs.length === 0 || segs[lastIndex]!.k !== "text") ? (
-          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-ui-sm text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-ai" />
             Working…
           </p>
@@ -308,7 +308,7 @@ export function TurnView({
         {turn.stopReason && turn.stopReason !== "end_turn" ? (
           <p
             className={cn(
-              "text-[12px]",
+              "text-label",
               turn.stopReason === "error" || turn.stopReason === "refusal"
                 ? "text-bad"
                 : turn.stopReason === "cancelled"

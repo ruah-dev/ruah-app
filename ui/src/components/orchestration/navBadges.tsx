@@ -41,7 +41,7 @@ function TasksBadge({ collapsed }: { collapsed: boolean }) {
       aria-label={`${n} running`}
       title={`${n} running`}
       className={cn(
-        "flex h-4 min-w-4 shrink-0 items-center justify-center gap-1 rounded-full bg-warn/15 px-1.5 text-[10.5px] font-medium text-warn tabular-nums",
+        "flex h-4 min-w-4 shrink-0 items-center justify-center gap-1 rounded-full pill-warn px-1.5 text-micro font-medium tabular-nums",
       )}
     >
       <span className="size-1 animate-pulse rounded-full bg-warn" />

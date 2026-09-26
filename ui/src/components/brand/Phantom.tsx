@@ -19,6 +19,7 @@ import { useAppearanceKey } from "@/lib/theme";
 import { RUAH_BODY_PATH } from "@/components/brand/RuahLogo";
 import { AGENT_TINT_IDS, type AgentTint } from "@/design/tokens";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/motion";
 
 export type PhantomExpression =
   | "idle"
@@ -343,9 +344,6 @@ export function Phantom({
   );
 }
 
-const reducedMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /**
  * Phantom whose eyes follow the pointer (the website's MascotCompanion, without the roaming).
@@ -372,7 +370,7 @@ export function PhantomCompanion({
     let x = 0;
     let y = 0;
     const staticMode = () =>
-      reducedMotion() || document.documentElement.dataset["theme"] === "contrast";
+      prefersReducedMotion() || document.documentElement.dataset["theme"] === "contrast";
     const apply = () => {
       frame = 0;
       if (staticMode()) {

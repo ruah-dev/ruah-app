@@ -30,8 +30,8 @@ export function LinkBadge({ manual, source }: { manual: boolean; source?: string
     <span
       title={title}
       className={cn(
-        "inline-flex h-4 shrink-0 items-center rounded px-1 text-[10px] font-medium tracking-wide uppercase",
-        manual ? "bg-primary/15 text-primary" : "bg-foreground/[0.07] text-muted-foreground",
+        "inline-flex h-4 shrink-0 items-center rounded px-1 text-micro font-medium tracking-wide uppercase",
+        manual ? "pill-primary" : "bg-foreground/[0.07] text-muted-foreground",
       )}
     >
       {manual ? "manual" : "auto"}
@@ -80,7 +80,7 @@ export function ElementPicker({
           aria-label={linked ? `Linked to ${linked.name}. Change link` : `Link ${resource.name} to an element`}
           title={error ?? undefined}
           className={cn(
-            "group/pick flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-[12.5px] transition-colors hover:bg-accent disabled:opacity-50",
+            "group/pick flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-ui-sm transition-colors hover:bg-accent disabled:opacity-50",
             error && "text-bad",
             className,
           )}
@@ -98,7 +98,7 @@ export function ElementPicker({
               <LinkBadge manual={manual} source={resource.linkSource} />
             </>
           ) : resource.linkedNodeId ? (
-            <span className="min-w-0 truncate font-mono text-[12px] text-muted-foreground">
+            <span className="min-w-0 truncate font-mono text-label text-muted-foreground">
               {resource.linkedNodeId}
             </span>
           ) : (
@@ -111,9 +111,9 @@ export function ElementPicker({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 border-hairline p-0">
         <Command>
-          <CommandInput placeholder="Find an element…" className="h-9 text-[13px]" />
+          <CommandInput placeholder="Find an element…" className="h-9 text-ui" />
           <CommandList className="max-h-72">
-            <CommandEmpty className="py-5 text-center text-[12.5px] text-muted-foreground">
+            <CommandEmpty className="py-5 text-center text-ui-sm text-muted-foreground">
               No element matches.
             </CommandEmpty>
             <CommandGroup heading="Elements">
@@ -126,11 +126,11 @@ export function ElementPicker({
                     key={n.id}
                     value={`${n.name} ${n.id} ${n.path ?? ""} ${n.type}`}
                     onSelect={() => void choose(n.id)}
-                    className="gap-2 text-[13px]"
+                    className="gap-2 text-ui"
                   >
                     <NIcon className={cn("size-3.5", s.color)} />
                     <span className="min-w-0 truncate">{n.name}</span>
-                    <span className="ms-auto max-w-28 truncate font-mono text-[11px] text-muted-foreground">
+                    <span className="ms-auto max-w-28 truncate font-mono text-caption text-muted-foreground">
                       {n.path ?? n.type}
                     </span>
                     <Check className={cn("size-3.5 shrink-0 text-primary", !active && "invisible")} />
@@ -145,7 +145,7 @@ export function ElementPicker({
                   <CommandItem
                     value="__unlink__"
                     onSelect={() => void choose(null)}
-                    className="gap-2 text-[13px] text-muted-foreground"
+                    className="gap-2 text-ui text-muted-foreground"
                   >
                     <Unlink className="size-3.5" />
                     Unlink

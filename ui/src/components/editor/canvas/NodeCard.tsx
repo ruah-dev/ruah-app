@@ -13,6 +13,7 @@ import { keepAgentElement } from "@/lib/architecture-edit";
 import { useMapFlash } from "@/lib/map-activity";
 import { Phantom } from "@/components/brand/Phantom";
 import type { Lod } from "./geometry";
+import { cardText, cardTool, chipPad, subtitleParts } from "./display";
 import { isGroupNodeId } from "./view-model";
 import { openElementInTerminal } from "@/components/terminal/actions";
 import { VerifyBadgeChip } from "@/components/engines/VerifyBadge";
@@ -135,7 +136,7 @@ function Toolbar({ node, editable, linking, h }: { node: DiagramNode; editable: 
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-1.5 text-[11px] text-ai hover:bg-ai/12 hover:text-ai"
+          className="h-6 gap-1 px-1.5 text-caption text-ai hover:bg-ai/12 hover:text-ai"
           aria-label="Keep this agent-made element"
           title="An agent drew this. Keep it (removes the AI marker)."
           onClick={() => daemonActions.editArchitecture((a) => keepAgentElement(a, node.id))}
@@ -208,7 +209,7 @@ function InsideChip({ node, h, compact }: { node: DiagramNode; h: NodeHandlers; 
       aria-label={title}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={onClick}
-      className="absolute right-1.5 bottom-1.5 flex h-[18px] items-center gap-0.5 rounded-md border border-hairline bg-surface-2 px-1 font-mono text-[10.5px] text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/12 hover:text-primary"
+      className="absolute right-1.5 bottom-1.5 flex h-[18px] items-center gap-0.5 rounded-md border border-hairline bg-surface-2 px-1 font-mono text-micro text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/12 hover:text-primary"
     >
       <ChevronRight className="size-2.5" />
       {n ? <span className="tabular-nums">{n}</span> : null}
@@ -249,7 +250,9 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
   const group = isGroupNodeId(node.id);
   const w = node.w ?? NODE_W;
   const hgt = node.h ?? NODE_H;
-  const opacity = tone === "dimmed" ? "opacity-60" : "opacity-100";
+  // Dimmed (not near the selection): 80 %, the lowest at which muted text on a card still passes
+  // 4.5:1 in the light and dark themes (60 % did not: 2.9:1 in light).
+  const opacity = tone === "dimmed" ? "opacity-80" : "opacity-100";
   const ring =
     tone === "current"
       ? "border-warn! ring-4 ring-warn/35"
@@ -270,6 +273,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
     onMouseLeave: () => h.hover(null),
   };
   const border = selected ? "border-primary" : group ? "border-dashed border-group/60" : "border-hairline";
+  const text = cardText(node);
 
   if (lod === "tiny") {
     return (
@@ -310,13 +314,26 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         )}
       >
         <span aria-hidden className={cn("absolute inset-y-2 left-0 w-[5px] rounded-e-pill", style.bar)} />
-        <span
-          className="line-clamp-2 min-w-0 leading-[1.12] font-medium [overflow-wrap:anywhere] text-foreground"
-          style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}
-          title={node.label}
-        >
-          {node.label}
-        </span>
+        {text.title !== text.full ? (
+          // "Kubernetes: prod" → "prod" over "Kubernetes": two short lines instead of the full
+          // name broken mid-word ("Kubernete / s: prod").
+          <span className="flex min-w-0 flex-col leading-[1.12]" title={text.full}>
+            <span className="truncate font-medium text-foreground" style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}>
+              {text.title}
+            </span>
+            <span className="truncate text-muted-foreground" style={{ fontSize: "min(22px, calc(9px * var(--inv-k, 1)))" }}>
+              {cardTool(text)}
+            </span>
+          </span>
+        ) : (
+          <span
+            className="line-clamp-2 min-w-0 leading-[1.12] font-medium [overflow-wrap:break-word] text-foreground"
+            style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}
+            title={node.label}
+          >
+            {node.label}
+          </span>
+        )}
         {node.childCount ? (
           <span
             className="ms-[0.4em] shrink-0 pe-5 font-mono text-faint tabular-nums"
@@ -365,27 +382,39 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               if (e.key === "Escape") h.cancelRename();
             }}
-            className="w-full min-w-0 rounded-md border border-ring/50 bg-surface-3 px-1 text-[13px] text-foreground outline-none"
+            className="w-full min-w-0 rounded-md border border-ring/50 bg-surface-3 px-1 text-ui text-foreground outline-none"
           />
         ) : (
-          <span className="truncate font-medium text-foreground" style={{ fontSize: BOOST(13) }} title={node.label}>
-            {node.label}
+          <span className="truncate font-medium text-foreground" style={{ fontSize: BOOST(13) }} title={text.full}>
+            {text.title}
           </span>
         )}
       </span>
-      {node.subtitle ? (
+      {text.subtitle ? (
+        // One line: parts that do not fit wrap onto a hidden second line, so "TypeScript · Express
+        // 4" reads "TypeScript" on a narrow card (the first part still truncates if it must).
         <span
-          className={cn("truncate pl-8 font-mono text-muted-foreground", node.drill || group ? "pr-9" : "")}
+          className={cn(
+            "flex h-[1.4em] min-w-0 flex-wrap gap-x-[0.5em] overflow-hidden pl-8 leading-[1.4] font-mono text-muted-foreground",
+            node.drill || group ? chipPad(node.childCount) : "",
+          )}
           style={{ fontSize: BOOST(11) }}
+          title={text.subtitle}
         >
-          {node.subtitle}
+          {subtitleParts(text.subtitle).map((part, i) => (
+            <span key={i} className={i === 0 ? "max-w-full min-w-0 truncate" : "shrink-0"}>
+              {i === 0 ? part : `· ${part}`}
+            </span>
+          ))}
         </span>
       ) : null}
       {node.drill || group ? <InsideChip node={node} h={h} compact={false} /> : null}
       {node.origin === "agent" ? <AiMark /> : null}
       {working ? <WorkingGhost face={working} compact={false} /> : null}
       {verifyBadge ? (
-        <span className="absolute top-2 right-2">
+        // On the card's top edge (an opaque backing so the border does not show through), where
+        // it never covers the name.
+        <span className="absolute -top-2.5 right-2 rounded bg-card">
           <VerifyBadgeChip badge={verifyBadge} detail={verifyDetail} />
         </span>
       ) : null}

@@ -4,7 +4,7 @@
 import type { ComponentType, ReactNode } from "react";
 import type { LayoutMode } from "@/lib/preferences";
 import { useViewerPrefs } from "@/lib/preferences";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import { ADVANCED_MIN_WIDTH, LAYOUT_SHORTCUT, setLayout, setRailLabels, useShellLayout } from "./layout";
 
@@ -26,6 +26,7 @@ export function LayoutSettingsRows({ Row }: { Row: RowComponent }) {
         }
       >
         <Segmented
+          label="Layout"
           value={prefs.layout}
           onChange={(v: LayoutMode) => setLayout(v)}
           options={[

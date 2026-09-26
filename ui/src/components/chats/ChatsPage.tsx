@@ -1,6 +1,6 @@
 // Chats: recent conversations across ALL projects (GET /api/chats/recent), grouped by project.
 // Opening a chat of another project switches the project first, then opens the chat.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { MessageSquarePlus, RefreshCw, Search } from "lucide-react";
 import { EmptyState as GhostState } from "@/components/brand/EmptyState";
 import type { PhantomPoseName } from "@/components/brand/PhantomPose";
@@ -14,6 +14,7 @@ import { AgentMark } from "@/components/agent/ComposerControls";
 import { KindBadge, ProjectTile } from "@/components/projects/ProjectBits";
 import { canManageProjects, useProjectActions } from "@/components/projects/useProjectActions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { iconButton, primaryButton, quietButton } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
 
 type Row =
@@ -91,28 +92,18 @@ export function ChatsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Chats">
         {daemon.projectsSupported && daemon.project ? (
-          <button
-            type="button"
-            onClick={actions.startChat}
-            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-ui-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
+          <button type="button" onClick={actions.startChat} className={primaryButton}>
             <MessageSquarePlus className="size-3.5" />
             New chat
           </button>
         ) : null}
-        <button
-          type="button"
-          aria-label="Refresh"
-          onClick={load}
-          disabled={!connected}
-          className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-        >
+        <button type="button" aria-label="Refresh" title="Refresh" onClick={load} disabled={!connected} className={iconButton}>
           <RefreshCw className="size-3.5" />
         </button>
       </PageHeader>
 
       <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pt-5 max-md:px-3">
-        <div className="mb-3 flex h-9 shrink-0 items-center gap-2 rounded-lg bg-surface-2 px-3 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+        <div className="mb-3 flex h-9 shrink-0 items-center gap-2 rounded-lg bg-surface-2 px-3 ring-1 ring-hairline focus-within:ring-ring">
           <Search className="size-3.5 text-muted-foreground" />
           <input
             value={query}
@@ -151,11 +142,29 @@ export function ChatsPage() {
             body="Chats are stored by the Ruah daemon. Start the Ruah app (or ruah app serve) to see them."
           />
         ) : error ? (
-          <EmptyState pose="detective" eyebrow="Couldn't load" title="Couldn't load chats" body={error} />
+          <EmptyState
+            pose="detective"
+            eyebrow="Couldn't load"
+            title="Couldn't load chats"
+            body={`${error.replace(/\.$/, "")}. Check that Ruah is still running, then try again.`}
+            action={
+              <button type="button" className={quietButton} onClick={load}>
+                <RefreshCw className="size-3.5" /> Try again
+              </button>
+            }
+          />
         ) : chats === null ? (
-          <div className="space-y-2 pt-1">
+          <div role="status" aria-live="polite" className="space-y-1 pt-1">
+            <span className="sr-only">Loading chats…</span>
             {Array.from({ length: 7 }, (_, i) => (
-              <Skeleton key={i} className="h-10 rounded-lg bg-foreground/[0.05]" />
+              <div key={i} className="flex h-11 items-center gap-3 px-3">
+                <Skeleton className="size-5 rounded-md" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3 rounded" style={{ width: `${58 - ((i * 13) % 24)}%` }} />
+                  <Skeleton className="h-2.5 w-1/4 rounded" />
+                </div>
+                <Skeleton className="h-2.5 w-8 rounded" />
+              </div>
             ))}
           </div>
         ) : rows.length === 0 ? (
@@ -167,6 +176,17 @@ export function ChatsPage() {
               query
                 ? "Try another word from the title or the project name."
                 : "Ask the agent anything, or about an element on the map — every conversation is kept here, per project."
+            }
+            action={
+              query ? (
+                <button type="button" className={quietButton} onClick={() => setQuery("")}>
+                  Clear the filter
+                </button>
+              ) : daemon.projectsSupported && daemon.project ? (
+                <button type="button" className={primaryButton} onClick={actions.startChat}>
+                  <MessageSquarePlus className="size-3.5" /> New chat
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -181,12 +201,12 @@ export function ChatsPage() {
             renderItem={(r, i) =>
               r.type === "group" ? (
                 <div className="flex h-full items-end gap-2 px-2 pb-1.5">
-                  <ProjectTile project={{ id: r.projectId, name: r.name }} className="size-5 text-[10px]" />
+                  <ProjectTile project={{ id: r.projectId, name: r.name }} className="size-5 text-micro" />
                   {/* The name keeps its width (up to half the row); the long path is what gets cut. */}
                   <span className="max-w-[50%] shrink-0 truncate text-ui font-medium text-foreground">{r.name}</span>
                   <KindBadge kind={kindOf(r.projectId)} />
                   {r.projectId === daemon.project?.id ? (
-                    <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[10.5px] font-medium text-primary">
+                    <span className="shrink-0 rounded-[5px] pill-primary px-1.5 text-micro font-medium">
                       current
                     </span>
                   ) : null}
@@ -214,7 +234,7 @@ export function ChatsPage() {
                 >
                   <AgentMark name={agentName(r.chat.agentId)} className="size-5 text-[9px]" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ui text-foreground">
+                    <span className="block truncate text-ui text-foreground" title={r.chat.title || undefined}>
                       {r.chat.title || "Untitled chat"}
                     </span>
                     <span className="block truncate text-meta text-muted-foreground">
@@ -240,13 +260,26 @@ export function ChatsPage() {
 }
 
 /** Page states: sleeping (offline), detective (failed), searching (no match), chatting (none). */
-function EmptyState({ title, body, pose, eyebrow }: { title: string; body: string; pose: PhantomPoseName; eyebrow?: string | undefined }) {
+function EmptyState({
+  title,
+  body,
+  pose,
+  eyebrow,
+  action,
+}: {
+  title: string;
+  body: string;
+  pose: PhantomPoseName;
+  eyebrow?: string | undefined;
+  action?: ReactNode;
+}) {
   return (
     <GhostState
       pose={pose}
       eyebrow={eyebrow}
       title={title}
       body={body}
+      actions={action}
       className="mx-auto max-w-md"
       live={pose === "detective" ? "polite" : undefined}
     />

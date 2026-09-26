@@ -48,7 +48,7 @@ export function InlineCode({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
-          <code key={i} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[11.5px] text-foreground">
+          <code key={i} className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-meta text-foreground">
             {part.slice(1, -1)}
           </code>
         ) : (
@@ -81,7 +81,7 @@ export function LimitMeterRow({ meter, thresholds, now }: { meter: LimitMeter; t
   const hasAmounts = meter.used !== null && meter.used !== undefined && meter.limit !== null && meter.limit !== undefined;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline gap-2 text-[12.5px]">
+      <div className="flex items-baseline gap-2 text-ui-sm">
         <span className="min-w-0 truncate text-muted-foreground">{meter.label}</span>
         <span className={cn("ms-auto shrink-0 font-medium tabular-nums", TEXT[severity])}>
           {pct === null ? (meter.detail ?? "—") : `${Math.round(pct)}% used`}
@@ -111,7 +111,7 @@ export function LimitMeterRow({ meter, thresholds, now }: { meter: LimitMeter; t
           />
         ) : null}
       </div>
-      <div className="flex items-baseline gap-2 text-[11.5px] text-faint tabular-nums">
+      <div className="flex items-baseline gap-2 text-meta text-faint tabular-nums">
         <span className="min-w-0 truncate">
           {hasAmounts ? `${formatAmount(meter.used!, meter.unit)} of ${formatAmount(meter.limit!, meter.unit)}` : ""}
           {meter.detail && pct !== null && !meter.detail.startsWith("Expires") ? `${hasAmounts ? " · " : ""}${meter.detail}` : ""}
@@ -126,7 +126,7 @@ export function LimitMeterRow({ meter, thresholds, now }: { meter: LimitMeter; t
 
 function Row({ label, children, hint }: { label: string; children: ReactNode; hint?: string | undefined }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12.5px]" title={hint}>
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-ui-sm" title={hint}>
       <span className="shrink-0 text-muted-foreground">{label}</span>
       <span className="ms-auto min-w-0 text-end tabular-nums text-foreground [overflow-wrap:anywhere]">{children}</span>
     </div>
@@ -157,7 +157,7 @@ function EstimateRow({ estimate }: { estimate: UsageEstimate }) {
       label="Ruah estimate"
       hint={`Turns run through Ruah only, ${estimate.basis}. Cost is what the agent reported${priced ? ", plus your model prices" : ""}${partialCost ? "; turns without a cost count tokens only" : ""}.`}
     >
-      <span className="me-1.5 rounded-sm bg-ai/12 px-1 py-px text-[10.5px] font-medium tracking-wide text-ai uppercase">
+      <span className="me-1.5 rounded-sm pill-ai px-1 py-px text-micro font-medium tracking-wide uppercase">
         estimate
       </span>
       {estimate.turns} {estimate.turns === 1 ? "turn" : "turns"} · {formatTokens(tokens)} tokens
@@ -236,7 +236,7 @@ function StatusPill({ agent }: { agent: AgentLimits }) {
       : agent.status === "not_logged_in" || agent.status === "partial"
         ? "border-hairline text-muted-foreground"
         : "border-hairline text-faint";
-  return <span className={cn("shrink-0 rounded-full border px-2 py-px text-[11px]", tone)}>{label}</span>;
+  return <span className={cn("shrink-0 rounded-full border px-2 py-px text-caption", tone)}>{label}</span>;
 }
 
 export function AgentLimitCard({
@@ -261,13 +261,13 @@ export function AgentLimitCard({
       className={cn("card-warm flex min-w-0 flex-col gap-4 p-4", quiet && "bg-transparent shadow-none")}
     >
       <header className="flex items-center gap-2.5">
-        <AgentMark name={agent.name} className={cn("size-6 rounded-md text-[10px]", quiet && "opacity-60")} />
+        <AgentMark name={agent.name} className={cn("size-6 rounded-md text-micro", quiet && "opacity-60")} />
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h3 className={cn("heading truncate text-[14px]", quiet ? "text-muted-foreground" : "text-foreground")}>
+          <h3 className={cn("heading truncate text-title-sm", quiet ? "text-muted-foreground" : "text-foreground")}>
             {agent.name}
           </h3>
           {agent.plan ? (
-            <span className="shrink-0 rounded-full bg-primary/12 px-2 py-px text-[11px] font-medium text-primary">
+            <span className="shrink-0 rounded-full pill-primary px-2 py-px text-caption font-medium">
               {agent.plan}
             </span>
           ) : null}
@@ -327,7 +327,7 @@ export function AgentLimitCard({
       {agent.appLogin ? <AppLoginSwitch appLogin={agent.appLogin} /> : null}
 
       {agent.reason || action ? (
-        <div className={cn("flex flex-col gap-1 text-[12.5px] leading-relaxed", hasBody && "border-t border-hairline pt-3")}>
+        <div className={cn("flex flex-col gap-1 text-ui-sm leading-relaxed", hasBody && "border-t border-hairline pt-3")}>
           {agent.reason ? (
             <p className={cn(agent.status === "error" || agent.stale ? "text-warn" : "text-muted-foreground")}>
               <InlineCode text={agent.reason} />
@@ -341,7 +341,7 @@ export function AgentLimitCard({
         </div>
       ) : null}
 
-      <footer className="mt-auto flex min-w-0 items-center gap-1.5 text-[11.5px] text-faint">
+      <footer className="mt-auto flex min-w-0 items-center gap-1.5 text-meta text-faint">
         <span className="min-w-0 truncate" title={agent.source}>
           {agent.source}
         </span>

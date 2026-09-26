@@ -19,14 +19,10 @@ import {
   type WhatItRuns,
 } from "@/lib/extensions";
 
-export const quietButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-ui-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-export const solidButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground transition-colors hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-40";
-export const primaryButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40";
-export const fieldClass =
-  "h-8 w-full min-w-0 rounded-lg border border-hairline bg-surface-0 px-2.5 text-ui text-foreground placeholder:text-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50";
+import { quietButton, solidButton, primaryButton, fieldClass } from "@/components/ui/controls";
+import { Segmented } from "@/components/ui/segmented";
+
+export { quietButton, solidButton, primaryButton, fieldClass };
 
 const KIND_MARK: Record<ExtensionKind, { icon: LucideIcon; className: string }> = {
   skill: { icon: Sparkles, className: "bg-ai/15 text-ai" },
@@ -53,11 +49,11 @@ export function Chip({ children, tone = "muted", title }: { children: ReactNode;
       className={cn(
         "inline-flex h-5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta whitespace-nowrap",
         tone === "muted" && "bg-foreground/[0.06] text-muted-foreground",
-        tone === "ok" && "bg-ok/12 text-ok",
-        tone === "warn" && "bg-warn/12 text-warn",
-        tone === "bad" && "bg-bad/12 text-bad",
-        tone === "ai" && "bg-ai/12 text-ai",
-        tone === "info" && "bg-info/12 text-info",
+        tone === "ok" && "pill-ok",
+        tone === "warn" && "pill-warn",
+        tone === "bad" && "pill-bad",
+        tone === "ai" && "pill-ai",
+        tone === "info" && "pill-info",
       )}
     >
       {children}
@@ -85,41 +81,8 @@ export function StatusChip({ view }: { view: ExtensionView }) {
   );
 }
 
-/** A compact segmented control (the page's own, so it does not depend on the shell's). */
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  className,
-  label,
-}: {
-  value: T;
-  options: readonly { value: T; label: ReactNode; title?: string }[];
-  onChange: (v: T) => void;
-  className?: string;
-  label: string;
-}) {
-  return (
-    <div role="tablist" aria-label={label} className={cn("flex h-7 items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 ring-1 ring-hairline", className)}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={value === o.value}
-          title={o.title}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-md px-2.5 text-ui-sm transition-colors max-sm:px-2",
-            value === o.value ? "bg-surface-4 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** The kit's segmented control (a radio group; arrow keys move the choice). */
+export { Segmented };
 
 /** One switch per agent. `busy` is the agent being toggled. */
 export function AgentSwitches({

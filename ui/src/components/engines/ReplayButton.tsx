@@ -37,7 +37,7 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
     <>
       <button
         type="button"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-caption text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
         disabled={busy}
         title="Replay this turn"
         onClick={() => void replay()}
@@ -45,7 +45,7 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
         <Clapperboard className="size-3.5" />
         {busy ? "Rendering…" : "Replay"}
       </button>
-      {error ? <span className="text-[11px] text-bad">{error}</span> : null}
+      {error ? <span className="text-caption text-bad">{error}</span> : null}
       <Dialog open={view !== null} onOpenChange={(open) => { if (!open) setView(null); }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -53,7 +53,7 @@ export function ReplayButton({ projectId, chatId, turnId }: { projectId: string;
           </DialogHeader>
           {view ? <iframe title="Session replay" src={view} className="h-[70vh] w-full rounded-md border border-hairline bg-surface-1" /> : null}
           {filePath && typeof window !== "undefined" && window.ruah ? (
-            <button type="button" className="text-[12px] text-muted-foreground underline" onClick={() => window.ruah?.revealInFinder(filePath)}>
+            <button type="button" className="text-label text-muted-foreground underline" onClick={() => window.ruah?.revealInFinder(filePath)}>
               Reveal file
             </button>
           ) : null}

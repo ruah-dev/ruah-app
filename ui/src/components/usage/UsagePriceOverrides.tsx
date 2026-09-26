@@ -69,14 +69,14 @@ export function UsagePriceOverrides({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl gap-0 p-0">
         <div className="px-6 pt-6 pb-4">
-          <DialogTitle className="text-[16px] font-semibold">Model prices</DialogTitle>
-          <DialogDescription className="mt-1 text-[13px]">
+          <DialogTitle className="text-headline font-semibold">Model prices</DialogTitle>
+          <DialogDescription className="mt-1 text-ui">
             USD per million tokens, used to estimate cost when the agent does not report it. Blank
             cache rates use the input rate. Stored in this browser.
           </DialogDescription>
         </div>
         <div className="max-h-[50vh] overflow-y-auto px-6">
-          <table className="w-full table-fixed text-[12.5px]">
+          <table className="w-full table-fixed text-ui-sm">
             <colgroup>
               <col className="w-[34%]" />
               {USAGE_PRICE_FIELDS.map((f) => (
@@ -85,7 +85,7 @@ export function UsagePriceOverrides({
               <col className="w-8" />
             </colgroup>
             <thead>
-              <tr className="border-b border-hairline text-left text-[12px] text-muted-foreground">
+              <tr className="border-b border-hairline text-left text-label text-muted-foreground">
                 <th className="py-2 font-normal">Model</th>
                 {USAGE_PRICE_FIELDS.map((f) => (
                   <th key={f.key} className="py-2 pe-2 text-right font-normal">
@@ -111,15 +111,15 @@ export function UsagePriceOverrides({
                         value={r.model}
                         onChange={(e) => update(r.id, { model: e.target.value })}
                         placeholder="model-id"
-                        className="h-7 w-full rounded-md bg-foreground/[0.05] px-2 font-mono text-[12px] outline-none focus:ring-1 focus:ring-ring"
+                        className="h-7 w-full rounded-md bg-foreground/[0.05] px-2 font-mono text-label outline-none focus:ring-1 focus:ring-ring"
                       />
                     ) : (
-                      <span className="block truncate py-1 font-mono text-[12px]" title={r.model}>
+                      <span className="block truncate py-1 font-mono text-label" title={r.model}>
                         {r.model}
                       </span>
                     )}
                     {errors.get(r.id) ? (
-                      <span className="mt-0.5 block text-[11.5px] text-bad">{errors.get(r.id)}</span>
+                      <span className="mt-0.5 block text-meta text-bad">{errors.get(r.id)}</span>
                     ) : null}
                   </td>
                   {USAGE_PRICE_FIELDS.map((f) => (
@@ -130,7 +130,7 @@ export function UsagePriceOverrides({
                         onChange={(e) => update(r.id, { [f.key]: e.target.value })}
                         placeholder={f.optional ? "Input" : "Auto"}
                         className={cn(
-                          "h-7 w-full rounded-md bg-foreground/[0.05] px-2 text-right text-[12px] tabular-nums outline-none placeholder:text-faint focus:ring-1 focus:ring-ring",
+                          "h-7 w-full rounded-md bg-foreground/[0.05] px-2 text-right text-label tabular-nums outline-none placeholder:text-faint focus:ring-1 focus:ring-ring",
                         )}
                       />
                     </td>
@@ -158,7 +158,7 @@ export function UsagePriceOverrides({
           <button
             type="button"
             onClick={() => setRows((rs) => [...rs, { ...usagePriceForm(), id: rowId(), isNew: true }])}
-            className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-ui text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <Plus className="size-3.5" /> Add model
           </button>
@@ -166,14 +166,14 @@ export function UsagePriceOverrides({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="h-8 rounded-lg px-3 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="h-8 rounded-lg px-3 text-ui text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={save}
-            className="h-8 rounded-lg bg-primary px-3.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
+            className="h-8 rounded-lg bg-primary px-3.5 text-ui font-medium text-primary-foreground hover:bg-primary/90"
           >
             Save prices
           </button>
