@@ -57,10 +57,27 @@ export function isImageFile(file: File): boolean {
   return (ATTACHMENT_TYPES as readonly string[]).includes(file.type);
 }
 
-/** Pending images of one composer: validation, upload with progress, removal. */
-export function useComposerAttachments() {
-  const [items, setItems] = useState<PendingAttachment[]>([]);
-  const itemsRef = useRef<PendingAttachment[]>([]);
+/**
+ * Uploaded, unsent images per project while another project is open: attachments are uploaded
+ * into one project (§5.6), so the composer keeps each project's own and brings them back when
+ * that project is opened again (never sending one project's image with another's prompt).
+ */
+const parkedAttachments = new Map<string, PendingAttachment[]>();
+
+/**
+ * Pending images of one composer: validation, upload with progress, removal. With `parkKey`
+ * (the project id) the finished ones are parked on unmount and restored by the next composer
+ * mounted with the same key; uploads still running are cancelled.
+ */
+export function useComposerAttachments(parkKey?: string) {
+  const [initial] = useState<PendingAttachment[]>(() => {
+    if (parkKey === undefined) return [];
+    const parked = parkedAttachments.get(parkKey) ?? [];
+    parkedAttachments.delete(parkKey);
+    return parked;
+  });
+  const [items, setItems] = useState<PendingAttachment[]>(initial);
+  const itemsRef = useRef<PendingAttachment[]>(initial);
   const aborts = useRef(new Map<string, () => void>());
 
   const update = useCallback((fn: (list: PendingAttachment[]) => PendingAttachment[]) => {
@@ -135,13 +152,16 @@ export function useComposerAttachments() {
     update(() => []);
   }, [update]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Parked items live in this composer's state now (a stale copy must not come back later).
+    if (parkKey !== undefined) parkedAttachments.delete(parkKey);
+    return () => {
       for (const abort of aborts.current.values()) abort();
-      for (const i of itemsRef.current) URL.revokeObjectURL(i.previewUrl);
-    },
-    [],
-  );
+      const keep = parkKey !== undefined ? itemsRef.current.filter((i) => i.status === "done") : [];
+      for (const i of itemsRef.current) if (!keep.includes(i)) URL.revokeObjectURL(i.previewUrl);
+      if (parkKey !== undefined && keep.length > 0) parkedAttachments.set(parkKey, keep);
+    };
+  }, [parkKey]);
 
   return { items, add, remove, clear };
 }
