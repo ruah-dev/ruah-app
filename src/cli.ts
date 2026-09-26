@@ -331,6 +331,9 @@ export function opensDesktop(cmd: string | undefined, isDir: (p: string) => bool
   return isDir(cmd);
 }
 
+/** Subcommands without a help of their own (a help flag must not run them). */
+const NO_OWN_HELP = new Set(["serve", "scan", "infra", "export", "mcp"]);
+
 async function main(argv: readonly string[]): Promise<number> {
   const [cmd, ...rest] = argv;
   if (cmd === "--version" || cmd === "-v") {
@@ -345,6 +348,12 @@ async function main(argv: readonly string[]): Promise<number> {
   if (opensDesktop(cmd)) {
     const repo = cmd === "open" ? rest[0] : cmd;
     return await openDesktop(repo);
+  }
+  // `serve --help` used to start a daemon (and `scan --help` to scan): these commands have no
+  // help of their own, so a help flag anywhere prints the usage and does nothing else.
+  if (cmd !== undefined && NO_OWN_HELP.has(cmd) && rest.some((a) => a === "--help" || a === "-h")) {
+    process.stdout.write(USAGE);
+    return 0;
   }
   switch (cmd) {
     case "serve": {
