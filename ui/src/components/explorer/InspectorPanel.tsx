@@ -40,7 +40,7 @@ const toneClass = { ok: "text-ok", warn: "text-warn", bad: "text-bad" } as const
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-1.5">
-      <h3 className="text-[12px] font-medium text-muted-foreground">{title}</h3>
+      <h3 className="text-label font-medium text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -64,12 +64,12 @@ function LinkRow({
         className="-mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-accent"
       >
         <Arrow className="size-3 shrink-0 text-faint" />
-        <span className="truncate text-[12.5px] text-foreground/90">{link.name}</span>
+        <span className="truncate text-ui-sm text-foreground/90">{link.name}</span>
         {link.label ? (
-          <span className="truncate text-[11.5px] text-muted-foreground">{link.label}</span>
+          <span className="truncate text-meta text-muted-foreground">{link.label}</span>
         ) : null}
         {link.kind ? (
-          <span className="ms-auto shrink-0 text-[11px] text-faint">{link.kind}</span>
+          <span className="ms-auto shrink-0 text-caption text-faint">{link.kind}</span>
         ) : null}
       </button>
     </li>
@@ -81,7 +81,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
       <MousePointerClick className="size-5 text-faint" />
       <p className="heading text-title text-foreground">{title}</p>
-      <p className="text-[12.5px] leading-relaxed text-muted-foreground">{body}</p>
+      <p className="text-ui-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function Details({
     ["Type", typeLabel],
     [
       "Path",
-      <span className="font-mono text-[12px] text-foreground/90" title={contextPath}>
+      <span className="font-mono text-label text-foreground/90" title={contextPath}>
         {node.path ?? "—"}
       </span>,
     ],
@@ -133,7 +133,7 @@ function Details({
       </button>,
     ]);
   if (node.tech?.length) facts.push(["Stack", node.tech.join(" · ")]);
-  facts.push(["ID", <span className="font-mono text-[12px] text-muted-foreground">{node.id}</span>]);
+  facts.push(["ID", <span className="font-mono text-label text-muted-foreground">{node.id}</span>]);
 
   return (
     <div className="space-y-6 px-5 pt-5 pb-8">
@@ -143,9 +143,9 @@ function Details({
             <Icon className={cn("size-4", style.color)} />
           </span>
           <div className="min-w-0 flex-1 pt-px">
-            <p className="heading truncate text-[16px] text-foreground">{node.label}</p>
+            <p className="heading truncate text-headline text-foreground">{node.label}</p>
             {node.subtitle ? (
-              <p className="truncate text-[12.5px] text-muted-foreground">{node.subtitle}</p>
+              <p className="truncate text-ui-sm text-muted-foreground">{node.subtitle}</p>
             ) : null}
           </div>
           {node.path || node.filePaths?.length ? (
@@ -153,7 +153,7 @@ function Details({
               type="button"
               onClick={() => openElementInTerminal(node)}
               title="Open a terminal in this element's folder"
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-label text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <SquareTerminal className="size-3.5" />
               Terminal
@@ -163,7 +163,7 @@ function Details({
             <button
               type="button"
               onClick={onDrill}
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-label text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <CornerDownRight className="size-3.5" />
               Open level
@@ -171,11 +171,11 @@ function Details({
           ) : null}
         </div>
         {node.description ? (
-          <p className="text-[13px] leading-relaxed text-foreground/85">{node.description}</p>
+          <p className="text-ui leading-relaxed text-foreground/85">{node.description}</p>
         ) : null}
       </div>
 
-      <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+      <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-ui-sm">
         {facts.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-muted-foreground">{k}</dt>
@@ -186,7 +186,7 @@ function Details({
 
       {node.notes ? (
         <Section title="Notes">
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-foreground/85">
+          <p className="text-ui leading-relaxed whitespace-pre-wrap text-foreground/85">
             {node.notes}
           </p>
         </Section>
@@ -200,7 +200,7 @@ function Details({
                 <button
                   type="button"
                   onClick={() => onOpenPath(f)}
-                  className="-mx-1.5 block w-[calc(100%+0.75rem)] truncate rounded-md px-1.5 py-0.5 text-left font-mono text-[12px] text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                  className="-mx-1.5 block w-[calc(100%+0.75rem)] truncate rounded-md px-1.5 py-0.5 text-left font-mono text-label text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                   title={f}
                 >
                   {f}
@@ -233,10 +233,10 @@ function Details({
         <Section title="Workflows">
           <ul className="space-y-1">
             {flows.map((w) => (
-              <li key={w.id} className="flex items-center gap-2 text-[12.5px] text-foreground/90">
+              <li key={w.id} className="flex items-center gap-2 text-ui-sm text-foreground/90">
                 <Workflow className="size-3.5 text-faint" />
                 {w.name}
-                <span className="text-[11.5px] text-muted-foreground">
+                <span className="text-meta text-muted-foreground">
                   step {w.steps.indexOf(node.id) + 1} of {w.steps.length}
                 </span>
               </li>
@@ -251,7 +251,7 @@ function Details({
             {node.health.map((h) => (
               <span
                 key={h.label}
-                className={cn("flex items-center gap-1.5 text-[12px]", toneClass[h.tone])}
+                className={cn("flex items-center gap-1.5 text-label", toneClass[h.tone])}
               >
                 <span className="size-1.5 rounded-full bg-current" />
                 {h.label}

@@ -913,8 +913,8 @@ export function EditorCanvas({
       {diagram.nodes.length === 0 && emptyHint && !notice ? (
         <div className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="text-center">
-            <p className="heading text-[16px] text-foreground">Empty diagram</p>
-            <p className="mt-1 text-[12.5px] text-muted-foreground">
+            <p className="heading text-headline text-foreground">Empty diagram</p>
+            <p className="mt-1 text-ui-sm text-muted-foreground">
               {editable ? "Drag an element from the tray, double-click the canvas, or press N." : "Switch to Edit to add elements."}
             </p>
           </div>
@@ -932,7 +932,7 @@ export function EditorCanvas({
           <button
             type="button"
             onClick={() => setFilters(NO_FILTERS)}
-            className="control-glass absolute top-13 right-3 z-20 rounded-md px-2 py-1 text-[11.5px] text-muted-foreground hover:text-foreground"
+            className="control-glass absolute top-13 right-3 z-20 rounded-md px-2 py-1 text-meta text-muted-foreground hover:text-foreground"
           >
             {vm.hidden} hidden by filters · show all
           </button>
@@ -976,7 +976,7 @@ export function EditorCanvas({
           >
             <Minus className="size-3.5" />
           </Button>
-          <span ref={zoomLabelRef} className="w-10 text-center text-[11px] text-muted-foreground tabular-nums">
+          <span ref={zoomLabelRef} className="w-10 text-center text-caption text-muted-foreground tabular-nums">
             {Math.round(cam.current.k * 100)}%
           </span>
           <Button
@@ -1002,14 +1002,14 @@ export function EditorCanvas({
           <div className="pointer-events-auto">{notice}</div>
         </div>
       ) : editable ? (
-        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-[11px] text-faint md:inline-flex">
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-1.5 text-caption text-faint md:inline-flex">
           <MousePointer2 className="size-3" />
           {linkFrom ? "Click a target element to connect · Esc cancels" : "Drag to move · N new · Del removes · ⌘ scroll zooms"}
         </span>
       ) : null}
 
       {selectedNode && editable && linkFrom === selectedNode.id ? (
-        <div className="control-glass absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-lg px-2.5 py-1 text-[12px] text-primary">
+        <div className="control-glass absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-lg px-2.5 py-1 text-label text-primary">
           connecting from {selectedNode.label}
         </div>
       ) : null}

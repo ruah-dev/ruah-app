@@ -668,7 +668,7 @@ function EvidenceChips({ evidence }: { evidence: string[] }) {
         <button
           key={ev}
           type="button"
-          className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+          className="rounded bg-surface-3 px-1.5 py-0.5 font-mono text-caption text-muted-foreground hover:text-foreground"
           title="Open at this line"
           onClick={() => {
             const { path, range } = parseEvidence(ev);
@@ -835,7 +835,7 @@ function SuggestionRow({ s, busy, onAccept, onReject }: { s: StoredSuggestion; b
         <span className="min-w-0 flex-1 truncate font-mono text-ui text-foreground">{edgeText(s)}</span>
         {s.kind ? <span className="text-meta text-faint">{s.kind}</span> : null}
         <span
-          className={cn("rounded-pill px-1.5 text-[11px] tabular-nums", pct >= 80 ? "bg-ok/15 text-ok" : pct >= 50 ? "bg-warn/15 text-warn" : "bg-surface-3 text-muted-foreground")}
+          className={cn("rounded-pill px-1.5 text-caption tabular-nums", pct >= 80 ? "bg-ok/15 text-ok" : pct >= 50 ? "bg-warn/15 text-warn" : "bg-surface-3 text-muted-foreground")}
           title="Agent's confidence"
         >
           {pct}%

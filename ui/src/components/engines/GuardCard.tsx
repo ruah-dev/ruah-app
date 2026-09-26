@@ -38,8 +38,8 @@ export function GuardCard({ compact = false }: { compact?: boolean }) {
     <div className={compact ? "contents" : "flex flex-col gap-2"}>
       {!compact ? (
         <>
-          <h3 className="text-[12px] font-medium text-foreground">Guard</h3>
-          <p className="text-[11px] text-muted-foreground">
+          <h3 className="text-label font-medium text-foreground">Guard</h3>
+          <p className="text-caption text-muted-foreground">
             Scans the working tree for secrets and policy findings, then shows the audit log. It only reports.
           </p>
         </>
@@ -48,16 +48,16 @@ export function GuardCard({ compact = false }: { compact?: boolean }) {
         <Shield className="size-3.5" />
         {busy ? "Scanning…" : "Guard"}
       </Button>
-      {tool && !installed ? <p className="text-[11px] text-muted-foreground">Not installed. {install}</p> : null}
-      {scan && "error" in scan ? <p className="text-[11px] text-bad">{scan.error}</p> : null}
+      {tool && !installed ? <p className="text-caption text-muted-foreground">Not installed. {install}</p> : null}
+      {scan && "error" in scan ? <p className="text-caption text-bad">{scan.error}</p> : null}
       {scan && "summary" in scan ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {scan.summary?.total ?? 0} finding(s) in {scan.summary?.filesScanned ?? 0} file(s)
           {scan.summary?.failed ? " — review before sharing" : ""}.
         </p>
       ) : null}
       {audit && "entries" in audit ? (
-        <p className="text-[11px] text-muted-foreground">{audit.count ?? audit.entries?.length ?? 0} audit entries.</p>
+        <p className="text-caption text-muted-foreground">{audit.count ?? audit.entries?.length ?? 0} audit entries.</p>
       ) : null}
     </div>
   );

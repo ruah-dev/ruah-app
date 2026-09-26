@@ -40,9 +40,9 @@ const TEXT: Record<string, string> = {
 };
 
 const SIZES = {
-  sm: { ghost: 56, disc: "size-20", title: "text-[14px]", body: "text-[12.5px]", gap: "gap-1.5", pad: "py-8", scene: 64 },
-  md: { ghost: 88, disc: "size-28", title: "text-[16px]", body: "text-[13px]", gap: "gap-2", pad: "py-16", scene: 96 },
-  lg: { ghost: 120, disc: "size-40", title: "text-[20px]", body: "text-[13.5px]", gap: "gap-2.5", pad: "py-20", scene: 132 },
+  sm: { ghost: 56, disc: "size-20", title: "text-title-sm", body: "text-ui-sm", gap: "gap-1.5", pad: "py-8", scene: 64 },
+  md: { ghost: 88, disc: "size-28", title: "text-headline", body: "text-ui", gap: "gap-2", pad: "py-16", scene: 96 },
+  lg: { ghost: 120, disc: "size-40", title: "text-display", body: "text-body", gap: "gap-2.5", pad: "py-20", scene: 132 },
 } as const;
 
 export function EmptyState({
@@ -86,7 +86,7 @@ export function EmptyState({
         <span className="relative">{ghost}</span>
       </div>
       {eyebrow ? (
-        <p className={cn("text-[11px] font-medium tracking-[0.14em] uppercase", TEXT[resolved] ?? "text-faint")}>{eyebrow}</p>
+        <p className={cn("text-caption font-medium tracking-[0.14em] uppercase", TEXT[resolved] ?? "text-faint")}>{eyebrow}</p>
       ) : null}
       <p className={cn("heading text-foreground", s.title)}>{title}</p>
       {body ? <div className={cn("max-w-md leading-relaxed text-muted-foreground", s.body)}>{body}</div> : null}

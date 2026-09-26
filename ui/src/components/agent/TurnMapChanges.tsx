@@ -27,7 +27,7 @@ function MapChangesBlock({ turn, running }: { turn: Turn; running: boolean }) {
 
   return (
     <div className="rounded-xl bg-ai/[0.05] px-2.5 py-2 ring-1 ring-ai/20">
-      <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-ai">
+      <div className="mb-1 flex items-center gap-1.5 text-meta font-medium text-ai">
         <Network className="size-3.5" />
         <span>
           Map{" "}
@@ -51,7 +51,7 @@ function MapChangesBlock({ turn, running }: { turn: Turn; running: boolean }) {
                 ? "Undo what the agent changed on the map so far"
                 : "Put back the elements this turn changed (later edits of yours are kept)"
             }
-            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-ai/12 hover:text-ai disabled:opacity-50"
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-caption text-muted-foreground transition-colors hover:bg-ai/12 hover:text-ai disabled:opacity-50"
           >
             <Undo2 className="size-3" />
             {asked ? "Undoing…" : "Undo map changes"}
@@ -63,7 +63,7 @@ function MapChangesBlock({ turn, running }: { turn: Turn; running: boolean }) {
           const target = changeTarget(c);
           const canReveal = target !== null && known.has(target) && !undone;
           return (
-            <li key={`${c.id}-${i}`} className="flex min-w-0 items-center gap-1.5 text-[12px]">
+            <li key={`${c.id}-${i}`} className="flex min-w-0 items-center gap-1.5 text-label">
               <span aria-hidden className="w-3.5 shrink-0 text-center font-mono text-ai">
                 {changeGlyph(c)}
               </span>
@@ -94,7 +94,7 @@ function MapChangesBlock({ turn, running }: { turn: Turn; running: boolean }) {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-0.5 ps-5 text-[11.5px] text-muted-foreground hover:text-foreground"
+          className="mt-0.5 ps-5 text-meta text-muted-foreground hover:text-foreground"
         >
           +{changes.length - MAX_ROWS} more
         </button>

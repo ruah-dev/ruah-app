@@ -25,7 +25,7 @@ function ThresholdInput({ label, value, onChange, tone }: { label: string; value
     else setDraft(String(value));
   };
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-[12.5px]">
+    <label htmlFor={id} className="flex items-center gap-2 text-ui-sm">
       <span aria-hidden className={cn("size-2 rounded-full", tone)} />
       <span className="text-muted-foreground">{label}</span>
       <span className="ms-auto inline-flex items-center gap-1">
@@ -44,7 +44,7 @@ function ThresholdInput({ label, value, onChange, tone }: { label: string; value
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
           }}
-          className="h-7 w-14 rounded-md border border-input bg-transparent px-2 text-end text-[12.5px] tabular-nums focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="h-7 w-14 rounded-md border border-input bg-transparent px-2 text-end text-ui-sm tabular-nums focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         />
         <span className="text-faint">%</span>
       </span>
@@ -69,8 +69,8 @@ export function LimitSettingsPopover({ settings, onChange }: { settings: LimitSe
       <PopoverContent align="end" className="w-64">
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-[13px] font-medium text-foreground">Warn me at</p>
-            <p className="text-[12px] text-muted-foreground">Meters and the top-bar hint change colour past these.</p>
+            <p className="text-ui font-medium text-foreground">Warn me at</p>
+            <p className="text-label text-muted-foreground">Meters and the top-bar hint change colour past these.</p>
           </div>
           <ThresholdInput
             label="Warning"
@@ -86,7 +86,7 @@ export function LimitSettingsPopover({ settings, onChange }: { settings: LimitSe
           />
           <div className="flex items-center gap-2 border-t border-hairline pt-3">
             <BellRing className="size-3.5 text-muted-foreground" aria-hidden />
-            <label htmlFor={toastId} className="text-[12.5px] text-foreground">
+            <label htmlFor={toastId} className="text-ui-sm text-foreground">
               Toast when crossed
             </label>
             <Switch
@@ -106,13 +106,13 @@ function Quiet({ title, body, failed = false }: { title: string; body: ReactNode
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
       <Phantom expression={failed ? "error" : "idle"} size="md" className="mb-1" />
-      <p className="heading text-[16px] text-foreground">{title}</p>
-      <div className="max-w-sm text-[13px] leading-relaxed text-muted-foreground">{body}</div>
+      <p className="heading text-headline text-foreground">{title}</p>
+      <div className="max-w-sm text-ui leading-relaxed text-muted-foreground">{body}</div>
     </div>
   );
 }
 
-const cli = <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-[12px] text-foreground">ruah app usage limits</code>;
+const cli = <code className="rounded bg-foreground/[0.07] px-1 py-px font-mono text-label text-foreground">ruah app usage limits</code>;
 
 export function AgentLimitsPanel({ toasts = true, className }: { toasts?: boolean; className?: string }) {
   const { load, report, fetchedAt, refreshing, refresh } = useAgentLimits();
@@ -123,7 +123,7 @@ export function AgentLimitsPanel({ toasts = true, className }: { toasts?: boolea
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="flex items-center gap-2">
-        <p className="min-w-0 truncate text-[12px] text-muted-foreground" aria-live="polite">
+        <p className="min-w-0 truncate text-label text-muted-foreground" aria-live="polite">
           {report && fetchedAt
             ? `Checked ${formatAgo(new Date(fetchedAt).toISOString(), now)} · every agent reads its own source`
             : "Plan limits for every coding agent"}
@@ -145,7 +145,7 @@ export function AgentLimitsPanel({ toasts = true, className }: { toasts?: boolea
       {report ? (
         <>
           {load.status === "error" ? (
-            <p className="text-[12.5px] text-warn">The last refresh failed: {load.message}. Showing the previous reading.</p>
+            <p className="text-ui-sm text-warn">The last refresh failed: {load.message}. Showing the previous reading.</p>
           ) : null}
           <div className="grid gap-4 md:grid-cols-2">
             {orderForDisplay(report.agents).map((agent) => (

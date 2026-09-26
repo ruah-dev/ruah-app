@@ -36,7 +36,7 @@ export function Palette({ groups, onQuickAdd }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter…"
-          className="h-7 rounded-md border-0 bg-foreground/[0.05] pl-7 text-[12.5px] shadow-none focus-visible:ring-1"
+          className="h-7 rounded-md border-0 bg-foreground/[0.05] pl-7 text-ui-sm shadow-none focus-visible:ring-1"
         />
       </div>
 
@@ -48,7 +48,7 @@ export function Palette({ groups, onQuickAdd }: Props) {
               <button
                 type="button"
                 onClick={() => setCollapsed((c) => ({ ...c, [group.label]: !c[group.label] }))}
-                className="flex w-full items-center gap-1 px-0.5 pb-1 text-[11.5px] font-medium text-muted-foreground hover:text-foreground"
+                className="flex w-full items-center gap-1 px-0.5 pb-1 text-meta font-medium text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight
                   className={cn("size-3 transition-transform", !isCollapsed && "rotate-90")}
@@ -74,7 +74,7 @@ export function Palette({ groups, onQuickAdd }: Props) {
                         className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left transition-colors hover:bg-accent"
                       >
                         <Icon className={cn("size-3.5 shrink-0", style.color)} />
-                        <span className="truncate text-[12px] text-foreground/85">
+                        <span className="truncate text-label text-foreground/85">
                           {style.label}
                         </span>
                       </button>
@@ -86,7 +86,7 @@ export function Palette({ groups, onQuickAdd }: Props) {
           );
         })}
         {filtered.length === 0 ? (
-          <p className="px-1 text-[12px] text-muted-foreground">No element matches that.</p>
+          <p className="px-1 text-label text-muted-foreground">No element matches that.</p>
         ) : null}
       </div>
     </div>

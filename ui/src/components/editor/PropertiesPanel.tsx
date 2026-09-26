@@ -34,9 +34,9 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-center justify-between text-[12px] font-medium text-muted-foreground">
+      <Label className="flex items-center justify-between text-label font-medium text-muted-foreground">
         {label}
-        {hint ? <span className="text-[12px] font-normal text-faint">{hint}</span> : null}
+        {hint ? <span className="text-label font-normal text-faint">{hint}</span> : null}
       </Label>
       {children}
     </div>
@@ -44,7 +44,7 @@ function Field({
 }
 
 const inputClass =
-  "h-8 rounded-md border-hairline bg-transparent px-2.5 text-[12.5px] text-foreground shadow-none";
+  "h-8 rounded-md border-hairline bg-transparent px-2.5 text-ui-sm text-foreground shadow-none";
 
 /** Text input that keeps its own draft so comma-separated lists and paths can be typed freely. */
 function DraftInput({
@@ -97,7 +97,7 @@ export function PropertiesPanel({
   return (
     <div className="space-y-4 px-5 py-5">
       {!editable ? (
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Read-only: editing saves to architecture.json and needs a connected ruah daemon.
         </p>
       ) : null}
@@ -125,7 +125,7 @@ export function PropertiesPanel({
                     disabled={disabled}
                     onClick={() => onNodePatch({ kind: k })}
                     className={
-                      "flex h-6 items-center gap-1 rounded-md px-1.5 text-[11.5px] transition-colors disabled:opacity-60 " +
+                      "flex h-6 items-center gap-1 rounded-md px-1.5 text-meta transition-colors disabled:opacity-60 " +
                       (node.kind === k
                         ? "bg-primary/15 text-foreground"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground")
@@ -167,7 +167,7 @@ export function PropertiesPanel({
               disabled={disabled}
               placeholder="what this element does (1–2 sentences)"
               onChange={(e) => onNodePatch({ description: e.target.value })}
-              className="min-h-20 rounded-md border-hairline bg-transparent text-[12.5px] shadow-none"
+              className="min-h-20 rounded-md border-hairline bg-transparent text-ui-sm shadow-none"
             />
           </Field>
           <Field label="Notes" hint="sent to the agent">
@@ -176,11 +176,11 @@ export function PropertiesPanel({
               disabled={disabled}
               placeholder="gotchas, conventions, known issues"
               onChange={(e) => onNodePatch({ notes: e.target.value })}
-              className="min-h-16 rounded-md border-hairline bg-transparent text-[12.5px] shadow-none"
+              className="min-h-16 rounded-md border-hairline bg-transparent text-ui-sm shadow-none"
             />
           </Field>
           <Field label="Drill-down">
-            <p className="font-mono text-[11.5px] text-muted-foreground">
+            <p className="font-mono text-meta text-muted-foreground">
               {node.drill
                 ? "has nested elements (their `parent` is this element)"
                 : "none: elements drill in when others name this one as their parent"}
@@ -191,7 +191,7 @@ export function PropertiesPanel({
               variant="outline"
               size="sm"
               onClick={onDeleteNode}
-              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-[12.5px] text-muted-foreground shadow-none hover:text-destructive"
+              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-ui-sm text-muted-foreground shadow-none hover:text-destructive"
             >
               <Trash2 className="size-3.5" />
               {diagram.mode === "workflow" ? "Remove step" : "Delete element"}
@@ -200,7 +200,7 @@ export function PropertiesPanel({
         </>
       ) : edgeData ? (
         <>
-          <p className="font-mono text-[12px] text-muted-foreground">
+          <p className="font-mono text-label text-muted-foreground">
             {nameOf(edgeData.from)} → {nameOf(edgeData.to)}
             {edgeData.kind ? ` · ${edgeData.kind}` : ""}
           </p>
@@ -216,7 +216,7 @@ export function PropertiesPanel({
                   className={inputClass}
                 />
               </Field>
-              <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <label className="flex items-center gap-2 text-label text-muted-foreground">
                 <input
                   type="checkbox"
                   disabled={disabled}
@@ -227,7 +227,7 @@ export function PropertiesPanel({
               </label>
             </>
           ) : (
-            <p className="text-[12px] text-muted-foreground">
+            <p className="text-label text-muted-foreground">
               Workflow arrows follow the step order. Deleting this arrow removes the next step from
               the sequence.
             </p>
@@ -237,7 +237,7 @@ export function PropertiesPanel({
               variant="outline"
               size="sm"
               onClick={onDeleteEdge}
-              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-[12.5px] text-muted-foreground shadow-none hover:text-destructive"
+              className="h-8 w-full gap-1.5 rounded-md border-hairline bg-transparent text-ui-sm text-muted-foreground shadow-none hover:text-destructive"
             >
               <Trash2 className="size-3.5" />
               Delete connection
@@ -254,7 +254,7 @@ export function PropertiesPanel({
             />
           </Field>
           <Field label="Group">
-            <p className="font-mono text-[11.5px] text-muted-foreground">{diagram.group ?? "—"}</p>
+            <p className="font-mono text-meta text-muted-foreground">{diagram.group ?? "—"}</p>
           </Field>
           {diagram.mode === "workflow" ? (
             <Field label="Description">
@@ -265,7 +265,7 @@ export function PropertiesPanel({
               />
             </Field>
           ) : null}
-          <p className="text-[12px] leading-relaxed text-muted-foreground">
+          <p className="text-label leading-relaxed text-muted-foreground">
             Select an element or a connection to edit it. Drag from the palette, double-click the
             canvas, or press N to add.
           </p>

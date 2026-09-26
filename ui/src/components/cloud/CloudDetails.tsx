@@ -34,12 +34,12 @@ export function ElementCloudSection({ node }: { node: DiagramNode }) {
   return (
     <section className="space-y-1.5">
       <div className="flex items-center gap-1">
-        <h3 className="text-[12px] font-medium text-muted-foreground">Runs on</h3>
-        <span className="text-[11.5px] text-faint">{linked.length}</span>
+        <h3 className="text-label font-medium text-muted-foreground">Runs on</h3>
+        <span className="text-meta text-faint">{linked.length}</span>
         <span className="flex-1" />
         <Link
           to="/cloud"
-          className="text-[11.5px] text-muted-foreground transition-colors hover:text-foreground"
+          className="text-meta text-muted-foreground transition-colors hover:text-foreground"
         >
           Cloud
         </Link>
@@ -54,10 +54,10 @@ export function ElementCloudSection({ node }: { node: DiagramNode }) {
               className="group/res -mx-1.5 flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 hover:bg-accent/60"
             >
               <Icon className={cn("size-3.5 shrink-0", style.color)} />
-              <span className="min-w-0 truncate text-[12.5px] text-foreground/90" title={r.id}>
+              <span className="min-w-0 truncate text-ui-sm text-foreground/90" title={r.id}>
                 {r.name}
               </span>
-              <span className="shrink-0 font-mono text-[11px] text-faint">
+              <span className="shrink-0 font-mono text-caption text-faint">
                 {providerLabel(r.provider)} · {r.service}
                 {r.region ? ` · ${r.region}` : ""}
               </span>
@@ -91,7 +91,7 @@ function CopyId({ id }: { id: string }) {
       type="button"
       onClick={() => copy(id)}
       title={copied ? "Copied" : "Copy id"}
-      className="max-w-full truncate text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+      className="max-w-full truncate text-left font-mono text-meta text-muted-foreground hover:text-foreground"
     >
       {copied ? "Copied" : id}
     </button>
@@ -105,7 +105,7 @@ export function CloudResourceDetails({ node }: { node: DiagramNode }) {
   const r = s.cloud.status === "ok" ? s.cloud.data.resources.find((x) => x.id === id) : undefined;
   if (!r) {
     return (
-      <div className="px-5 pt-5 text-[12.5px] text-muted-foreground">
+      <div className="px-5 pt-5 text-ui-sm text-muted-foreground">
         This resource is no longer in the last sync.
       </div>
     );
@@ -121,14 +121,14 @@ function HealthSection({ r }: { r: CloudResource }) {
   const pct = r.replicas && r.replicas.desired > 0 ? Math.min(100, (r.replicas.ready / r.replicas.desired) * 100) : 0;
   return (
     <section className="space-y-2">
-      <h3 className="text-[12px] font-medium text-muted-foreground">Live status</h3>
+      <h3 className="text-label font-medium text-muted-foreground">Live status</h3>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {r.health ? <Pill tone={healthTone(r)}>{HEALTH_LABEL[r.health]}</Pill> : null}
-        {r.healthDetail ? <span className="min-w-0 text-[12.5px] break-words text-foreground/85">{r.healthDetail}</span> : null}
+        {r.healthDetail ? <span className="min-w-0 text-ui-sm break-words text-foreground/85">{r.healthDetail}</span> : null}
       </div>
       {r.replicas ? (
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+          <div className="flex items-center justify-between text-label text-muted-foreground">
             <span>Replicas ready</span>
             <span className="font-mono text-foreground/85">
               {r.replicas.ready}/{r.replicas.desired}
@@ -143,7 +143,7 @@ function HealthSection({ r }: { r: CloudResource }) {
         </div>
       ) : null}
       {r.pods ? (
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Pods: {r.pods.running} running
           {r.pods.pending ? ` · ${r.pods.pending} pending` : ""}
           {r.pods.crashLoop ? <span className="text-bad"> · {r.pods.crashLoop} crash-looping</span> : null}
@@ -151,7 +151,7 @@ function HealthSection({ r }: { r: CloudResource }) {
         </p>
       ) : null}
       {r.observedAt ? (
-        <p className="text-[11.5px] text-faint" title={r.observedAt}>
+        <p className="text-meta text-faint" title={r.observedAt}>
           Checked {timeAgo(r.observedAt)}
         </p>
       ) : null}
@@ -187,7 +187,7 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
         ] as [string, ReactNode][])
       : []),
     ...(r.hosts?.length
-      ? ([["Hosts", <span className="whitespace-normal break-words font-mono text-[11.5px]">{r.hosts.join(", ")}</span>]] as [
+      ? ([["Hosts", <span className="whitespace-normal break-words font-mono text-meta">{r.hosts.join(", ")}</span>]] as [
           string,
           ReactNode,
         ][])
@@ -201,7 +201,7 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
             <span className="whitespace-normal break-words">
               {r.scope.in ? "In this project" : r.scope.excluded ? "Removed from this project" : "Not in this project"}
               {r.scope.reasons.length ? (
-                <span className="block text-[11.5px] text-muted-foreground">{r.scope.reasons.join(" · ")}</span>
+                <span className="block text-meta text-muted-foreground">{r.scope.reasons.join(" · ")}</span>
               ) : null}
             </span>,
           ],
@@ -217,8 +217,8 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
           <Icon className={cn("size-4", style.color)} />
         </span>
         <div className="min-w-0 flex-1 pt-px">
-          <p className="truncate text-[15px] font-medium text-foreground">{r.name}</p>
-          <p className="truncate text-[12.5px] text-muted-foreground">
+          <p className="truncate text-title font-medium text-foreground">{r.name}</p>
+          <p className="truncate text-ui-sm text-muted-foreground">
             {providerLabel(r.provider)} {r.service}
           </p>
         </div>
@@ -227,7 +227,7 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
             href={r.consoleUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-label text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <ExternalLink className="size-3.5" /> Console
           </a>
@@ -246,7 +246,7 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
 
       <HealthSection r={r} />
 
-      <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+      <dl className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-ui-sm">
         {facts.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-muted-foreground">{k}</dt>
@@ -256,21 +256,21 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
       </dl>
 
       <section className="space-y-1.5">
-        <h3 className="text-[12px] font-medium text-muted-foreground">Runs element</h3>
+        <h3 className="text-label font-medium text-muted-foreground">Runs element</h3>
         <div className="-mx-1.5 flex items-center gap-1">
           <ElementPicker resource={r} nodes={architecture.nodes} manual={manual} />
           {linked ? (
             <button
               type="button"
               onClick={() => wb.openNode(linked.id)}
-              className="shrink-0 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="shrink-0 rounded-md px-2 py-1 text-label text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               Open
             </button>
           ) : null}
         </div>
         {!r.linkedNodeId ? (
-          <p className="text-[12px] leading-relaxed text-faint">
+          <p className="text-label leading-relaxed text-faint">
             Tag the resource <span className="font-mono text-foreground/80">ruah:node=&lt;element id&gt;</span> to
             link it automatically on the next sync.
           </p>
@@ -279,12 +279,12 @@ export function CloudResourceView({ resource: r, onClose }: { resource: CloudRes
 
       {tags.length ? (
         <section className="space-y-1.5">
-          <h3 className="text-[12px] font-medium text-muted-foreground">Tags</h3>
+          <h3 className="text-label font-medium text-muted-foreground">Tags</h3>
           <div className="flex flex-wrap gap-1">
             {tags.map(([k, v]) => (
               <span
                 key={k}
-                className="rounded bg-foreground/[0.055] px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                className="rounded bg-foreground/[0.055] px-1.5 py-0.5 font-mono text-caption text-muted-foreground"
               >
                 {v ? `${k}:${v}` : k}
               </span>

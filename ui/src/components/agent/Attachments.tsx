@@ -203,7 +203,7 @@ export function AttachmentStrip({
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-64">
                 <p className="truncate text-foreground">{item.name}</p>
-                <p className={cn("font-mono text-[11px]", failed ? "text-bad" : "text-muted-foreground")}>
+                <p className={cn("font-mono text-caption", failed ? "text-bad" : "text-muted-foreground")}>
                   {failed
                     ? (item.error ?? "Upload failed")
                     : uploading
@@ -265,13 +265,13 @@ export function ImageLightbox({
           Attached image{many ? ` ${index! + 1} of ${images.length}` : ""}. Press Escape to close.
         </DialogDescription>
         {current ? (
-          <div className="flex h-6 min-w-0 items-center gap-2 ps-1.5 pe-9 text-[12px]">
+          <div className="flex h-6 min-w-0 items-center gap-2 ps-1.5 pe-9 text-label">
             <span className="min-w-0 truncate text-foreground/90">{current.name}</span>
             {current.detail ? (
-              <span className="shrink-0 font-mono text-[11px] text-faint">{current.detail}</span>
+              <span className="shrink-0 font-mono text-caption text-faint">{current.detail}</span>
             ) : null}
             {many ? (
-              <span className="ms-auto shrink-0 font-mono text-[11px] text-faint">
+              <span className="ms-auto shrink-0 font-mono text-caption text-faint">
                 {index! + 1} / {images.length}
               </span>
             ) : null}

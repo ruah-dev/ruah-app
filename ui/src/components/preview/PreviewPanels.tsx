@@ -7,6 +7,7 @@ import { Phantom } from "@/components/brand/Phantom";
 import { groupCandidates, type PreviewCandidate, type PreviewDetection, type PreviewStatus } from "@/lib/preview";
 import { cn } from "@/lib/utils";
 import { CandidateLine } from "./PreviewCommandMenu";
+import { primaryButton, quietButton, solidButton } from "@/components/ui/controls";
 
 function Centered({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -20,12 +21,9 @@ function Chip({ children }: { children: ReactNode }) {
   return <span className="inline-flex max-w-full items-center truncate rounded-md bg-surface-2 px-2 py-1 font-mono text-meta text-muted-foreground">{children}</span>;
 }
 
-const primaryBtn =
-  "inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50";
-const ghostBtn =
-  "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-ui-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50";
-const outlineBtn =
-  "inline-flex h-8 items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-3 text-ui-sm text-foreground transition-colors hover:bg-accent disabled:opacity-50";
+const primaryBtn = primaryButton;
+const ghostBtn = quietButton;
+const outlineBtn = solidButton;
 
 /** Missing tool / dependencies notes under a candidate. */
 export function CandidateNotes({ c, onSetup }: { c: PreviewCandidate; onSetup?: ((command: string, dir: string) => void) | undefined }) {
@@ -199,7 +197,7 @@ function LogTail({ lines, className }: { lines: readonly string[]; className?: s
     <pre
       ref={ref}
       className={cn(
-        "w-full overflow-auto rounded-lg bg-surface-0 p-3 text-left font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-words text-muted-foreground select-text",
+        "w-full overflow-auto rounded-lg bg-surface-0 p-3 text-left font-mono text-meta leading-relaxed whitespace-pre-wrap break-words text-muted-foreground select-text",
         className,
       )}
     >

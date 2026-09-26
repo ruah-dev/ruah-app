@@ -38,7 +38,7 @@ export function AgentLimitHint({ agentId, className }: { agentId: string; classN
           tabIndex={0}
           aria-label={`${agent.name}: ${text}`}
           className={cn(
-            "inline-flex cursor-default items-center gap-1.5 rounded text-[11.5px] whitespace-nowrap tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex cursor-default items-center gap-1.5 rounded text-meta whitespace-nowrap tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
             TONE[severity],
             className,
           )}

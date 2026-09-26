@@ -69,30 +69,30 @@ export function PermissionCard({
         <span className="grid size-6 shrink-0 place-items-center rounded-md bg-warn/15 text-warn">
           <ShieldQuestion className="size-3.5" />
         </span>
-        <p className="text-[13px] font-medium text-foreground">
+        <p className="text-ui font-medium text-foreground">
           {verbByKind[call.kind] ?? "Allow this action?"}
         </p>
         {keyboard ? (
-          <span className="ms-auto hidden shrink-0 items-center gap-1 text-[11px] text-faint sm:flex">
+          <span className="ms-auto hidden shrink-0 items-center gap-1 text-caption text-faint sm:flex">
             <kbd className="kbd">⏎</kbd> allow <kbd className="kbd ms-1">esc</kbd> dismiss
           </span>
         ) : null}
       </div>
       <div className="mt-2.5 flex min-w-0 items-center gap-2 rounded-lg bg-background px-2.5 py-1.5 ring-1 ring-hairline">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate text-[12.5px] text-foreground/90">{call.title}</span>
+        <span className="min-w-0 truncate text-ui-sm text-foreground/90">{call.title}</span>
         {loc && !call.title.includes(loc.path) ? (
           <button
             type="button"
             onClick={() => onOpenPath?.(loc.path)}
-            className="min-w-0 shrink truncate font-mono text-[11px] text-primary hover:underline"
+            className="min-w-0 shrink truncate font-mono text-caption text-primary hover:underline"
           >
             {loc.path}
           </button>
         ) : null}
       </div>
       {call.command ? (
-        <pre className="mt-1.5 max-h-20 overflow-auto rounded-lg bg-background px-2.5 py-1.5 font-mono text-[11.5px] whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">
+        <pre className="mt-1.5 max-h-20 overflow-auto rounded-lg bg-background px-2.5 py-1.5 font-mono text-meta whitespace-pre-wrap text-foreground/85 ring-1 ring-hairline">
           $ {call.command}
         </pre>
       ) : null}
@@ -106,7 +106,7 @@ export function PermissionCard({
               disabled={request.answering}
               onClick={() => answerPermission(request.requestId, o.optionId)}
               className={cn(
-                "h-7 rounded-lg px-2.5 text-[12px] font-medium transition-colors disabled:opacity-50",
+                "h-7 rounded-lg px-2.5 text-label font-medium transition-colors disabled:opacity-50",
                 isPrimary
                   ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : o.kind.startsWith("reject")

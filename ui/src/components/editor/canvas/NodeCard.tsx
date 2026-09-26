@@ -135,7 +135,7 @@ function Toolbar({ node, editable, linking, h }: { node: DiagramNode; editable: 
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 gap-1 px-1.5 text-[11px] text-ai hover:bg-ai/12 hover:text-ai"
+          className="h-6 gap-1 px-1.5 text-caption text-ai hover:bg-ai/12 hover:text-ai"
           aria-label="Keep this agent-made element"
           title="An agent drew this. Keep it (removes the AI marker)."
           onClick={() => daemonActions.editArchitecture((a) => keepAgentElement(a, node.id))}
@@ -208,7 +208,7 @@ function InsideChip({ node, h, compact }: { node: DiagramNode; h: NodeHandlers; 
       aria-label={title}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={onClick}
-      className="absolute right-1.5 bottom-1.5 flex h-[18px] items-center gap-0.5 rounded-md border border-hairline bg-surface-2 px-1 font-mono text-[10.5px] text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/12 hover:text-primary"
+      className="absolute right-1.5 bottom-1.5 flex h-[18px] items-center gap-0.5 rounded-md border border-hairline bg-surface-2 px-1 font-mono text-micro text-muted-foreground transition-colors hover:border-primary/60 hover:bg-primary/12 hover:text-primary"
     >
       <ChevronRight className="size-2.5" />
       {n ? <span className="tabular-nums">{n}</span> : null}
@@ -365,7 +365,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               if (e.key === "Escape") h.cancelRename();
             }}
-            className="w-full min-w-0 rounded-md border border-ring/50 bg-surface-3 px-1 text-[13px] text-foreground outline-none"
+            className="w-full min-w-0 rounded-md border border-ring/50 bg-surface-3 px-1 text-ui text-foreground outline-none"
           />
         ) : (
           <span className="truncate font-medium text-foreground" style={{ fontSize: BOOST(13) }} title={node.label}>

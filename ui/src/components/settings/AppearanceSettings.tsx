@@ -96,8 +96,8 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
   return (
     <div className="flex min-h-12 items-center gap-6 py-2.5 max-sm:flex-col max-sm:items-start max-sm:gap-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-foreground">{label}</p>
-        {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        <p className="text-ui text-foreground">{label}</p>
+        {hint ? <p className="text-label text-muted-foreground">{hint}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
@@ -117,8 +117,8 @@ export function AppearanceSettings() {
       </Row>
       <div className="flex flex-col gap-3 py-3">
         <div>
-          <p className="text-[13px] text-foreground">Palette</p>
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-ui text-foreground">Palette</p>
+          <p className="text-label text-muted-foreground">
             Every colour in Ruah: actions, agents, statuses, the map, charts and the Phantoms. Previews show the{" "}
             {resolved === "contrast" ? "high-contrast" : resolved} theme.
           </p>
@@ -126,8 +126,8 @@ export function AppearanceSettings() {
         {notice.show ? (
           <div className="flex flex-col gap-2 rounded-lg border border-hairline border-l-[3px] border-l-info bg-surface-2 px-3 py-2.5">
             <div>
-              <p className="text-[12.5px] font-medium text-info">Dusk is now Indigo</p>
-              <p className="text-[12px] leading-snug text-muted-foreground">
+              <p className="text-ui-sm font-medium text-info">Dusk is now Indigo</p>
+              <p className="text-label leading-snug text-muted-foreground">
                 Your saved Dusk palette now follows the Ruah design system: indigo for actions, dusty rose for agents (it
                 was a lavender accent). Classic teal is the app&apos;s look from before.
               </p>
@@ -164,13 +164,13 @@ export function AppearanceSettings() {
                 <PalettePreview palette={id} theme={resolved} />
                 <span className="flex items-start gap-2 px-1 pb-0.5">
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                    <span className="flex items-center gap-2 text-ui font-medium text-foreground">
                       {p.label}
                       {id === "teal" ? (
-                        <span className="rounded-pill bg-foreground/[0.07] px-1.5 text-[10px] font-medium text-muted-foreground">default</span>
+                        <span className="rounded-pill bg-foreground/[0.07] px-1.5 text-micro font-medium text-muted-foreground">default</span>
                       ) : null}
                     </span>
-                    <span className="block text-[12px] leading-snug text-muted-foreground">{p.description}</span>
+                    <span className="block text-label leading-snug text-muted-foreground">{p.description}</span>
                   </span>
                   <Check className={cn("mt-0.5 size-4 shrink-0 text-primary", !active && "invisible")} />
                 </span>

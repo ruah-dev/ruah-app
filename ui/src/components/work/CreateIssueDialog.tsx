@@ -115,10 +115,10 @@ export function CreateIssueDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg gap-5 rounded-xl p-5">
         <DialogHeader className="space-y-1 text-left">
-          <DialogTitle className="text-[15px]">
+          <DialogTitle className="text-title">
             {step === "confirm" ? "Create this issue?" : step === "done" ? "Issue created" : "Create issue"}
           </DialogTitle>
-          <DialogDescription className="text-[12.5px]">
+          <DialogDescription className="text-ui-sm">
             {step === "form"
               ? `For ${node.label}. It is linked to the element once created.`
               : step === "confirm"
@@ -131,7 +131,7 @@ export function CreateIssueDialog({
           <div className="space-y-4">
             <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-3 max-sm:grid-cols-1">
               <div className="space-y-1.5">
-                <Label className="text-[12.5px] font-normal text-muted-foreground">Tracker</Label>
+                <Label className="text-ui-sm font-normal text-muted-foreground">Tracker</Label>
                 <Select
                   value={provider}
                   onValueChange={(v) => {
@@ -139,12 +139,12 @@ export function CreateIssueDialog({
                     setTarget(readTarget(v));
                   }}
                 >
-                  <SelectTrigger className="h-8 text-[13px] md:text-[13px]">
+                  <SelectTrigger className="h-8 text-ui md:text-ui">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id} className="text-[13px]">
+                      <SelectItem key={p.id} value={p.id} className="text-ui">
                         <span className="flex items-center gap-2">
                           <ProviderGlyph id={p.id} /> {p.name}
                         </span>
@@ -154,7 +154,7 @@ export function CreateIssueDialog({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="issue-target" className="text-[12.5px] font-normal text-muted-foreground">
+                <Label htmlFor="issue-target" className="text-ui-sm font-normal text-muted-foreground">
                   {isJira ? "Project key" : "Repository"}
                 </Label>
                 <Input
@@ -163,24 +163,24 @@ export function CreateIssueDialog({
                   onChange={(e) => setTarget(isJira ? e.target.value.toUpperCase() : e.target.value)}
                   placeholder={isJira ? "PLAT" : "owner/repo"}
                   spellCheck={false}
-                  className="h-8 font-mono text-[13px] md:text-[13px]"
+                  className="h-8 font-mono text-ui md:text-ui"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="issue-title" className="text-[12.5px] font-normal text-muted-foreground">
+              <Label htmlFor="issue-title" className="text-ui-sm font-normal text-muted-foreground">
                 Title
               </Label>
               <Input
                 id="issue-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="h-8 text-[13px] md:text-[13px]"
+                className="h-8 text-ui md:text-ui"
                 autoFocus
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="issue-body" className="text-[12.5px] font-normal text-muted-foreground">
+              <Label htmlFor="issue-body" className="text-ui-sm font-normal text-muted-foreground">
                 Description <span className="text-faint">· Markdown, prefilled from the element</span>
               </Label>
               <Textarea
@@ -188,23 +188,23 @@ export function CreateIssueDialog({
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={9}
-                className="max-h-72 resize-y font-mono text-[12px] leading-relaxed md:text-[12px]"
+                className="max-h-72 resize-y font-mono text-label leading-relaxed md:text-label"
               />
             </div>
             {target && !targetValid ? (
-              <p className="text-[12px] text-warn">
+              <p className="text-label text-warn">
                 {isJira ? "Project keys are upper-case letters and digits, e.g. PLAT." : "Use owner/repo."}
               </p>
             ) : null}
           </div>
         ) : step === "confirm" ? (
           <div className="space-y-3 rounded-lg border border-hairline bg-surface-1 p-3.5">
-            <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <div className="flex items-center gap-2 text-label text-muted-foreground">
               <ProviderGlyph id={provider} />
               <span className="font-mono">{where}</span>
             </div>
-            <p className="text-[14px] font-medium text-foreground">{titleText}</p>
-            <pre className="max-h-48 overflow-y-auto font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap text-muted-foreground md:text-[11.5px]">
+            <p className="text-title-sm font-medium text-foreground">{titleText}</p>
+            <pre className="max-h-48 overflow-y-auto font-mono text-meta leading-relaxed whitespace-pre-wrap text-muted-foreground md:text-meta">
               {summary}
               {body.split("\n").length > 14 ? "\n…" : ""}
             </pre>
@@ -217,13 +217,13 @@ export function CreateIssueDialog({
             className="flex items-center gap-2.5 rounded-lg border border-hairline bg-surface-1 px-3.5 py-3 transition-colors hover:bg-surface-2"
           >
             <Check className="size-4 text-ok" />
-            <span className="font-mono text-[12.5px] text-muted-foreground">{created.id}</span>
-            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{created.title}</span>
+            <span className="font-mono text-ui-sm text-muted-foreground">{created.id}</span>
+            <span className="min-w-0 flex-1 truncate text-ui text-foreground">{created.title}</span>
             <ExternalLink className="size-3.5 text-muted-foreground" />
           </a>
         ) : null}
 
-        {error ? <p className="text-[12.5px] text-bad">{error}</p> : null}
+        {error ? <p className="text-ui-sm text-bad">{error}</p> : null}
 
         <DialogFooter className="gap-2 sm:gap-1">
           {step === "form" ? (

@@ -25,7 +25,7 @@ function Group({ title, description, children }: { title: string; description?: 
     <section className="flex flex-col gap-3">
       <div>
         <h2 className="heading text-title text-foreground">{title}</h2>
-        {description ? <p className="mt-1 text-[12.5px] text-muted-foreground">{description}</p> : null}
+        {description ? <p className="mt-1 text-ui-sm text-muted-foreground">{description}</p> : null}
       </div>
       <div className="card-warm divide-y divide-hairline px-4">{children}</div>
     </section>
@@ -36,8 +36,8 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
   return (
     <div className="flex min-h-12 items-center gap-6 py-2.5 max-sm:flex-col max-sm:items-start max-sm:gap-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] text-foreground">{label}</p>
-        {hint ? <p className="text-[12px] text-muted-foreground">{hint}</p> : null}
+        <p className="text-ui text-foreground">{label}</p>
+        {hint ? <p className="text-label text-muted-foreground">{hint}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
@@ -71,8 +71,8 @@ function Choice({
     >
       {mark}
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] text-foreground">{title}</span>
-        {description ? <span className="block text-[12px] text-muted-foreground">{description}</span> : null}
+        <span className="block text-ui text-foreground">{title}</span>
+        {description ? <span className="block text-label text-muted-foreground">{description}</span> : null}
       </span>
       <Check className={cn("size-4 shrink-0 text-primary", !active && "invisible")} />
     </button>
@@ -107,21 +107,21 @@ function DefaultSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className="h-7 w-44 gap-1.5 border-hairline bg-transparent px-2 text-[12.5px] max-sm:w-full"
+        className="h-7 w-44 gap-1.5 border-hairline bg-transparent px-2 text-ui-sm max-sm:w-full"
       >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={AGENT_DEFAULT} className="text-[12.5px] text-muted-foreground">
+        <SelectItem value={AGENT_DEFAULT} className="text-ui-sm text-muted-foreground">
           {fallback}
         </SelectItem>
         {!known && value ? (
-          <SelectItem value={value} className="text-[12.5px]">
+          <SelectItem value={value} className="text-ui-sm">
             {value}
           </SelectItem>
         ) : null}
         {options.map((o) => (
-          <SelectItem key={o.id} value={o.id} className="text-[12.5px]">
+          <SelectItem key={o.id} value={o.id} className="text-ui-sm">
             {o.name}
           </SelectItem>
         ))}
@@ -145,14 +145,14 @@ function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: A
   const installed = agents.available.filter((a) => a.installed);
   const savedMark = (key: string) =>
     saved === key ? (
-      <span className="flex items-center gap-1 text-[11.5px] text-ok" role="status">
+      <span className="flex items-center gap-1 text-meta text-ok" role="status">
         <Check className="size-3.5" /> Saved
       </span>
     ) : null;
 
   if (!defaults) {
     return (
-      <p className="py-3 text-[12.5px] text-muted-foreground">
+      <p className="py-3 text-ui-sm text-muted-foreground">
         This daemon does not keep saved defaults — update Ruah to choose them here.
       </p>
     );
@@ -179,22 +179,22 @@ function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: A
           <div key={a.id} className="flex flex-col gap-2 py-3">
             <div className="flex items-center gap-2">
               <AgentMark name={a.name} className="size-5 text-[9px]" />
-              <span className="text-[13px] text-foreground">{a.name}</span>
+              <span className="text-ui text-foreground">{a.name}</span>
               {isCurrent ? (
-                <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
+                <span className="rounded-pill bg-ai/15 px-1.5 text-micro font-medium text-ai">current</span>
               ) : (
                 <WarmDot warm={a.warm} error={a.warmError} />
               )}
               <span className="ms-auto">{savedMark(a.id)}</span>
             </div>
             {unknown ? (
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-label text-muted-foreground">
                 Its models and modes show up here once it has run (open the agent picker to start it).
               </p>
             ) : (
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 ps-7">
                 {models?.available.length ? (
-                  <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                  <label className="flex items-center gap-2 text-ui-sm text-muted-foreground">
                     Model
                     <DefaultSelect
                       label={`${a.name} default model`}
@@ -206,7 +206,7 @@ function AgentDefaultsGroup({ daemon, agents }: { daemon: DaemonState; agents: A
                   </label>
                 ) : null}
                 {modeOptions.length ? (
-                  <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                  <label className="flex items-center gap-2 text-ui-sm text-muted-foreground">
                     Permissions
                     <DefaultSelect
                       label={`${a.name} default permission mode`}
@@ -243,7 +243,7 @@ export function SettingsPage() {
   }, [daemon.httpOrigin, daemon.source]);
 
   const offline = (
-    <p className="py-3 text-[12.5px] text-muted-foreground">
+    <p className="py-3 text-ui-sm text-muted-foreground">
       {daemon.source === "sample"
         ? "No daemon connected. Start ruah app serve <repo> to choose an agent."
         : "Waiting for the daemon…"}
@@ -283,7 +283,7 @@ export function SettingsPage() {
               ))
             ) : (
               <Row label="Agent" hint="This daemon runs a single agent.">
-                <span className="text-[13px] text-muted-foreground">
+                <span className="text-ui text-muted-foreground">
                   {daemon.agent?.agent ? `${daemon.agent.agent.name} ${daemon.agent.agent.version}` : "—"}
                 </span>
               </Row>
@@ -308,7 +308,7 @@ export function SettingsPage() {
             <Row label="Connected services" hint="DigitalOcean, AWS, Jira, GitHub, ruah">
               <Link
                 to="/integrations"
-                className="flex h-7 items-center rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground hover:bg-surface-3"
+                className="flex h-7 items-center rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground hover:bg-surface-3"
               >
                 Manage
               </Link>
@@ -325,7 +325,7 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={wb.resetOnboarding}
-                className="h-7 rounded-lg border border-hairline bg-surface-2 px-2.5 text-[12.5px] text-foreground hover:bg-surface-3"
+                className="h-7 rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground hover:bg-surface-3"
               >
                 Show guide
               </button>
@@ -334,28 +334,28 @@ export function SettingsPage() {
 
           <Group title="About">
             <Row label="Viewer">
-              <span className="font-mono text-[12px] text-muted-foreground">
+              <span className="font-mono text-label text-muted-foreground">
                 {CLIENT_ID.replace("architects-canvas", "ruah")}
                 {BUILD_ID ? ` · build ${BUILD_ID}` : ""}
               </span>
             </Row>
             <Row label="Daemon">
-              <span className="font-mono text-[12px] text-muted-foreground">
+              <span className="font-mono text-label text-muted-foreground">
                 {daemon.source !== "daemon" ? "not connected" : (health?.version ?? daemon.daemonVersion ?? "—")}
               </span>
             </Row>
             <Row label="Agent">
-              <span className="font-mono text-[12px] text-muted-foreground">
+              <span className="font-mono text-label text-muted-foreground">
                 {daemon.agent?.agent ? `${daemon.agent.agent.name} ${daemon.agent.agent.version}` : "—"}
               </span>
             </Row>
             <Row label="Repository">
-              <span className="max-w-80 truncate font-mono text-[12px] text-muted-foreground" title={daemon.root ?? undefined}>
+              <span className="max-w-80 truncate font-mono text-label text-muted-foreground" title={daemon.root ?? undefined}>
                 {daemon.root ?? "—"}
               </span>
             </Row>
             <Row label="Endpoint">
-              <span className="max-w-80 truncate font-mono text-[12px] text-muted-foreground">
+              <span className="max-w-80 truncate font-mono text-label text-muted-foreground">
                 {daemon.wsUrl ?? "—"}
               </span>
             </Row>

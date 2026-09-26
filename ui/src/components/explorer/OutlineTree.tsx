@@ -125,7 +125,7 @@ export function OutlineTree({
           }}
           placeholder="Filter elements"
           aria-label="Filter the outline"
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-ui-sm text-foreground outline-none placeholder:text-faint"
         />
         {filter ? (
           <button type="button" aria-label="Clear filter" onClick={() => setFilter("")} className="text-faint hover:text-foreground">
@@ -138,7 +138,7 @@ export function OutlineTree({
           type="button"
           onClick={onOpenRoot}
           className={cn(
-            "flex h-[26px] min-w-0 items-center gap-1.5 rounded-md ps-1.5 pe-1.5 text-left text-[12.5px] transition-colors hover:bg-accent/60",
+            "flex h-[26px] min-w-0 items-center gap-1.5 rounded-md ps-1.5 pe-1.5 text-left text-ui-sm transition-colors hover:bg-accent/60",
             activeDiagramId === "arch:root" ? "font-medium text-foreground" : "text-foreground/70 hover:text-foreground",
           )}
           title="Open the top level"
@@ -175,7 +175,7 @@ export function OutlineTree({
                 aria-expanded={r.canOpen ? isOpen : undefined}
                 aria-selected={selected}
                 className={cn(
-                  "group/row flex h-[26px] min-w-0 items-center rounded-md pe-1.5 text-[12.5px] transition-colors",
+                  "group/row flex h-[26px] min-w-0 items-center rounded-md pe-1.5 text-ui-sm transition-colors",
                   selected ? "bg-accent text-foreground" : "text-foreground/70 hover:bg-accent/60 hover:text-foreground",
                 )}
                 style={{ paddingInlineStart: 2 + r.depth * 12 }}
@@ -204,7 +204,7 @@ export function OutlineTree({
                   <Icon className={cn("size-3.5 shrink-0", style.color)} />
                   <span className={cn("truncate", current && "font-medium text-foreground")}>{n.name}</span>
                   {current ? <span className="size-1.5 shrink-0 rounded-full bg-primary" title="Open on the canvas" /> : null}
-                  {r.count ? <span className="ms-auto shrink-0 ps-1 text-[11px] text-faint tabular-nums">{r.count}</span> : null}
+                  {r.count ? <span className="ms-auto shrink-0 ps-1 text-caption text-faint tabular-nums">{r.count}</span> : null}
                 </button>
               </div>
             );

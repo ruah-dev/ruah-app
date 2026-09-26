@@ -35,13 +35,13 @@ import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
 import { PhantomAgent, agentTintFromName } from "@/components/brand/PhantomPose";
 
 const controlClass =
-  "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
+  "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-ui-sm text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
 
 const cmdItemClass =
   "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-ui data-[selected=true]:bg-ai/12 data-[disabled=true]:opacity-45";
 
 const itemClass =
-  "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-[13px] focus:bg-accent data-[disabled]:opacity-45";
+  "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-ui focus:bg-accent data-[disabled]:opacity-45";
 
 /** Small mark for a coding agent: its initials, no brand artwork. Known agents wear their
  * identity tint (design tokens --agent-*: the same colour as their ghost and their chart
@@ -115,7 +115,7 @@ function OptionText({ name, description }: { name: ReactNode; description?: Reac
     <span className="min-w-0 flex-1">
       <span className="block truncate text-foreground">{name}</span>
       {description ? (
-        <span className="block text-[11.5px] leading-snug text-muted-foreground">
+        <span className="block text-meta leading-snug text-muted-foreground">
           {description}
         </span>
       ) : null}
@@ -210,7 +210,7 @@ export function AgentModelPicker({
   };
 
   const defaultTag = (
-    <span className="ms-1.5 rounded-pill bg-foreground/[0.07] px-1.5 align-[1px] text-[10px] font-medium text-muted-foreground">
+    <span className="ms-1.5 rounded-pill bg-foreground/[0.07] px-1.5 align-[1px] text-micro font-medium text-muted-foreground">
       default
     </span>
   );
@@ -288,10 +288,10 @@ export function AgentModelPicker({
                         )}
                         {a.name}
                         {isCurrent ? (
-                          <span className="rounded-pill bg-ai/15 px-1.5 text-[10px] font-medium text-ai">current</span>
+                          <span className="rounded-pill bg-ai/15 px-1.5 text-micro font-medium text-ai">current</span>
                         ) : null}
                         {!isCurrent && a.warm === "cold" && a.warmError ? (
-                          <span className="min-w-0 truncate text-[10.5px] font-normal text-faint" title={a.warmError}>
+                          <span className="min-w-0 truncate text-micro font-normal text-faint" title={a.warmError}>
                             didn't start
                           </span>
                         ) : null}

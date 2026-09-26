@@ -91,7 +91,7 @@ function LogsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open
           <DialogTitle>Dev server output</DialogTitle>
           <DialogDescription>The last lines the preview’s server printed.</DialogDescription>
         </DialogHeader>
-        <pre className="max-h-[60vh] min-h-40 overflow-auto rounded-lg bg-surface-0 p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-words text-muted-foreground select-text">
+        <pre className="max-h-[60vh] min-h-40 overflow-auto rounded-lg bg-surface-0 p-3 font-mono text-meta leading-relaxed whitespace-pre-wrap break-words text-muted-foreground select-text">
           {lines === null ? "Loading…" : lines.length > 0 ? lines.join("\n") : "(no output)"}
         </pre>
         <div className="flex justify-end">

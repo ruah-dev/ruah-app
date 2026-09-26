@@ -171,7 +171,7 @@ export function UsageChart({
           {ticks.map((tick) => (
             <span
               key={tick}
-              className="absolute right-0 -translate-y-1/2 text-[10.5px] text-muted-foreground tabular-nums"
+              className="absolute right-0 -translate-y-1/2 text-micro text-muted-foreground tabular-nums"
               style={{ top: `${(toY(tick) / VIEW_HEIGHT) * 100}%` }}
             >
               {tick === 0 ? "0" : format(tick)}
@@ -244,7 +244,7 @@ export function UsageChart({
           {hoveredBucket === undefined ? null : (
             <div
               ref={tooltipRef}
-              className="pointer-events-none absolute z-10 min-w-40 max-w-full rounded-xl border border-hairline bg-popover px-2.5 py-2 text-[12px] shadow-xl"
+              className="pointer-events-none absolute z-10 min-w-40 max-w-full rounded-xl border border-hairline bg-popover px-2.5 py-2 text-label shadow-xl"
               style={{ left: "var(--usage-tooltip-left, 0px)", top: "var(--usage-tooltip-top, 0px)" }}
             >
               <div className="mb-1 text-muted-foreground">{formatBucket(hoveredBucket)}</div>
@@ -268,7 +268,7 @@ export function UsageChart({
           )}
         </div>
       </div>
-      <div className="flex justify-between pl-16 text-[10.5px] text-muted-foreground">
+      <div className="flex justify-between pl-16 text-micro text-muted-foreground">
         <span>{buckets[0] ? formatBucket(buckets[0]) : ""}</span>
         <span>{buckets[Math.floor(buckets.length / 2)] ? formatBucket(buckets[Math.floor(buckets.length / 2)]!) : ""}</span>
         <span>{buckets.length ? formatBucket(buckets[buckets.length - 1]!) : ""}</span>

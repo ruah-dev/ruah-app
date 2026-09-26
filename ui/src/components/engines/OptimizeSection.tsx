@@ -24,7 +24,7 @@ export function OptimizeSection() {
   return (
     <section className="flex flex-col gap-3 border-t border-hairline pt-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="heading text-[16px] text-foreground">Optimize</h2>
+        <h2 className="heading text-headline text-foreground">Optimize</h2>
         <Button
           size="sm"
           variant="secondary"
@@ -40,13 +40,13 @@ export function OptimizeSection() {
           {busy ? "Analyzing…" : "Run opt"}
         </Button>
       </div>
-      <p className="text-[12px] text-muted-foreground">
+      <p className="text-label text-muted-foreground">
         Top spenders, waste signals, and suggestions from the usage log via <code>ruah opt usage</code>.
       </p>
-      {tool && !installed ? <p className="text-[12px] text-muted-foreground">Not installed. {install}</p> : null}
-      {report && "error" in report ? <p className="text-[12px] text-bad">{report.error}</p> : null}
+      {tool && !installed ? <p className="text-label text-muted-foreground">Not installed. {install}</p> : null}
+      {report && "error" in report ? <p className="text-label text-bad">{report.error}</p> : null}
       {report && "topSpenders" in report ? (
-        <div className="flex flex-col gap-2 text-[12px]">
+        <div className="flex flex-col gap-2 text-label">
           <p className="text-muted-foreground">
             {report.records} turn(s) · {report.summary.totalTokens} tokens · ${report.summary.costUsd.toFixed(4)}
           </p>

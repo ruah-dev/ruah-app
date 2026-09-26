@@ -76,8 +76,8 @@ export function JiraConnectDialog({
         <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
           <ProviderMark id="jira" />
           <div className="min-w-0">
-            <DialogTitle className="text-[15px]">Connect Jira</DialogTitle>
-            <DialogDescription className="text-[12.5px]">
+            <DialogTitle className="text-title">Connect Jira</DialogTitle>
+            <DialogDescription className="text-ui-sm">
               Link issues to architecture elements and create them from Ruah.
             </DialogDescription>
           </div>
@@ -85,7 +85,7 @@ export function JiraConnectDialog({
 
         <form onSubmit={submit} className="space-y-4" autoComplete="off">
           <div className="space-y-1.5">
-            <Label htmlFor="jira-site" className="text-[12.5px] font-normal text-muted-foreground">
+            <Label htmlFor="jira-site" className="text-ui-sm font-normal text-muted-foreground">
               Site
             </Label>
             <Input
@@ -94,11 +94,11 @@ export function JiraConnectDialog({
               onChange={(e) => setSite(e.target.value)}
               placeholder="your-team.atlassian.net"
               spellCheck={false}
-              className="h-8 text-[13px] md:text-[13px]"
+              className="h-8 text-ui md:text-ui"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="jira-email" className="text-[12.5px] font-normal text-muted-foreground">
+            <Label htmlFor="jira-email" className="text-ui-sm font-normal text-muted-foreground">
               Email
             </Label>
             <Input
@@ -107,11 +107,11 @@ export function JiraConnectDialog({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
-              className="h-8 text-[13px] md:text-[13px]"
+              className="h-8 text-ui md:text-ui"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="jira-token" className="text-[12.5px] font-normal text-muted-foreground">
+            <Label htmlFor="jira-token" className="text-ui-sm font-normal text-muted-foreground">
               API token
             </Label>
             <Input
@@ -122,9 +122,9 @@ export function JiraConnectDialog({
               autoComplete="new-password"
               spellCheck={false}
               placeholder="Paste a token"
-              className="h-8 font-mono text-[13px] md:text-[13px]"
+              className="h-8 font-mono text-ui md:text-ui"
             />
-            <p className="text-[12px] leading-relaxed text-muted-foreground">
+            <p className="text-label leading-relaxed text-muted-foreground">
               Create one at{" "}
               <a
                 href={TOKEN_PAGE}
@@ -139,7 +139,7 @@ export function JiraConnectDialog({
             </p>
           </div>
 
-          <div className="flex items-start gap-2 rounded-lg bg-foreground/[0.04] px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+          <div className="flex items-start gap-2 rounded-lg bg-foreground/[0.04] px-3 py-2.5 text-label leading-relaxed text-muted-foreground">
             <KeyRound className="mt-0.5 size-3.5 shrink-0" />
             <span>
               The token is stored in your macOS Keychain (service <span className="font-mono">ruah</span>), not in
@@ -147,7 +147,7 @@ export function JiraConnectDialog({
             </span>
           </div>
 
-          {error ? <p className="text-[12.5px] text-bad">{error}</p> : null}
+          {error ? <p className="text-ui-sm text-bad">{error}</p> : null}
 
           <DialogFooter className="gap-2 sm:gap-1">
             <button type="button" className={quietButton} onClick={() => close(false)}>

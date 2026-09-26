@@ -19,14 +19,9 @@ import {
   type WhatItRuns,
 } from "@/lib/extensions";
 
-export const quietButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-ui-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
-export const solidButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground transition-colors hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-40";
-export const primaryButton =
-  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-ui-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-40";
-export const fieldClass =
-  "h-8 w-full min-w-0 rounded-lg border border-hairline bg-surface-0 px-2.5 text-ui text-foreground placeholder:text-faint focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50";
+import { quietButton, solidButton, primaryButton, fieldClass } from "@/components/ui/controls";
+
+export { quietButton, solidButton, primaryButton, fieldClass };
 
 const KIND_MARK: Record<ExtensionKind, { icon: LucideIcon; className: string }> = {
   skill: { icon: Sparkles, className: "bg-ai/15 text-ai" },

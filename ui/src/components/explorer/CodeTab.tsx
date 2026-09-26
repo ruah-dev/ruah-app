@@ -68,12 +68,12 @@ export function CodeTab({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
         <p className="heading text-title text-foreground">No file attached</p>
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-ui-sm text-muted-foreground">
           Add paths to <span className="font-mono">files</span> in architecture.json, or drill in to
           a child element.
         </p>
         {node.drill ? (
-          <Button variant="ghost" size="sm" className="mt-1 h-7 text-[12px]" onClick={onDrill}>
+          <Button variant="ghost" size="sm" className="mt-1 h-7 text-label" onClick={onDrill}>
             Open level
           </Button>
         ) : null}
@@ -84,12 +84,12 @@ export function CodeTab({
   const fileSwitcher =
     files.length > 1 ? (
       <Select value={path} onValueChange={setPath}>
-        <SelectTrigger className="h-7 w-auto max-w-[75%] min-w-0 gap-1.5 rounded-md border-0 bg-transparent px-2 font-mono text-[12px] text-foreground/90 shadow-none hover:bg-accent focus:ring-0">
+        <SelectTrigger className="h-7 w-auto max-w-[75%] min-w-0 gap-1.5 rounded-md border-0 bg-transparent px-2 font-mono text-label text-foreground/90 shadow-none hover:bg-accent focus:ring-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="rounded-lg border-hairline">
           {files.map((f) => (
-            <SelectItem key={f} value={f} className="font-mono text-[12px]">
+            <SelectItem key={f} value={f} className="font-mono text-label">
               {f}
             </SelectItem>
           ))}
@@ -128,11 +128,11 @@ export function CodeTab({
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           {fileSwitcher ? <div className="mb-2">{fileSwitcher}</div> : null}
-          <p className="text-[12px] text-foreground">
+          <p className="text-label text-foreground">
             {result.status === 404 ? "File not found in the repo" : "Cannot show this file"}
           </p>
-          <p className="font-mono text-[11px] break-all text-muted-foreground">{path}</p>
-          <p className="text-[11px] text-muted-foreground">{result.message}</p>
+          <p className="font-mono text-caption break-all text-muted-foreground">{path}</p>
+          <p className="text-caption text-muted-foreground">{result.message}</p>
         </div>
       )}
     </div>

@@ -86,7 +86,7 @@ export function CodePreview({
         {pathSlot ?? (
           <span className="flex min-w-0 items-center gap-2 px-1">
             <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate font-mono text-[12px] text-foreground/90">{file.path}</span>
+            <span className="truncate font-mono text-label text-foreground/90">{file.path}</span>
           </span>
         )}
         {file.branch ? (
@@ -100,7 +100,7 @@ export function CodePreview({
           <a
             href={href}
             title="Open in VS Code"
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-label text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             Open <ExternalLink className="size-3" />
           </a>
@@ -108,7 +108,7 @@ export function CodePreview({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-background/60">
-        <pre className="py-2 font-mono text-[12px] leading-[1.6]">
+        <pre className="py-2 font-mono text-label leading-[1.6]">
           {lines.map((line, i) => {
             const n = i + 1;
             const hot = file.highlight && n >= file.highlight[0] && n <= file.highlight[1];
@@ -139,7 +139,7 @@ export function CodePreview({
 
       {file.deps?.length ? (
         <div className="border-t border-hairline px-3 py-2">
-          <p className="pb-1.5 text-[12px] font-medium text-muted-foreground">
+          <p className="pb-1.5 text-label font-medium text-muted-foreground">
             Imports
           </p>
           <div className="flex flex-wrap gap-1">
@@ -147,7 +147,7 @@ export function CodePreview({
               <Badge
                 key={d}
                 variant="secondary"
-                className="h-4.5 rounded-sm px-1.5 font-mono text-[10px]"
+                className="h-4.5 rounded-sm px-1.5 font-mono text-micro"
               >
                 {d}
               </Badge>

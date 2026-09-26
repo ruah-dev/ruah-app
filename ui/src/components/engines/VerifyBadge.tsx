@@ -34,7 +34,7 @@ export function VerifyBadgeChip({
       title={detail ?? LABEL[badge]}
       className={cn(
         "inline-flex items-center rounded border px-1.5 font-medium uppercase tracking-wide",
-        compact ? "text-[9px] leading-4" : "text-[10px] leading-5",
+        compact ? "text-[9px] leading-4" : "text-micro leading-5",
         CLASS[badge],
       )}
     >

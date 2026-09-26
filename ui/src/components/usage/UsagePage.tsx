@@ -53,7 +53,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="eyebrow">{label}</span>
-      <span className="heading text-[20px] text-foreground tabular-nums">{value}</span>
+      <span className="heading text-display text-foreground tabular-nums">{value}</span>
     </div>
   );
 }
@@ -226,7 +226,7 @@ export function UsagePage() {
                     <span className="text-[34px] leading-none font-semibold tracking-tight text-foreground tabular-nums">
                       {metric === "cost" ? formatUsd(model.totalCost) : formatTokens(model.totalTokens)}
                     </span>
-                    <span className="text-[12px] text-muted-foreground">
+                    <span className="text-label text-muted-foreground">
                       {formatCount(data!.totals.turns)} turns
                       {metric === "cost"
                         ? model.unpricedShare > 0
@@ -245,15 +245,15 @@ export function UsagePage() {
                     return (
                       <div key={a.agentId} className="flex flex-col gap-1">
                         <div className="flex items-baseline justify-between gap-4">
-                          <span className="flex min-w-0 items-center gap-2 text-[13px] text-foreground">
+                          <span className="flex min-w-0 items-center gap-2 text-ui text-foreground">
                             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: model.colors.get(a.agentId) }} />
                             <AgentMark name={model.labels.get(a.agentId) ?? a.agentId} />
                             <span className="truncate">{model.labels.get(a.agentId)}</span>
-                            <span className="shrink-0 text-[11.5px] text-muted-foreground tabular-nums">
+                            <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
                               {formatCount(a.turns)} {a.turns === 1 ? "turn" : "turns"}
                             </span>
                           </span>
-                          <span className="shrink-0 text-[13px] font-medium tabular-nums">
+                          <span className="shrink-0 text-ui font-medium tabular-nums">
                             {metric === "cost" ? formatUsd(a.cost) : formatTokens(a.tokens)}
                           </span>
                         </div>
@@ -263,7 +263,7 @@ export function UsagePage() {
                             style={{ width: `${Math.max(2, share * 100)}%`, backgroundColor: model.colors.get(a.agentId) }}
                           />
                         </span>
-                        <span className="text-[12px] text-muted-foreground">
+                        <span className="text-label text-muted-foreground">
                           {metric === "cost"
                             ? `${formatPercent(share)} of cost · ${formatTokens(a.tokens)} tokens`
                             : `${formatPercent(share)} of tokens · ${formatUsd(a.cost)}`}
@@ -273,7 +273,7 @@ export function UsagePage() {
                   })}
                 </div>
                 <div className="flex min-w-0 flex-col gap-3">
-                  <h2 className="text-[13px] font-medium text-foreground">
+                  <h2 className="text-ui font-medium text-foreground">
                     {range === "24h" ? "Hourly" : "Daily"} {metric === "tokens" ? "tokens" : "cost"}
                   </h2>
                   <UsageChart
@@ -289,7 +289,7 @@ export function UsagePage() {
               </section>
 
               <section className="flex flex-col gap-2">
-                <h2 className="text-[13px] font-medium text-foreground">Totals</h2>
+                <h2 className="text-ui font-medium text-foreground">Totals</h2>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
                   <Metric label="Input" value={formatTokens(data!.totals.inputTokens)} />
                   <Metric label="Output" value={formatTokens(data!.totals.outputTokens)} />
@@ -303,17 +303,17 @@ export function UsagePage() {
                 <section className="grid gap-6 md:grid-cols-2">
                   {(data!.byNode?.length ?? 0) > 0 ? (
                     <div className="flex flex-col gap-2">
-                      <h2 className="text-[13px] font-medium text-foreground">Cost by element</h2>
-                      <p className="text-[12px] text-muted-foreground">From ~/.ruah/usage.jsonl turns that recorded a nodeId.</p>
-                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                      <h2 className="text-ui font-medium text-foreground">Cost by element</h2>
+                      <p className="text-label text-muted-foreground">From ~/.ruah/usage.jsonl turns that recorded a nodeId.</p>
+                      <ul className="divide-y divide-hairline/60 text-ui">
                         {data!.byNode!.slice(0, 12).map((row) => (
                           <li key={row.nodeId} className="flex items-baseline justify-between gap-3 py-2">
-                            <span className="truncate font-mono text-[12px]" title={row.nodeId}>
+                            <span className="truncate font-mono text-label" title={row.nodeId}>
                               {row.nodeId}
                             </span>
                             <span className="shrink-0 tabular-nums">
                               {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
-                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                              <span className="ms-2 text-caption text-muted-foreground">{formatCount(row.turns)} turns</span>
                             </span>
                           </li>
                         ))}
@@ -322,17 +322,17 @@ export function UsagePage() {
                   ) : null}
                   {(data!.byWorkflow?.length ?? 0) > 0 ? (
                     <div className="flex flex-col gap-2">
-                      <h2 className="text-[13px] font-medium text-foreground">Cost by workflow</h2>
-                      <p className="text-[12px] text-muted-foreground">Sum of element costs for steps in each architecture workflow.</p>
-                      <ul className="divide-y divide-hairline/60 text-[13px]">
+                      <h2 className="text-ui font-medium text-foreground">Cost by workflow</h2>
+                      <p className="text-label text-muted-foreground">Sum of element costs for steps in each architecture workflow.</p>
+                      <ul className="divide-y divide-hairline/60 text-ui">
                         {data!.byWorkflow!.map((row) => (
                           <li key={row.workflowId} className="flex items-baseline justify-between gap-3 py-2">
-                            <span className="truncate font-mono text-[12px]" title={row.workflowId}>
+                            <span className="truncate font-mono text-label" title={row.workflowId}>
                               {row.workflowId}
                             </span>
                             <span className="shrink-0 tabular-nums">
                               {row.costUsd === null ? "—" : formatUsd(row.costUsd)}
-                              <span className="ms-2 text-[11px] text-muted-foreground">{formatCount(row.turns)} turns</span>
+                              <span className="ms-2 text-caption text-muted-foreground">{formatCount(row.turns)} turns</span>
                             </span>
                           </li>
                         ))}
@@ -344,7 +344,7 @@ export function UsagePage() {
 
               <section className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[13px] font-medium text-foreground">Breakdown</h2>
+                  <h2 className="text-ui font-medium text-foreground">Breakdown</h2>
                   <Segmented
                     value={breakdown}
                     onChange={setBreakdown}
@@ -355,7 +355,7 @@ export function UsagePage() {
                   />
                 </div>
                 {breakdown === "model" ? (
-                  <table className="w-full table-fixed text-[13px]">
+                  <table className="w-full table-fixed text-ui">
                     <colgroup>
                       <col className="w-2/5" />
                       <col className="w-1/5" />
@@ -363,7 +363,7 @@ export function UsagePage() {
                       <col className="w-1/5" />
                     </colgroup>
                     <thead>
-                      <tr className="border-b border-hairline text-left text-[12px] text-muted-foreground">
+                      <tr className="border-b border-hairline text-left text-label text-muted-foreground">
                         <th className="py-2 font-normal">Model</th>
                         <th className="py-2 text-right font-normal">Cost</th>
                         <th className="py-2 text-right font-normal">Share</th>
@@ -401,9 +401,9 @@ export function UsagePage() {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full table-fixed text-[13px]">
+                  <table className="w-full table-fixed text-ui">
                     <thead>
-                      <tr className="border-b border-hairline text-left text-[12px] text-muted-foreground">
+                      <tr className="border-b border-hairline text-left text-label text-muted-foreground">
                         <th className="w-2/5 py-2 font-normal">{range === "24h" ? "Hour" : "Day"}</th>
                         {model.agents.map((a) => (
                           <th key={a} className="py-2 text-right font-normal">{model.labels.get(a)}</th>

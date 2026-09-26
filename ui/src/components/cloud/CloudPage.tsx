@@ -104,7 +104,7 @@ function SyncMenu({
           {providers.map((p) => (
             <div key={p.id}>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[11.5px] font-normal text-muted-foreground">
+              <DropdownMenuLabel className="text-meta font-normal text-muted-foreground">
                 {p.name}
               </DropdownMenuLabel>
               {p.accounts?.length ? (
@@ -150,7 +150,7 @@ function HealthStrip({
   if (!counts.total) return null;
   const parts = STRIP.filter((p) => counts[p.health] > 0);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" aria-label="Live status">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ui" aria-label="Live status">
       {parts.map((p, i) => {
         const bad = p.health === "down" || p.health === "degraded";
         const content = (
@@ -183,7 +183,7 @@ function HealthStrip({
       })}
       {live ? (
         <span
-          className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground"
+          className="flex items-center gap-1.5 text-meta text-muted-foreground"
           title="Refreshed automatically while this page is open"
         >
           <span className="relative flex size-2">
@@ -334,7 +334,7 @@ export function CloudPage() {
             {scopeInfo?.accounts.length ? `Accounts (${scopeInfo.accounts.length})` : "Accounts"}
           </button>
         ) : null}
-        <span className="text-[12px] text-muted-foreground max-sm:hidden">
+        <span className="text-label text-muted-foreground max-sm:hidden">
           {s.syncing
             ? "Syncing…"
             : snapshot?.syncedAt
@@ -407,7 +407,7 @@ export function CloudPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter by name, region, tag, element…"
               aria-label="Filter resources"
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-faint"
+              className="min-w-0 flex-1 bg-transparent text-ui-sm text-foreground outline-none placeholder:text-faint"
             />
           </div>
           {providersInData.length > 1 ? (
@@ -441,7 +441,7 @@ export function CloudPage() {
           />
           <span className="flex-1" />
           {all.length ? (
-            <span className="text-[12px] text-muted-foreground">
+            <span className="text-label text-muted-foreground">
               {all.length} resources · {regions} {regions === 1 ? "region" : "regions"} · {linkedCount}{" "}
               linked
             </span>

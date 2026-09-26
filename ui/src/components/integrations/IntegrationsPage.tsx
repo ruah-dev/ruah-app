@@ -130,7 +130,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
         <ProviderMark id={info.id} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="text-[13.5px] font-medium text-foreground">{info.name}</p>
+            <p className="text-body font-medium text-foreground">{info.name}</p>
             {placeholder ? null : (
           <Pill tone={st.tone} icon={integrationGhost(info.status)}>
             {st.label}
@@ -139,7 +139,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
           </div>
           <p
             className={cn(
-              "truncate text-[12.5px]",
+              "truncate text-ui-sm",
               info.status === "error" ? "text-bad/90" : "text-muted-foreground",
             )}
             title={info.detail}
@@ -160,14 +160,14 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
             >
               <SelectTrigger
                 aria-label={`${info.name} ${ACCOUNT_NOUN[info.id] ?? "account"}`}
-                className="h-7 w-auto min-w-32 gap-1.5 border-hairline bg-transparent px-2 text-[12.5px]"
+                className="h-7 w-auto min-w-32 gap-1.5 border-hairline bg-transparent px-2 text-ui-sm"
               >
                 <span className="text-muted-foreground">{ACCOUNT_NOUN[info.id] ?? "Account"}</span>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id} className="text-[12.5px]">
+                  <SelectItem key={a.id} value={a.id} className="text-ui-sm">
                     {a.label}
                   </SelectItem>
                 ))}
@@ -219,7 +219,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
 
       {showCommand ? (
         <div className="mt-2.5 ms-11 space-y-1.5">
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-label text-muted-foreground">
             {info.status === "cli_missing"
               ? "Install the CLI, then check again:"
               : isRuah
@@ -231,7 +231,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
       ) : null}
       {showSetup ? (
         <div className="mt-2.5 ms-11 space-y-1.5">
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-label text-muted-foreground">
             {info.status === "cli_missing"
               ? "Install the CLI and log in, then check again:"
               : "Log in with the provider's CLI, then check again:"}
@@ -239,7 +239,7 @@ function IntegrationRow({ info, placeholder }: { info: IntegrationInfo; placehol
           <SetupCommands info={info} />
         </div>
       ) : null}
-      {error ?<p className="mt-2 ms-11 text-[12.5px] text-bad">{error}</p> : null}
+      {error ?<p className="mt-2 ms-11 text-ui-sm text-bad">{error}</p> : null}
 
       {isJira ? (
         <JiraConnectDialog
@@ -272,7 +272,7 @@ export function IntegrationsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Integrations">
         {list ? (
-          <span className="text-[12px] text-muted-foreground">
+          <span className="text-label text-muted-foreground">
             {connectedCount} of {list.length} connected
           </span>
         ) : null}
@@ -291,7 +291,7 @@ export function IntegrationsPage() {
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-6 py-8 max-md:px-4">
           <div className="space-y-2">
             <p className="eyebrow">Connected services</p>
-            <p className="text-[13.5px] leading-relaxed text-muted-foreground">
+            <p className="text-body leading-relaxed text-muted-foreground">
               Connect your cloud, issue tracker and ruah so the map shows what runs where and who is
               working on it. Credentials stay with the provider CLIs or in your Keychain.
             </p>
@@ -301,8 +301,8 @@ export function IntegrationsPage() {
             <div className="flex items-center gap-4 rounded-xl border border-hairline bg-surface-1 px-4 py-3.5">
               <PhantomPose pose="plugging" size={64} noGlow />
               <div className="min-w-0 space-y-0.5">
-                <p className="text-[13px] font-medium text-foreground">Nothing connected yet</p>
-                <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+                <p className="text-ui font-medium text-foreground">Nothing connected yet</p>
+                <p className="text-ui-sm leading-relaxed text-muted-foreground">
                   Pick a service below. Each one tells you the single command it needs.
                 </p>
               </div>
@@ -312,7 +312,7 @@ export function IntegrationsPage() {
             <section key={f.id} className="flex flex-col gap-3">
               <div>
                 <h2 className="heading text-title text-foreground">{f.title}</h2>
-                <p className="mt-1 text-[12.5px] text-muted-foreground">{f.description}</p>
+                <p className="mt-1 text-ui-sm text-muted-foreground">{f.description}</p>
               </div>
               <div
                 className={cn(

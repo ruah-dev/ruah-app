@@ -24,8 +24,8 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
   return (
     <div className="flex flex-col gap-4 border-t border-hairline pt-3">
       <div className="flex flex-col gap-2">
-        <h3 className="text-[12px] font-medium text-foreground">Eval scorecard</h3>
-        <p className="text-[11px] text-muted-foreground">
+        <h3 className="text-label font-medium text-foreground">Eval scorecard</h3>
+        <p className="text-caption text-muted-foreground">
           Runs one prompt across installed agent CLIs via <code>ruah eval</code>. Unverifiable criteria never count as pass.
         </p>
         <textarea
@@ -33,7 +33,7 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
           onChange={(e) => setPrompt(e.target.value)}
           rows={3}
           placeholder="Prompt to run on this element…"
-          className="w-full rounded-md border border-hairline bg-surface-3 px-2 py-1.5 text-[12px] text-foreground"
+          className="w-full rounded-md border border-hairline bg-surface-3 px-2 py-1.5 text-label text-foreground"
         />
         <Button
           size="sm"
@@ -48,7 +48,7 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
           {evalBusy ? "Running eval…" : "Run eval"}
         </Button>
         {evalResult !== null ? (
-          <pre className="max-h-48 overflow-auto rounded-md bg-surface-3 p-2 text-[10px] leading-relaxed text-muted-foreground">
+          <pre className="max-h-48 overflow-auto rounded-md bg-surface-3 p-2 text-micro leading-relaxed text-muted-foreground">
             {JSON.stringify(evalResult, null, 2)}
           </pre>
         ) : null}
@@ -56,12 +56,12 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
 
       {specs.length > 0 ? (
         <div className="flex flex-col gap-2">
-          <h3 className="text-[12px] font-medium text-foreground">Convert API spec</h3>
-          <p className="text-[11px] text-muted-foreground">Detected specs on this element — runs <code>ruah conv</code>.</p>
+          <h3 className="text-label font-medium text-foreground">Convert API spec</h3>
+          <p className="text-caption text-muted-foreground">Detected specs on this element — runs <code>ruah conv</code>.</p>
           <ul className="flex flex-col gap-2">
             {specs.map((s) => (
-              <li key={s.path} className="flex flex-wrap items-center gap-2 text-[12px]">
-                <span className="font-mono text-[11px]">{s.path}</span>
+              <li key={s.path} className="flex flex-wrap items-center gap-2 text-label">
+                <span className="font-mono text-caption">{s.path}</span>
                 <span className="text-muted-foreground">({s.kind})</span>
                 <Button
                   size="sm"
@@ -92,7 +92,7 @@ export function NodeEnginesPanel({ nodeId, defaultPrompt }: { nodeId: string; de
             ))}
           </ul>
           {convResult !== null ? (
-            <pre className="max-h-48 overflow-auto rounded-md bg-surface-3 p-2 text-[10px] leading-relaxed text-muted-foreground">
+            <pre className="max-h-48 overflow-auto rounded-md bg-surface-3 p-2 text-micro leading-relaxed text-muted-foreground">
               {JSON.stringify(convResult, null, 2)}
             </pre>
           ) : null}
