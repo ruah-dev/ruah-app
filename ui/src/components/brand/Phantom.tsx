@@ -14,7 +14,8 @@
 //   warning warn (amber) · error bad (coral).
 // Poses (sleeping, reading, terminal, …), group scenes and the agents' own tinted ghosts are in
 // ./PhantomPose.tsx; everything is exported from ./index.ts.
-import { useEffect, useId, useRef, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useId, useRef, type CSSProperties } from "react";
+import { useAppearanceKey } from "@/lib/theme";
 import { RUAH_BODY_PATH } from "@/components/brand/RuahLogo";
 import { AGENT_TINT_IDS, type AgentTint } from "@/design/tokens";
 import { cn } from "@/lib/utils";
@@ -209,26 +210,6 @@ const eyeMarkup = (cx: number, shape: EyeShape, eye: string, body: string, k: nu
   }
 };
 
-// The resolved theme × palette (html[data-theme], html[data-palette]) as a tiny external store:
-// one observer for all sprites.
-const themeListeners = new Set<() => void>();
-let themeObserver: MutationObserver | null = null;
-const readTheme = () => {
-  if (typeof document === "undefined") return "dark";
-  const d = document.documentElement.dataset;
-  return `${d["theme"] ?? "dark"}:${d["palette"] ?? "teal"}`;
-};
-function subscribeTheme(fn: () => void) {
-  themeListeners.add(fn);
-  if (!themeObserver && typeof MutationObserver !== "undefined") {
-    themeObserver = new MutationObserver(() => themeListeners.forEach((l) => l()));
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
-  }
-  return () => {
-    themeListeners.delete(fn);
-  };
-}
-
 const sprites = new Map<string, string>();
 function spriteUrl(theme: string, tone: PhantomTone, eyes: EyeShape, px: number): string {
   const { k, sw } = eyeScale(px);
@@ -248,7 +229,8 @@ function spriteUrl(theme: string, tone: PhantomTone, eyes: EyeShape, px: number)
 }
 
 function PhantomSprite({ tone, eyes, px }: { tone: PhantomTone; eyes: EyeShape; px: number }) {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "dark");
+  // The resolved theme × palette (one shared <html> observer, lib/theme.ts).
+  const theme = useAppearanceKey();
   return <span className="phantom-sprite" style={{ backgroundImage: spriteUrl(theme, tone, eyes, px) }} />;
 }
 
