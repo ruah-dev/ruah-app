@@ -102,7 +102,9 @@ export interface RuahStatus {
   workflows: RuahWorkflowSummary[];
 }
 
-export type RuahStatusResult = RuahStatus | { initialized: false; hint?: string };
+/** Why there are no tasks to show (daemons before 2026-09-26 send only `hint`). */
+export type RuahNotReady = "cli_missing" | "no_project" | "not_git" | "not_initialized";
+export type RuahStatusResult = RuahStatus | { initialized: false; hint?: string; reason?: RuahNotReady };
 
 export interface RuahWorkflowFile {
   name: string;
@@ -122,7 +124,9 @@ function normalizeRuahStatus(raw: unknown): RuahStatusResult {
   const r = (raw ?? {}) as Record<string, unknown>;
   if (r["initialized"] === false) {
     const hint = typeof r["hint"] === "string" ? r["hint"] : undefined;
-    return hint !== undefined ? { initialized: false, hint } : { initialized: false };
+    const reasons: readonly RuahNotReady[] = ["cli_missing", "no_project", "not_git", "not_initialized"];
+    const reason = reasons.find((x) => x === r["reason"]);
+    return { initialized: false, ...(hint !== undefined ? { hint } : {}), ...(reason !== undefined ? { reason } : {}) };
   }
   const rawTasks = r["tasks"];
   const tasks: RuahTask[] = Array.isArray(rawTasks)

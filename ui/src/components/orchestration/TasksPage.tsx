@@ -180,6 +180,44 @@ function TaskRow({
   );
 }
 
+/** Not a git repository: ruah's worktrees need one — say so plainly, with the fix. */
+function NotAGitRepo() {
+  return (
+    <GhostState
+      pose="checklist"
+      size="lg"
+      eyebrow="Tasks need git"
+      title="This folder isn't a git repository"
+      body="ruah runs each task on its own git worktree and branch, so it only works inside a repository. Initialise one in the project folder (then ruah init), or open a repository instead."
+      className="mx-auto max-w-lg px-6"
+    >
+      <CopyCommand command="git init && ruah init" className="mt-2 w-full max-w-xs text-left" />
+      <button type="button" className={quietButton} onClick={() => void loadRuah()}>
+        <RefreshCw className="size-3.5" /> Check again
+      </button>
+    </GhostState>
+  );
+}
+
+/** The ruah CLI itself is missing: how to get it. */
+function CliMissing() {
+  return (
+    <GhostState
+      scene="trio"
+      size="lg"
+      eyebrow="Parallel agents"
+      title="The ruah CLI isn't installed"
+      body="ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once. Install it once, then initialise it in the repo:"
+      className="mx-auto max-w-lg px-6"
+    >
+      <CopyCommand command="npm i -g @ruah-dev/cli" className="mt-2 w-full max-w-xs text-left" />
+      <button type="button" className={quietButton} onClick={() => void loadRuah()}>
+        <RefreshCw className="size-3.5" /> Check again
+      </button>
+    </GhostState>
+  );
+}
+
 /** ruah isn't initialised: the trio scene shows what it is for — agents working side by side. */
 function NotInitialized({ hint }: { hint?: string | undefined }) {
   return (
@@ -304,8 +342,12 @@ export function TasksPage() {
           <div className="mx-auto max-w-3xl px-6 py-8">
             <RemoteNotice remote={s.ruah} what="Orchestration" />
           </div>
+        ) : notInit?.reason === "not_git" ? (
+          <NotAGitRepo />
+        ) : notInit?.reason === "cli_missing" ? (
+          <CliMissing />
         ) : notInit ? (
-          <NotInitialized hint={notInit.hint} />
+          <NotInitialized hint={notInit.reason === "not_initialized" ? undefined : notInit.hint} />
         ) : !status ? (
           <div className="grid h-40 place-items-center">
             <Phantom expression="loading" size="md" label="Loading tasks" />

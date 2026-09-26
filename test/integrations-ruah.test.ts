@@ -6,7 +6,7 @@ import type { Architecture } from "../src/contracts/architecture.js";
 import type { RunResult, Runner } from "../src/integrations/exec.js";
 import { IntegrationRegistry, IntegrationsService } from "../src/integrations/index.js";
 import { MemorySecretStore } from "../src/integrations/keychain.js";
-import { globsForNode, RuahIntegration, validateGlobs, type Launcher } from "../src/integrations/ruah.js";
+import { gitRootOf, globsForNode, ruahFailureMessage, RuahIntegration, validateGlobs, type Launcher } from "../src/integrations/ruah.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -18,9 +18,11 @@ function tempDir(): string {
   return dir;
 }
 
-function repo(initialized: boolean): string {
+function repo(initialized: boolean, options: { git?: boolean } = {}): string {
   const root = tempDir();
   mkdirSync(join(root, "services", "invoices-api", "src"), { recursive: true });
+  // A git work tree (ruah needs one); only its .git marker matters here.
+  if (options.git !== false) mkdirSync(join(root, ".git"));
   if (initialized) {
     mkdirSync(join(root, ".ruah", "workflows"), { recursive: true });
     writeFileSync(join(root, ".ruah", "state.json"), "{}");
@@ -87,13 +89,48 @@ describe("ruah integration", () => {
     const r = new RuahIntegration({ runner: ruahRunner(root), home: tempDir(), bin: () => "/fake/ruah" });
     expect(await r.status({ root })).toEqual({ initialized: true, baseBranch: "main", taskCounts: { total: 0 }, tasks: {} });
     const bare = repo(false);
-    expect(await r.status({ root: bare })).toEqual({ initialized: false, hint: "ruah init" });
+    expect(await r.status({ root: bare })).toEqual({ initialized: false, reason: "not_initialized", hint: "ruah init" });
     expect(await r.status(null)).toMatchObject({ initialized: false });
     const missing = new RuahIntegration({ runner: ruahRunner(root), home: tempDir(), bin: () => undefined });
-    expect(await missing.status({ root })).toEqual({ initialized: false, hint: "npm i -g @ruah-dev/cli" });
+    expect(await missing.status({ root })).toEqual({ initialized: false, reason: "cli_missing", hint: "npm i -g @ruah-dev/cli" });
     expect(await missing.info({ root })).toMatchObject({ status: "cli_missing" });
     expect(await r.info({ root: bare })).toMatchObject({ status: "not_connected", setupHint: "ruah init", detail: "ruah v1.1.3 · this repo is not initialized for ruah" });
     expect(await r.info({ root })).toMatchObject({ status: "connected", detail: "ruah v1.1.3 · initialized" });
+  });
+
+  // Regression: a folder that is not a git repository (with or without .ruah/) showed the CLI's
+  // raw error / stack trace on the Tasks page.
+  test("a folder that is not a git repository: a reason, no CLI run, no raw output", async () => {
+    const root = repo(true, { git: false });
+    const runner = ruahRunner(root);
+    const r = new RuahIntegration({ runner, home: tempDir(), bin: () => "/fake/ruah" });
+    expect(await r.status({ root })).toEqual({ initialized: false, reason: "not_git", hint: expect.stringContaining("git init") });
+    expect(await r.workflows({ root })).toEqual({ workflows: [] });
+    expect(await r.info({ root })).toMatchObject({ status: "not_connected", setupHint: "git init", detail: expect.stringContaining("not a git repository") });
+    await expect(r.createTask({ name: "x", prompt: "p", files: ["a"] }, undefined, { root })).rejects.toMatchObject({ status: 409, message: expect.stringContaining("git init") });
+    expect(runner.calls.filter((c) => c.args[0] !== "--version")).toEqual([]);
+    // A nested folder of a work tree is fine.
+    const nested = join(repo(true), "services");
+    expect(gitRootOf(nested)).toBe(join(nested, ".."));
+  });
+
+  test("CLI failures are one readable line: no colours, no stack, no source excerpt", () => {
+    const stack = [
+      "/opt/homebrew/lib/node_modules/@ruah-dev/orch-core/dist/cli.js:412",
+      "    throw new Error(`git rev-parse failed: ${e.message}`);",
+      "    ^",
+      "",
+      "Error: git rev-parse failed: fatal: not a git repository (or any of the parent directories): .git",
+      "    at gitRoot (file:///opt/homebrew/lib/node_modules/@ruah-dev/orch-core/dist/git.js:10:11)",
+      "    at node:internal/main/run_main_module:36:49",
+      "",
+      "Node.js v22.20.0",
+    ].join("\n");
+    expect(ruahFailureMessage(stack)).toBe("this folder is not a git repository (ruah needs one: `git init`)");
+    expect(ruahFailureMessage("\u001b[31m✗\u001b[0m task \"x\" already exists")).toBe('task "x" already exists');
+    expect(ruahFailureMessage("TypeError: Cannot read properties of undefined (reading 'files')\n    at run (file:///x.js:1:1)")).toBe(
+      "Cannot read properties of undefined (reading 'files')",
+    );
   });
 
   test("never runs `ruah init` (connect is status-only)", async () => {
