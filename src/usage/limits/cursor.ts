@@ -25,6 +25,7 @@ import {
   percentOf,
   planName,
   round,
+  runOptions,
   safeMessage,
   str,
   type Json,
@@ -131,7 +132,7 @@ export async function readCursorAppAuth(ctx: LimitsContext, dbPath = cursorState
   const sql = `SELECT key, value FROM ItemTable WHERE key IN (${AUTH_KEYS.map((k) => `'${k}'`).join(", ")})`;
   let stdout: string;
   try {
-    const result = await ctx.run(sqlite, ["-readonly", "-json", dbPath, sql], { timeoutMs: 5_000 });
+    const result = await ctx.run(sqlite, ["-readonly", "-json", dbPath, sql], runOptions(ctx, 5_000));
     if (result.code !== 0) return { kind: "missing", reason: `Could not read the Cursor app's state (sqlite3 exit ${result.code}).` };
     stdout = result.stdout;
   } catch {
@@ -263,7 +264,7 @@ async function fetchUsage(ctx: LimitsContext, cookie: string): Promise<{ kind: "
     res = await ctx.fetch(CURSOR_USAGE_URL, {
       method: "GET",
       headers: { Cookie: cookie, Accept: "application/json", "User-Agent": `ruah-app/${ctx.version}` },
-      signal: AbortSignal.timeout(10_000),
+      signal: ctx.signal !== undefined ? AbortSignal.any([ctx.signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
     });
   } catch (err) {
     // Never the cookie: the message is built from the error type only.
@@ -299,7 +300,7 @@ export function cursorProvider(): LimitsProvider {
       }
       let about: CursorAbout | undefined;
       try {
-        const res = await ctx.run(bin, ["about", "--format", "json"], { timeoutMs: 20_000 });
+        const res = await ctx.run(bin, ["about", "--format", "json"], runOptions(ctx, 20_000));
         about = res.code === 0 ? parseCursorAbout(res.stdout) : undefined;
       } catch (err) {
         ctx.debug(`cursor-agent about failed: ${safeMessage(err)}`);

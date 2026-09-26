@@ -2,7 +2,10 @@
 // its provider's TTL (an explicit refresh still waits minRefreshMs between
 // reads, so a hammered refresh button cannot hammer the sources), keeps the
 // last good reading when a refresh fails (marked stale), attaches Ruah's
-// estimates, and orders agents: signed in first, not installed last.
+// estimates, and orders agents: signed in first, not installed last. A read
+// that outlives readTimeoutMs is answered with an error at once and aborted
+// (its CLIs are killed); no second read starts until it has wound down, and
+// its error is kept only briefly.
 import type { AgentLimits, AgentLimitsReport, AgentLimitsStatus } from "../../contracts/agent-limits.js";
 import type { UsageRecord } from "../log.js";
 import { agentLimits, defaultContext, safeMessage, type LimitsContext, type LimitsProvider } from "./common.js";
@@ -17,6 +20,8 @@ export interface AgentLimitsServiceOptions {
   minRefreshMs?: number;
   /** Upper bound on one provider read. Default 60 s. */
   readTimeoutMs?: number;
+  /** How long a timed-out read's error is reused before trying again. Default 60 s. */
+  timeoutRetryMs?: number;
 }
 
 export class UnknownAgentError extends Error {
@@ -31,6 +36,8 @@ const STATUS_RANK: Record<AgentLimitsStatus, number> = { ok: 0, partial: 1, erro
 interface Entry {
   value: AgentLimits;
   at: number;
+  /** Caps the reuse of this entry below the provider's TTL (a timed-out read). */
+  maxAgeMs?: number;
 }
 
 export class AgentLimitsService {
@@ -38,6 +45,8 @@ export class AgentLimitsService {
   private readonly cache = new Map<string, Entry>();
   private readonly good = new Map<string, AgentLimits>();
   private readonly inflight = new Map<string, Promise<AgentLimits>>();
+  /** Providers whose read was given up on (timeout) but has not settled yet. */
+  private readonly settling = new Set<string>();
 
   constructor(private readonly options: AgentLimitsServiceOptions) {
     this.ctx = defaultContext(options.context);
@@ -61,10 +70,12 @@ export class AgentLimitsService {
   private read(provider: LimitsProvider, refresh: boolean): Promise<AgentLimits> {
     const now = this.ctx.now();
     const cached = this.cache.get(provider.id);
-    const maxAge = refresh ? (this.options.minRefreshMs ?? 15_000) : provider.ttlMs;
+    const maxAge = Math.min(refresh ? (this.options.minRefreshMs ?? 15_000) : provider.ttlMs, cached?.maxAgeMs ?? Infinity);
     if (cached !== undefined && now - cached.at < maxAge) return Promise.resolve(cached.value);
     const running = this.inflight.get(provider.id);
     if (running !== undefined) return running;
+    // A timed-out read is still winding down: do not stack a second one on it.
+    if (cached !== undefined && this.settling.has(provider.id)) return Promise.resolve(cached.value);
     const run = this.readFresh(provider).finally(() => this.inflight.delete(provider.id));
     this.inflight.set(provider.id, run);
     return run;
@@ -72,13 +83,34 @@ export class AgentLimitsService {
 
   private async readFresh(provider: LimitsProvider): Promise<AgentLimits> {
     const timeoutMs = this.options.readTimeoutMs ?? 60_000;
+    const abort = new AbortController();
+    let timedOut = false;
+    let reading: Promise<AgentLimits>;
+    try {
+      reading = provider.read({ ...this.ctx, signal: abort.signal });
+    } catch (err) {
+      reading = Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+    this.settling.add(provider.id);
+    reading.then(
+      (late) => {
+        this.settling.delete(provider.id);
+        // A reading that still arrives after the timeout replaces its error (not with another error).
+        if (timedOut && late.status !== "error") this.store(provider, late);
+      },
+      () => this.settling.delete(provider.id),
+    );
     let timer: NodeJS.Timeout | undefined;
     let value: AgentLimits;
     try {
       value = await Promise.race([
-        provider.read(this.ctx),
+        reading,
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`no answer within ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
+          timer = setTimeout(() => {
+            timedOut = true;
+            abort.abort();
+            reject(new Error(`no answer within ${Math.round(timeoutMs / 1000)} s`));
+          }, timeoutMs);
         }),
       ]);
     } catch (err) {
@@ -90,6 +122,12 @@ export class AgentLimitsService {
     } finally {
       clearTimeout(timer);
     }
+    return this.store(provider, value, timedOut ? this.options.timeoutRetryMs ?? 60_000 : undefined);
+  }
+
+  /** Caches a reading (an error falls back to the last good one, marked stale). */
+  private store(provider: LimitsProvider, reading: AgentLimits, maxAgeMs?: number): AgentLimits {
+    let value = reading;
     if (value.status === "ok" && value.stale !== true) this.good.set(provider.id, value);
     else if (value.status === "error") {
       const last = this.good.get(provider.id);
@@ -97,7 +135,7 @@ export class AgentLimitsService {
         value = { ...last, stale: true, reason: `Showing the reading from ${last.checkedAt}; the refresh failed: ${value.reason ?? "unknown error"}` };
       }
     }
-    this.cache.set(provider.id, { value, at: this.ctx.now() });
+    this.cache.set(provider.id, { value, at: this.ctx.now(), ...(maxAgeMs !== undefined ? { maxAgeMs } : {}) });
     return value;
   }
 

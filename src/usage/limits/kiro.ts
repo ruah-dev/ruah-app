@@ -20,6 +20,7 @@ import {
   percentOf,
   planName,
   round,
+  runOptions,
   safeMessage,
   str,
   type Json,
@@ -229,7 +230,7 @@ export function kiroProvider(options: { spawner?: Spawner } = {}): LimitsProvide
       }
       let who: ReturnType<typeof parseKiroWhoami>;
       try {
-        const res = await ctx.run(bin, ["whoami", "--format", "json"], { timeoutMs: 15_000 });
+        const res = await ctx.run(bin, ["whoami", "--format", "json"], runOptions(ctx, 15_000));
         who = parseKiroWhoami(res.stdout);
       } catch (err) {
         ctx.debug(`kiro-cli whoami failed: ${safeMessage(err)}`);

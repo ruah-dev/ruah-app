@@ -17,6 +17,8 @@ export interface RunOptions {
   env?: Record<string, string>;
   /** Written to the child's stdin, then closed (secrets go here, never in args). */
   input?: string;
+  /** Kills the child when aborted (the run then rejects with a "cancelled" CliError). */
+  signal?: AbortSignal;
 }
 
 export interface RunResult {
@@ -87,6 +89,7 @@ export const defaultRunner: Runner = (file, args, options = {}) =>
         encoding: "utf8",
         windowsHide: true,
         env: { ...process.env, PATH: searchPath(), NO_COLOR: "1", AWS_PAGER: "", GH_PROMPT_DISABLED: "1", ...options.env },
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
       },
       (error, stdout, stderr) => {
         if (error === null) {
@@ -94,6 +97,10 @@ export const defaultRunner: Runner = (file, args, options = {}) =>
           return;
         }
         const err = error as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null; code?: unknown };
+        if (err.code === "ABORT_ERR" || err.name === "AbortError") {
+          reject(new CliError(`${label} was cancelled`, "failed"));
+          return;
+        }
         if (err.code === "ENOENT") {
           reject(new CliError(`${label} is not installed`, "missing"));
           return;

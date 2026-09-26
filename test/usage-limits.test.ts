@@ -686,6 +686,36 @@ describe("estimates and the limits service", () => {
     const report = await service.report();
     expect(report.agents[0]).toMatchObject({ status: "error", reason: expect.stringContaining("no answer within") });
   });
+
+  it("aborts a timed-out read, never stacks a second one on it, keeps its error briefly", async () => {
+    let now = NOW;
+    let signal: AbortSignal | undefined;
+    let finish: ((value: AgentLimits) => void) | undefined;
+    let reads = 0;
+    const slow: LimitsProvider = {
+      id: "kiro",
+      name: "Kiro CLI",
+      ttlMs: 10 * 60_000,
+      read(c) {
+        reads++;
+        signal = c.signal;
+        return new Promise<AgentLimits>((resolve) => {
+          finish = resolve; // ignores the abort, like a CLI that is slow to die
+        });
+      },
+    };
+    const service = new AgentLimitsService({ providers: [slow], context: { now: () => now }, readTimeoutMs: 20, timeoutRetryMs: 30_000 });
+    expect((await service.report()).agents[0]).toMatchObject({ status: "error", reason: expect.stringContaining("no answer within") });
+    expect(signal?.aborted).toBe(true); // the provider was told to kill its children
+    now += 31_000; // past the brief retry, but the first read has not settled
+    expect((await service.report({ refresh: true })).agents[0]?.status).toBe("error");
+    expect(reads).toBe(1);
+    // The late answer replaces the error instead of waiting out the provider's TTL.
+    finish?.({ agentId: "kiro", name: "Kiro CLI", installed: true, loggedIn: true, plan: "Kiro Pro", status: "ok", meters: [], source: "fake", checkedAt: new Date(now).toISOString() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await service.report()).agents[0]).toMatchObject({ status: "ok", plan: "Kiro Pro" });
+    expect(reads).toBe(1);
+  });
 });
 
 // ---------- HTTP + CLI ----------

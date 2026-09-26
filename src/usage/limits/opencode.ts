@@ -5,7 +5,7 @@
 // with rounded figures ("9.6M"), hence `approximate`.
 import type { AgentLimits, LocalUsage, ModelUsage } from "../../contracts/agent-limits.js";
 import { resolveAgentBinary } from "../../acp/presets.js";
-import { agentLimits, parseCompactNumber, plainText, safeMessage, type LimitsProvider } from "./common.js";
+import { agentLimits, parseCompactNumber, plainText, runOptions, safeMessage, type LimitsProvider } from "./common.js";
 
 export const OPENCODE_ID = "opencode";
 export const OPENCODE_NAME = "OpenCode";
@@ -102,7 +102,7 @@ export function opencodeProvider(): LimitsProvider {
       }
       let local: LocalUsage | undefined;
       try {
-        const res = await ctx.run(bin, ["stats", "--days", String(DAYS), "--models"], { timeoutMs: 20_000 });
+        const res = await ctx.run(bin, ["stats", "--days", String(DAYS), "--models"], runOptions(ctx, 20_000));
         if (res.code === 0) local = parseOpencodeStats(res.stdout, new Date(now - DAYS * DAY).toISOString(), `opencode stats --days ${DAYS}`);
       } catch (err) {
         ctx.debug(`opencode stats failed: ${safeMessage(err)}`);

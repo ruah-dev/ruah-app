@@ -20,6 +20,16 @@ export interface LimitsContext {
   /** Ruah's version, for User-Agent headers. */
   version: string;
   debug: (line: string) => void;
+  /**
+   * Aborted when the service gives up on this read (its timeout): providers
+   * pass it to the CLIs and requests they start, so nothing outlives the read.
+   */
+  signal?: AbortSignal;
+}
+
+/** Run options for a provider's CLI call: its timeout plus the read's abort signal. */
+export function runOptions(ctx: LimitsContext, timeoutMs: number): { timeoutMs: number; signal?: AbortSignal } {
+  return ctx.signal !== undefined ? { timeoutMs, signal: ctx.signal } : { timeoutMs };
 }
 
 export interface LimitsProvider {

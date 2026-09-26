@@ -13,7 +13,7 @@ import path from "node:path";
 import type { AgentLimits, LocalUsage, ModelUsage } from "../../contracts/agent-limits.js";
 import { resolveAgentBinary } from "../../acp/presets.js";
 import { mapLimit } from "../../integrations/exec.js";
-import { agentLimits, arr, num, obj, plainText, round, safeMessage, str, type Json, type LimitsProvider } from "./common.js";
+import { agentLimits, arr, num, obj, plainText, round, runOptions, safeMessage, str, type Json, type LimitsProvider } from "./common.js";
 
 export const GROK_ID = "grok";
 export const GROK_NAME = "Grok Build";
@@ -195,7 +195,7 @@ export function grokProvider(): LimitsProvider {
       }
       let login: ReturnType<typeof parseGrokLogin>;
       try {
-        const res = await ctx.run(bin, ["models"], { timeoutMs: 20_000 });
+        const res = await ctx.run(bin, ["models"], runOptions(ctx, 20_000));
         login = parseGrokLogin(`${res.stdout}\n${res.stderr}`);
       } catch (err) {
         ctx.debug(`grok models failed: ${safeMessage(err)}`);
@@ -217,13 +217,15 @@ export function grokProvider(): LimitsProvider {
       try {
         let ids = recentGrokSessions(ctx.env, sinceMs);
         if (ids === undefined) {
-          const list = await ctx.run(bin, ["sessions", "list", "-n", "200"], { timeoutMs: 20_000 });
+          const list = await ctx.run(bin, ["sessions", "list", "-n", "200"], runOptions(ctx, 20_000));
           ids = parseGrokSessions(list.stdout).filter((r) => r.updated >= sinceDay).map((r) => r.id);
         }
         const totals = new GrokUsageTotals();
         const answers = await mapLimit(ids.slice(0, MAX_SESSIONS), 4, async (id) => {
+          // Given up on (the service's timeout): start no more.
+          if (ctx.signal?.aborted === true) return undefined;
           try {
-            const res = await ctx.run(bin, ["usage", id], { timeoutMs: 10_000 });
+            const res = await ctx.run(bin, ["usage", id], runOptions(ctx, 10_000));
             return res.code === 0 ? (JSON.parse(res.stdout) as unknown) : undefined;
           } catch {
             return undefined;
