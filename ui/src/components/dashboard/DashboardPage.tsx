@@ -29,6 +29,7 @@ import { useProjectActions } from "@/components/projects/useProjectActions";
 import { relativeTime } from "@/lib/time";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/ui/segmented";
 import { Phantom } from "@/components/brand/Phantom";
 import { PhantomAgent, PhantomPose } from "@/components/brand/PhantomPose";
 
@@ -174,31 +175,38 @@ function RescanButton() {
   );
 }
 
-/** Home | the open project's dashboard — a segmented control in the page header. */
+/** Home | the open project's dashboard — the kit's segmented tab list in the page header. */
 function ViewToggle({ view }: { view: "home" | "project" }) {
   const router = useRouter();
   const { daemon } = useWorkspace();
-  const item = (id: "home" | "project", label: ReactNode, icon: ReactNode, disabled = false) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={view === id}
-      disabled={disabled}
-      onClick={() => void router.navigate({ to: "/", search: id === "project" ? { view: "project" } : {} })}
-      className={cn(
-        "flex h-7 max-w-52 items-center gap-1.5 rounded-md px-2.5 text-ui-sm transition-colors disabled:opacity-40",
-        view === id ? "bg-popover text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {icon}
-      <span className="truncate">{label}</span>
-    </button>
-  );
   return (
-    <div role="tablist" aria-label="Home or this project" className="flex items-center rounded-lg bg-surface-2 p-0.5">
-      {item("home", "All projects", <Home className="size-3.5" />)}
-      {item("project", daemon.project?.name ?? "This project", <LayoutDashboard className="size-3.5" />, !daemon.project)}
-    </div>
+    <Segmented
+      kind="tabs"
+      label="Home or this project"
+      value={view}
+      onChange={(id) => void router.navigate({ to: "/", search: id === "project" ? { view: "project" } : {} })}
+      options={[
+        {
+          value: "home",
+          label: (
+            <>
+              <Home className="size-3.5" />
+              All projects
+            </>
+          ),
+        },
+        {
+          value: "project",
+          disabled: !daemon.project,
+          label: (
+            <>
+              <LayoutDashboard className="size-3.5" />
+              <span className="max-w-44 truncate">{daemon.project?.name ?? "This project"}</span>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
 

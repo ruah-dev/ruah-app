@@ -64,6 +64,48 @@ export function segmentedTabStop(values: readonly string[], disabled: readonly b
   return disabled.findIndex((d) => !d);
 }
 
+/**
+ * The Segmented keyboard for a hand-styled row of buttons (filter pills, a bar of tabs): one Tab
+ * stop, arrows / Home / End move the focus — and, in "radio" mode, the choice. Spread
+ * `groupProps` on the container and `itemProps(i)` on each button (after its own props).
+ */
+export function useSegmentedKeys<T extends string>(
+  values: readonly T[],
+  value: T,
+  onChange: (v: T) => void,
+  kind: "radio" | "tabs" = "radio",
+  disabledItems?: readonly boolean[],
+) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const disabled = disabledItems ?? values.map(() => false);
+  const stop = segmentedTabStop(values, disabled, value);
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    // Move from the item that has the focus (in a tab list it can differ from the chosen one).
+    const focused = refs.current.findIndex((el) => el !== null && el === e.target);
+    const next = segmentedStep(e.key, focused >= 0 ? focused : Math.max(0, stop), disabled);
+    if (next === null) return;
+    e.preventDefault();
+    const target = values[next];
+    if (target === undefined) return;
+    if (kind === "radio") onChange(target);
+    refs.current[next]?.focus();
+  };
+  return {
+    groupProps: { role: kind === "tabs" ? "tablist" : "radiogroup", onKeyDown } as const,
+    itemProps: (i: number) => {
+      const on = values[i] === value;
+      return {
+        ref: (el: HTMLButtonElement | null) => {
+          refs.current[i] = el;
+        },
+        role: kind === "tabs" ? "tab" : "radio",
+        ...(kind === "tabs" ? { "aria-selected": on } : { "aria-checked": on }),
+        tabIndex: i === stop ? 0 : -1,
+      } as const;
+    },
+  };
+}
+
 export function Segmented<T extends string>({
   value,
   options,
@@ -82,30 +124,17 @@ export function Segmented<T extends string>({
   /** "radio": a choice (arrows move it). "tabs": a view switcher (arrows move the focus). */
   kind?: "radio" | "tabs";
 }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const disabled = options.map((o) => o.disabled === true);
-  const stop = segmentedTabStop(
+  const keys = useSegmentedKeys(
     options.map((o) => o.value),
-    disabled,
     value,
+    onChange,
+    kind,
+    options.map((o) => o.disabled === true),
   );
-  const tabs = kind === "tabs";
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    // Move from the item that has the focus (in a tab list it can differ from the chosen one).
-    const focused = refs.current.findIndex((el) => el !== null && el === e.target);
-    const next = segmentedStep(e.key, focused >= 0 ? focused : Math.max(0, stop), disabled);
-    if (next === null) return;
-    e.preventDefault();
-    const option = options[next];
-    if (!option) return;
-    if (!tabs) onChange(option.value);
-    refs.current[next]?.focus();
-  };
   return (
     <div
-      role={tabs ? "tablist" : "radiogroup"}
+      {...keys.groupProps}
       aria-label={label}
-      onKeyDown={onKeyDown}
       className={cn("flex h-7 shrink-0 items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 ring-1 ring-hairline", className)}
     >
       {options.map((o, i) => {
@@ -113,13 +142,8 @@ export function Segmented<T extends string>({
         return (
           <button
             key={o.value}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
             type="button"
-            role={tabs ? "tab" : "radio"}
-            {...(tabs ? { "aria-selected": on } : { "aria-checked": on })}
-            tabIndex={i === stop ? 0 : -1}
+            {...keys.itemProps(i)}
             disabled={o.disabled}
             title={o.title}
             // A mouse click chooses without taking the focus (keyboard users Tab here instead).
