@@ -2473,6 +2473,7 @@ environments), `electron-builder.config.cjs` + `scripts/macos/` (build).
 | `Resources/app/node_modules/node-pty/prebuilds/darwin-arm64/` | N-API addon (ABI-stable across Node and Electron, no rebuild) + `spawn-helper` (made executable at build time) |
 | `Resources/app/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude` | Claude's native CLI, still signed by Anthropic (excluded from re-signing) |
 | `Resources/bin/ruah-app` | `ruah app …` on the app's runtime (`ELECTRON_RUN_AS_NODE=1 MacOS/Ruah Resources/app/dist/cli.js "$@"`; symlinks resolved) |
+| `Resources/THIRD_PARTY_NOTICES.md` | the repository's `THIRD_PARTY_NOTICES.md`: the copyright and license notices of the code bundled into `dist/` and `viewer/` (T3 Code, shadcn/ui: MIT) and of the fonts (OFL 1.1), whose source headers the bundlers drop; `Resources/LICENSE` too once the repository has a `LICENSE` (added 2026-09-26) |
 
 `Info.plist`: `CFBundleDocumentTypes` = one `public.folder` type, role Viewer,
 `LSHandlerRank: Alternate` (Ruah can open folders; it never becomes their default app);
@@ -2671,7 +2672,9 @@ agent presets: PATH, `~/.local/bin`, their installers' dirs, `RUAH_*_BIN`); `git
   `release/` (git-ignored). `npmRebuild: false`, `electronLanguages: ["en"]`, dmg
   format ULFO, window 540×380 with `electron/build/dmg-background.tiff`.
 - `afterPack` (`scripts/macos/after-pack.cjs`): makes node-pty's `spawn-helper` and
-  `Resources/bin/ruah-app` executable; fails if either is missing.
+  `Resources/bin/ruah-app` executable; fails if either is missing, or if
+  `Resources/THIRD_PARTY_NOTICES.md` is missing or lacks the T3 Code, shadcn/ui or OFL
+  notice.
 - Fuses are flipped after `afterPack`, before signing (§19.1).
 - `afterSign` (`scripts/macos/after-sign.cjs`): with the signed app, as Node:
   `dist/cli.js --version`, a node-pty pty round trip, resolving Claude's native CLI and

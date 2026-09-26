@@ -5,6 +5,9 @@ lists code and assets from other projects that Ruah contains, with their
 licenses. Dependencies installed by pnpm / bun (`package.json`,
 `ui/package.json`) are not copied into this repository and carry their own
 license files; the packaged app ships them under `Contents/Resources/app/node_modules`.
+The bundled `dist/` and `viewer/` code loses the source files' header comments, so
+the packaged app also ships this file as `Ruah.app/Contents/Resources/THIRD_PARTY_NOTICES.md`
+(the build fails without it).
 
 ## T3 Code (MIT)
 

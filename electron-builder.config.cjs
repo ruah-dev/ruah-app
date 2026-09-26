@@ -23,6 +23,8 @@
 // NODE_OPTIONS / NODE_EXTRA_CA_CERTS, --inspect / SIGUSR1, and file:// pages'
 // extra privileges (the window only loads the daemon's http origin).
 
+const { existsSync } = require("node:fs");
+const path = require("node:path");
 const { macSigning } = require("./scripts/macos/signing.cjs");
 const { macFlavor } = require("./scripts/macos/flavor.cjs");
 
@@ -56,8 +58,16 @@ const config = {
     "!**/node_modules/node-pty/prebuilds/{win32-*,darwin-x64}/**", // arm64-only app
     "!**/node_modules/**/*.map",
   ],
-  // `ruah-app` on the app's own runtime (README: put it on PATH).
-  extraResources: [{ from: "electron/bin", to: "bin", filter: ["ruah-app"] }],
+  extraResources: [
+    // `ruah-app` on the app's own runtime (README: put it on PATH).
+    { from: "electron/bin", to: "bin", filter: ["ruah-app"] },
+    // The bundlers drop the source files' notice headers, so the licenses of the code and
+    // fonts adapted into dist/ and viewer/ (T3 Code and shadcn/ui: MIT; Jura, Geist Mono:
+    // OFL 1.1) travel as Contents/Resources/THIRD_PARTY_NOTICES.md. afterPack checks it.
+    { from: "THIRD_PARTY_NOTICES.md", to: "THIRD_PARTY_NOTICES.md" },
+    // Ruah's own license, once the repository has one.
+    ...(existsSync(path.join(__dirname, "LICENSE")) ? [{ from: "LICENSE", to: "LICENSE" }] : []),
+  ],
   asar: false,
   npmRebuild: false,
   electronFuses: {
