@@ -278,6 +278,9 @@ export function AddExtensionDialog({
                 onChange={setScope}
                 className="w-fit"
               />
+              {scope === "project" && featured === null && source === "folder" ? (
+                <p className="text-meta text-muted-foreground">Only a folder inside this repo: the committed file stores its path relative to the repo.</p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <p className="text-label font-medium text-foreground">Enable for</p>

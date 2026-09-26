@@ -2064,7 +2064,7 @@ interface Extension {                        // zod: ExtensionSchema (src/contra
   name: string;
   description?: string;
   source:
-    | { type: "local"; path: string }        // absolute; in a project file relative to the repo root when inside it
+    | { type: "local"; path: string }        // absolute; in a project file relative to the repo root (a folder outside the repo is refused for project scope, 422: the committed file would carry this machine's path)
     | { type: "git"; url: string; ref?: string; subdir?: string }   // clone: $RUAH_HOME/extensions/src/<slug>-<sha1(url#ref)[0:8]>
     | { type: "featured"; id: string }       // catalog entry; runs/env/notes copied at add time
     | { type: "inline" };                    // an MCP server defined by `runs` only
