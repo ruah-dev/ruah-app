@@ -70,9 +70,14 @@ export const ToolStatusSchema = z.object({
 });
 export type ToolStatus = z.infer<typeof ToolStatusSchema>;
 
+/** Where the proposed folder came from (the wizard says "remembered" only for "remembered"). */
+export const ParentSourceSchema = z.enum(["remembered", "projects", "recent", "home"]);
+export type ParentSource = z.infer<typeof ParentSourceSchema>;
+
 /** GET /api/projects/new — what the wizard needs before the first keystroke. */
 export const NewProjectDefaultsSchema = z.object({
   parentDir: z.string(), // remembered, else ~/Projects, else the most recent project's parent, else home
+  parentSource: ParentSourceSchema,
   home: z.string(),
   templates: z.array(TemplateInfoSchema),
   git: ToolStatusSchema.shape.git,
@@ -82,10 +87,10 @@ export type NewProjectDefaults = z.infer<typeof NewProjectDefaultsSchema>;
 export const NewProjectCheckBodySchema = z.object({ parentDir: z.string().max(4096), name: z.string().max(1024) });
 /** POST /api/projects/new/check — validation while typing (no side effects). */
 export const NewProjectCheckSchema = z.object({
-  path: z.string(), // the final folder (parentDir/name), ~ expanded
+  path: z.string(), // the final folder (parentDir/name), absolute: ~ expanded, a relative location taken from home
   ok: z.boolean(),
   name: z.object({ ok: z.boolean(), error: z.string().optional() }),
-  parent: z.object({ exists: z.boolean(), isDir: z.boolean(), writable: z.boolean() }),
+  parent: z.object({ path: z.string(), exists: z.boolean(), isDir: z.boolean(), writable: z.boolean() }), // path: the resolved location ("" when none)
   target: z.object({ exists: z.boolean(), empty: z.boolean().optional() }),
   problems: z.array(z.string()), // human-readable, most important first
 });

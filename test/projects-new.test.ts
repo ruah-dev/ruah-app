@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { request } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { ProjectsStore, normalizeTags } from "../src/projects/projects-store.js";
 import { ChatStore } from "../src/projects/chat-store.js";
@@ -15,7 +16,7 @@ import { ProjectService } from "../src/projects/service.js";
 import { checkNewProject, commandLine, createProjectFolder, githubCreateArgs, githubRepoName, suggestParentDir } from "../src/projects/create.js";
 import { TEMPLATES, findTemplate, renderTemplate, templateInfos, slugify } from "../src/projects/templates/index.js";
 import { ProjectOverviewService } from "../src/projects/overview.js";
-import { runNew, shellPath } from "../src/projects/run-new.js";
+import { formatReport, runNew, shellPath } from "../src/projects/run-new.js";
 import { validateArchitecture } from "../src/contracts/validate.js";
 import { CreateResultSchema, NewProjectCheckSchema, NewProjectDefaultsSchema, ProjectsListSchema } from "../src/contracts/projects.js";
 import { ProjectsOverviewSchema } from "../src/contracts/overview.js";
@@ -223,6 +224,33 @@ describe("createProjectFolder §20.1", () => {
     expect(ok.git).toBeNull();
   });
 
+  it("a rollback removes only the parents it made that are still empty (never a neighbour's new project)", async () => {
+    const work = tempDir("ruah-new-");
+    const shared = path.join(work, "clients", "acme");
+    // While this create runs, `ruah app new` makes "other" in the same new parent; then git init fails.
+    const racing: Runner = async (_f, args) => {
+      if (args[0] === "init") {
+        mkdirSync(path.join(shared, "other"));
+        writeFileSync(path.join(shared, "other", "README.md"), "theirs");
+        return { code: 128, stdout: "", stderr: "fatal: nope" };
+      }
+      return { code: 1, stdout: "", stderr: "" };
+    };
+    await expect(
+      createProjectFolder({ parentDir: shared, name: "mine", git: true, createParent: true }, { version: "t", runner: racing, resolveBin: (n) => `/bin/${n}` }),
+    ).rejects.toThrow(/nothing was created/);
+    expect(readdirSync(shared)).toEqual(["other"]);
+    expect(readFileSync(path.join(shared, "other", "README.md"), "utf8")).toBe("theirs");
+  });
+
+  it("takes a relative location from `cwd` (the daemon passes home), not from where the process started", async () => {
+    const work = tempDir("ruah-new-");
+    mkdirSync(path.join(work, "Projects"));
+    const report = await createProjectFolder({ parentDir: "Projects", name: "rel" }, { version: "t", home: work, cwd: work });
+    expect(report.path).toBe(path.join(work, "Projects", "rel"));
+    expect(existsSync(path.join(process.cwd(), "Projects", "rel"))).toBe(false);
+  });
+
   it("runs `gh repo create` only when asked, with the exact arguments; failures only warn", async () => {
     const work = tempDir("ruah-new-");
     const calls: { file: string; args: readonly string[]; cwd?: string }[] = [];
@@ -254,6 +282,24 @@ describe("createProjectFolder §20.1", () => {
     expect(githubCreateArgs("x", "private", false)).not.toContain("--push");
     expect(githubRepoName("Payments API")).toBe("payments-api");
     expect(() => githubRepoName("x", "bad name")).toThrow(/invalid GitHub repo name/);
+    // A name gh would read as a flag is refused before anything runs.
+    for (const flag of ["--public", "-h", "-", "--push"]) expect(() => githubRepoName("x", flag), flag).toThrow(/invalid GitHub repo name/);
+    expect(githubRepoName("x", ".github")).toBe(".github");
+    expect(githubRepoName("--Payments--")).toBe("payments");
+    const before = calls.length;
+    await expect(createProjectFolder({ parentDir: work, name: "inj", git: true, github: { visibility: "private", name: "--public" } }, deps)).rejects.toMatchObject({ status: 400 });
+    expect(calls.length).toBe(before);
+    expect(existsSync(path.join(work, "inj"))).toBe(false);
+
+    // gh exits 0 but names no repository: never reported as created.
+    const silent: Runner = async (file, args) => (file.endsWith("/gh") ? { code: 0, stdout: "", stderr: "" } : { code: 0, stdout: args[0] === "rev-parse" ? "1234567\n" : "", stderr: "" });
+    const unconfirmed = await createProjectFolder({ parentDir: work, name: "quiet", git: true, github: { visibility: "private" } }, { ...deps, runner: silent });
+    expect(unconfirmed.github).toMatchObject({ ran: true });
+    expect(unconfirmed.github?.url).toBeUndefined();
+    expect(unconfirmed.warnings).toContainEqual(expect.stringMatching(/^GitHub repo not confirmed/));
+    const lines = formatReport(unconfirmed, "quiet").join("\n");
+    expect(lines).toMatch(/GitHub: not confirmed/);
+    expect(lines).not.toMatch(/GitHub: created/);
     expect(commandLine("gh", ["repo", "create", "my app"])).toBe("gh repo create 'my app'");
   });
 
@@ -289,12 +335,18 @@ describe("checkNewProject + suggestParentDir", () => {
     expect(checkNewProject({ parentDir: "~/file", name: "x" }, { home }).problems[0]).toMatch(/is a file/);
     expect(checkNewProject({ parentDir: "~/Projects", name: "a/b" }, { home }).name).toEqual({ ok: false, error: "name must not contain path separators" });
     expect(checkNewProject({ parentDir: "", name: "" }, { home }).problems).toEqual(["Name: enter a name", "Choose a location"]);
+    // A relative location: from `cwd` (the daemon passes home), and the resolved parent is reported.
+    const rel = checkNewProject({ parentDir: "Projects", name: "fresh" }, { home, cwd: home });
+    expect(rel).toMatchObject({ ok: true, path: path.join(work, "Projects", "fresh"), parent: { path: path.join(work, "Projects") } });
+    expect(checkNewProject({ parentDir: "Projects", name: "fresh" }, { home }).path).toBe(path.join(process.cwd(), "Projects", "fresh"));
     expect(readdirSync(path.join(work, "Projects"))).toEqual(["exists"]);
 
-    expect(suggestParentDir({ remembered: path.join(work, "gone"), home })).toBe(path.join(work, "Projects"));
-    expect(suggestParentDir({ remembered: path.join(work, "Projects", "exists"), home })).toBe(path.join(work, "Projects", "exists"));
+    expect(suggestParentDir({ remembered: path.join(work, "gone"), home })).toEqual({ dir: path.join(work, "Projects"), source: "projects" });
+    expect(suggestParentDir({ remembered: path.join(work, "Projects", "exists"), home })).toEqual({ dir: path.join(work, "Projects", "exists"), source: "remembered" });
     rmSync(path.join(work, "Projects"), { recursive: true });
-    expect(suggestParentDir({ recentRoots: [path.join(work, "file")], home })).toBe(work);
+    expect(suggestParentDir({ recentRoots: [path.join(work, "Projects", "x")], home })).toEqual({ dir: work, source: "home" });
+    mkdirSync(path.join(work, "clients"));
+    expect(suggestParentDir({ recentRoots: [path.join(work, "clients", "acme")], home })).toEqual({ dir: path.join(work, "clients"), source: "recent" });
   });
 });
 
@@ -333,6 +385,17 @@ async function serveDaemon(extra: Partial<ConstructorParameters<typeof ProjectSe
   return { url: server.url, hub, home, changes, remembered: () => remembered };
 }
 
+/** A GET with headers fetch() may not send (Sec-Fetch-*): node:http as a browser would. */
+const getStatus = (url: string, headers: Record<string, string>) =>
+  new Promise<number>((resolve, reject) => {
+    const req = request(url, { method: "GET", headers }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on("error", reject);
+    req.end();
+  });
+
 const post = (url: string, body: unknown, origin?: string) =>
   fetch(url, { method: "POST", headers: { "content-type": "application/json", ...(origin !== undefined ? { origin } : {}) }, body: JSON.stringify(body) });
 
@@ -347,14 +410,25 @@ describe("§20 HTTP", () => {
       expect((await post(`${url}${p}`, body, evil)).status, p).toBe(403);
     }
 
+    // A no-cors GET from another site (an <img src>) has no Origin, but says cross-site.
+    for (const p of ["/api/projects/new", "/api/projects/new/github", "/api/projects/overview"]) {
+      expect(await getStatus(`${url}${p}`, { "sec-fetch-site": "cross-site" }), p).toBe(403);
+      expect(await getStatus(`${url}${p}`, { "sec-fetch-site": "same-site" }), p).toBe(403);
+    }
+    expect(await getStatus(`${url}/api/projects/new`, { "sec-fetch-site": "same-origin" })).toBe(200);
+
     const defaults = NewProjectDefaultsSchema.parse(await (await fetch(`${url}/api/projects/new`)).json());
     expect(defaults.home).toBe(home);
     expect(defaults.parentDir).toBe(home);
+    expect(defaults.parentSource).toBe("home");
     expect(defaults.templates.map((t) => t.id)).toContain("infra-terraform");
     const work = path.join(home, "Projects");
     mkdirSync(work);
     const check = NewProjectCheckSchema.parse(await (await post(`${url}/api/projects/new/check`, { parentDir: "~/Projects", name: "site" })).json());
     expect(check).toMatchObject({ ok: true, path: path.join(work, "site") });
+    // "Projects" (no ~/) means the one in home — never a folder under the daemon's cwd.
+    const relative = NewProjectCheckSchema.parse(await (await post(`${url}/api/projects/new/check`, { parentDir: "Projects", name: "site" })).json());
+    expect(relative).toMatchObject({ ok: true, path: path.join(work, "site"), parent: { path: work, exists: true } });
 
     const res = await post(`${url}/api/projects/create`, { parentDir: "~/Projects", name: "site", template: "static-site" });
     expect(res.status).toBe(200);
@@ -362,7 +436,9 @@ describe("§20 HTTP", () => {
     expect(created).toMatchObject({ name: "site", root: path.join(work, "site"), created: { template: "static-site", git: null, github: null } });
     expect(created.created?.scanned?.nodes).toBeGreaterThan(0);
     expect(remembered()).toBe(work);
-    expect(NewProjectDefaultsSchema.parse(await (await fetch(`${url}/api/projects/new`)).json()).parentDir).toBe(work);
+    expect(NewProjectDefaultsSchema.parse(await (await fetch(`${url}/api/projects/new`)).json())).toMatchObject({ parentDir: work, parentSource: "remembered" });
+    const relCreate = CreateResultSchema.parse(await (await post(`${url}/api/projects/create`, { parentDir: "Projects", name: "rel" })).json());
+    expect(relCreate.root).toBe(path.join(work, "rel"));
     expect((await post(`${url}/api/projects/create`, { parentDir: "~/Projects", name: "site" })).status).toBe(409);
 
     // A second and third project, pinned, reordered, tagged: every change is broadcast.
@@ -370,7 +446,7 @@ describe("§20 HTTP", () => {
     const c = CreateResultSchema.parse(await (await post(`${url}/api/projects/create`, { parentDir: work, name: "c" })).json());
     for (const p of [created, b, c]) expect((await post(`${url}/api/projects/pin`, { id: p.id })).status).toBe(200);
     const reordered = ProjectsListSchema.parse(await (await post(`${url}/api/projects/reorder`, { ids: [c.id, created.id] })).json());
-    expect(reordered.recent.map((p) => p.name)).toEqual(["c", "site", "b"]);
+    expect(reordered.recent.map((p) => p.name)).toEqual(["c", "site", "b", "rel"]);
     const tagged = await post(`${url}/api/projects/tags`, { id: b.id, tags: ["Job", " job "] });
     expect(await tagged.json()).toMatchObject({ id: b.id, tags: ["Job"] });
     expect((await post(`${url}/api/projects/tags`, { id: "unknown", tags: [] })).status).toBe(404);
@@ -378,7 +454,7 @@ describe("§20 HTTP", () => {
     expect(changes.at(-1)?.find((p) => p.id === b.id)?.tags).toEqual(["Job"]);
 
     const overview = ProjectsOverviewSchema.parse(await (await fetch(`${url}/api/projects/overview`)).json());
-    expect(overview.projects.map((p) => p.project.name)).toEqual(["c", "site", "b"]);
+    expect(overview.projects.map((p) => p.project.name).slice(0, 3)).toEqual(["c", "site", "b"]);
     expect(overview.projects.find((p) => p.project.name === "c")?.current).toBe(true);
     expect(overview.projects[2]?.project.tags).toEqual(["Job"]);
   });

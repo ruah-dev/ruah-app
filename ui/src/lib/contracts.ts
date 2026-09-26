@@ -512,6 +512,8 @@ export interface TemplateInfo {
 /** GET /api/projects/new */
 export interface NewProjectDefaults {
   parentDir: string;
+  /** Where `parentDir` came from (absent from daemons before the 2026-09-26 review fixes). */
+  parentSource?: "remembered" | "projects" | "recent" | "home";
   home: string;
   templates: TemplateInfo[];
   git: { installed: boolean; identity: boolean };
@@ -529,7 +531,8 @@ export interface NewProjectCheck {
   path: string;
   ok: boolean;
   name: { ok: boolean; error?: string };
-  parent: { exists: boolean; isDir: boolean; writable: boolean };
+  /** `path`: the resolved location (a relative one is taken from the daemon's home). */
+  parent: { path?: string; exists: boolean; isDir: boolean; writable: boolean };
   target: { exists: boolean; empty?: boolean };
   problems: string[];
 }

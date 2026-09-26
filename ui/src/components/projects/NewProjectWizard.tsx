@@ -32,13 +32,18 @@ import { checkNewProject, createProject, fetchGithubStatus, fetchNewProjectDefau
 import {
   WIZARD_STEPS,
   canAdvance,
+  checkKey,
   createInput,
+  createsPath,
+  currentCheck,
   defaultPrompt,
   ghCommand,
   initialWizard,
   joinPath,
+  locationNote,
   nameProblem,
   pathMessage,
+  prettyHome,
   repoNameFor,
   type WizardState,
   type WizardStep,
@@ -201,7 +206,10 @@ export function NewProjectWizard() {
   const [step, setStep] = useState<WizardStep>(0);
   const [state, setState] = useState<WizardState>(() => initialWizard(""));
   const [defaults, setDefaults] = useState<NewProjectDefaults | null>(null);
-  const [check, setCheck] = useState<NewProjectCheck | null>(null);
+  // The last check, with the input it answers: during the debounce it is for an older input and
+  // doesn't count (no "Available" or Create for a path that wasn't checked).
+  const [checked, setChecked] = useState<{ key: string; check: NewProjectCheck } | null>(null);
+  const check = currentCheck(checked, state);
   const [gh, setGh] = useState<GithubToolStatus | "loading" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +225,7 @@ export function NewProjectWizard() {
     if (!open) return;
     setStep(0);
     setState(initialWizard(defaults?.parentDir ?? ""));
-    setCheck(null);
+    setChecked(null);
     setError(null);
     setGh(null);
     setPromptEdited(false);
@@ -242,15 +250,13 @@ export function NewProjectWizard() {
     if (!open || !connected) return;
     const name = state.name.trim();
     const parent = state.parentDir.trim();
-    if (!name || !parent || nameProblem(name)) {
-      setCheck(null);
-      return;
-    }
+    if (!name || !parent || nameProblem(name)) return;
+    const key = checkKey({ parentDir: parent, name });
     let live = true;
     const t = setTimeout(() => {
       checkNewProject(parent, name)
-        .then((c) => live && setCheck(c))
-        .catch(() => live && setCheck(null));
+        .then((c) => live && setChecked({ key, check: c }))
+        .catch(() => live && setChecked(null));
     }, 180);
     return () => {
       live = false;
@@ -286,7 +292,10 @@ export function NewProjectWizard() {
     return () => cancelAnimationFrame(id);
   }, [open, step]);
 
-  const finalPath = joinPath(state.parentDir, state.name);
+  const finalPath = createsPath(check, state, defaults?.home);
+  const note = locationNote(defaults, state.parentDir);
+  // --push only when the first commit will be made (the daemon skips it without a git identity).
+  const willCommit = state.commit && defaults?.git.identity !== false;
   const typedProblem = nameProblem(state.name);
   const location = typedProblem ? { tone: "bad" as const, text: typedProblem } : state.name.trim() ? pathMessage(check, state) : null;
   const stepOk = canAdvance(step, state, check);
@@ -438,9 +447,7 @@ export function NewProjectWizard() {
                     </Button>
                   ) : null}
                 </div>
-                {defaults && state.parentDir.trim() === prettyHome(defaults.parentDir, defaults.home) ? (
-                  <p className="text-meta text-faint">Remembered from your last new project.</p>
-                ) : null}
+                {note ? <p className="text-meta text-faint">{note}</p> : null}
               </div>
               <div className="space-y-1.5 rounded-xl border border-hairline bg-surface-1 px-3.5 py-3">
                 <p className="text-label text-muted-foreground">Creates</p>
@@ -456,7 +463,11 @@ export function NewProjectWizard() {
                       onCheckedChange={(v) => patch({ createParent: v === true })}
                       className="size-4 rounded-[4px]"
                     />
-                    Create <span className="font-mono">{state.parentDir.trim()}</span> too
+                    Create{" "}
+                    <span className="font-mono">
+                      {check.parent.path && defaults ? prettyHome(check.parent.path, defaults.home) : (check.parent.path ?? state.parentDir.trim())}
+                    </span>{" "}
+                    too
                   </label>
                 ) : null}
               </div>
@@ -585,9 +596,15 @@ export function NewProjectWizard() {
                     </div>
                     <div className="rounded-lg bg-surface-2 px-3 py-2">
                       <p className="text-meta text-muted-foreground">
-                        {state.github ? "Runs in the new folder after the first commit:" : "Would run (turn the switch on to create the repository):"}
+                        {state.github
+                          ? willCommit
+                            ? "Runs in the new folder after the first commit:"
+                            : "Runs in the new folder (no first commit, so nothing is pushed):"
+                          : "Would run (turn the switch on to create the repository):"}
                       </p>
-                      <code className="mt-1 block font-mono text-[11.5px] break-all text-foreground select-text">{ghCommand(state)}</code>
+                      <code className="mt-1 block font-mono text-[11.5px] break-all text-foreground select-text">
+                        {ghCommand(state, defaults?.git.identity !== false)}
+                      </code>
                     </div>
                   </div>
                 ) : null}
@@ -697,8 +714,3 @@ export function NewProjectWizard() {
   );
 }
 
-/** "/Users/me/Projects" → "~/Projects" when it is under the daemon's home. */
-function prettyHome(dir: string, home: string): string {
-  if (home && (dir === home || dir.startsWith(`${home}/`))) return `~${dir.slice(home.length)}`;
-  return dir;
-}

@@ -17,7 +17,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { homedir } from "node:os";
-import type { CreateReport, GithubVisibility, NewProjectCheck, ToolStatus } from "../contracts/projects.js";
+import type { CreateReport, GithubVisibility, NewProjectCheck, ParentSource, ToolStatus } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { cliMessage, CliError, defaultRunner, parseJson, redact, resolveBin, type Runner } from "../integrations/exec.js";
 import { scanRepo } from "../scan/index.js";
@@ -59,11 +59,17 @@ export interface CreateDeps {
   resolveBin?: (name: string) => string | undefined;
   now?: () => Date;
   home?: string;
+  /**
+   * What a relative `parentDir` / `system` is taken against: the CLI keeps the
+   * current folder (the default); the daemon passes home — its own cwd means
+   * nothing to the person typing "Projects" in the wizard.
+   */
+  cwd?: string;
 }
 
 // ---------------------------------------------------------------- paths + checks
 
-/** `~/…` expanded and resolved against `cwd` (not realpath'd: the path the user sees). */
+/** `~/…` expanded, anything else relative resolved against `cwd` (not realpath'd: the path the user sees). */
 export function resolveDir(input: string, home: string = process.env.HOME ?? homedir(), cwd: string = process.cwd()): string {
   return path.resolve(cwd, expandHome(input.trim(), home));
 }
@@ -97,12 +103,12 @@ function existingAncestor(dir: string): string {
 }
 
 /** §20.1 POST /api/projects/new/check: everything the wizard shows while you type. No side effects. */
-export function checkNewProject(input: { parentDir: string; name: string }, opts: { home?: string } = {}): NewProjectCheck {
+export function checkNewProject(input: { parentDir: string; name: string }, opts: { home?: string; cwd?: string } = {}): NewProjectCheck {
   const home = opts.home ?? process.env.HOME ?? homedir();
   const trimmedName = input.name.trim();
   const nameError = trimmedName.length === 0 ? "enter a name" : plainNameProblem(trimmedName);
   const parentInput = input.parentDir.trim();
-  const parent = parentInput.length > 0 ? resolveDir(parentInput, home) : "";
+  const parent = parentInput.length > 0 ? resolveDir(parentInput, home, opts.cwd) : "";
   const parentStat = parent !== "" ? statOf(parent) : undefined;
   const parentIsDir = parentStat?.isDirectory() === true;
   const parentWritable = parentIsDir ? writable(parent) : parent !== "" && writable(existingAncestor(parent));
@@ -134,7 +140,7 @@ export function checkNewProject(input: { parentDir: string; name: string }, opts
     path: target,
     ok: problems.length === 0,
     name: nameError === null ? { ok: true } : { ok: false, error: nameError },
-    parent: { exists: parentStat !== undefined, isDir: parentIsDir, writable: parentWritable },
+    parent: { path: parent, exists: parentStat !== undefined, isDir: parentIsDir, writable: parentWritable },
     target: { exists: targetStat !== undefined, ...(empty !== undefined ? { empty } : {}) },
     problems,
   };
@@ -143,31 +149,38 @@ export function checkNewProject(input: { parentDir: string; name: string }, opts
 /**
  * Where the wizard proposes to create projects: the remembered folder, else
  * ~/Projects, else the parent of the most recent project, else home — the first
- * that exists.
+ * that exists — and which of those it is (the wizard says "remembered" only
+ * when it is).
  */
-export function suggestParentDir(opts: { remembered?: string | undefined; recentRoots?: readonly string[]; home?: string }): string {
+export function suggestParentDir(opts: { remembered?: string | undefined; recentRoots?: readonly string[]; home?: string }): { dir: string; source: ParentSource } {
   const home = opts.home ?? process.env.HOME ?? homedir();
-  const candidates = [
-    opts.remembered,
-    path.join(home, "Projects"),
-    ...(opts.recentRoots ?? []).slice(0, 3).map((r) => path.dirname(r)),
-    home,
+  const candidates: [string | undefined, ParentSource][] = [
+    [opts.remembered, "remembered"],
+    [path.join(home, "Projects"), "projects"],
+    ...(opts.recentRoots ?? []).slice(0, 3).map((r): [string, ParentSource] => [path.dirname(r), "recent"]),
   ];
-  for (const c of candidates) {
-    if (c !== undefined && c.length > 0 && statOf(c)?.isDirectory() === true) return c;
+  for (const [c, source] of candidates) {
+    if (c !== undefined && c.length > 0 && statOf(c)?.isDirectory() === true) return { dir: c, source };
   }
-  return home;
+  return { dir: home, source: "home" };
 }
 
 // ---------------------------------------------------------------- GitHub
 
-const GITHUB_NAME = /^[A-Za-z0-9._-]{1,100}$/;
+/**
+ * A GitHub repo name that is also one plain argument: never starting with "-",
+ * which `gh` would read as a flag (`--public`, `-h`), whatever the wizard or
+ * `--gh-name` sends.
+ */
+const GITHUB_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$/;
 
 /** The repo name for GitHub: `name` when valid, else the folder name as a slug. */
 export function githubRepoName(folderName: string, wanted?: string): string {
   const w = wanted?.trim();
   if (w !== undefined && w.length > 0) {
-    if (!GITHUB_NAME.test(w) || w === "." || w === "..") throw new ProjectError(400, `invalid GitHub repo name: ${w} (letters, digits, ".", "-", "_")`);
+    if (!GITHUB_NAME.test(w) || w === "." || w === "..") {
+      throw new ProjectError(400, `invalid GitHub repo name: ${w} (letters, digits, ".", "-", "_"; not starting with "-")`);
+    }
     return w;
   }
   return slugify(folderName);
@@ -254,12 +267,12 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
   const repoName = input.github !== undefined ? githubRepoName(name, input.github.name) : undefined;
   let systemRoot: string | undefined;
   if (input.system !== undefined) {
-    systemRoot = resolveDir(input.system, home);
+    systemRoot = resolveDir(input.system, home, deps.cwd);
     if (!fs.existsSync(path.join(systemRoot, SYSTEM_FILE))) throw new ProjectError(400, `not a system folder (no ${SYSTEM_FILE}): ${systemRoot}`);
   }
 
   // The parent: must exist (or be created on request) and be a folder.
-  const parent = resolveDir(input.parentDir, home);
+  const parent = resolveDir(input.parentDir, home, deps.cwd);
   let createdParent: string | undefined;
   if (!fs.existsSync(parent)) {
     if (input.createParent !== true) throw new ProjectError(404, `folder not found: ${parent}`);
@@ -283,7 +296,7 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
     fs.mkdirSync(target);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (createdParent !== undefined) removeQuietly(createdParent);
+    if (createdParent !== undefined) removeCreatedParents(parent, createdParent);
     if (code === "EEXIST") throw new ProjectError(409, `already exists: ${target}`);
     if (code === "EACCES" || code === "EPERM") throw new ProjectError(403, `no permission to create ${target}`);
     throw new ProjectError(500, `cannot create ${target}: ${(err as Error).message}`);
@@ -291,7 +304,7 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
 
   const rollback = (): void => {
     removeQuietly(target);
-    if (createdParent !== undefined) removeQuietly(createdParent);
+    if (createdParent !== undefined) removeCreatedParents(parent, createdParent);
   };
   const env = { GIT_TERMINAL_PROMPT: "0", ...deps.env };
   const git = async (args: string[], timeoutMs = GIT_TIMEOUT_MS) => run(gitBin ?? "git", args, { cwd: target, timeoutMs, env });
@@ -384,6 +397,8 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
         githubReport = r.code === 0
           ? { command: ["gh", ...args], ran: true, ...(url !== undefined ? { url } : {}) }
           : { command: ["gh", ...args], ran: true, error: cliMessage(r) };
+        // gh said nothing about a repository: nothing confirms one exists.
+        if (r.code === 0 && url === undefined) warnings.push("GitHub repo not confirmed: gh printed no repository URL — check with `gh repo view` in the new folder");
       } catch (err) {
         githubReport = { command: ["gh", ...args], ran: false, error: err instanceof CliError ? err.message : "gh failed to run" };
       }
@@ -392,6 +407,24 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
   }
 
   return { path: target, template: template.id, files, scanned, git: gitReport, github: githubReport, system: systemReport, warnings };
+}
+
+/**
+ * Undoes `mkdir -p`: removes the folders it made, deepest first, each only while
+ * it is empty — a parent that meanwhile got someone else's project (the app and
+ * `ruah app new` creating side by side) stays with it.
+ */
+function removeCreatedParents(parent: string, topCreated: string): void {
+  let cur = parent;
+  while (cur === topCreated || cur.startsWith(topCreated + path.sep)) {
+    try {
+      fs.rmdirSync(cur);
+    } catch {
+      return; // not empty (or already gone): leave it and everything above it
+    }
+    if (cur === topCreated) return;
+    cur = path.dirname(cur);
+  }
 }
 
 function removeQuietly(p: string): void {

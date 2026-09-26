@@ -62,6 +62,19 @@ export async function parseBody<T extends z.ZodTypeAny>(req: IncomingMessage, sc
   return parsed.data as z.infer<T>;
 }
 
+/**
+ * A browser request another site made without CORS (`<img src>`, `fetch(…, { mode:
+ * "no-cors" })`): such a GET carries no Origin header, so the Origin check lets it through
+ * like curl — but the browser still says where it came from in Sec-Fetch-Site. The viewer's
+ * own GETs are same-origin (no Origin, `same-origin`) or CORS from an allowed origin (Origin
+ * set); curl and tests send no Sec-Fetch-Site at all.
+ */
+export function crossSiteWithoutOrigin(req: IncomingMessage): boolean {
+  if (req.headers.origin !== undefined) return false;
+  const site = req.headers["sec-fetch-site"];
+  return site === "cross-site" || site === "same-site";
+}
+
 function fail(res: ServerResponse, err: unknown): void {
   if (err instanceof ProjectError) {
     sendJson(res, err.status, { error: err.message });
@@ -97,7 +110,7 @@ export function handleProjectsRequest(
     }
     // §20: these run git / gh — refused for cross-site pages like a POST.
     if (pathname === "/api/projects/new" || pathname === "/api/projects/new/github" || pathname === "/api/projects/overview") {
-      if (!originOk(req.headers.origin)) {
+      if (!originOk(req.headers.origin) || crossSiteWithoutOrigin(req)) {
         sendJson(res, 403, { error: "origin not allowed" });
         return true;
       }

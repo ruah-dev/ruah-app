@@ -64,10 +64,18 @@ export function formatReport(report: CreateReport, name: string): string[] {
     lines.push(report.system.error === undefined ? `  system: added to ${pretty(report.system.root)} as "${report.system.repoId ?? "?"}"` : `  system: not added — ${report.system.error}`);
   }
   if (report.github !== null) {
-    lines.push(report.github.error === undefined ? `  GitHub: ${report.github.url ?? "created"}` : `  GitHub: not created — ${report.github.error}`);
-    if (report.github.error !== undefined) lines.push(`    retry: (cd ${shellPath(pretty(report.path))} && ${commandLine("gh", report.github.command.slice(1))})`);
+    const gh = report.github;
+    if (gh.error !== undefined) {
+      lines.push(`  GitHub: not created — ${gh.error}`);
+      lines.push(`    retry: (cd ${shellPath(pretty(report.path))} && ${commandLine("gh", gh.command.slice(1))})`);
+    } else if (gh.url !== undefined) {
+      lines.push(`  GitHub: ${gh.url}`);
+    } else {
+      // gh exited 0 without naming a repository: say so, never "created".
+      lines.push(`  GitHub: not confirmed — gh printed no repository URL; check: (cd ${shellPath(pretty(report.path))} && gh repo view)`);
+    }
   }
-  for (const warning of report.warnings.filter((w) => !w.startsWith("GitHub repo not created") && !w.startsWith("Not added to the system"))) lines.push(`  ! ${warning}`);
+  for (const warning of report.warnings.filter((w) => !w.startsWith("GitHub repo not ") && !w.startsWith("Not added to the system"))) lines.push(`  ! ${warning}`);
   const run = template?.run;
   const dir = shellPath(pretty(report.path));
   lines.push(`Next: cd ${dir}${run !== undefined && !run.startsWith("open ") ? ` && ${run}` : ""}   ·   ruah app ${dir}`);

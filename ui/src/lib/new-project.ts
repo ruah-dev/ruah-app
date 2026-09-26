@@ -2,7 +2,7 @@
 // feedback before the debounced check), the final path, the exact `gh repo create` command the
 // GitHub option would run, which step can advance, and what is sent. No React; unit-tested in
 // ui/test/new-project.test.ts.
-import type { CreateProjectInput, GithubVisibility, NewProjectCheck, TemplateInfo } from "./contracts";
+import type { CreateProjectInput, GithubVisibility, NewProjectCheck, NewProjectDefaults, TemplateInfo } from "./contracts";
 
 export type WizardStep = 0 | 1 | 2;
 export const WIZARD_STEPS = ["Name & location", "Starting point", "Options"] as const;
@@ -67,7 +67,8 @@ export function slugify(name: string): string {
   return slug === "" ? "app" : slug;
 }
 
-export const GITHUB_REPO_NAME = /^[A-Za-z0-9._-]{1,100}$/;
+/** The daemon's rule: a GitHub name that is one plain argument (a leading "-" would be a `gh` flag). */
+export const GITHUB_REPO_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$/;
 
 /** The folder the project will be created in, as typed ("~/Projects" + "shop" → "~/Projects/shop"). */
 export function joinPath(parentDir: string, name: string): string {
@@ -82,11 +83,65 @@ export function repoNameFor(state: Pick<WizardState, "name" | "repoName">): stri
   return state.repoName.trim() || slugify(state.name.trim());
 }
 
-/** The exact command the GitHub option runs in the new folder (the daemon's githubCreateArgs). */
-export function ghCommand(state: Pick<WizardState, "name" | "repoName" | "visibility" | "commit">): string {
+/**
+ * The exact command the GitHub option runs in the new folder (the daemon's githubCreateArgs).
+ * `--push` only when there will be a first commit to push: the commit is on and git has an
+ * identity (without one the daemon skips the commit, so it runs the command without `--push`).
+ */
+export function ghCommand(state: Pick<WizardState, "name" | "repoName" | "visibility" | "commit">, gitIdentity = true): string {
   const repo = repoNameFor(state);
-  const args = ["gh", "repo", "create", repo, state.visibility === "public" ? "--public" : "--private", "--source", ".", "--remote", "origin", ...(state.commit ? ["--push"] : [])];
+  const push = state.commit && gitIdentity;
+  const args = ["gh", "repo", "create", repo, state.visibility === "public" ? "--public" : "--private", "--source", ".", "--remote", "origin", ...(push ? ["--push"] : [])];
   return args.map((a) => (/^[A-Za-z0-9._/:=@+-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
+}
+
+/** Which typed input a check answers: a check for an older input never counts (the debounce). */
+export function checkKey(state: Pick<WizardState, "parentDir" | "name">): string {
+  return `${state.parentDir.trim()}\u0000${state.name.trim()}`;
+}
+
+/** The stored check when it is for what is typed now, else null ("Checking…", Next disabled). */
+export function currentCheck(stored: { key: string; check: NewProjectCheck } | null, state: Pick<WizardState, "parentDir" | "name">): NewProjectCheck | null {
+  return stored && stored.key === checkKey(state) ? stored.check : null;
+}
+
+/** "/Users/me/Projects" → "~/Projects" when it is under the daemon's home. */
+export function prettyHome(dir: string, home: string): string {
+  if (home && (dir === home || dir.startsWith(`${home}/`))) return `~${dir.slice(home.length)}`;
+  return dir;
+}
+
+/**
+ * The "Creates" line: the folder the daemon will make — resolved (a relative location is taken
+ * from home) once the check for this input is back, else as typed.
+ */
+export function createsPath(check: NewProjectCheck | null, state: Pick<WizardState, "parentDir" | "name">, home: string | undefined): string {
+  if (check && check.name.ok && check.path) return home ? prettyHome(check.path, home) : check.path;
+  return joinPath(state.parentDir, state.name);
+}
+
+/** A location that is neither absolute nor `~/…` (the daemon takes it from home). */
+export function isRelativeLocation(parentDir: string): boolean {
+  const p = parentDir.trim();
+  return p !== "" && !p.startsWith("/") && p !== "~" && !p.startsWith("~/");
+}
+
+/** The small line under Location: where the proposed folder came from, or how a relative one reads. */
+export function locationNote(defaults: Pick<NewProjectDefaults, "parentDir" | "home" | "parentSource"> | null, parentDir: string): string | null {
+  if (isRelativeLocation(parentDir)) return "A relative location is taken from your home folder.";
+  if (!defaults || parentDir.trim() !== prettyHome(defaults.parentDir, defaults.home)) return null;
+  switch (defaults.parentSource) {
+    case "remembered":
+      return "Remembered from your last new project.";
+    case "projects":
+      return "Your Projects folder. Ruah remembers the folder you create in.";
+    case "recent":
+      return "Next to your most recent project. Ruah remembers the folder you create in.";
+    case "home":
+      return "Your home folder. Ruah remembers the folder you create in.";
+    default:
+      return null;
+  }
 }
 
 /** Whether a step lets you go on (Enter / Next). */
@@ -140,4 +195,21 @@ export function pathMessage(check: NewProjectCheck | null, state: Pick<WizardSta
   if (!check.parent.isDir) return { tone: "bad", text: "That location is a file, not a folder." };
   if (!check.parent.writable) return { tone: "bad", text: "No permission to create folders there." };
   return { tone: "ok", text: "Available — a new folder will be created." };
+}
+
+export type SetupStatus = "none" | "waiting" | "blocked" | "lost" | "working" | "error";
+
+/**
+ * What the first-run hints may say about "Ask the agent to set it up": the prompt waits for the
+ * agent (starting), can't go out (the agent is in error / stopped), was lost (a reload before it
+ * was sent — it lives in memory), or went out (working / an error since).
+ */
+export function setupStatus(s: { askedAgent: boolean; promptSent: boolean; pending: boolean; agentState: string | undefined }): SetupStatus {
+  if (!s.askedAgent) return "none";
+  const broken = s.agentState === "error" || s.agentState === "stopped";
+  if (!s.promptSent) {
+    if (!s.pending) return "lost";
+    return broken ? "blocked" : "waiting";
+  }
+  return broken ? "error" : "working";
 }

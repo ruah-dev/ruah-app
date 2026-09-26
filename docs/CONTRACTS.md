@@ -2702,15 +2702,23 @@ optional fields or new endpoints; older viewers keep working. Code: `src/project
 ### 20.1 New project
 
 Every endpoint below passes the same Origin check as `/ws` (403 otherwise) — the GETs
-too, because they run `git` / `gh`. Nothing here overwrites anything: the target folder
-must not exist (not even empty) and is claimed with an exclusive `mkdir`; files are written
-with the `wx` flag.
+too, because they run `git` / `gh`. A GET with no Origin header passes that check (curl, the
+viewer's own same-origin fetches), so the GETs also refuse a browser request that says
+`Sec-Fetch-Site: cross-site` or `same-site` without an Origin — an `<img src>` or a `no-cors`
+fetch from another page — with 403. (Such a page could never read the answer; this keeps it
+from making the daemon run `gh auth status` or git at all.) Nothing here overwrites anything:
+the target folder must not exist (not even empty) and is claimed with an exclusive `mkdir`;
+files are written with the `wx` flag.
+
+Locations: `~/…` is expanded against the daemon's home, and a relative `parentDir` / `system`
+("Projects") is taken from **home** too — never from the daemon's own working directory, which
+means nothing to the person typing (the CLI, §20.6, keeps the current folder).
 
 | Method + path | Body / result |
 | --- | --- |
-| `GET /api/projects/new` | `NewProjectDefaults = { parentDir, home, templates: TemplateInfo[], git: { installed, identity } }` — `parentDir` is the remembered folder (`$RUAH_HOME/settings.json` `newProject.parentDir`, set by every create in the app), else `~/Projects`, else the parent of a recent project, else home — the first that exists. `identity` = `user.name` and `user.email` are set (needed for the first commit). |
+| `GET /api/projects/new` | `NewProjectDefaults = { parentDir, parentSource, home, templates: TemplateInfo[], git: { installed, identity } }` — `parentDir` is the remembered folder (`$RUAH_HOME/settings.json` `newProject.parentDir`, set by every create in the app), else `~/Projects`, else the parent of a recent project, else home — the first that exists; `parentSource` says which (`"remembered" \| "projects" \| "recent" \| "home"`; the wizard says "Remembered from your last new project" only for `"remembered"`). `identity` = `user.name` and `user.email` are set (needed for the first commit). |
 | `GET /api/projects/new/github` | `{ installed: boolean; loggedIn: boolean; login?: string }` from `gh auth status --json hosts` (read-only, no token is read or printed; cached 60 s). Asked only when the wizard's options step shows. |
-| `POST /api/projects/new/check` | `{ parentDir, name }` → `NewProjectCheck = { path, ok, name: { ok, error? }, parent: { exists, isDir, writable }, target: { exists, empty? }, problems: string[] }`. No side effects; `~/` expanded against the daemon's home. `parent.writable` for a missing parent = its nearest existing ancestor is writable (it can be created with `createParent`). |
+| `POST /api/projects/new/check` | `{ parentDir, name }` → `NewProjectCheck = { path, ok, name: { ok, error? }, parent: { path, exists, isDir, writable }, target: { exists, empty? }, problems: string[] }`. No side effects; `path` (the folder that would be created) and `parent.path` are absolute — resolved as above — and the wizard shows `path` as its "Creates" line. `parent.writable` for a missing parent = its nearest existing ancestor is writable (it can be created with `createParent`). |
 | `POST /api/projects/create` | §5.3 body plus, all optional: `template` (id, default `"empty"`), `commit` (initial commit, default = `git`), `github: { visibility: "private" \| "public", name? }` (runs `gh repo create` — **only when present**), `system` (a folder holding `ruah.system.json` to add the repo to), `createParent` (default false → 404 when the parent is missing). Answers the `ProjectInfo` as before plus `created: CreateReport`. |
 
 ```ts
@@ -2731,13 +2739,17 @@ slashes, control characters, leading dot, `: * ? " < > |`, ≤ 255 chars) and th
 `<parent>/<name>` (409 exists, 403 permission) → template files → `architecture.json`
 (scanned from the files with the infra layer; the "empty" template writes an empty map)
 → `git init` (the user's `init.defaultBranch`, else `-b main`). A failure up to here removes
-everything it created (the folder, and a parent it created) and answers 500 "… — nothing was
-created". Then, warning only (the project is kept, `warnings` says what to do): the initial
+everything it created (the folder, and the parents it created — each only while it is still
+empty, so a parent that meanwhile received another project, say from `ruah app new` running at
+the same time, is kept) and answers 500 "… — nothing was created". Then, warning only (the project is kept, `warnings` says what to do): the initial
 commit (`Initial commit (Ruah: <template>)`; skipped without a git identity), adding the repo
 to the system, and `gh repo create <repo> --private|--public --source . --remote origin
 [--push]` (`--push` only with a commit; repo name = `github.name` or the folder name as a
-slug, `^[A-Za-z0-9._-]{1,100}$`). git and gh run through `execFile` with an args array (no
-shell), a timeout and no prompts. Then the project is opened (§5.3 open) and the Home
+slug, `^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$` — never starting with `-`, which gh would read as a
+flag, and never `.` / `..`; a bad name is a 400 before anything is created). When gh exits 0
+but prints no repository URL, nothing confirms the repository exists: `github` has no `url`
+and `warnings` gains "GitHub repo not confirmed: …" (never reported as created). git and gh
+run through `execFile` with an args array (no shell), a timeout and no prompts. Then the project is opened (§5.3 open) and the Home
 overview cache is dropped. Errors: 400 bad name / unknown template / git missing / GitHub
 without git / not a system folder, 404 parent missing, 409 target exists, 403 Origin or
 permission, 500 write / scan / git init failed.
@@ -2834,9 +2846,12 @@ ruah app new <name> [--in <dir>] [--template <id>] [--no-git] [--no-commit]
 ruah app new --templates [--json]
 ```
 
-Same library and rules as §20.1. `--in` defaults to the current folder; git init + an initial
-commit are on by default; `gh repo create` runs only with `--gh` (when gh is installed and a
-commit exists, the text report prints the command to run by hand instead). `--json` prints
+Same library and rules as §20.1, except that a relative `--in` / `--system` is taken from the
+current folder (a shell's usual meaning). `--in` defaults to the current folder; git init + an
+initial commit are on by default; `gh repo create` runs only with `--gh` (when gh is installed
+and a commit exists, the text report prints the command to run by hand instead). The text
+report says `GitHub: <url>`, `GitHub: not created — <why>` (plus the retry command), or
+`GitHub: not confirmed` when gh printed no repository URL. `--json` prints
 the `CreateReport` (errors: `{ error, status }`). Exit codes: 0 created, 1 failed (nothing left
 behind), 2 bad arguments.
 
@@ -2845,13 +2860,29 @@ behind), 2 bad arguments.
 - **Start screen**: covers the shell only when no project is open, or when asked for (⌘K →
   Start screen, Settings → Getting started). A reload never covers an open project. The
   Getting started card shows only on a true first run (never dismissed, nothing ever opened);
-  a profile that already has projects counts as onboarded.
+  when that first run opened a repo straight away (`ruah app ~/repo`: the list holds only it),
+  the card waits on the start screen and a one-time toast ("New to Ruah?", `localStorage`
+  `ruah.onboarding.offered.v1`) points to it — nothing covers the project. A profile that
+  already has projects shows no card. Only dismissing the card sets `ruah.onboarded.v1`. With
+  no daemon (the bundled sample) a first run opens the start screen with the card over the
+  sample.
+- **Permission shortcut** (every PermissionCard): Enter = allow once and Esc = dismiss only
+  when the key can't mean anything else — it lands on `<body>`, a disabled field (the composer
+  while the agent works) or a non-interactive part of the card. A key on any button, link,
+  tab, option, field, editor, dialog or menu belongs to that control (Enter on a Home card or
+  its "Reject" quick action clicks it); an already-handled key is ignored.
 - **Wizard** (⇧⌘N; ⌘N on the start screen): name + location (live check, final path shown) →
   starting point → options (git + first commit on; GitHub off, private, only with gh logged
   in, the exact command shown; add to a system when one is known; ask the agent with an
-  editable first prompt). Enter next, ⌘Enter create, Alt+← back. After creating: the map, a
-  first-run hints card (sessionStorage `ruah.newProject.hints.v1`) and — when asked — the
-  first prompt, sent once the project's agent is ready.
+  editable first prompt). Enter next, ⌘Enter create, Alt+← back. The "Creates" line shows the
+  folder the daemon resolved (`NewProjectCheck.path`), and a check counts only for the input it
+  answers (while the debounced check for a new input runs: "Checking…", no Next / Create). The
+  shown `gh` command has `--push` only when the first commit will be made (commit on and a git
+  identity). After creating: the map, a first-run hints card (sessionStorage
+  `ruah.newProject.hints.v1`) and — when asked — the first prompt, sent once the project's agent
+  is ready; the card says the agent "is setting it up" only after the prompt went out to an
+  agent that isn't in error (else: waiting for it to start, it can't start, or the prompt was
+  lost to a reload).
 - **Home** is `/` (the Ruah mark, G H); the open project's dashboard is one click away at
   `/?view=project` with everything it had. Filter choice: `localStorage` `ruah.home.filter.v1`.
 - **Pins**: drag a pinned row (or Alt+↑/↓) in the Advanced sidebar or All projects to change

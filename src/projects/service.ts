@@ -7,6 +7,7 @@
 // Opens and creates run one at a time.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { homedir } from "node:os";
 import type { Architecture } from "../contracts/architecture.js";
 import type { ChatInfo, ProjectInfo, TurnRecord } from "../contracts/ws.js";
 import type { CreateProjectBody, CreateReport, NewProjectCheck, NewProjectDefaults, ProjectsList, RecentChat, ToolStatus } from "../contracts/projects.js";
@@ -155,7 +156,8 @@ export class ProjectService {
           system: body.system,
           createParent: body.createParent,
         },
-        { ...this.deps.create, version: this.deps.version },
+        // A relative location is taken from home, never from the daemon's own cwd.
+        { ...this.deps.create, version: this.deps.version, cwd: this.home() },
       );
       try {
         this.deps.newProjectParent?.set(path.dirname(created.path));
@@ -170,13 +172,15 @@ export class ProjectService {
 
   /** §20 GET /api/projects/new: templates, the proposed folder, whether git can commit. */
   async newProjectDefaults(): Promise<NewProjectDefaults> {
-    const home = this.deps.create?.home ?? process.env.HOME ?? "";
+    const home = this.home();
+    const parent = suggestParentDir({
+      remembered: this.deps.newProjectParent?.get(),
+      recentRoots: this.deps.projects.list().map((p) => p.root),
+      home,
+    });
     return {
-      parentDir: suggestParentDir({
-        remembered: this.deps.newProjectParent?.get(),
-        recentRoots: this.deps.projects.list().map((p) => p.root),
-        home,
-      }),
+      parentDir: parent.dir,
+      parentSource: parent.source,
       home,
       templates: templateInfos(),
       git: await gitToolStatus(this.deps.create ?? {}),
@@ -185,7 +189,13 @@ export class ProjectService {
 
   /** §20 POST /api/projects/new/check. */
   checkNewProject(body: { parentDir: string; name: string }): NewProjectCheck {
-    return checkNewProject(body, this.deps.create?.home !== undefined ? { home: this.deps.create.home } : {});
+    const home = this.home();
+    return checkNewProject(body, { home, cwd: home });
+  }
+
+  /** The daemon's home: `~/…` and relative wizard locations are taken from it. */
+  private home(): string {
+    return this.deps.create?.home ?? process.env.HOME ?? homedir();
   }
 
   /** §20 GET /api/projects/new/github: gh installed + logged in (cached a minute). */
