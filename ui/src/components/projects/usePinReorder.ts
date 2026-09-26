@@ -69,5 +69,16 @@ export function usePinReorder(pinnedIds: readonly string[]) {
   /** "before" / "after" when a dragged pin would land next to `id`. */
   const indicator = (id: string): "before" | "after" | null => (drag && drag.over === id && drag.id !== id ? (drag.after ? "after" : "before") : null);
 
-  return { rowProps, indicator, dragging: drag?.id ?? null };
+  /**
+   * Alt+↑/↓ from outside the row (a list whose focus stays in its filter field): moves pinned
+   * `id` by one. False when it is not a pinned project that can move.
+   */
+  const move = (id: string, delta: -1 | 1): boolean => {
+    const i = pinnedIds.indexOf(id);
+    if (i < 0 || pinnedIds.length < 2) return false;
+    commit(moveId(pinnedIds, id, i + delta));
+    return true;
+  };
+
+  return { rowProps, indicator, move, dragging: drag?.id ?? null };
 }
