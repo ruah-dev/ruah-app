@@ -255,13 +255,19 @@ describe("ruah app system rename asks a running daemon first (§12.4)", () => {
       await new Promise<void>((resolve) => fake.listen(0, "127.0.0.1", resolve));
       cleanups.push(() => new Promise<void>((resolve) => fake.close(() => resolve())));
       const daemonUrl = `http://127.0.0.1:${(fake.address() as { port: number }).port}`;
-      expect(await runSystem(["rename", "web", "shop", "--system", platform, "--daemon", daemonUrl], "t")).toBe(2);
+      // A running turn: refused with exit 1 (not the usage-error 2).
+      expect(await runSystem(["rename", "web", "shop", "--system", platform, "--daemon", daemonUrl], "t")).toBe(1);
       expect(errors.join("")).toContain("an agent turn is running in this system");
       expect(loadSystem(platform).repos.map((r) => r.id)).toEqual(["web", "invoices-api"]);
       running = 0;
       expect(await runSystem(["rename", "web", "shop", "--system", platform, "--daemon", daemonUrl], "t")).toBe(0);
       expect(await runSystem(["rename", "shop", "store", "--system", platform, "--offline"], "t")).toBe(0);
       expect(loadSystem(platform).repos.map((r) => r.id)).toEqual(["store", "invoices-api"]);
+      // No daemon answers: the rename goes ahead but says what it could not check.
+      errors.length = 0;
+      expect(await runSystem(["rename", "store", "shop", "--system", platform, "--daemon", "http://127.0.0.1:9"], "t")).toBe(0);
+      expect(errors.join("")).toContain("no Ruah daemon answered at http://127.0.0.1:9");
+      expect(errors.join("")).toContain("--daemon <url>");
     } finally {
       process.stderr.write = quietErr;
     }

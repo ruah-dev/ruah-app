@@ -68,6 +68,8 @@ export interface SystemCliHooks {
 }
 
 class UsageError extends Error {}
+/** The command is fine but has to wait (a running agent turn): exit 1, not the usage-error 2. */
+class BusyError extends Error {}
 
 /** `<id>=<path>` (no slash before the "="), else a plain path. */
 function repoSpec(spec: string): RepoInput {
@@ -162,7 +164,7 @@ function remove(argv: string[]): number {
 async function rename(argv: string[]): Promise<number> {
   const p = parse(argv, { offline: { type: "boolean", default: false }, daemon: { type: "string" } });
   const [from, to, ...extra] = p.positionals;
-  if (from === undefined || to === undefined || extra.length > 0) throw new UsageError("rename: usage: ruah app system rename <id> <new-id> [--system <dir>] [--offline]");
+  if (from === undefined || to === undefined || extra.length > 0) throw new UsageError("rename: usage: ruah app system rename <id> <new-id> [--system <dir>] [--daemon <url> | --offline]");
   const dir = systemDir(undefined, p.values.system);
   // A daemon's running turn in this system stores its (old) element ids when it finishes, after
   // the rename rewrote the chats: ask a running daemon first (CONTRACTS §12.4).
@@ -178,10 +180,13 @@ async function rename(argv: string[]): Promise<number> {
     }
     const counts = live?.get(projectIdFor(real));
     if (counts !== undefined && counts.running > 0) {
-      throw new SystemManageError(
-        "conflict",
+      throw new BusyError(
         `an agent turn is running in this system (daemon at ${url}); rename when it has finished — it would save the old ids back into its chat`,
       );
+    }
+    if (live === undefined) {
+      // The app picks another port when 4177 is taken: say what was not checked.
+      err(`note: no Ruah daemon answered at ${url}, so running agent turns were not checked; if Ruah runs on another port, pass --daemon <url>`);
     }
   }
   const r = renameRepo(dir, from, to, { home: ruahHome() });
@@ -459,6 +464,10 @@ export async function runSystem(argv: readonly string[], version: string, hooks:
         return 2;
     }
   } catch (e) {
+    if (e instanceof BusyError) {
+      err(`${sub ?? ""}: ${e.message}`);
+      return 1;
+    }
     if (e instanceof UsageError || e instanceof SystemManageError || e instanceof SystemFileError) {
       err(`${sub ?? ""}: ${e.message}`);
       return 2;
