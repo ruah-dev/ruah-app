@@ -6,7 +6,10 @@
  * pupils are the body's own deep shade (never black, as the design system asks).
  * Motion is transform / opacity only, per instance phase-shifted (--ph-delay, plus --d per
  * part); none under reduced motion or in the high-contrast theme (static), paused while the
- * tab is hidden.
+ * tab is hidden. A pose's props and a scene's figures animate SVG children (main-thread paint),
+ * so they move only while the ghost is hovered or marked `data-lively` (a pose that reports
+ * progress, the /_ghosts sheet); otherwise only the whole-ghost drift runs, a transform on an
+ * HTML box the compositor handles. An idle page with empty states stays quiet.
  * ------------------------------------------------------------------------------------------- */
 
 /* In the components layer, so utilities on a <Phantom className> (absolute, hidden, …) win. */
@@ -159,7 +162,11 @@
   :is(.ph-cheer, .ph-wave-arm, .ph-scribble, .ph-sway, .ph-swing, .ph-key, .ph-dab, .ph-bubble) {
     transform-box: view-box;
   }
-  .phantom:not([data-still]) {
+  /* A scene's figures drift as SVG groups: lively or hovered only (see the header). */
+  .phantom-scene:not([data-lively], :hover) .phantom-figure.phantom-float {
+    animation: none;
+  }
+  .phantom:not([data-still]):is([data-lively], :hover) {
     & .ph-breathe { transform-origin: 50% 100%; animation: ph-breathe 4.2s ease-in-out var(--ph-delay, 0s) infinite; }
     & .ph-z { animation: ph-z 3.3s ease-out calc(var(--ph-delay, 0s) + var(--d, 0s)) infinite; }
     & .ph-hop { transform-origin: 50% 100%; animation: ph-hop 1.5s cubic-bezier(0.3, 0.7, 0.4, 1) var(--ph-delay, 0s) infinite; }

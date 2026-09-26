@@ -32,6 +32,10 @@ interface Common {
   tone?: PhantomTone | undefined;
   /** No motion at all. */
   still?: boolean | undefined;
+  /** Animate the pose's props all the time (SVG parts; main-thread paint), not only on hover —
+   * for a pose that reports progress (scanning, an agent at work). Default: the ghost drifts, its
+   * props move on hover. */
+  lively?: boolean | undefined;
   /** No idle drift (on by default from md up). */
   noFloat?: boolean | undefined;
   /** No ambient glow (on by default from lg up). */
@@ -46,6 +50,7 @@ function Shell({
   size,
   tone,
   still,
+  lively,
   noFloat,
   noGlow,
   label,
@@ -67,6 +72,7 @@ function Shell({
       data-expression={expression}
       data-pose={pose}
       data-still={still ? "" : undefined}
+      data-lively={lively && !still ? "" : undefined}
       className={cn("phantom", className)}
       style={vars}
     >
@@ -230,13 +236,15 @@ export interface PhantomSceneProps {
   /** Height in px (the width follows the scene). */
   height?: number;
   still?: boolean | undefined;
+  /** Figures drift and props move all the time, not only on hover (SVG parts). */
+  lively?: boolean | undefined;
   label?: string | undefined;
   className?: string | undefined;
 }
 
 /** Several ghosts in one drawing (onboarding, empty states). Each figure floats on its own
  * phase; tones follow the palette, the crew uses the agents' tints. */
-export function PhantomScene({ scene, height = 120, still, label, className }: PhantomSceneProps) {
+export function PhantomScene({ scene, height = 120, still, lively, label, className }: PhantomSceneProps) {
   const id = useId();
   useEffect(hookVisibility, []);
   const spec = SCENES[scene];
@@ -246,6 +254,7 @@ export function PhantomScene({ scene, height = 120, still, label, className }: P
     <span
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
       data-still={still ? "" : undefined}
+      data-lively={lively && !still ? "" : undefined}
       data-scene={scene}
       className={cn("phantom phantom-scene", className)}
       style={{ width, height, "--ph-delay": `-${base.toFixed(2)}s` } as CSSProperties}

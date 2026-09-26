@@ -357,7 +357,7 @@ function EmptyMap() {
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
       <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-hairline bg-popover/95 px-6 py-6 text-center shadow-elevated backdrop-blur">
-        <PhantomPose pose={scanning ? "reading" : "mapping"} size={96} label={scanning ? "Scanning the repo" : undefined} />
+        <PhantomPose pose={scanning ? "reading" : "mapping"} size={96} lively={scanning} label={scanning ? "Scanning the repo" : undefined} />
         <div className="space-y-1.5">
           <p className="text-[11px] font-medium tracking-[0.14em] text-brand uppercase">{scanning ? "Scanning" : "New project"}</p>
           <p className="heading text-[16px] text-foreground">An empty map</p>

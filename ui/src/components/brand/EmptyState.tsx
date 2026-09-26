@@ -23,6 +23,9 @@ export interface EmptyStateProps {
   size?: "sm" | "md" | "lg";
   /** Announce changes (loading → failed) to assistive tech. */
   live?: "polite" | "assertive" | undefined;
+  /** Keep the pose / scene props moving (a state that reports progress). Default: they move on
+   * hover only, so a page full of empty states costs no paint while idle. */
+  lively?: boolean | undefined;
   className?: string | undefined;
   children?: ReactNode;
 }
@@ -54,15 +57,16 @@ export function EmptyState({
   actions,
   size = "md",
   live,
+  lively,
   className,
   children,
 }: EmptyStateProps) {
   const s = SIZES[size];
   const resolved = tone ? canonicalTone(tone) : pose ? POSES[pose].tone : expression === "error" ? "bad" : expression === "warning" ? "warn" : expression === "success" ? "ok" : expression === "agent" || expression === "thinking" ? "ai" : "brand";
   const ghost = art ?? (scene ? (
-    <PhantomScene scene={scene} height={s.scene} />
+    <PhantomScene scene={scene} height={s.scene} lively={lively} />
   ) : pose ? (
-    <PhantomPose pose={pose} size={s.ghost} tone={tone} noGlow />
+    <PhantomPose pose={pose} size={s.ghost} tone={tone} noGlow lively={lively} />
   ) : (
     <Phantom expression={expression ?? "idle"} size={Math.round(s.ghost * 0.7)} tone={tone} noGlow />
   ));

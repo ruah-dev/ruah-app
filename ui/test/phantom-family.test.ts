@@ -1,6 +1,8 @@
 // The Phantom family (components/brand): tones follow the palette tokens, every pose / scene /
 // agent ghost renders as decorative SVG (or an image with a label), agent ids map to tints, and
 // the empty state wires tone + live region.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -89,6 +91,23 @@ describe("poses", () => {
 
   it("still ghosts opt out of motion", () => {
     expect(html(createElement(PhantomPose, { pose: "sleeping", still: true }))).toContain("data-still");
+  });
+
+  it("props move only when lively or hovered, so idle empty states cost no paint", () => {
+    expect(html(createElement(PhantomPose, { pose: "reading" }))).not.toContain("data-lively");
+    expect(html(createElement(PhantomPose, { pose: "reading", lively: true }))).toContain("data-lively");
+    expect(html(createElement(PhantomPose, { pose: "reading", lively: true, still: true }))).not.toContain("data-lively");
+    expect(html(createElement(PhantomScene, { scene: "party", lively: true }))).toContain("data-lively");
+    expect(html(createElement(EmptyState, { pose: "charting", title: "No usage" }))).not.toContain("data-lively");
+    expect(html(createElement(EmptyState, { pose: "reading", title: "Scanning", lively: true }))).toContain("data-lively");
+    // Every infinite part animation sits behind the lively / hover gate.
+    const css = readFileSync(fileURLToPath(new URL("../src/components/brand/phantom.css", import.meta.url)), "utf8");
+    const gate = css.indexOf(".phantom:not([data-still]):is([data-lively], :hover) {");
+    expect(gate).toBeGreaterThan(0);
+    const block = css.slice(gate, css.indexOf("\n  }\n", gate));
+    for (const part of ["ph-z", "ph-bar", "ph-typing", "ph-confetti", "ph-scanbar"]) expect(block).toContain(`& .${part} {`);
+    expect(css.slice(0, gate)).not.toMatch(/& \.ph-/);
+    expect(css).toContain(".phantom-scene:not([data-lively], :hover) .phantom-figure.phantom-float");
   });
 });
 

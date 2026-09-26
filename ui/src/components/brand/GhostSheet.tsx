@@ -56,7 +56,7 @@ function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[
         <div className="grid gap-x-2 gap-y-4" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${poseSize + 16}px, 1fr))` }}>
           {POSE_NAMES.map((p) => (
             <figure key={p} className="flex flex-col items-center gap-1 text-center">
-              <PhantomPose pose={p} size={poseSize} noGlow />
+              <PhantomPose pose={p} size={poseSize} noGlow lively />
               <Caption>{p}</Caption>
               <span className="text-[10.5px] leading-tight text-faint">{POSES[p].role}</span>
             </figure>
@@ -104,7 +104,7 @@ function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[
           <div className="grid grid-cols-5 gap-2">
             {AGENTS.map((a) => (
               <figure key={a} className="flex flex-col items-center gap-1 text-center">
-                <PhantomAgent agent={a} size={72} noGlow />
+                <PhantomAgent agent={a} size={72} noGlow lively />
                 <Caption>{AGENT_NAMES[a]}</Caption>
               </figure>
             ))}
@@ -125,7 +125,7 @@ function Column({ theme, palette, section, poseSize }: { theme: (typeof THEMES)[
         <div className="flex flex-col gap-5">
           {SCENE_NAMES.map((s) => (
             <figure key={s} className="flex flex-col items-center gap-1">
-              <PhantomScene scene={s} height={110} />
+              <PhantomScene scene={s} height={110} lively />
               <Caption>
                 {s} · {sceneRole(s)}
               </Caption>
