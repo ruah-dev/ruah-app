@@ -24,6 +24,20 @@ export function cardText(node: { label: string; subtitle?: string | undefined; t
   return { title: rest, subtitle: sub !== "" ? sub : tool, full };
 }
 
+/** A card's second line in the parts it is made of ("TypeScript · Express 4" → two parts). The
+ * card drops whole trailing parts that do not fit instead of cutting a word ("TypeScri…"). */
+export function subtitleParts(subtitle: string): string[] {
+  return subtitle
+    .split(" · ")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}
+
+/** Right padding the second line leaves for the "▸ n" chip: it grows with the count's digits. */
+export function chipPad(childCount: number | undefined): "pr-7" | "pr-9" {
+  return (childCount ?? 0) >= 10 ? "pr-9" : "pr-7";
+}
+
 /** Edge labels are drawn in world units; this keeps them ~10 px on screen when zoomed out
  * (same rule as the card text: grow with 1 / zoom below 90 %, capped so they never balloon). */
 export function edgeLabelScale(kq: number): number {

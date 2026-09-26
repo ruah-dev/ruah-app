@@ -13,7 +13,7 @@ import { keepAgentElement } from "@/lib/architecture-edit";
 import { useMapFlash } from "@/lib/map-activity";
 import { Phantom } from "@/components/brand/Phantom";
 import type { Lod } from "./geometry";
-import { cardText } from "./display";
+import { cardText, chipPad, subtitleParts } from "./display";
 import { isGroupNodeId } from "./view-model";
 import { openElementInTerminal } from "@/components/terminal/actions";
 import { VerifyBadgeChip } from "@/components/engines/VerifyBadge";
@@ -378,12 +378,21 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         )}
       </span>
       {text.subtitle ? (
+        // One line: parts that do not fit wrap onto a hidden second line, so "TypeScript · Express
+        // 4" reads "TypeScript" on a narrow card (the first part still truncates if it must).
         <span
-          className={cn("truncate pl-8 font-mono text-muted-foreground", node.drill || group ? "pr-9" : "")}
+          className={cn(
+            "flex h-[1.4em] min-w-0 flex-wrap gap-x-[0.5em] overflow-hidden pl-8 leading-[1.4] font-mono text-muted-foreground",
+            node.drill || group ? chipPad(node.childCount) : "",
+          )}
           style={{ fontSize: BOOST(11) }}
           title={text.subtitle}
         >
-          {text.subtitle}
+          {subtitleParts(text.subtitle).map((part, i) => (
+            <span key={i} className={i === 0 ? "max-w-full min-w-0 truncate" : "shrink-0"}>
+              {i === 0 ? part : `· ${part}`}
+            </span>
+          ))}
         </span>
       ) : null}
       {node.drill || group ? <InsideChip node={node} h={h} compact={false} /> : null}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardText, edgeLabelScale, isQuietEdgeKind } from "@/components/editor/canvas/display";
+import { cardText, chipPad, edgeLabelScale, isQuietEdgeKind, subtitleParts } from "@/components/editor/canvas/display";
 
 describe("map card text", () => {
   it("shows what differs for IaC elements named '<Tool>: <what>' and keeps the full name", () => {
@@ -48,5 +48,21 @@ describe("edge labels and kinds", () => {
   it("draws deployment links quieter than runtime calls", () => {
     expect(isQuietEdgeKind("deploy")).toBe(true);
     for (const k of ["sync", "async", "data", "event", undefined]) expect(isQuietEdgeKind(k)).toBe(false);
+  });
+});
+
+describe("card second line", () => {
+  it("splits into whole parts so a narrow card drops a part instead of cutting a word", () => {
+    expect(subtitleParts("TypeScript · Express 4")).toEqual(["TypeScript", "Express 4"]);
+    expect(subtitleParts("Terraform · AWS · 12 resources")).toEqual(["Terraform", "AWS", "12 resources"]);
+    expect(subtitleParts("Kubernetes")).toEqual(["Kubernetes"]);
+    expect(subtitleParts("deploy/charts/api")).toEqual(["deploy/charts/api"]);
+    expect(subtitleParts(" · ")).toEqual([]);
+  });
+
+  it("leaves room for the inside chip by its digits", () => {
+    expect(chipPad(undefined)).toBe("pr-7");
+    expect(chipPad(4)).toBe("pr-7");
+    expect(chipPad(12)).toBe("pr-9");
   });
 });
