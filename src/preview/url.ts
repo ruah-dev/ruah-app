@@ -16,6 +16,18 @@ export function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "");
 }
 
+/** A terminal spinner frame in front of a line (npm's `⠙`). */
+const SPINNER_PREFIX = /^[\u2801-\u28ff]+/;
+
+/**
+ * One line of dev-server output as the preview keeps it: no colours or links, no spinner frames
+ * (npm draws `⠙` in front of its lines and alone on its last one), no trailing space. Empty when
+ * nothing is left.
+ */
+export function cleanLogLine(raw: string): string {
+  return stripAnsi(raw).replace(SPINNER_PREFIX, "").replace(/\s+$/, "");
+}
+
 export interface UrlHit {
   url: string;
   port: number;
@@ -100,9 +112,6 @@ const CRASH_NOISE =
 const CRASH_PROPERTY = /^['"]?[\w$]+['"]?:\s+(?:'[^']*'|"[^"]*"|-?\d+(?:\.\d+)?|true|false|null|undefined|\[[^\]]*\]),?$/;
 /** A thrown error's own message: `Error: listen EADDRINUSE …`, `ModuleNotFoundError: No module …`. */
 const CRASH_THROWN = /^(?:Uncaught\s+)?(?:[A-Z][\w.]*)?(?:Error|Exception)(?:\s\[[\w-]+\])?:\s+\S/;
-
-/** A terminal spinner frame in front of a line (npm's `⠙`). */
-const SPINNER_PREFIX = /^[\u2801-\u28ff]+/;
 
 /**
  * The line that best explains a crash: the last thrown error's own message (`Error: …`), else the

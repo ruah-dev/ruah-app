@@ -16,7 +16,7 @@ import { ProcessRunner } from "../src/preview/runner.js";
 import { formatDetection, runPreview } from "../src/preview/cli.js";
 import { parseEnvBlock } from "../src/preview/shell-env.js";
 import { injectLiveReload, LIVE_PATH, resolveStaticPath, startStaticServer, staticHostAllowed } from "../src/preview/static-server.js";
-import { crashReason, findUrls, LineSplitter, stripAnsi } from "../src/preview/url.js";
+import { cleanLogLine, crashReason, findUrls, LineSplitter, stripAnsi } from "../src/preview/url.js";
 import { parseYaml } from "../src/scan/mini-yaml.js";
 import { TerminalManager } from "../src/terminal/manager.js";
 import type { PtyBackend, PtyExitEvent, PtyProcess, PtySpawnInput } from "../src/terminal/pty.js";
@@ -119,6 +119,10 @@ describe("url discovery", () => {
     expect(crashReason(["Traceback (most recent call last):", '  File "app.py", line 1, in <module>', "ModuleNotFoundError: No module named 'flask'"])).toBe(
       "ModuleNotFoundError: No module named 'flask'",
     );
+    // The kept log (crash panel, "Ask agent to fix"): no spinner frames, alone or glued to a line.
+    expect(cleanLogLine("\u2819")).toBe("");
+    expect(cleanLogLine("\u2819\u2839npm notice  ")).toBe("npm notice");
+    expect(cleanLogLine("\u001b[32m  ➜  Local:\u001b[0m   http://localhost:5173/")).toBe("  ➜  Local:   http://localhost:5173/");
     // A spinner frame glued to npm's notice is still npm's notice.
     expect(crashReason(["ready in 300 ms", "\u2819npm notice", "\u2819"])).toBe("ready in 300 ms");
     expect(crashReason(["  VITE v6.0.0", "[vite] Internal server error: Failed to resolve import \"./x.js\"", "npm notice"])).toBe(

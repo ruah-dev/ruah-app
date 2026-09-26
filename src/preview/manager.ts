@@ -19,7 +19,7 @@ import { checkHttp as defaultCheckHttp, findFreePort, isPortOpen, type HttpCheck
 import { ProcessRunner, PtyRunner, type RunningProcess, type Runner } from "./runner.js";
 import { previewEnv } from "./shell-env.js";
 import { startStaticServer, type StaticServer } from "./static-server.js";
-import { LineSplitter, crashReason, findUrls, stripAnsi } from "./url.js";
+import { LineSplitter, cleanLogLine, crashReason, findUrls } from "./url.js";
 
 export const DEFAULT_PREVIEW_IDLE_MS = 10 * 60 * 1000;
 export const PREVIEW_LOG_LINES = 500;
@@ -414,7 +414,7 @@ export class PreviewManager {
   }
 
   private appendLine(entry: Entry, raw: string): void {
-    const line = stripAnsi(raw).replace(/\s+$/, "");
+    const line = cleanLogLine(raw);
     if (line.length === 0) return;
     entry.logs.push(line.length > 2000 ? `${line.slice(0, 2000)}…` : line);
     if (entry.logs.length > PREVIEW_LOG_LINES) entry.logs.splice(0, entry.logs.length - PREVIEW_LOG_LINES);
