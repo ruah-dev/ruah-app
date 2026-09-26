@@ -31,6 +31,11 @@ import { cn } from "@/lib/utils";
 const ROW = 40;
 const OVERSCAN = 8;
 const COLS = "grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.4fr)_3.75rem] items-center gap-3";
+/**
+ * With the details drawer open the table has about half the width: no Tags column (the drawer
+ * shows them), and the name column is the widest. Before, the names shrank to one or two letters.
+ */
+const COLS_COMPACT = "grid grid-cols-[minmax(0,2.4fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_3.75rem] items-center gap-3";
 
 const SCOPE_ACTION_LABEL: Record<ScopeResourceAction, string> = {
   include: "Add to project",
@@ -172,7 +177,10 @@ export function ResourceTable({
   selectedId,
   onSelect,
   onScope,
+  compact = false,
 }: {
+  /** The details drawer is open next to the table (narrow): see COLS_COMPACT. */
+  compact?: boolean;
   resources: CloudResource[];
   nodes: ArchNode[];
   manualLinks: Record<string, true>;
@@ -206,14 +214,14 @@ export function ResourceTable({
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         className={cn(
-          COLS,
+          compact ? COLS_COMPACT : COLS,
           "h-8 shrink-0 border-b border-hairline px-5 text-meta text-muted-foreground max-md:px-3",
         )}
         role="row"
       >
         <span role="columnheader">Resource</span>
         <span role="columnheader">Health</span>
-        <span role="columnheader">Tags</span>
+        {compact ? null : <span role="columnheader">Tags</span>}
         <span role="columnheader">Runs element</span>
         <span role="columnheader" className="sr-only">
           Console
@@ -240,6 +248,7 @@ export function ResourceTable({
                 style={{ top: (first + i) * ROW, height: ROW }}
               >
                 <RowView
+                  compact={compact}
                   row={row}
                   nodes={nodes}
                   manualLinks={manualLinks}
@@ -267,7 +276,9 @@ function RowView({
   selected,
   onSelect,
   onScope,
+  compact,
 }: {
+  compact: boolean;
   row: Row;
   nodes: ArchNode[];
   manualLinks: Record<string, true>;
@@ -331,29 +342,31 @@ function RowView({
       role="row"
       aria-selected={selected}
       className={cn(
-        COLS,
+        compact ? COLS_COMPACT : COLS,
         "h-full px-5 ps-11 transition-colors hover:bg-foreground/[0.025] max-md:px-3",
+        compact && "ps-7",
         selected && "bg-accent/60 hover:bg-accent/60",
       )}
     >
-      <span role="cell" className="flex min-w-0 items-center gap-2.5 ps-3">
+      <span role="cell" className={cn("flex min-w-0 items-center gap-2.5", !compact && "ps-3")}>
         <Icon className={cn("size-3.5 shrink-0", style.color)} />
+        {/* The name keeps at least a few characters: the service and the scope badge give way first. */}
         {onSelect ? (
           <button
             type="button"
             onClick={() => onSelect(r.id)}
-            className="min-w-0 truncate text-left text-ui text-foreground hover:underline"
+            className="min-w-[4.5rem] shrink truncate text-left text-ui text-foreground hover:underline"
             title={`${r.id} — show details`}
           >
             {r.name}
           </button>
         ) : (
-          <span className="min-w-0 truncate text-ui text-foreground" title={r.id}>
+          <span className="min-w-[4.5rem] shrink truncate text-ui text-foreground" title={r.id}>
             {r.name}
           </span>
         )}
-        <span className="shrink-0 font-mono text-caption text-faint">{r.service}</span>
-        <ScopeBadge resource={r} />
+        <span className="min-w-0 shrink-[4] truncate font-mono text-caption text-faint">{r.service}</span>
+        {compact ? null : <ScopeBadge resource={r} />}
       </span>
       <span
         role="cell"
@@ -384,11 +397,13 @@ function RowView({
           <span className="truncate">{r.status ?? "—"}</span>
         )}
       </span>
+      {compact ? null : (
+        <span role="cell" className="min-w-0">
+          <Tags tags={r.tags} />
+        </span>
+      )}
       <span role="cell" className="min-w-0">
-        <Tags tags={r.tags} />
-      </span>
-      <span role="cell" className="min-w-0">
-        <ElementPicker resource={r} nodes={nodes} manual={manual} />
+        <ElementPicker resource={r} nodes={nodes} manual={manual} compact={compact} />
       </span>
       <span role="cell" className="flex justify-end">
         {onScope ? <ScopeMenu resource={r} onScope={onScope} /> : null}

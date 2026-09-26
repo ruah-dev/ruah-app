@@ -18,7 +18,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-export function LinkBadge({ manual, source }: { manual: boolean; source?: string | undefined }) {
+export function LinkBadge({ manual, source, className }: { manual: boolean; source?: string | undefined; className?: string }) {
   const title = manual
     ? "Linked by hand"
     : source === "tag"
@@ -32,6 +32,7 @@ export function LinkBadge({ manual, source }: { manual: boolean; source?: string
       className={cn(
         "inline-flex h-4 shrink-0 items-center rounded px-1 text-micro font-medium tracking-wide uppercase",
         manual ? "pill-primary" : "bg-foreground/[0.07] text-muted-foreground",
+        className,
       )}
     >
       {manual ? "manual" : "auto"}
@@ -45,12 +46,15 @@ export function ElementPicker({
   manual,
   disabled,
   className,
+  compact = false,
 }: {
   resource: CloudResource;
   nodes: ArchNode[];
   manual: boolean;
   disabled?: boolean;
   className?: string;
+  /** A narrow column (the Cloud page with its details drawer open): the name only, no badge. */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,8 +98,9 @@ export function ElementPicker({
           )}
           {linked ? (
             <>
-              <span className="min-w-0 truncate text-foreground/90">{linked.name}</span>
-              <LinkBadge manual={manual} source={resource.linkSource} />
+              {/* The name keeps a few characters however narrow the column is. */}
+              <span className="min-w-[2.5rem] shrink truncate text-foreground/90">{linked.name}</span>
+              {compact ? null : <LinkBadge manual={manual} source={resource.linkSource} />}
             </>
           ) : resource.linkedNodeId ? (
             <span className="min-w-0 truncate font-mono text-label text-muted-foreground">

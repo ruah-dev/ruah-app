@@ -493,6 +493,7 @@ export function CloudPage() {
       <div className="relative flex min-h-0 flex-1 border-t border-hairline">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ResourceTable
+            compact={!!selected}
             resources={visible}
             nodes={architecture.nodes}
             manualLinks={s.manualLinks}
