@@ -3,7 +3,7 @@
 // Origin check alone let a rebound page read /api/file, /api/architecture, …).
 import * as http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { hostAllowed, startServer } from "../src/serve/server.js";
+import { hostAllowed, originAllowed, startServer } from "../src/serve/server.js";
 import { SessionHub } from "../src/serve/session.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -60,5 +60,23 @@ describe("Host check", () => {
       req.end();
     });
     expect(upgrade).toBe(403);
+  });
+});
+
+// Regression: originAllowed only knew "localhost" and "127.0.0.1", so a viewer
+// opened at http://[::1]:<port> had its /ws upgrade refused while the Host
+// check (and the terminal) accepted IPv6 loopback.
+describe("Origin check", () => {
+  it("uses the same loopback names as the Host check", () => {
+    expect(originAllowed(undefined, [])).toBe(true);
+    expect(originAllowed("http://localhost:4177", [])).toBe(true);
+    expect(originAllowed("http://127.0.0.1:4177", [])).toBe(true);
+    expect(originAllowed("http://[::1]:4177", [])).toBe(true);
+    expect(originAllowed("http://app.localhost:5173", [])).toBe(true);
+    expect(originAllowed("https://evil.example", [])).toBe(false);
+    expect(originAllowed("http://[::2]:4177", [])).toBe(false);
+    expect(originAllowed("http://127.0.0.1.evil.example", [])).toBe(false);
+    expect(originAllowed("not a url", [])).toBe(false);
+    expect(originAllowed("https://x.lovable.app", ["https://*.lovable.app"])).toBe(true);
   });
 });

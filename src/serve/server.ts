@@ -84,7 +84,9 @@ export function originAllowed(origin: string | undefined, allowOrigins: readonly
   } catch {
     return false;
   }
-  if (host === "localhost" || host === "127.0.0.1") return true;
+  // Same loopback rule as hostAllowed and the terminal: localhost, *.localhost,
+  // 127.x and IPv6 ::1 (a viewer opened at http://[::1]:<port>).
+  if (isLoopbackHostName(host.replace(/^\[|\]$/g, ""))) return true;
   return allowOrigins.some((glob) => originMatches(origin, glob));
 }
 
