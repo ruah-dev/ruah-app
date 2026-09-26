@@ -12,4 +12,7 @@ while [ -h "$self" ]; do
   esac
 done
 contents="$(cd "$(dirname "$self")/../.." && pwd)"
-ELECTRON_RUN_AS_NODE=1 exec "$contents/MacOS/Ruah" "$contents/Resources/app/dist/cli.js" "$@"
+# The binary is named after the product ("Ruah", or "Ruah Test" for a flavored build).
+exe="$(/usr/bin/plutil -extract CFBundleExecutable raw -o - "$contents/Info.plist" 2>/dev/null || true)"
+[ -n "$exe" ] || exe=Ruah
+ELECTRON_RUN_AS_NODE=1 exec "$contents/MacOS/$exe" "$contents/Resources/app/dist/cli.js" "$@"

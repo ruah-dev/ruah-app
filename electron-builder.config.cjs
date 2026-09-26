@@ -24,8 +24,10 @@
 // extra privileges (the window only loads the daemon's http origin).
 
 const { macSigning } = require("./scripts/macos/signing.cjs");
+const { macFlavor } = require("./scripts/macos/flavor.cjs");
 
 const signing = macSigning();
+const flavor = macFlavor();
 
 // Electron's Info.plist asks for camera, microphone and Bluetooth "for this app". Ruah
 // itself uses none of them, but agents and the integrated terminal run as its children:
@@ -35,11 +37,12 @@ const CHILD_PROGRAMS = "Programs you run in Ruah's terminal or through its codin
 
 /** @type {import("electron-builder").Configuration} */
 const config = {
-  appId: "dev.ruah.app",
-  productName: "Ruah",
+  appId: flavor.appId,
+  productName: flavor.productName,
   copyright: "© 2026 Ruah",
   directories: { output: "release", buildResources: "electron/build" },
-  artifactName: "Ruah-${version}-${arch}.${ext}",
+  artifactName: flavor.artifactName,
+  ...(flavor.extraMetadata !== undefined ? { extraMetadata: flavor.extraMetadata } : {}),
   files: [
     "package.json",
     "electron/**/*",
@@ -99,7 +102,7 @@ const config = {
     },
   },
   dmg: {
-    title: "Ruah ${version}",
+    title: `${flavor.productName} \${version}`,
     background: "electron/build/dmg-background.tiff",
     iconSize: 96,
     window: { width: 540, height: 380 },

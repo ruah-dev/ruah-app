@@ -1,6 +1,6 @@
 // electron/app-shell.cjs: the desktop shell's decisions (no Electron needed).
 import { afterEach, describe, expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,11 +26,16 @@ interface AppShell {
   MIN_HEIGHT: number;
   repoFromArgv(argv: string[], options: { isPackaged: boolean; cwd?: string }): string | undefined;
   secondInstanceFolder(data: unknown, argv: string[], options: { isPackaged: boolean; cwd: string }): string | undefined;
-  userDataDir(options: { isPackaged: boolean; env: Record<string, string | undefined>; appData: string }): string | undefined;
+  appIdentity(pkg: unknown): { name: string; flavor: string };
+  profileName(options: { isPackaged: boolean; appName?: string; root?: string }): string;
+  userDataDir(options: { isPackaged: boolean; env: Record<string, string | undefined>; appData: string; appName?: string; root?: string }): string;
   logsDir(options: { env: Record<string, string | undefined>; defaultDir: string }): string;
+  confirmOpenFile(options: { env: Record<string, string | undefined>; launched: boolean }): boolean;
+  lockOwner(userData: string): { pid: number } | undefined;
   seedProfile(from: string, to: string): boolean;
   windowBounds(saved: unknown, areas: Rect[]): Rect & { maximized: boolean };
   rotateLog(file: string, maxBytes?: number): boolean;
+  openRotatingLog(file: string, options?: { maxBytes?: number }): { write(chunk: string | Buffer): void; end(): Promise<void> };
   buildMenuTemplate(options: { appName?: string; isDev?: boolean; platform?: string; actions?: Record<string, () => void> }): MenuItem[];
 }
 
@@ -74,15 +79,54 @@ describe("which folder a launch asks for", () => {
   });
 });
 
-describe("profile and logs", () => {
-  test("RUAH_USER_DATA, then a scratch RUAH_HOME, then `Ruah Dev` for a checkout; packaged keeps Electron's default", () => {
+describe("name, flavor, profile and logs", () => {
+  test("the app is Ruah; a flavored build (package.json ruahFlavor) is `Ruah <Flavor>`", () => {
+    expect(shell.appIdentity({ name: "@ruah-dev/app" })).toEqual({ name: "Ruah", flavor: "" });
+    expect(shell.appIdentity({ ruahFlavor: "test" })).toEqual({ name: "Ruah Test", flavor: "test" });
+    expect(shell.appIdentity({ ruahFlavor: "side-by-side" })).toEqual({ name: "Ruah Side By Side", flavor: "side-by-side" });
+    expect(shell.appIdentity({ ruahFlavor: "../Evil" })).toEqual({ name: "Ruah", flavor: "" });
+    expect(shell.appIdentity(null)).toEqual({ name: "Ruah", flavor: "" });
+  });
+
+  test("RUAH_USER_DATA, then a scratch RUAH_HOME, then one dev profile per checkout; packaged: <appData>/<name>", () => {
     const appData = "/Users/me/Library/Application Support";
     expect(shell.userDataDir({ isPackaged: true, env: { RUAH_USER_DATA: "/tmp/profile" }, appData })).toBe("/tmp/profile");
     expect(shell.userDataDir({ isPackaged: true, env: { RUAH_HOME: "/tmp/scratch" }, appData })).toBe("/tmp/scratch/desktop");
-    expect(shell.userDataDir({ isPackaged: false, env: {}, appData })).toBe(`${appData}/Ruah Dev`);
-    expect(shell.userDataDir({ isPackaged: true, env: { RUAH_HOME: "  " }, appData })).toBeUndefined();
+    expect(shell.userDataDir({ isPackaged: true, env: { RUAH_HOME: "  " }, appData })).toBe(`${appData}/Ruah`);
+    expect(shell.userDataDir({ isPackaged: true, env: {}, appData, appName: "Ruah Test" })).toBe(`${appData}/Ruah Test`);
+    expect(shell.userDataDir({ isPackaged: false, env: {}, appData, root: "/code/ruah-app" })).toMatch(/\/Ruah Dev-[0-9a-f]{8}$/);
     expect(shell.logsDir({ env: { RUAH_HOME: "/tmp/scratch" }, defaultDir: "/Users/me/Library/Logs/Ruah" })).toBe("/tmp/scratch/logs");
     expect(shell.logsDir({ env: {}, defaultDir: "/Users/me/Library/Logs/Ruah" })).toBe("/Users/me/Library/Logs/Ruah");
+  });
+
+  test("each checkout (worktree) gets its own dev profile — stable, and the same through a symlink", () => {
+    const dir = tempDir();
+    const a = join(dir, "ruah-app");
+    const b = join(dir, "wt-feature");
+    mkdirSync(a);
+    mkdirSync(b);
+    symlinkSync(a, join(dir, "link"));
+    const name = (root: string): string => shell.profileName({ isPackaged: false, root });
+    expect(name(a)).toMatch(/^Ruah Dev-[0-9a-f]{8}$/);
+    expect(name(a)).toBe(name(a));
+    expect(name(b)).not.toBe(name(a));
+    expect(name(join(dir, "link"))).toBe(name(a));
+    expect(shell.profileName({ isPackaged: true, root: a })).toBe("Ruah");
+    expect(shell.profileName({ isPackaged: true, appName: "Ruah Test" })).toBe("Ruah Test");
+  });
+
+  test("a scratch-home instance asks before opening a folder macOS routed to it after launch", () => {
+    expect(shell.confirmOpenFile({ env: { RUAH_HOME: "/tmp/scratch" }, launched: true })).toBe(true);
+    expect(shell.confirmOpenFile({ env: { RUAH_HOME: "/tmp/scratch" }, launched: false })).toBe(false); // its own launch folder
+    expect(shell.confirmOpenFile({ env: {}, launched: true })).toBe(false);
+    expect(shell.confirmOpenFile({ env: { RUAH_HOME: " " }, launched: true })).toBe(false);
+  });
+
+  test("the lock's owner comes from Chromium's SingletonLock (<host>-<pid>)", () => {
+    const dir = tempDir();
+    expect(shell.lockOwner(dir)).toBeUndefined();
+    symlinkSync("my-mac.local-4242", join(dir, "SingletonLock"));
+    expect(shell.lockOwner(dir)).toEqual({ pid: 4242 });
   });
 
   test("the dev profile is seeded once with the viewer's saved preferences (no lock files)", () => {
@@ -110,6 +154,23 @@ describe("profile and logs", () => {
     expect(readFileSync(join(dir, "daemon.1.log"), "utf8")).toHaveLength(100);
     expect(existsSync(file)).toBe(false);
     expect(shell.rotateLog(file, 50)).toBe(false);
+  });
+
+  test("a long-running log rotates itself when a write would pass the limit", async () => {
+    const dir = tempDir();
+    const file = join(dir, "daemon.log");
+    writeFileSync(file, "old\n");
+    const log = shell.openRotatingLog(file, { maxBytes: 100 });
+    for (let i = 0; i < 10; i += 1) log.write(`line ${i} ${"x".repeat(20)}\n`); // 28 bytes each
+    await log.end();
+    const current = readFileSync(file, "utf8");
+    const previous = readFileSync(join(dir, "daemon.1.log"), "utf8");
+    expect(current.length).toBeLessThanOrEqual(100);
+    expect(previous.length).toBeLessThanOrEqual(100);
+    // 28-byte lines, 100-byte limit: rotated before lines 3, 6 and 9; one previous file is kept.
+    expect(current).toBe(`line 9 ${"x".repeat(20)}\n`);
+    expect(previous.trim().split("\n").map((l) => l.slice(0, 6))).toEqual(["line 6", "line 7", "line 8"]);
+    log.write("after end is ignored\n");
   });
 });
 

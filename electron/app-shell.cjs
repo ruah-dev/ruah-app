@@ -1,7 +1,8 @@
 // electron/app-shell.cjs — the desktop shell's decisions, kept free of Electron
 // imports so they are unit-tested (test/desktop-shell.test.ts): which folder a
-// launch asks for, where the app keeps its Chromium profile, how big the
-// window is, the application menu and the daemon log rotation.
+// launch asks for, the app's name and flavor, where it keeps its Chromium
+// profile, how big the window is, the application menu and the daemon log.
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -56,27 +57,90 @@ function secondInstanceFolder(additionalData, argv, { isPackaged, cwd }) {
   return repoFromArgv(argv, { isPackaged, cwd });
 }
 
+/** A build flavor (`RUAH_APP_FLAVOR`, e.g. "test"): lower-case letters, digits and dashes. */
+const FLAVOR = /^[a-z][a-z0-9-]{0,23}$/;
+
+/**
+ * The app's name from its package.json: "Ruah", or "Ruah <Flavor>" for a flavored
+ * build (`RUAH_APP_FLAVOR=test pnpm dist` → "Ruah Test", bundle id dev.ruah.app.test;
+ * electron-builder writes `ruahFlavor` into the packaged package.json).
+ */
+function appIdentity(pkg) {
+  const flavor = pkg !== null && typeof pkg === "object" && typeof pkg.ruahFlavor === "string" && FLAVOR.test(pkg.ruahFlavor) ? pkg.ruahFlavor : "";
+  if (flavor === "") return { name: "Ruah", flavor: "" };
+  const title = flavor
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  return { name: `Ruah ${title}`, flavor };
+}
+
+function realpathOr(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * The profile and logs folder name: the app's name when packaged; for a source
+ * checkout "<name> Dev-<8 hex of the checkout's real path>", so parallel
+ * worktrees each get their own dev instance (and never hand off to the
+ * installed app or to each other).
+ */
+function profileName({ isPackaged, appName = "Ruah", root }) {
+  if (isPackaged || typeof root !== "string") return isPackaged ? appName : `${appName} Dev`;
+  const id = crypto.createHash("sha256").update(realpathOr(root)).digest("hex").slice(0, 8);
+  return `${appName} Dev-${id}`;
+}
+
 /**
  * Where Chromium keeps this instance's profile (localStorage, cache) and its
  * single-instance lock:
  * - RUAH_USER_DATA: exactly there;
- * - RUAH_HOME set: <RUAH_HOME>/desktop — a scratch home is a separate, isolated instance;
- * - dev (`pnpm app`): <appData>/Ruah Dev, so a source checkout never hands off to the installed app;
- * - packaged: undefined (Electron's default, <appData>/Ruah).
+ * - RUAH_HOME set: <RUAH_HOME>/desktop (its own profile and lock — but macOS still
+ *   routes `open -a` / Finder folders by bundle id, see confirmOpenFile);
+ * - otherwise <appData>/<profileName>: "Ruah" packaged, "Ruah Dev-<id>" per checkout.
  */
-function userDataDir({ isPackaged, env = process.env, appData }) {
+function userDataDir({ isPackaged, env = process.env, appData, appName = "Ruah", root }) {
   const explicit = typeof env.RUAH_USER_DATA === "string" ? env.RUAH_USER_DATA.trim() : "";
   if (explicit.length > 0) return path.resolve(explicit);
   const home = typeof env.RUAH_HOME === "string" ? env.RUAH_HOME.trim() : "";
   if (home.length > 0) return path.join(path.resolve(home), "desktop");
-  if (!isPackaged) return path.join(appData, "Ruah Dev");
-  return undefined;
+  return path.join(appData, profileName({ isPackaged, appName, root }));
 }
 
-/** Where the daemon log goes: <RUAH_HOME>/logs for a scratch home, else Electron's logs dir (~/Library/Logs/Ruah). */
+/** Where the daemon log goes: <RUAH_HOME>/logs for a scratch home, else `defaultDir` (~/Library/Logs/<profileName>). */
 function logsDir({ env = process.env, defaultDir }) {
   const home = typeof env.RUAH_HOME === "string" ? env.RUAH_HOME.trim() : "";
   return home.length > 0 ? path.join(path.resolve(home), "logs") : defaultDir;
+}
+
+/**
+ * Whether a folder that reached this instance through `open-file` needs a yes first.
+ * macOS delivers `open -a Ruah <dir>`, Finder "Open With" and Dock drops to whichever
+ * app with this bundle id runs, whatever its RUAH_HOME: an instance on a scratch home
+ * asks before it maps (and writes architecture.json into) a folder it may not be meant
+ * for. The folder of its own launch (before the first window) is trusted.
+ */
+function confirmOpenFile({ env = process.env, launched }) {
+  const home = typeof env.RUAH_HOME === "string" ? env.RUAH_HOME.trim() : "";
+  return launched === true && home.length > 0;
+}
+
+/**
+ * Who holds a profile's single-instance lock: Chromium's SingletonLock symlink
+ * points at "<host>-<pid>". Undefined when it is not there or unreadable.
+ */
+function lockOwner(userDataPath) {
+  try {
+    const target = fs.readlinkSync(path.join(userDataPath, "SingletonLock"));
+    const match = /-(\d+)$/.exec(target);
+    return match !== null ? { pid: Number.parseInt(match[1], 10) } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -148,8 +212,10 @@ function writeJson(file, value) {
   }
 }
 
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
 /** Keeps one previous log: daemon.log → daemon.1.log once it passes `maxBytes`. */
-function rotateLog(file, maxBytes = 5 * 1024 * 1024) {
+function rotateLog(file, maxBytes = LOG_MAX_BYTES) {
   try {
     if (fs.statSync(file).size < maxBytes) return false;
     fs.renameSync(file, file.replace(/\.log$/, ".1.log"));
@@ -157,6 +223,66 @@ function rotateLog(file, maxBytes = 5 * 1024 * 1024) {
   } catch {
     return false;
   }
+}
+
+/**
+ * An append-only log that rotates itself (daemon.log → daemon.1.log) whenever the
+ * next write would take it past `maxBytes` — the app stays in the Dock for days while
+ * the daemon keeps writing. Never throws; a failing disk just stops the log.
+ */
+function openRotatingLog(file, { maxBytes = LOG_MAX_BYTES } = {}) {
+  let stream = null;
+  let size = 0;
+  const open = () => {
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      rotateLog(file, maxBytes);
+      try {
+        size = fs.statSync(file).size;
+      } catch {
+        size = 0;
+      }
+      // Opened now (not lazily by the stream): a rename right after must move this very file.
+      const next = fs.createWriteStream(file, { fd: fs.openSync(file, "a") });
+      next.on("error", () => {
+        if (stream === next) stream = null;
+      });
+      stream = next;
+    } catch {
+      stream = null;
+    }
+  };
+  open();
+  return {
+    write(chunk) {
+      if (stream === null) return;
+      const bytes = typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (size > 0 && size + bytes > maxBytes) {
+        // The old stream keeps its descriptor: what it still has to flush lands in daemon.1.log.
+        const old = stream;
+        try {
+          fs.renameSync(file, file.replace(/\.log$/, ".1.log"));
+        } catch {
+          // keep appending to whatever is there
+        }
+        old.end();
+        stream = null;
+        open();
+        if (stream === null) return;
+      }
+      stream.write(chunk);
+      size += bytes;
+    },
+    /** Resolves once everything written so far is on disk. */
+    end() {
+      const current = stream;
+      stream = null;
+      return new Promise((resolve) => {
+        if (current === null) resolve();
+        else current.end(resolve);
+      });
+    },
+  };
 }
 
 /**
@@ -246,14 +372,20 @@ module.exports = {
   DEFAULT_HEIGHT,
   MIN_WIDTH,
   MIN_HEIGHT,
+  FLAVOR,
   repoFromArgv,
   secondInstanceFolder,
+  appIdentity,
+  profileName,
   userDataDir,
   logsDir,
+  confirmOpenFile,
+  lockOwner,
   seedProfile,
   windowBounds,
   readJson,
   writeJson,
   rotateLog,
+  openRotatingLog,
   buildMenuTemplate,
 };

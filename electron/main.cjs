@@ -16,7 +16,10 @@ let BASE = `http://127.0.0.1:${PORT}`;
 // dev: the checkout; packaged: Ruah.app/Contents/Resources/app (asar off: the
 // daemon is a plain Node program that spawns binaries from its node_modules).
 const ROOT = path.join(__dirname, "..");
-const VERSION = require(path.join(ROOT, "package.json")).version;
+const PKG = require(path.join(ROOT, "package.json"));
+const VERSION = PKG.version;
+// "Ruah", or "Ruah <Flavor>" for a side-by-side build (RUAH_APP_FLAVOR, its own bundle id).
+const APP_NAME = desktop.appIdentity(PKG).name;
 const IS_DEV = !app.isPackaged;
 const DEVTOOLS = IS_DEV || process.env.RUAH_DEVTOOLS === "1";
 // Ruah brand mark (from ruah-website public/brand/ruah-icon.svg, on the macOS
@@ -32,16 +35,17 @@ const VIEWER_DIR = process.env.RUAH_VIEWER ?? path.join(ROOT, "viewer");
 
 // ---------- identity, profile and single instance (before `ready`) ----------
 
-app.setName("Ruah");
-const profileDir = desktop.userDataDir({ isPackaged: app.isPackaged, env: process.env, appData: app.getPath("appData") });
-if (profileDir !== undefined) {
-  // `pnpm app` used to share the installed app's profile: carry the viewer's preferences over once.
-  if (IS_DEV && process.env.RUAH_HOME === undefined && process.env.RUAH_USER_DATA === undefined) {
-    desktop.seedProfile(path.join(app.getPath("appData"), "Ruah"), profileDir);
-  }
-  app.setPath("userData", profileDir);
+app.setName(APP_NAME);
+// Packaged: ~/Library/Application Support/Ruah; a checkout: "Ruah Dev-<id>" of its own (one dev
+// instance per worktree); RUAH_HOME / RUAH_USER_DATA: there (CONTRACTS §15.5).
+const PROFILE_NAME = desktop.profileName({ isPackaged: app.isPackaged, appName: APP_NAME, root: ROOT });
+const profileDir = desktop.userDataDir({ isPackaged: app.isPackaged, env: process.env, appData: app.getPath("appData"), appName: APP_NAME, root: ROOT });
+// `pnpm app` used to share the installed app's profile: carry the viewer's preferences over once.
+if (IS_DEV && process.env.RUAH_HOME === undefined && process.env.RUAH_USER_DATA === undefined) {
+  desktop.seedProfile(path.join(app.getPath("appData"), "Ruah"), profileDir);
 }
-app.setAppLogsPath(desktop.logsDir({ env: process.env, defaultDir: path.join(app.getPath("home"), "Library", "Logs", IS_DEV ? "Ruah Dev" : "Ruah") }));
+app.setPath("userData", profileDir);
+app.setAppLogsPath(desktop.logsDir({ env: process.env, defaultDir: path.join(app.getPath("home"), "Library", "Logs", PROFILE_NAME) }));
 const LOG_FILE = path.join(app.getPath("logs"), "daemon.log");
 const WINDOW_STATE = path.join(app.getPath("userData"), "window-state.json");
 
@@ -56,6 +60,7 @@ let daemonReadyOnce = false; // a crash after the first successful start offers 
 let win = null;
 let quitting = false;
 let logStream = null;
+let restartOffered = false; // one restart dialog (and one restart) at a time
 const pendingFolders = [];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -74,17 +79,9 @@ function log(line) {
 }
 
 function openLog() {
-  try {
-    fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
-    desktop.rotateLog(LOG_FILE);
-    logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
-    logStream.on("error", () => {
-      logStream = null;
-    });
-    logStream.write(`\n--- Ruah ${VERSION} (${IS_DEV ? "dev" : "app"}) ${new Date().toISOString()} ---\n`);
-  } catch {
-    logStream = null;
-  }
+  // Rotates itself past 5 MB, also while the app runs for days (CONTRACTS §15.5).
+  logStream = desktop.openRotatingLog(LOG_FILE);
+  logStream.write(`\n--- ${APP_NAME} ${VERSION} (${IS_DEV ? `dev, ${ROOT}` : "app"}) ${new Date().toISOString()} ---\n`);
 }
 
 // Without a repo the daemon starts in the launcher state: the viewer's start
@@ -169,30 +166,55 @@ function messageBox(options) {
   return win !== null && !win.isDestroyed() ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options);
 }
 
+/** The backend died after it had been healthy and nothing is bringing it back. */
+function backendDown() {
+  return !quitting && daemonReadyOnce && daemon === null;
+}
+
+/**
+ * One dialog at a time: Restart / Later (Esc) / Show Logs / Quit. A restart that dies
+ * before it is healthy comes back to this same dialog (never a second one); folders that
+ * arrived meanwhile open once it is up. "Later" leaves it down — the Dock icon asks again.
+ */
 async function offerRestart(reason) {
-  const { response } = await messageBox({
-    type: "warning",
-    message: "Ruah's backend stopped",
-    detail: `It exited unexpectedly (${reason}). Running agents were stopped; your projects and chats are saved.`,
-    buttons: ["Restart", "Show Logs", "Quit"],
-    defaultId: 0,
-    cancelId: 2,
-  });
-  if (response === 1) {
-    shell.showItemInFolder(LOG_FILE);
-    return offerRestart(reason);
-  }
-  if (response === 2) {
-    app.quit();
-    return;
-  }
+  if (restartOffered || !backendDown()) return;
+  restartOffered = true;
   try {
-    // Back on the start screen (recent projects one click away); chats and maps are on disk.
-    startDaemon(undefined);
-    await waitForDaemon(60000);
-    if (win !== null && !win.isDestroyed()) win.reload();
-  } catch (err) {
-    dialog.showErrorBox("Ruah could not restart its backend", String(err?.message ?? err));
+    let why = `It exited unexpectedly (${reason}).`;
+    for (;;) {
+      const { response } = await messageBox({
+        type: "warning",
+        message: `${APP_NAME}'s backend stopped`,
+        detail: `${why} Running agents were stopped; your projects and chats are saved.`,
+        buttons: ["Restart", "Later", "Show Logs", "Quit"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (quitting) return;
+      if (response === 1) return;
+      if (response === 2) {
+        shell.showItemInFolder(LOG_FILE);
+        continue;
+      }
+      if (response === 3) {
+        app.quit();
+        return;
+      }
+      try {
+        // Back on the start screen (recent projects one click away); chats and maps are on disk.
+        startDaemon(undefined);
+        await waitForDaemon(60000);
+        if (win !== null && !win.isDestroyed()) win.reload();
+        await flushPendingFolders(); // open-file / second-instance folders that arrived while it was down
+        return;
+      } catch (err) {
+        log(`[ruah] restart failed: ${err?.message ?? err}`);
+        if (daemon !== null && daemon.exitCode === null) daemon.kill("SIGTERM");
+        why = `It could not be restarted (${err?.message ?? err}).`;
+      }
+    }
+  } finally {
+    restartOffered = false;
   }
 }
 
@@ -226,6 +248,25 @@ function postJson(pathname, body) {
   });
 }
 
+/**
+ * An instance on a scratch RUAH_HOME asks before it opens a folder macOS handed it after
+ * launch: `open -a`, Finder and the Dock pick the running app by bundle id, not by home
+ * (desktop.confirmOpenFile). Resolves true to go ahead.
+ */
+async function confirmForeignFolder(target) {
+  if (!desktop.confirmOpenFile({ env: process.env, launched: daemonReadyOnce })) return true;
+  showWindow();
+  const { response } = await messageBox({
+    type: "question",
+    message: `Open ${path.basename(target)} in this ${APP_NAME}?`,
+    detail: `This ${APP_NAME} keeps its data in ${process.env.RUAH_HOME} (a separate instance). macOS sends folders opened with ${APP_NAME} to whichever copy is running, so this one may not be the one you meant. Opening maps the folder and writes architecture.json into it.\n\n${target}`,
+    buttons: ["Open", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  return response === 0;
+}
+
 /** Opens `folder` as the current project (CONTRACTS §5.3 POST /api/projects/open) and brings the window up. */
 async function openFolder(folder, source) {
   if (typeof folder !== "string" || !path.isAbsolute(folder)) return;
@@ -235,8 +276,13 @@ async function openFolder(folder, source) {
   } catch {
     return;
   }
+  if (source === "open-file" && !(await confirmForeignFolder(target))) {
+    log(`[ruah] not opening ${target} (open-file, declined)`);
+    return;
+  }
   if (!daemonReady) {
     pendingFolders.push(target);
+    if (backendDown()) void offerRestart("it is not running");
     return;
   }
   log(`[ruah] opening ${target} (${source})`);
@@ -383,7 +429,7 @@ function showWindow() {
 
 function installMenu() {
   const template = desktop.buildMenuTemplate({
-    appName: "Ruah",
+    appName: APP_NAME,
     isDev: DEVTOOLS,
     actions: {
       openFolder: () => void pickAndOpenFolder(),
@@ -551,7 +597,13 @@ async function main() {
 }
 
 if (!primary) {
-  // Another Ruah owns this profile: it received our folder through `second-instance`.
+  // Another Ruah owns this profile: it received our folder through `second-instance`. Say so —
+  // from a terminal (`pnpm app`, `ruah app`) a silent exit looks like a crash.
+  const owner = desktop.lockOwner(app.getPath("userData"));
+  process.stderr.write(
+    `[ruah] ${APP_NAME} is already running with this profile (${app.getPath("userData")}${owner !== undefined ? `, pid ${owner.pid}` : ""}); ` +
+      `${startupFolder !== undefined ? `handed ${startupFolder} to it` : "brought it to the front"}.\n`,
+  );
   app.quit();
 } else {
   app.on("second-instance", (_event, argv, workingDirectory, additionalData) => {
@@ -563,7 +615,7 @@ if (!primary) {
   });
 
   app.setAboutPanelOptions({
-    applicationName: "Ruah",
+    applicationName: APP_NAME,
     applicationVersion: VERSION,
     version: `Electron ${process.versions.electron}`,
     copyright: "© 2026 Ruah",
@@ -582,8 +634,12 @@ if (!primary) {
     });
   });
 
-  // Dock icon clicked (or the app re-activated) with the window hidden or closed.
-  app.on("activate", () => showWindow());
+  // Dock icon clicked (or the app re-activated) with the window hidden or closed; a backend
+  // left down with "Later" is offered again.
+  app.on("activate", () => {
+    if (backendDown()) void offerRestart("it is not running");
+    else showWindow();
+  });
 
   app.on("window-all-closed", () => {
     if (process.platform === "darwin" && !quitting) return; // stays in the Dock; the daemon keeps running

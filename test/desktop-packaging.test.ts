@@ -19,6 +19,7 @@ interface BuilderConfig {
   extraResources: { from: string; to: string }[];
   afterPack: string;
   afterSign: string;
+  extraMetadata?: Record<string, unknown>;
   electronFuses: Record<string, boolean>;
   mac: {
     target: { target: string; arch: string[] }[];
@@ -38,8 +39,17 @@ interface Signing {
   developerId: boolean;
 }
 
+interface Flavor {
+  flavor: string;
+  appId: string;
+  productName: string;
+  artifactName: string;
+  extraMetadata?: Record<string, unknown>;
+}
+
 const config = require("../electron-builder.config.cjs") as BuilderConfig;
 const { macSigning } = require("../scripts/macos/signing.cjs") as { macSigning: (env: Record<string, string>) => Signing };
+const { macFlavor } = require("../scripts/macos/flavor.cjs") as { macFlavor: (env: Record<string, string>) => Flavor };
 const afterPack = require("../scripts/macos/after-pack.cjs") as { default: (context: unknown) => Promise<void> };
 const afterSign = require("../scripts/macos/after-sign.cjs") as { checkFuses: (binary: string, env: NodeJS.ProcessEnv, cwd: string) => Promise<string> };
 
@@ -126,6 +136,26 @@ describe("signing", () => {
   });
 });
 
+describe("flavors (RUAH_APP_FLAVOR)", () => {
+  test("default: Ruah, dev.ruah.app, no extra metadata", () => {
+    expect(macFlavor({})).toMatchObject({ flavor: "", appId: "dev.ruah.app", productName: "Ruah", artifactName: "Ruah-${version}-${arch}.${ext}" });
+    expect(macFlavor({}).extraMetadata).toBeUndefined();
+    expect(config.extraMetadata).toBeUndefined();
+  });
+
+  test("a flavor is a side-by-side app: its own bundle id (macOS routes folders by it), name and package metadata", () => {
+    expect(macFlavor({ RUAH_APP_FLAVOR: "test" })).toEqual({
+      flavor: "test",
+      appId: "dev.ruah.app.test",
+      productName: "Ruah Test",
+      artifactName: "Ruah-test-${version}-${arch}.${ext}",
+      extraMetadata: { ruahFlavor: "test" },
+    });
+    expect(() => macFlavor({ RUAH_APP_FLAVOR: "Te st" })).toThrow(/RUAH_APP_FLAVOR/);
+    expect(() => macFlavor({ RUAH_APP_FLAVOR: "../x" })).toThrow(/RUAH_APP_FLAVOR/);
+  });
+});
+
 describe("afterSign fuse check", () => {
   test("it rejects a binary with Electron's default fuses (NODE_OPTIONS honoured)", async () => {
     const electron = require("electron") as string;
@@ -161,6 +191,23 @@ describe("afterPack and the bundled CLI", () => {
     const { bundle, context } = fakeBundle(dir);
     rmSync(join(bundle, "Contents", "Resources", "app", "node_modules", "node-pty"), { recursive: true });
     await expect(afterPack.default(context)).rejects.toThrow(/spawn-helper/);
+  });
+
+  test("Resources/bin/ruah-app finds a flavored bundle's binary through Info.plist", () => {
+    const dir = tempDir();
+    const { bundle } = fakeBundle(dir);
+    mkdirSync(join(bundle, "Contents", "MacOS"), { recursive: true });
+    const binary = join(bundle, "Contents", "MacOS", "Ruah Test");
+    writeFileSync(binary, '#!/bin/sh\necho "flavored $1"\n');
+    chmodSync(binary, 0o755);
+    writeFileSync(
+      join(bundle, "Contents", "Info.plist"),
+      '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleExecutable</key><string>Ruah Test</string></dict></plist>\n',
+    );
+    const shim = join(bundle, "Contents", "Resources", "bin", "ruah-app");
+    chmodSync(shim, 0o755);
+    const out = spawnSync(shim, [], { encoding: "utf8" });
+    if (process.platform === "darwin") expect(out.stdout.trim()).toBe(`flavored ${join(bundle, "Contents", "Resources", "app", "dist", "cli.js")}`);
   });
 
   test("Resources/bin/ruah-app runs dist/cli.js on the app binary as Node, also through a symlink", () => {
