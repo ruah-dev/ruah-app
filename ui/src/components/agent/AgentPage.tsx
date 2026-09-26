@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AgentPanel, NewSessionButton } from "./AgentPanel";
 import { ChatSwitcher } from "@/components/chats/ChatSwitcher";
+import { ChatStrip } from "@/components/shell/ChatStrip";
 
 export function AgentPage() {
   const { daemon, architecture } = useWorkspace();
@@ -53,6 +54,7 @@ export function AgentPage() {
       >
         <NewSessionButton daemon={daemon} />
       </PageHeader>
+      <ChatStrip className="px-3" />
       <div className="flex min-h-0 flex-1">
         {wb.outlineOpen ? (
           <PageDrawer title="In this chat">

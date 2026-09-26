@@ -1,8 +1,9 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ComposerSurface.tsx and
 // ComposerPrimaryActions.tsx (MIT): a rounded surface, auto-growing textarea, controls in the
 // bottom row, a round send / stop button on the right.
-import { useEffect, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { onComposerDraft, takeComposerDraft } from "@/lib/composer-draft";
+import { setComposerPending } from "@/lib/build-reload";
 import { ArrowUp, AtSign, Loader2, Paperclip, Square, X } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
 import type { DiagramNode } from "@/data/graphs";
@@ -128,6 +129,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const imagesBlocked = items.length > 0 && !!imageReason;
   const canSend =
     !inputDisabled && draft.trim().length > 0 && !failed && !imagesBlocked;
+
+  // Attached images live in memory only: an automatic reload for a new build waits for them.
+  const pendingId = useId();
+  const pendingCount = items.length + (queued ? 1 : 0);
+  useEffect(() => {
+    setComposerPending(pendingId, pendingCount);
+    return () => setComposerPending(pendingId, 0);
+  }, [pendingId, pendingCount]);
 
   const flash = (text: string | null) => {
     if (text) setNotice(text);

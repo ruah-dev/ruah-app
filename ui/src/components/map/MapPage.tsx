@@ -44,6 +44,7 @@ import { InspectorPanel } from "@/components/explorer/InspectorPanel";
 import { kindStyles, styleFor } from "@/components/explorer/kinds";
 import { NewSessionButton } from "@/components/agent/AgentPanel";
 import { ChatSwitcher } from "@/components/chats/ChatSwitcher";
+import { ChatStrip } from "@/components/shell/ChatStrip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -668,6 +669,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
           </Tooltip>
         ) : null}
       </div>
+      {view === "agent" && !mobile ? <ChatStrip /> : null}
       <div className="flex min-h-0 flex-1 flex-col">
         {view === "properties" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">

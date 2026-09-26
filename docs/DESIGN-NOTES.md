@@ -250,6 +250,51 @@ Decisions:
 - **Integration slots** (`shell/slots.ts`): the Extensions rail entry appears once `/extensions`
   is routed; `registerPreviewPane(Component)` adds the top bar's Preview toggle and an
   "Agent | Preview" tab on the right; `setAgentLimitHint(agentId, text)` shows a "remaining" hint in
-  the agent pill.
+  the agent pill (2026-09-26: a segment beside it, see below); `registerStatusItem` adds a top-bar
+  status chip.
 - **Shortcuts in one place**: `shell/nav.ts` `SHORTCUTS`, listed by the launcher's "Keyboard
   shortcuts" item.
+
+## Shell, one step richer: labelled rail, projects, recent chats, status chips, Advanced layout (2026-09-26)
+
+The rail + command bar shell turned out "a bit too simple": projects and chats were one menu
+away, and the top bar said little. The user chose all four additions plus a layout toggle:
+
+| Addition | Where | Details |
+| --- | --- | --- |
+| Labels under the rail icons | `shell/Rail.tsx` | 72 px rail; Settings → Appearance → Rail labels (off = the bare 56 px rail) |
+| Projects in the rail | `shell/RailProjects.tsx`, `lib/rail.ts` | Avatar tiles (Arc spaces): pinned first (⌘1–9), then recent; as many as fit the height, then "+N" (All projects, with a dot when a hidden project needs you) and "+" (open folder, new project, new system). Badge: amber dot = an agent waits for you, pulsing lavender = working, a count = unread. Right-click: pin / reveal / remove |
+| Recent chats in view | `shell/ChatStrip.tsx`, `lib/recent-chats.ts` | One row under the agent panel's header and the Agent page's header: the 3–5 most recently updated chats (the one in front always among them) with a status dot (working, waiting, done, failed, stopped) and bold when unread. No New of its own: the header right above has the chat switcher and New chat (⌘N). Hidden while there is nothing to switch to |
+| More status in the top bar | `shell/StatusChips.tsx`, `lib/status-chips.ts` | The open project's cloud health "9 ok · 1 degraded" (§14 scope; amber / red when something is unhealthy; click → Cloud; hidden without a provider or with nothing in scope); the agent's remaining limit as a segment of the agent pill (amber ≤ 25 %, red ≤ 10 %; click → Usage); registered chips (`registerStatusItem`, e.g. the live preview's "Preview: running :5173", the viewer's own "Update ready") |
+| Layout: Standard \| Advanced | `shell/layout.ts`, `shell/SidebarLists.tsx` | Advanced widens the rail into a 240 px labelled sidebar: the pages as rows (G-shortcut on hover, counts), a Projects section (pinned / recent, badges, ⌘1–9) and the open project's Chats (date groups, status dots, rename / delete), both recovered from the sidebar removed in the relayout. Toggled from Settings → Appearance, the launcher, the control at the bottom of the rail and ⌘\ |
+| Auto-reload on a newer viewer build | `shell/useBuildReload.tsx`, `lib/build-reload.ts` | CONTRACTS §2.6 |
+
+Decisions:
+- **Standard stays the default.** Advanced is for people who want lists; both read the same data
+  and the same shortcuts. The width animates (200 ms, none with reduced motion). Below 1100 px
+  Advanced folds back to the rail (the page needs the room) and Settings says so.
+- **Preferences are per user, in the viewer** (`lib/preferences.ts`, `ruah.prefs.v1`): layout and
+  rail labels apply at once and reach other windows through the `storage` event. Not in the
+  daemon: they are about this screen, not the project.
+- **Tiles keep their slots.** The daemon sorts recents by last opened, which would make the tile you
+  just clicked jump to the top. The rail keeps the previous order (`stableOrder`, saved in
+  `ruah.rail.order.v1`); a project that gets a tile takes the slot of the one it pushed out; the
+  open project always has one. The saved order is only rewritten once the project list has loaded
+  (`projectsLoaded`): a page that just opened knows no project, then only the open one, and its
+  saved ids keep their slots meanwhile.
+- **Pinned projects keep their numbers.** The daemon sorts pinned projects by last opened too, so
+  opening ⌘2 would make it ⌘1. The viewer keeps the pin order (`ruah.rail.pinned.v1`, settled
+  against every `GET /api/projects`; a new pin goes last) and sorts `recentProjects` by it, so the
+  rail, the Advanced sidebar, the launchers, the project menu and ⌘1–9 all read one order.
+- **No second list of the same chats.** In Advanced the sidebar's Chats section replaces the
+  strip; in Standard the strip complements the chat switcher (the full list stays in ⌘J, the
+  launcher and the Chats page). One New chat control per header: the strip has none.
+- **Keyboard reach.** Row actions (pin, reveal, remove; a chat's rename / delete menu) show on
+  hover and on focus within the row, so Tab reaches them. Toggling the layout from the rail (its
+  control, or ⌘\ with focus in it) moves the focus to the new layout's control.
+- **Status chips are quiet by default**: neutral outline, colour only for a problem; nothing shows
+  that has nothing to say (no provider, no limit hint, no registration). Narrow windows get the
+  short form ("1 degraded").
+- **Semantic tokens only** (`bg-warn`, `bg-ai`, `bg-ok`, `bg-bad`, `bg-surface-2`, `ring-sidebar`,
+  `text-faint` …), so every theme and accent works unchanged.
+

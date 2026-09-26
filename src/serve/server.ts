@@ -4,7 +4,7 @@
 import * as http from "node:http";
 import { WebSocketServer } from "ws";
 import type { ArchitectureStore } from "./architecture-store.js";
-import { serveStatic } from "./static.js";
+import { serveStatic, viewerBuildId } from "./static.js";
 import { serveFile } from "./files.js";
 import { serveContext } from "./context-endpoint.js";
 import { handleExpandRequest, isExpandPath } from "../expand/http.js";
@@ -120,7 +120,14 @@ export function startServer(
     const pathname = url.pathname;
 
     if (pathname === "/api/health" && req.method === "GET") {
-      sendJson(res, 200, { ok: true, version: hub.version(), agent: hub.agentState(), project: hub.project()?.id ?? null });
+      sendJson(res, 200, {
+        ok: true,
+        version: hub.version(),
+        agent: hub.agentState(),
+        project: hub.project()?.id ?? null,
+        // The viewer build this daemon serves now (a window on an older build reloads).
+        viewerBuild: viewerBuildId(options.viewerDir),
+      });
       return;
     }
     if (handleUsageRequest(req, res, url, options.usage)) return;

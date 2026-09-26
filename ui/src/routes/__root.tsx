@@ -20,6 +20,7 @@ import { MapActivityToasts } from "@/components/map/MapActivityToasts";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { installStaleBuildRecovery, isStaleChunkError, reloadForNewBuild } from "../lib/stale-build";
+import { BUILD_ID } from "../lib/build-reload";
 
 installStaleBuildRecovery();
 
@@ -134,6 +135,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:site_name", content: "Ruah" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      // The daemon reads this to report which viewer build it serves (lib/build-reload.ts).
+      ...(BUILD_ID ? [{ name: "ruah-build", content: BUILD_ID }] : []),
     ],
     links: [
       {

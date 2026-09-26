@@ -1,9 +1,10 @@
 // The one-row top bar (44px): project switcher, git branch, the search / command field (opens the
-// ⌘K launcher), the cross-project activity bell, the terminal toggle and the agent pill (toggles
-// the right agent panel).
+// ⌘K launcher), the status chips (cloud health, registered items: ./StatusChips.tsx), the
+// cross-project activity bell, the terminal toggle and the agent pill (toggles the right agent
+// panel) with the agent's remaining limit beside it (./slots.ts setAgentLimitHint).
 import { useState } from "react";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { Bell, CheckCheck, GitBranch, MonitorPlay, Search } from "lucide-react";
+import { Bell, CheckCheck, Gauge, GitBranch, MonitorPlay, Search } from "lucide-react";
 import type { ActivityEvent, ResumeInfo } from "@/lib/contracts";
 import { useActivity } from "@/lib/activity";
 import { attentionCount, eventTone, feedEvents, pendingPermissions, type FeedTone } from "@/lib/activity-feed";
@@ -23,7 +24,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { setShellDialog, useShellDialogs } from "./shellState";
-import { useSlots } from "./slots";
+import { useSlots, type LimitHint } from "./slots";
+import { StatusArea } from "./StatusChips";
 
 const dotTone: Record<FeedTone, string> = {
   ok: "bg-ok",
@@ -249,13 +251,13 @@ export function AgentPill({ mobile = false }: { mobile?: boolean }) {
     daemon.agent?.agent?.name ??
     "Agent";
   const word = agentWord(expression, daemon);
-  // Room for a per-agent "remaining" hint (Usage limits, ./slots.ts).
+  // The agent's remaining limit (Usage limits feed it through ./slots.ts); none = no segment.
   const { limitHints } = useSlots();
-  const hint = agents ? limitHints[agents.currentAgentId] : undefined;
+  const hint = agents && !mobile ? limitHints[agents.currentAgentId] : undefined;
   const onAgentPage = pathname === "/agent";
   const pressed = !onAgentPage && wb.showPanel;
   const working = word === "working" || word === "starting";
-  return (
+  const pill = (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
@@ -271,7 +273,8 @@ export function AgentPill({ mobile = false }: { mobile?: boolean }) {
             } else void router.navigate({ to: "/agent" });
           }}
           className={cn(
-            "flex h-7 max-w-52 min-w-0 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] text-foreground transition-colors",
+            "flex h-7 max-w-52 min-w-0 shrink-0 items-center gap-1.5 border px-2.5 text-[12px] text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring",
+            hint ? "rounded-s-full" : "rounded-full",
             word === "needs you" ? "border-warn/40" : "border-ai/35",
             pressed ? "bg-ai/14" : "bg-surface-2 hover:bg-ai/10",
           )}
@@ -280,7 +283,6 @@ export function AgentPill({ mobile = false }: { mobile?: boolean }) {
           <span className="min-w-0 truncate">
             {name} · {word}
           </span>
-          {hint ? <span className="shrink-0 text-[11px] text-muted-foreground">· {hint}</span> : null}
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-80">
@@ -288,6 +290,49 @@ export function AgentPill({ mobile = false }: { mobile?: boolean }) {
         <span className="mt-0.5 block text-muted-foreground">
           {onAgentPage ? "Click or ⌘. to switch agent or model" : `${pressed ? "Hide" : "Show"} the agent panel · ⌘I · ⌘. switches agent / model`}
         </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+  if (!hint) return pill;
+  return (
+    <div className="flex shrink-0 items-center">
+      {pill}
+      <LimitSegment name={name} hint={hint} borderClass={word === "needs you" ? "border-warn/40" : "border-ai/35"} />
+    </div>
+  );
+}
+
+const LIMIT_TONE: Record<NonNullable<LimitHint["tone"]>, string> = {
+  ok: "text-muted-foreground",
+  muted: "text-muted-foreground",
+  warn: "text-warn",
+  bad: "text-bad",
+};
+
+/** "62% left" beside the agent pill; opens Usage (G U). */
+function LimitSegment({ name, hint, borderClass }: { name: string; hint: LimitHint; borderClass: string }) {
+  const router = useRouter();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => void router.navigate({ to: "/usage" })}
+          aria-label={`${name}: ${hint.text}. Open Usage`}
+          className={cn(
+            "-ms-px flex h-7 shrink-0 items-center gap-1 rounded-e-full border bg-surface-2 ps-2 pe-2.5 text-[11.5px] tabular-nums outline-none transition-colors hover:bg-surface-3 focus-visible:ring-1 focus-visible:ring-ring",
+            borderClass,
+            LIMIT_TONE[hint.tone ?? "muted"],
+          )}
+        >
+          <Gauge className="size-3.5 shrink-0" />
+          <span className="max-lg:hidden">{hint.text}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-80">
+        {name}: {hint.text}
+        {hint.detail ? <span className="block text-muted-foreground">{hint.detail}</span> : null}
+        <span className="block text-muted-foreground">Open Usage · G U</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -328,6 +373,7 @@ export function TopBar({ resume }: { resume: ResumeInfo | null }) {
       <ProjectMenu />
       {live ? <BranchChip resume={resume} /> : null}
       <CommandField />
+      <StatusArea />
       <ActivityBell />
       {daemon.source === "daemon" ? <TerminalToggleButton side="bottom" /> : null}
       <PreviewToggle />

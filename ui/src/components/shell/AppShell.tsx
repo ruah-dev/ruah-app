@@ -1,8 +1,11 @@
-// The shell (Option A of the 2026-09-25 relayout): a 56px icon rail, one 44px top bar (project,
-// branch, the ⌘K field, activity, terminal, agent), the page with one row of controls, the right
-// agent panel and the bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and
-// the pages' own drawers. Shortcuts are listed in ./nav.ts.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+// The shell (Option A of the 2026-09-25 relayout): the left rail (Standard: 72px icons with
+// labels and project tiles; Advanced, ⌘\: a 240px sidebar with Projects and Chats — ./Rail.tsx),
+// one 44px top bar (project, branch, the ⌘K field, status chips, activity, terminal, agent), the
+// page with one row of controls, the right agent panel (with the recent-chats strip) and the
+// bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and the pages' own
+// drawers. Shortcuts are listed in ./nav.ts. A newer viewer build reloads the window
+// (./useBuildReload.tsx).
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { Menu, Search } from "lucide-react";
 import { requestModelPicker } from "@/lib/bus";
@@ -25,7 +28,9 @@ import { useRecordChatVisits } from "@/lib/mru";
 import { neighborChat } from "@/lib/switching";
 import { reportSwitchPainted, switchPending } from "@/lib/switch-timing";
 import { sameRoot, type DaemonState } from "@/lib/daemon";
+import type { ResumeInfo } from "@/lib/contracts";
 import { shouldShowResumeCard } from "@/lib/resume-card";
+import { takeBuildReloadResume } from "@/lib/build-reload";
 import { useViewerPrefs } from "@/lib/preferences";
 import { TerminalPanel } from "@/components/terminal/TerminalPanel";
 import { useTerminal } from "@/lib/terminal";
@@ -39,6 +44,8 @@ import { useShellDialogs } from "./shellState";
 import { useSlots } from "./slots";
 import { useProjectView } from "./useProjectView";
 import { useShellResume } from "./useShellResume";
+import { useBuildReload } from "./useBuildReload";
+import { RAIL_ATTR, toggleLayout } from "./layout";
 
 export { PageHeader, PageMenu } from "./PageHeader";
 
@@ -72,7 +79,7 @@ function usePathname() {
  * Global shortcuts (the full list is SHORTCUTS in ./nav.ts): ⌘K / ⌘P / "/" launcher, G then a
  * letter for a page, ⌘B page drawer, ⌘I agent panel, ⌘J recent chats (RecentChatsSwitcher),
  * ⌘[ / ⌘] previous / next chat, ⌘O open folder, ⌘N new chat (⇧⌘N new project), ⌘1…⌘9 pinned
- * projects, ⌘. agent · model picker.
+ * projects, ⌘. agent · model picker, ⌘\ Standard ⇄ Advanced layout.
  */
 function useShellKeys() {
   const router = useRouter();
@@ -139,6 +146,12 @@ function useShellKeys() {
         if (e.key === ".") {
           e.preventDefault();
           if (!requestModelPicker()) void router.navigate({ to: "/agent" });
+          return;
+        }
+        if (e.key === "\\" || e.code === "Backslash") {
+          e.preventDefault();
+          // With focus in the rail, the focus follows to the new layout's control.
+          toggleLayout({ refocus: !!(document.activeElement as HTMLElement | null)?.closest(`[${RAIL_ATTR}]`) });
           return;
         }
         if (/^[1-9]$/.test(e.key)) {
@@ -231,8 +244,8 @@ function readDismissed(): Record<string, string> {
 
 /** Dismissed per visit: the lastViewedAt the user dismissed (a later visit has a newer one). */
 function useResumeDismissal(projectId: string | null) {
-  const [dismissed, setDismissed] = useState<Record<string, string>>({});
-  useEffect(() => setDismissed(readDismissed()), []);
+  // readDismissed is safe without a window (prerender): {}.
+  const [dismissed, setDismissed] = useState<Record<string, string>>(readDismissed);
   const dismiss = useCallback(
     (lastViewedAt: string | null) => {
       if (!projectId || !lastViewedAt) return;
@@ -249,6 +262,26 @@ function useResumeDismissal(projectId: string | null) {
     [projectId],
   );
   return { dismissedFor: projectId ? (dismissed[projectId] ?? null) : null, dismiss };
+}
+
+/**
+ * After an automatic reload onto a newer build (./useBuildReload.tsx), the project that was open
+ * would greet the user with "Where you left off" listing what they just watched live: its entry
+ * counts as dismissed for this visit. Only that project, only the first answer (before paint).
+ */
+function useSkipResumeAfterBuildReload(entry: ResumeInfo | null, projectId: string | null, dismiss: (lastViewedAt: string | null) => void) {
+  const [reloadedIn, setReloadedIn] = useState<string | null>(takeBuildReloadResume);
+  useLayoutEffect(() => {
+    if (reloadedIn === null) return;
+    if (projectId && projectId !== reloadedIn) {
+      setReloadedIn(null); // another project opened first: its card is news
+      return;
+    }
+    if (!entry) return;
+    if (entry.project.id === reloadedIn) dismiss(entry.lastViewedAt);
+    setReloadedIn(null);
+  }, [reloadedIn, entry, projectId, dismiss]);
+  return reloadedIn !== null;
 }
 
 function MobileNav({ onNavigate }: { onNavigate: () => void }) {
@@ -303,9 +336,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useGlobalLauncherShortcut();
   useRecordChatVisits(daemon);
   useSwitchPaintProbe(daemon);
+  useBuildReload();
   const { saved, projectId } = useProjectView();
   const resume = useShellResume(projectId);
   const { dismissedFor, dismiss } = useResumeDismissal(projectId);
+  const skipResume = useSkipResumeAfterBuildReload(resume.entry, projectId, dismiss);
 
   // An open project replaces the (first-run / on-demand) start screen.
   const switching = daemon.projectSwitch;
@@ -343,6 +378,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hideContent = terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon";
   const showResume =
     !isMobile &&
+    !skipResume &&
     shouldShowResumeCard({
       resume: resume.entry,
       projectId,

@@ -6,7 +6,13 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// One id per `vite build` (src/lib/build-reload.ts): the prerendered index.html carries it as
+// <meta name="ruah-build">, the daemon reports it (GET /api/health `viewerBuild`) and a window
+// running an older build reloads. Same id for the client and the prerender (one config load).
+const BUILD_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
 export default defineConfig({
+  vite: { define: { "import.meta.env.VITE_RUAH_BUILD_ID": JSON.stringify(BUILD_ID) } },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
