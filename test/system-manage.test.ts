@@ -171,6 +171,8 @@ describe("library: rebuild, rescan, status", () => {
     const state = readScanState(join(dir, "platform"));
     expect(state?.builtAt).toBe("2026-09-24T10:00:00Z");
     expect(state?.repos["invoices-api"]).toMatchObject({ source: "scan", scannedAt: "2026-09-24T10:00:00Z", type: "service" });
+    // CONTRACTS §20.3: writing into .ruah/ brings the .gitignore that keeps caches out of git.
+    expect(readFileSync(join(dir, "platform", ".ruah", ".gitignore"), "utf8")).toContain(".cache/");
     // A repo with its own map: rescan rewrites it (hand edits merged) and the system reuses it.
     const own = join(dir, "web", "architecture.json");
     writeFileSync(
