@@ -78,6 +78,8 @@ export function isActivePath(pathname: string, to: string) {
 }
 
 export function pageLabel(pathname: string): string {
+  // A stored project view names the project's dashboard "/?view=project" (lib/view-restore.ts).
+  if (pathname === "/?view=project") return "Project overview";
   return NAV.find((n) => isActivePath(pathname, n.to))?.label ?? "Ruah";
 }
 

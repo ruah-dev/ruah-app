@@ -1688,6 +1688,12 @@ or null), at most **16 KB** serialized (UTF-8), nested at most 16 levels.
 | WebSocket | `{ type: "view.save", projectId, view }` (any project, not only the open one); a refused view → `error{bad_message, "view.save: view is N bytes (max 16384)"}` / `"… must be a JSON object"` | — |
 | HTTP | `POST /api/projects/:id/view` `{ view }` → `{ ok: true, updatedAt }`; 413 over 16 KB, 400 not an object / bad id, 403 Origin | `GET /api/projects/:id/view` → `{ view: object \| null, updatedAt: string \| null }` |
 
+The shell's part (`view.shell`, `ui/src/lib/view-restore.ts`) stores only a **project page**
+(`/map`, `/agent`, `/tasks`, `/cloud`, `/preview`, `/?view=project`): while an app-wide page is
+open (Home `/`, Chats, Usage, Integrations, Settings, Extensions) the project keeps the project page it
+had, and an app-wide page stored by an older viewer restores as `/map` (2026-09-26 — a switch
+back to a project used to land on Home or Settings).
+
 The viewer helpers (`ui/src/lib/daemon.ts` `saveViewState` — debounced 400 ms
 per project over the socket, HTTP when it is down, refuses > 16 KB —
 `fetchViewState`, and the `useViewState(projectId)` / `useResume(projectId)`
