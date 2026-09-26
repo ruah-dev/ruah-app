@@ -1,7 +1,7 @@
 // Page-wide shortcuts (window keydown) must leave a focused control its own keys: Enter / Space
 // press a button, arrows move inside a tab strip, radio group, menu or list. Without this the
-// map's Enter drilled into the selected element instead of pressing the focused button, and the
-// permission card's Enter answered "Allow" while "Reject" had the focus.
+// map's Enter drilled into the selected element instead of pressing the focused button. The
+// permission card's Enter / Esc follow the stricter rule in lib/permission-keys.ts.
 
 /** Widgets that use the arrow keys themselves (and Enter / Space / Home / End). */
 const COMPOSITE = [
@@ -62,4 +62,26 @@ export function controlOwnsKey(target: EventTarget | null, key: string): boolean
   if (COMPOSITE_KEYS.has(key) && el.closest(COMPOSITE)) return true;
   if (PRESS_KEYS.has(key) && el.closest(PRESSABLE)) return true;
   return false;
+}
+
+/** Open layers — dialogs, menus, popovers, listboxes — own every key pressed inside them. */
+const LAYER = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  "[data-radix-popper-content-wrapper]",
+].join(",");
+
+/**
+ * True when a page-wide shortcut (the map's Esc / arrows / Enter / letters) must leave this key
+ * alone: something already handled it (a Radix menu or popover closing on Esc calls
+ * preventDefault before the key bubbles to the window), it was pressed inside an open dialog,
+ * menu or popover, or the focused control uses it itself (controlOwnsKey).
+ */
+export function pageShortcutBlocked(e: { key: string; defaultPrevented: boolean; target: EventTarget | null }): boolean {
+  if (e.defaultPrevented) return true;
+  const el = e.target as Closest | null;
+  if (el && typeof el.closest === "function" && el.closest(LAYER)) return true;
+  return controlOwnsKey(e.target, e.key);
 }

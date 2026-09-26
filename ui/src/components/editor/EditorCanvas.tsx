@@ -18,7 +18,7 @@ import { NODE_H, NODE_W, groupIcon as GroupIcon } from "@/components/explorer/ki
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { prefersReducedMotion } from "@/lib/motion";
-import { controlOwnsKey } from "@/lib/key-targets";
+import { pageShortcutBlocked } from "@/lib/key-targets";
 import {
   boundsOf,
   clampZoom,
@@ -659,14 +659,16 @@ export function EditorCanvas({
       const target = e.target as HTMLElement | null;
       const typing = !!target && (/input|textarea|select/i.test(target.tagName) || target.isContentEditable);
       const mod = e.metaKey || e.ctrlKey;
+      // Leave the key to whoever has it (lib/key-targets.ts): a menu or popover that just closed on
+      // Esc (Radix calls preventDefault first — Esc must not also go up a level), an open dialog,
+      // a focused button / tab / radio with its own Enter, Space and arrows.
+      if (pageShortcutBlocked(e)) return;
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
         setSearchOpen(true);
         return;
       }
       if (typing || mod) return;
-      // A focused button / tab / radio keeps its own Enter, Space and arrows (lib/key-targets.ts).
-      if (controlOwnsKey(target, e.key)) return;
       // Only when the map is on screen (the canvas may be mounted behind another page).
       if (!shellRef.current?.isConnected || shellRef.current.offsetParent === null) return;
       const sel = K.selectedNodeId && K.nodes.some((n) => n.id === K.selectedNodeId) ? K.selectedNodeId : null;

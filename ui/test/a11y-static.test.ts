@@ -5,13 +5,17 @@
 //   explained list;
 // - script motion goes through lib/motion.ts, so it stops under prefers-reduced-motion;
 // - the kit Segmented control moves with the arrow keys like a radio group;
-// - page-wide shortcuts (map, permission card) leave a focused control its own keys.
+// - page-wide shortcuts (map, permission card) leave a focused control, an open menu / dialog and
+//   a key something else already handled alone.
+// Behaviour in a real DOM (the permission card and a Radix menu, focus after a click) is covered
+// by the live checks in the polish report; these tests hold the rules those checks rely on.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { segmentedStep } from "@/components/ui/segmented";
-import { controlOwnsKey } from "@/lib/key-targets";
+import { controlOwnsKey, pageShortcutBlocked } from "@/lib/key-targets";
+import { permissionKeyAllowed } from "@/lib/permission-keys";
 
 const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
@@ -177,5 +181,50 @@ describe("page-wide shortcuts leave focused controls their keys", () => {
     expect(controlOwnsKey(fake(body) as unknown as EventTarget, "Enter")).toBe(false);
     expect(controlOwnsKey(null, "Enter")).toBe(false);
     expect(controlOwnsKey({} as EventTarget, "Enter")).toBe(false);
+  });
+});
+
+describe("page-wide shortcuts leave keys to menus, dialogs and handled events", () => {
+  // Regression: Esc that closed a Radix menu or popover (Canvas options, Filters) also cancelled
+  // the agent's waiting permission and sent the map up a level — Radix dismisses in a capture
+  // listener and calls preventDefault, then the key still bubbled to the window handlers.
+  const body = { tag: "body" };
+  const menu = { tag: "div", attrs: { role: "menu" }, parent: body };
+  const menuItem = { tag: "div", attrs: { role: "menuitem" }, parent: menu };
+  const popover = { tag: "div", attrs: { "data-radix-popper-content-wrapper": "" }, parent: body };
+  const inPopover = { tag: "button", parent: { tag: "div", attrs: { role: "dialog" }, parent: popover } };
+  const dialogBody = { tag: "div", parent: { tag: "div", attrs: { role: "dialog" }, parent: body } };
+  const ev = (target: object | null, key: string, defaultPrevented = false) => ({
+    key,
+    defaultPrevented,
+    target: (target ? fake(target as FakeEl) : null) as unknown as EventTarget | null,
+  });
+
+  it("the map ignores a key something else already handled", () => {
+    expect(pageShortcutBlocked(ev(body, "Escape", true))).toBe(true);
+    // The menu item may already be gone from the page when the key reaches the window.
+    expect(pageShortcutBlocked(ev(null, "Escape", true))).toBe(true);
+  });
+
+  it("the map ignores keys pressed inside an open menu, popover or dialog", () => {
+    for (const t of [menu, menuItem, inPopover, dialogBody]) {
+      for (const k of ["Escape", "ArrowDown", "Enter", "Backspace", "f", "n"]) expect(pageShortcutBlocked(ev(t, k)), k).toBe(true);
+    }
+  });
+
+  it("the map still takes its keys when nothing else can", () => {
+    expect(pageShortcutBlocked(ev(body, "Escape"))).toBe(false);
+    expect(pageShortcutBlocked(ev(body, "ArrowRight"))).toBe(false);
+    expect(pageShortcutBlocked(ev(null, "Backspace"))).toBe(false);
+  });
+
+  it("the permission card doesn't dismiss on an Esc that closed a menu or popover", () => {
+    const card = { contains: () => false };
+    const where = { body: fake(body), root: null, card };
+    expect(permissionKeyAllowed({ defaultPrevented: true, target: where.body }, where)).toBe(false);
+    expect(permissionKeyAllowed({ defaultPrevented: false, target: fake(menuItem) }, where)).toBe(false);
+    expect(permissionKeyAllowed({ defaultPrevented: false, target: fake(inPopover) }, where)).toBe(false);
+    // Nothing else had the key: Esc dismisses, Enter allows.
+    expect(permissionKeyAllowed({ defaultPrevented: false, target: where.body }, where)).toBe(true);
   });
 });

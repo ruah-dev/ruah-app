@@ -1,11 +1,11 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx
 // and ComposerPendingApprovalActions.tsx (MIT): a compact card, the request on one line, the
 // options as buttons.
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ShieldQuestion, Wrench } from "lucide-react";
 import type { PermissionRequest } from "@/lib/daemon";
 import { answerPermission } from "@/lib/daemon";
-import { controlOwnsKey } from "@/lib/key-targets";
+import { permissionKeyAllowed } from "@/lib/permission-keys";
 import { iconByKind } from "./ToolCallRow";
 import { primaryButton, quietButton, solidButton } from "@/components/ui/controls";
 
@@ -28,18 +28,14 @@ export function PermissionCard({
   onOpenPath?: ((path: string) => void) | undefined;
   keyboard?: boolean;
 }) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!keyboard) return;
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        /input|textarea|select/i.test(target.tagName) &&
-        !(target as HTMLTextAreaElement).disabled
-      )
-        return;
-      // Enter on a focused option (or any other button) presses THAT button, never "Allow".
-      if (controlOwnsKey(target, e.key)) return;
+      if (e.key !== "Enter" && e.key !== "Escape") return;
+      // Only when the key can't mean anything else (lib/permission-keys.ts): Enter on a button —
+      // Home's "Open …" or "Reject", a dialog, a menu, a field — is that control's, never an answer.
+      if (!permissionKeyAllowed(e, { body: document.body, root: document.documentElement, card: cardRef.current })) return;
       if (e.key === "Enter") {
         const allow = request.options.find((o) => o.kind === "allow_once");
         if (!allow) return;
@@ -64,6 +60,7 @@ export function PermissionCard({
 
   return (
     <div
+      ref={cardRef}
       role="group"
       aria-label="Permission request"
       className="rounded-xl border border-warn/35 bg-surface-1 p-3 shadow-card"
