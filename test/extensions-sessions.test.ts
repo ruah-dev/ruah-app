@@ -1,5 +1,5 @@
 // test/extensions-sessions.test.ts — enabled extensions reach agent sessions
-// (CONTRACTS §15.5): the Claude Agent SDK bridge gets them in query() options
+// (CONTRACTS §17.5): the Claude Agent SDK bridge gets them in query() options
 // (fake query, no Claude process), an ACP bridge in session/new (the fake ACP
 // agent of test/fake-agent.ts, spawned for real), plus the /api/extensions
 // endpoints (Origin check, no secret echo) and `ruah app ext`.

@@ -29,6 +29,7 @@ import { isIP } from "node:net";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
 import { handleExtensionsRequest } from "../extensions/http.js";
 import type { ExtensionsService } from "../extensions/service.js";
+import { handlePreviewRequest, type PreviewHttpDeps } from "../preview/http.js";
 
 export interface ServeOptions {
   host: string;
@@ -56,6 +57,8 @@ export interface ServeOptions {
   activity?: ActivityHttpDeps;
   /** CONTRACTS §17 /api/extensions/* (skills, MCP servers, powers, plugins, rules); answered 503 when absent. */
   extensions?: ExtensionsService;
+  /** CONTRACTS §18 /api/preview* (live preview of the project's dev server); answered 503 when absent. */
+  preview?: PreviewHttpDeps;
 }
 
 export interface RunningServer {
@@ -162,6 +165,7 @@ export function startServer(
       )
     )
       return;
+    if (handlePreviewRequest(req, res, url, options.preview, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // GET /api/export/drawio (409 when no project is open).
     if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
 

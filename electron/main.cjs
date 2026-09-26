@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
@@ -23,6 +23,10 @@ const APP_ICON = path.join(__dirname, "assets", "icon.png");
 const AGENT = process.env.RUAH_AGENT;
 // The built viewer (`pnpm ui:build` → viewer/); RUAH_VIEWER overrides it.
 const VIEWER_DIR = process.env.RUAH_VIEWER ?? path.join(ROOT, "viewer");
+// Developing Ruah (`pnpm dev`, scripts/dev.ts): load the viewer from the Vite dev server (hot
+// reload) and use the daemon the dev script runs under a watcher instead of starting one.
+const VIEWER_URL = process.env.RUAH_VIEWER_URL;
+const EXTERNAL_DAEMON = process.env.RUAH_DAEMON_URL;
 
 let daemon = null;
 let win = null;
@@ -79,7 +83,7 @@ function healthOnce() {
 async function waitForDaemon(maxMs) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
-    if (daemon === null) throw new Error("backend exited before becoming healthy");
+    if (daemon === null && EXTERNAL_DAEMON === undefined) throw new Error("backend exited before becoming healthy");
     if (await healthOnce()) return;
     await sleep(100);
   }
@@ -207,6 +211,52 @@ function registerLauncherShortcut() {
   app.on("will-quit", () => globalShortcut.unregisterAll());
 }
 
+// CONTRACTS §15.6: the live preview shows pages that refuse iframes in a <webview>. Every
+// webview is locked down here: no preload, no Node, sandboxed, its own session
+// (persist:ruah-preview), http(s) only; its popups open in the default browser. Frames and
+// webviews get no camera / microphone / location / notifications (Electron would grant them
+// without asking); the viewer itself is unaffected.
+const PREVIEW_PARTITION = "persist:ruah-preview";
+const FRAME_PERMISSIONS = new Set(["clipboard-sanitized-write", "fullscreen"]);
+
+function registerPreviewGuards() {
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("will-attach-webview", (event, webPreferences, params) => {
+      delete webPreferences.preload;
+      webPreferences.nodeIntegration = false;
+      webPreferences.nodeIntegrationInSubFrames = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+      webPreferences.webSecurity = true;
+      params.partition = PREVIEW_PARTITION;
+      if (webUrl(params.src) === null) event.preventDefault();
+    });
+    if (contents.getType() === "webview") {
+      contents.setWindowOpenHandler(({ url }) => {
+        openInBrowser(url);
+        return { action: "deny" };
+      });
+      contents.on("will-navigate", (event, url) => {
+        if (webUrl(url) === null) event.preventDefault();
+      });
+    }
+  });
+  const viewerOrigin = () => new URL(VIEWER_URL ?? BASE).origin;
+  const guard = (ses, isPreview) => {
+    ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
+      let origin = "";
+      try {
+        origin = new URL(details.requestingUrl).origin;
+      } catch {
+        origin = "";
+      }
+      callback(!isPreview && origin === viewerOrigin() ? true : FRAME_PERMISSIONS.has(permission));
+    });
+  };
+  guard(session.defaultSession, false);
+  guard(session.fromPartition(PREVIEW_PARTITION), true);
+}
+
 function portFree(port) {
   return new Promise((resolve) => {
     const probe = net.createServer();
@@ -238,14 +288,20 @@ async function main() {
   registerIpc();
   registerNotifications();
   registerLauncherShortcut();
-  // Never attach to whatever already listens on the port (a leftover daemon
-  // would show another state): start our own on a free port instead.
-  if (!(await portFree(PORT))) {
-    PORT = await freePort();
-    BASE = `http://127.0.0.1:${PORT}`;
-    process.stderr.write(`[ruah] port ${PREFERRED_PORT} is busy; using ${PORT}\n`);
+  registerPreviewGuards();
+  if (EXTERNAL_DAEMON !== undefined) {
+    // `pnpm dev`: the dev script runs (and restarts) the daemon; the viewer reconnects by itself.
+    BASE = EXTERNAL_DAEMON.replace(/\/+$/, "");
+  } else {
+    // Never attach to whatever already listens on the port (a leftover daemon
+    // would show another state): start our own on a free port instead.
+    if (!(await portFree(PORT))) {
+      PORT = await freePort();
+      BASE = `http://127.0.0.1:${PORT}`;
+      process.stderr.write(`[ruah] port ${PREFERRED_PORT} is busy; using ${PORT}\n`);
+    }
+    startDaemon(repoDir);
   }
-  startDaemon(repoDir);
   await waitForDaemon(60000); // the agent starts in the background once a project is open
   win = new BrowserWindow({
     width: 1440,
@@ -257,6 +313,8 @@ async function main() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      // §15.6: the live preview's fallback for pages that refuse iframes (locked down in registerPreviewGuards).
+      webviewTag: true,
     },
   });
   // The window only ever shows the daemon's viewer. Dropping a file (e.g. a screenshot from
@@ -265,6 +323,8 @@ async function main() {
   // window.ruah from the preload: web links go to the default browser, everything else stays.
   win.webContents.on("will-navigate", (event, url) => {
     if (sameOrigin(url, BASE)) return;
+    // `pnpm dev` serves the viewer from the Vite dev server (RUAH_VIEWER_URL), not the daemon.
+    if (VIEWER_URL !== undefined && sameOrigin(url, VIEWER_URL)) return;
     event.preventDefault();
     openInBrowser(url);
   });
@@ -286,7 +346,7 @@ async function main() {
       ...(ext === "drawio" ? { filters: [{ name: "draw.io diagram", extensions: ["drawio"] }] } : {}),
     });
   });
-  await win.loadURL(BASE);
+  await win.loadURL(VIEWER_URL ?? BASE);
 }
 
 app.setName("Ruah");

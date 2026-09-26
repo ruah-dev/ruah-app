@@ -1,4 +1,4 @@
-// test/extensions.test.ts — the extensions library (CONTRACTS §15): folder
+// test/extensions.test.ts — the extensions library (CONTRACTS §17): folder
 // inspection, stores, featured catalog, approvals, session resolution per
 // agent, secrets (Keychain via a memory store, launcher), git sources,
 // discovery and "also install into". Everything under a scratch HOME /

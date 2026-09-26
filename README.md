@@ -25,6 +25,13 @@ desktop app is a thin viewer.
 - **Context switching:** agents keep working when you switch projects; an
   activity feed, unread badges and desktop notifications tell you when one
   finishes or needs permission; `ruah app resume` shows where you left off.
+- **Live preview:** Ruah finds how to run the project's dev server (package.json
+  scripts with the right package manager, Vite / Next / Remix / Astro /
+  SvelteKit / Nuxt / Expo web / Storybook, Django / Flask / FastAPI, Rails, Go
+  air, docker compose, or a plain index.html), runs it in a "preview" terminal
+  tab and shows the page next to the agent (the top bar's Preview toggle): its
+  edits appear with hot reload;
+  a crash shows the last output and "Ask agent to fix".
 
 Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
 installed this package is `ruah app`.
@@ -49,6 +56,8 @@ ruah app system suggest                # agent proposes edges; --accept/--reject
 ruah app system remove|rename|rescan <id> …
 ruah app resume [<repo-or-id>]  # where you left off (no argument: every recent project)
 ruah app activity --since 24h   # what agents did across projects (no daemon needed)
+ruah app preview [<repo>]     # run the repo's dev server in the foreground and print its URL
+ruah app preview --detect     # how it would run: every candidate (--json; --pick <id> --remember)
 ruah app cloud providers      # which cloud CLIs are connected / not logged in / not installed
 ruah app cloud status         # the repo's health summary (exit 1 when its resources are down; no daemon needed)
 ruah app cloud list | watch   # the repo's resources · live health changes (--repo, default: cwd's repo;
@@ -70,19 +79,41 @@ variables: `RUAH_AGENT` (claude | cursor | grok | kiro | opencode | mock),
 `RUAH_HOME` (default `~/.ruah`), `RUAH_PORT`, `RUAH_VIEWER`,
 `RUAH_CLOUD_WATCH_MS` (cloud re-sync interval while the Cloud page is open,
 default 45000; `RUAH_CLOUD_WATCH=0` turns it off),
-`RUAH_MAX_BACKGROUND_TURNS` (default 3). `~/.ruah/settings.json` switches
+`RUAH_MAX_BACKGROUND_TURNS` (default 3), `RUAH_PREVIEW_IDLE_MS` (stop a project's
+preview server once the project has been closed this long, default 600000;
+`RUAH_PREVIEW=0` turns the live preview off). `~/.ruah/settings.json` switches
 features off: `"backgroundAgents": false`, `"notifications": "off"` (or
 `"always"`; default `"background"`).
 
-## Develop
+## Developing Ruah
 
 ```sh
+pnpm install && (cd ui && bun install)
+pnpm dev [<repo>] [--mock]   # the app with hot reload everywhere (below)
+pnpm dev --no-electron       # same, viewer in your browser (the URL is printed)
+pnpm cli <args>              # the CLI from source (tsx src/cli.ts <args>)
+
 pnpm typecheck   # tsc --noEmit
 pnpm build       # tsup → dist/cli.js (run before pnpm test: the smoke test uses dist)
 pnpm test        # vitest run
 pnpm ui:build    # ui/ → viewer/
 pnpm desktop     # Electron on the built viewer
 ```
+
+`pnpm dev` (scripts/dev.ts) runs three things, so a change — yours or an agent's
+working on Ruah itself — shows up in the running app at once:
+
+| Part | How it reloads |
+| --- | --- |
+| daemon | `tsx watch src/cli.ts serve …` restarts on every `src/` change. The viewer's WebSockets reconnect by themselves, and in dev builds the viewer re-opens the project it had open. Terminals and preview servers of the old daemon are stopped with it. |
+| viewer | the Vite dev server for `ui/` (React Fast Refresh / HMR). It proxies `/api` and `/ws*` to the daemon (`RUAH_DEV_DAEMON_URL`, ui/vite.config.ts), so the viewer stays same-origin and the terminal works. |
+| desktop | Electron with `RUAH_VIEWER_URL` (load the viewer from the dev server) and `RUAH_DAEMON_URL` (use that daemon, start none); restarted when `electron/*.cjs` changes. |
+
+Ports: the daemon from 4190, the viewer from 8080 (`--daemon-port`, `--viewer-port`,
+`RUAH_DEV_DAEMON_PORT`, `RUAH_DEV_VIEWER_PORT`). Other flags go to `ruah app serve`
+(`--mock`, `--agent`). `RUAH_ELECTRON_ARGS` adds Electron switches (e.g.
+`--remote-debugging-port=9333`). Ctrl+C or closing the window stops everything. Use a
+scratch `RUAH_HOME` to keep dev runs out of your real recent projects.
 
 Specs: `docs/CONTRACTS.md` (every message, endpoint and file format),
 `docs/DESIGN-PATTERNS.md` (the patterns behind Ruah and why),

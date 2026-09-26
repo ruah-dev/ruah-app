@@ -25,6 +25,8 @@ export const TerminalInfoSchema = z.object({
   status: z.enum(["running", "exited"]),
   exitCode: z.number().int().nullable(),
   signal: z.number().int().nullable(),
+  /** §18: the live preview's dev server (runs that command, not a shell). */
+  kind: z.enum(["preview"]).optional(),
 });
 export type TerminalInfo = z.infer<typeof TerminalInfoSchema>;
 

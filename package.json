@@ -10,7 +10,8 @@
   },
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "tsx src/cli.ts",
+    "dev": "tsx scripts/dev.ts",
+    "cli": "tsx src/cli.ts",
     "desktop": "electron .",
     "build": "tsup src/cli.ts --format esm --target node22 --clean && chmod +x dist/cli.js",
     "typecheck": "tsc --noEmit",

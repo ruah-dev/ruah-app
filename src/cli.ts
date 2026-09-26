@@ -64,6 +64,10 @@ Usage:
     add <folder|git-url|featured:<id>> [--project] [--agent <id>]...   (nothing runs on add)
     enable | disable <id> [--agent <id>]... [--project]
     remove <id> [--project]                 also undoes "install into" writes
+  ruah app preview [<repo>] [--detect] [--json] [--pick <id>] [--command <cmd>] [--remember] [--open]
+                                   live preview: how the repo's dev server runs (--detect, --json) or
+                                   run it in the foreground and print its URL (no daemon needed;
+                                   \`ruah app preview --help\` for options)
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -356,6 +360,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "extensions": {
       const { runExt } = await import("./extensions/cli.js");
       return await runExt(rest);
+    }
+    case "preview": {
+      const { runPreview } = await import("./preview/cli.js");
+      return await runPreview(rest, pkg.version);
     }
     default:
       process.stdout.write(USAGE);

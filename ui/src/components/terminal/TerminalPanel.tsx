@@ -1,7 +1,7 @@
 // The bottom terminal panel, on every page (AppShell): tabs per project (the daemon keeps them
 // across reloads and project switches), resizable height (persisted), maximize, ⌃` to toggle.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { AlertTriangle, Loader2, Maximize2, Minimize2, Plus, SquareTerminal, X } from "lucide-react";
+import { AlertTriangle, Globe, Loader2, Maximize2, Minimize2, Plus, SquareTerminal, X } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
@@ -63,7 +63,11 @@ function Tab({
         active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
     >
-      <SquareTerminal className={cn("size-3.5 shrink-0", active ? "text-primary" : "", exited && "text-faint")} />
+      {terminal.kind === "preview" ? (
+        <Globe className={cn("size-3.5 shrink-0", active ? "text-primary" : "", exited && "text-faint")} aria-label="live preview server" />
+      ) : (
+        <SquareTerminal className={cn("size-3.5 shrink-0", active ? "text-primary" : "", exited && "text-faint")} />
+      )}
       {editing ? (
         <input
           autoFocus

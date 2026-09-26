@@ -298,3 +298,32 @@ Decisions:
 - **Semantic tokens only** (`bg-warn`, `bg-ai`, `bg-ok`, `bg-bad`, `bg-surface-2`, `ring-sidebar`,
   `text-faint` …), so every theme and accent works unchanged.
 
+  "Agent | Preview" tab on the right (the pane gets `onAskAgent` to bring the agent to front; the
+  preview registers itself with `registerPreview()` from `components/preview/register.tsx`, called
+  by `router.tsx` — a call, since ui/package.json's `"sideEffects": false` drops bare imports — and
+  loads on first open); `setAgentLimitHint(agentId, text)` shows a "remaining" hint in the agent
+  pill.
+- **Shortcuts in one place**: `shell/nav.ts` `SHORTCUTS`, listed by the launcher's "Keyboard
+  shortcuts" item.
+
+## Live preview (`src/preview/*`, `ui/src/components/preview/*`, CONTRACTS §15, 2026-09-26)
+
+- **The built-in static server is a local web server any page can reach.** It checks the `Host`
+  header (loopback names only, like the daemon's `hostAllowed`), never serves a path with a
+  dot-segment (`.env`, `.git/`; also through a symlink), logs a 404's path only for the page's own
+  (`Sec-Fetch-Site: same-origin`) requests, and answers errors without details.
+  Why: a DNS-rebinding page is same-origin with `http://<rebound-name>:<port>` and could read the
+  project folder (`.env`, `.git/config` with a token); a cross-site `<img src>` can put any text in
+  the log, and the log becomes the "Ask agent to fix" prompt.
+  Rejected: an allow-list of file types (static sites serve anything), a random path prefix (the
+  preview URL is shown and shared with the agent).
+  Cost: a site cannot be previewed under a custom hostname (`myapp.test`) by the static server.
+- **One terminal tab per preview.** A stop closes the "preview" tab; a crash leaves it (its
+  output) until the next start or stop; closing the tab by hand is a stop, not a crash.
+  Why: exited tabs count toward the terminal cap (32), so restarts used to end in "too many
+  terminals" and a silent fall-back to a plain process without a tab.
+  Cost: the output of a stopped server is only in the preview's log (`GET /api/preview/logs`).
+- **The fixed URL is local http(s) only** (`.ruah/preview.json` `url`: localhost, *.localhost,
+  127.x, [::1]). The file comes with the repo, and the URL is framed by the viewer
+  (`allow-scripts allow-same-origin`) and fetched by the daemon: `javascript:` / `file:` or a
+  remote host would be XSS, file access or a phishing page inside Ruah.

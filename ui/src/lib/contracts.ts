@@ -3,6 +3,8 @@
 // (ruah/src/contracts/ws.ts) disagree, the zod schemas win: ToolCallView.kind is an
 // open string there, so it is an open union here too.
 
+import type { PreviewStatus } from "./preview-types";
+
 // architecture.json (CONTRACTS.md §1.1)
 export type NodeType =
   | "service"
@@ -196,7 +198,9 @@ export type ServerMessage =
       recent: ActivityEvent[];
       settings: AppFeatures;
       maxBackgroundTurns: number;
-    };
+    }
+  // §18: the live preview of a project's dev server changed (every viewer; filter by projectId)
+  | { type: "preview"; status: PreviewStatus };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -509,6 +513,8 @@ export interface RuahDesktopBridge {
   setLauncherShortcut?(on: boolean): Promise<boolean>;
   /** The global launcher shortcut was pressed (the window is already focused). */
   onLauncherShortcut?(callback: () => void): () => void;
+  /** §18.6: the window allows <webview> for the live preview (pages that refuse iframes). */
+  previewWebview?: boolean;
 }
 
 export interface NotificationTarget {

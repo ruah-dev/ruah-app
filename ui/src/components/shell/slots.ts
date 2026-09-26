@@ -4,7 +4,8 @@
 //   (lower group, next to Settings) turns on by itself; until then it shows disabled.
 // - Live preview: call `registerPreviewPane(Component)` once (e.g. from the preview module's
 //   entry); the top bar's Preview toggle then opens it on the right, as a tab beside the agent
-//   panel ("Agent | Preview") or alone when the agent panel is closed.
+//   panel ("Agent | Preview") or alone when the agent panel is closed. The pane gets
+//   `onAskAgent`: call it after drafting a prompt into the composer and the agent comes to front.
 // - Agent limits: call `setAgentLimitHint(agentId, "62% left")` (or a LimitHint
 //   `{ text, tone?, detail? }`, or null to clear) and the top bar's agent pill shows it as a small
 //   segment after the agent's state, for that agent. A plain "N% left" turns amber at 25 % and red
@@ -20,6 +21,12 @@ export type { LimitHint } from "@/lib/status-chips";
 
 export const EXTENSIONS_ROUTE = "/extensions";
 
+/** Props the right panel gives a registered preview pane. */
+export interface PreviewSlotProps {
+  /** A prompt was drafted into the composer: show the agent (its tab, or the agent panel). */
+  onAskAgent?: () => void;
+}
+
 export interface StatusItem {
   id: string;
   render: ComponentType;
@@ -28,7 +35,7 @@ export interface StatusItem {
 }
 
 interface Slots {
-  preview: ComponentType | null;
+  preview: ComponentType<PreviewSlotProps> | null;
   limitHints: Readonly<Record<string, LimitHint>>;
   statusItems: readonly StatusItem[];
 }
@@ -45,7 +52,7 @@ const subscribe = (l: () => void) => {
 };
 const INITIAL = slots;
 
-export function registerPreviewPane(component: ComponentType | null) {
+export function registerPreviewPane(component: ComponentType<PreviewSlotProps> | null) {
   set({ preview: component });
 }
 

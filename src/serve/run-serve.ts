@@ -31,6 +31,8 @@ import { ActivityLog } from "../activity/log.js";
 import { ActivityService, DEFAULT_MAX_BACKGROUND_TURNS } from "./activity.js";
 import { computeResume } from "../resume/resume.js";
 import { ExtensionsService } from "../extensions/service.js";
+import { DEFAULT_PREVIEW_IDLE_MS, PreviewManager } from "../preview/manager.js";
+import { systemReposFor } from "../system/roots.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -252,6 +254,24 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     originAllowed: (origin) => originAllowed(origin, flags.allowOrigins),
     logger: debug,
   });
+  // Live preview (CONTRACTS §18): the open project's dev server, a "preview" tab in the
+  // terminal panel; stopped once its project has been closed for RUAH_PREVIEW_IDLE_MS and on exit.
+  const previews =
+    process.env.RUAH_PREVIEW === "0"
+      ? undefined
+      : new PreviewManager({
+          version,
+          project: () => {
+            const current = hub.project();
+            if (current === null) return null;
+            const repos = systemReposFor(current.root);
+            return { id: current.id, name: current.name, root: current.root, ...(repos.length > 0 ? { repos } : {}) };
+          },
+          terminals,
+          onStatus: (status) => hub.broadcast({ type: "preview", status }),
+          idleMs: envInt("RUAH_PREVIEW_IDLE_MS", DEFAULT_PREVIEW_IDLE_MS, 0),
+        });
+  process.once("exit", () => previews?.hangUpAll());
   const running = await startServer(null, hub, {
     host: flags.host,
     port: flags.port,
@@ -279,6 +299,16 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     system: new SystemService({ host: hub, projects, version, home, chats }),
     integrations,
     ...(extensions !== undefined ? { extensions } : {}),
+    ...(previews !== undefined
+      ? {
+          preview: {
+            manager: previews,
+            // Your own preview command = a shell command: same capability as a terminal (§7.1).
+            token: () => (terminal.disabledReason() === undefined ? terminal.token : undefined),
+            allowRemote: flags.allowRemoteTerminal === true,
+          },
+        }
+      : {}),
   });
 
   mapOps?.setDaemonUrl(running.url);
@@ -293,7 +323,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
 
   const shutdown = (): void => {
     cloudWatch?.stop();
-    void Promise.all([hub.shutdown(), terminals.shutdown()])
+    void Promise.all([hub.shutdown(), (previews?.shutdownAll() ?? Promise.resolve()).then(() => terminals.shutdown())])
       .then(() => running.close())
       .then(() => resolveServe(0));
   };

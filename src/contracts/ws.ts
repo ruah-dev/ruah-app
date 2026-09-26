@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PreviewStatusSchema } from "./preview.js";
 import type { Architecture } from "./architecture.js";
 import { ArchitectureSchema } from "./architecture.js";
 import { CloudResourceSchema, CloudScopeSummarySchema, ProviderErrorSchema } from "./integrations.js";
@@ -363,6 +364,8 @@ export const ServerMessageSchema = z.union([
     settings: AppFeaturesSchema,
     maxBackgroundTurns: z.number(),
   }),
+  // §18: the live preview of a project's dev server changed (every viewer; filter by status.projectId)
+  z.object({ type: z.literal("preview"), status: PreviewStatusSchema }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 
