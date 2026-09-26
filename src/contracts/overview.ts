@@ -32,7 +32,7 @@ export type OverviewCloud = z.infer<typeof OverviewCloudSchema>;
 export const ProjectOverviewSchema = z.object({
   project: ProjectInfoSchema,
   current: z.boolean(), // the open project
-  exists: z.boolean(), // false: the folder is gone (moved, unmounted)
+  exists: z.boolean(), // always true: missing folders are left out, as in GET /api/projects (hidden, not forgotten)
   lastViewedAt: z.string().nullable(),
   lastChat: z
     .object({

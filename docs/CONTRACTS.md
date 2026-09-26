@@ -665,7 +665,7 @@ export interface TurnRecord {    // what the viewer needs to redraw a past turn
 | --- | --- |
 | `GET /api/projects` | `{ current: ProjectInfo \| null, recent: ProjectInfo[] }` (most recent first, pinned on top) |
 | `POST /api/projects/open` | `{ path, chatId? }` → `ProjectInfo`. With `chatId` the project opens on that chat (one `chats` frame with that `activeChatId`, then its `chat.history`; unknown ids are ignored; on the already-open project it acts like `chat.open`). Scans first when there is no `architecture.json`; opens as `system` when `ruah.system.json` exists. Broadcasts `project`, `architecture`, `chats`. |
-| `POST /api/projects/create` | `{ parentDir, name, git?: boolean }` → `ProjectInfo`. Creates the folder (must not exist), optional `git init`, an empty `architecture.json` (valid, zero nodes), then opens it. |
+| `POST /api/projects/create` | `{ parentDir, name, git?: boolean }` → `ProjectInfo`. Creates the folder (must not exist), optional `git init`, an empty `architecture.json` (valid, zero nodes), then opens it. §20.1 adds templates, the first commit, GitHub, systems and a `created` report. |
 | `POST /api/projects/pin` / `forget` | `{ id, pinned? }` → `{ ok: true }` (forget only removes it from the recent list) |
 | `GET /api/chats/recent?limit=50` | `{ chats: (ChatInfo & { projectName: string; projectRoot: string })[] }` across all projects, newest first |
 | `GET /api/chats/recent?projectId=<id>&limit=5` | same shape, only that project's chats (sidebar "Projects" section, lazy per project) |
@@ -2687,3 +2687,178 @@ agent presets: PATH, `~/.local/bin`, their installers' dirs, `RUAH_*_BIN`); `git
   `APPLE_API_KEY`+`APPLE_API_KEY_ID`+`APPLE_API_ISSUER`, `APPLE_ID`+
   `APPLE_APP_SPECIFIC_PASSWORD`+`APPLE_TEAM_ID` or `APPLE_KEYCHAIN_PROFILE` are set. The
   keychain is never searched for an identity implicitly.
+
+## 20. Projects UX: new project wizard, stable pins, groups, Home (2026-09-26)
+
+Working on several projects without friction: a wizard that creates a project from an
+offline template (the same library backs `ruah app new`, no daemon needed), pinned
+projects that keep the order you give them, free-form groups (tags) for clients / "Job",
+and a Home page that shows every project sorted by what needs you. All additions are
+optional fields or new endpoints; older viewers keep working. Code: `src/projects/create.ts`,
+`src/projects/templates/`, `src/projects/overview.ts`, `src/projects/run-new.ts`,
+`src/contracts/{projects,overview}.ts`; viewer `ui/src/lib/{new-project,home,rail,start-screen}.ts`,
+`ui/src/components/projects/NewProjectWizard.tsx`, `ui/src/components/dashboard/HomePage.tsx`.
+
+### 20.1 New project
+
+Every endpoint below passes the same Origin check as `/ws` (403 otherwise) — the GETs
+too, because they run `git` / `gh`. Nothing here overwrites anything: the target folder
+must not exist (not even empty) and is claimed with an exclusive `mkdir`; files are written
+with the `wx` flag.
+
+| Method + path | Body / result |
+| --- | --- |
+| `GET /api/projects/new` | `NewProjectDefaults = { parentDir, home, templates: TemplateInfo[], git: { installed, identity } }` — `parentDir` is the remembered folder (`$RUAH_HOME/settings.json` `newProject.parentDir`, set by every create in the app), else `~/Projects`, else the parent of a recent project, else home — the first that exists. `identity` = `user.name` and `user.email` are set (needed for the first commit). |
+| `GET /api/projects/new/github` | `{ installed: boolean; loggedIn: boolean; login?: string }` from `gh auth status --json hosts` (read-only, no token is read or printed; cached 60 s). Asked only when the wizard's options step shows. |
+| `POST /api/projects/new/check` | `{ parentDir, name }` → `NewProjectCheck = { path, ok, name: { ok, error? }, parent: { exists, isDir, writable }, target: { exists, empty? }, problems: string[] }`. No side effects; `~/` expanded against the daemon's home. `parent.writable` for a missing parent = its nearest existing ancestor is writable (it can be created with `createParent`). |
+| `POST /api/projects/create` | §5.3 body plus, all optional: `template` (id, default `"empty"`), `commit` (initial commit, default = `git`), `github: { visibility: "private" \| "public", name? }` (runs `gh repo create` — **only when present**), `system` (a folder holding `ruah.system.json` to add the repo to), `createParent` (default false → 404 when the parent is missing). Answers the `ProjectInfo` as before plus `created: CreateReport`. |
+
+```ts
+interface TemplateInfo { id: string; name: string; description: string; files: string[] /* top-level, folders end with "/" */; run?: string; setupPrompt: string }
+interface CreateReport {
+  path: string; template: string; files: number;
+  scanned: { nodes: number; edges: number } | null;          // null = the empty map ("empty")
+  git: { init: boolean; branch: string | null; commit: string | null; warning?: string } | null;
+  github: { command: string[]; ran: boolean; url?: string; error?: string } | null;
+  system: { root: string; repoId: string | null; error?: string } | null;
+  warnings: string[];
+}
+```
+
+Create, in order (serialized with opens): validate the name (a plain folder name: no
+slashes, control characters, leading dot, `: * ? " < > |`, ≤ 255 chars) and the template
+→ resolve the parent (`~/` expanded; `createParent` makes it) → exclusive `mkdir` of
+`<parent>/<name>` (409 exists, 403 permission) → template files → `architecture.json`
+(scanned from the files with the infra layer; the "empty" template writes an empty map)
+→ `git init` (the user's `init.defaultBranch`, else `-b main`). A failure up to here removes
+everything it created (the folder, and a parent it created) and answers 500 "… — nothing was
+created". Then, warning only (the project is kept, `warnings` says what to do): the initial
+commit (`Initial commit (Ruah: <template>)`; skipped without a git identity), adding the repo
+to the system, and `gh repo create <repo> --private|--public --source . --remote origin
+[--push]` (`--push` only with a commit; repo name = `github.name` or the folder name as a
+slug, `^[A-Za-z0-9._-]{1,100}$`). git and gh run through `execFile` with an args array (no
+shell), a timeout and no prompts. Then the project is opened (§5.3 open) and the Home
+overview cache is dropped. Errors: 400 bad name / unknown template / git missing / GitHub
+without git / not a system folder, 404 parent missing, 409 target exists, 403 Origin or
+permission, 500 write / scan / git init failed.
+
+### 20.2 Templates (offline, shipped in `src/projects/templates/`)
+
+| id | name | writes | run |
+| --- | --- | --- | --- |
+| `empty` | Empty | README, `.gitignore`, an empty `architecture.json` (the viewer opens it in Edit mode) | — |
+| `web-vite-react` | Web app (Vite + React + TS) | Vite + React 19 + strict TS app | `pnpm install && pnpm dev` |
+| `node-api-ts` | Node API (TypeScript) | Node 22 `http` API with a tiny router, `node:test` tests | `pnpm install && pnpm dev` |
+| `static-site` | Static site | HTML, CSS, JS, no build step | `open index.html (or Ruah's Preview)` |
+| `pnpm-monorepo` | Monorepo (pnpm workspaces) | an API app + a shared package, one tsconfig base | `pnpm install && pnpm dev` |
+| `infra-terraform` | Infra (Terraform + GitHub Actions) | Terraform with dev / prod variables, a workflow that fmt-checks, validates and plans (never applies) | `cd terraform && terraform init && terraform plan` |
+
+Templates render from TS modules with `{ name, slug, year }` — no network, no installs, no
+downloads. Every path is checked to stay inside the new folder.
+
+### 20.3 Pinned order and tags
+
+`ProjectInfo` gains (all optional):
+
+```ts
+pinOrder?: number;   // pinned only: 0 = ⌘1, 1 = ⌘2, …
+pinnedAt?: string;   // pinned only: ISO, when it was pinned
+tags?: string[];     // free-form groups ("Liquid Money", "Job", "Freelance"); the first is the project's group
+```
+
+- The recent list sorts pinned projects by `pinOrder` (then most recently opened), then the
+  rest most recently opened first. A new pin goes last; opening a project never changes the
+  pinned order (before §20 pins were sorted by `lastOpenedAt`, which renumbered ⌘1…⌘9 on every
+  switch). Unpinning drops `pinOrder` / `pinnedAt`; `pinOrder` is renumbered 0…n-1 on every write.
+- Migration: a registry written before §20 (pins without `pinOrder`) is read with the pins in
+  the order they were listed (most recently opened first) and saved that way with the next change.
+- `POST /api/projects/reorder` `{ ids: string[] }` (≤ 200) → `ProjectsList` (§5.3 `GET
+  /api/projects` shape). `ids` first, in that order (unknown or unpinned ids are ignored), then
+  the pins it leaves out in their current order.
+- `POST /api/projects/tags` `{ id, tags: string[] }` → `ProjectInfo` (404 unknown id). Tags are
+  normalized: control characters removed, whitespace collapsed, ≤ 40 chars, duplicates ignoring
+  case dropped, at most 6, empty ones skipped; `[]` removes them. When several spellings of one
+  tag are in use, the one most projects use names the group (a tie: the capitalized one).
+- `project.json` (per project, for chat listings) never carries the order fields.
+- A viewer that kept a local pin order for an older daemon (`localStorage`
+  `ruah.rail.pinned.v1`) sends it once as a reorder when it first meets a §20 daemon, so the
+  numbers people know survive the upgrade.
+
+### 20.4 WebSocket: `projects.changed`
+
+daemon → every viewer `{ type: "projects.changed", recent: ProjectInfo[] }` after pin, unpin,
+reorder, tags and forget (not on open / switch — `project` covers those): one list, one ⌘1…⌘9
+order in every window. Viewers replace their recent list (and the open project's pins / tags).
+
+### 20.5 Home overview — `GET /api/projects/overview?limit=24`
+
+The Home page's cards in one batched answer (`limit` 1…50, default 24; Origin-checked):
+
+```ts
+interface ProjectsOverview { at: string; projects: ProjectOverview[] }   // the recent list's order
+interface ProjectOverview {
+  project: ProjectInfo; current: boolean; exists: boolean;               // always true: missing folders are left out (as in GET /api/projects)
+  lastViewedAt: string | null;                                           // §13.5
+  lastChat: { id; title; agentId; updatedAt; turnCount; lastPrompt: string | null; lastReply: string | null } | null;  // the active (else newest) chat; texts ≤ 200 chars
+  since: { from; turnsFinished; turnsFailed; permissionsRequested; filesTotal; mapChanges };   // activity since lastViewedAt (§13.4)
+  lastEvent: ActivityEvent | null;                                       // newest turn.finished / permission.requested / agent.error
+  unread: number;                                                        // §13.5 unread turns, all chats
+  live: { running: number; waitingPermission: number };                  // background agents now (§13.1)
+  permissions: { requestId; turnId; chatId: string | null; title; options: PermissionOption[] }[];  // waiting now
+  git: GitState;                                                         // §13.4, cached 5 s per repo, ≤ 4 repos at a time
+  cloud: { inScope; healthy; degraded; down; deploying; unhealthy: string[]; syncedAt: string | null } | null;  // from the cloud cache in the §14 scope (no provider call; cached 30 s); null = nothing synced / in scope
+  preview: { state: "starting" | "running" | "crashed"; url: string | null; exitCode: number | null } | null;  // §18, this daemon run
+}
+```
+
+Cheap on purpose: the activity log is read once per answer; the static part (chats, git,
+cloud) is cached ~4 s and recomputed early when a new activity event arrives; chat previews
+are re-read only when a chat's `updatedAt` moves; live counts, permissions and previews are
+read on every call. A permission is answered from Home with the ordinary WS
+`permission.response` — the daemon routes it to whichever project's agent asked (§13.1), no
+switch needed.
+
+Viewer ranking (`ui/src/lib/home.ts`): a waiting permission > a failed turn > cloud down > a
+crashed preview > finished while you were away (unread) > cloud degraded > an agent working >
+uncommitted / unpushed > quiet; ties: pinned in ⌘ order, then most recently opened. Live
+counts come from the activity feed (§13.2) when it is connected, else from the answer. The
+page refreshes on activity (debounced) and every 30 s while visible. Filters: All · Pinned ·
+one per tag in use.
+
+### 20.6 CLI — `ruah app new` (no daemon)
+
+```
+ruah app new <name> [--in <dir>] [--template <id>] [--no-git] [--no-commit]
+                    [--gh private|public] [--gh-name <repo>] [--system <dir>]
+                    [--create-parent] [--json]
+ruah app new --templates [--json]
+```
+
+Same library and rules as §20.1. `--in` defaults to the current folder; git init + an initial
+commit are on by default; `gh repo create` runs only with `--gh` (when gh is installed and a
+commit exists, the text report prints the command to run by hand instead). `--json` prints
+the `CreateReport` (errors: `{ error, status }`). Exit codes: 0 created, 1 failed (nothing left
+behind), 2 bad arguments.
+
+### 20.7 Viewer behaviour
+
+- **Start screen**: covers the shell only when no project is open, or when asked for (⌘K →
+  Start screen, Settings → Getting started). A reload never covers an open project. The
+  Getting started card shows only on a true first run (never dismissed, nothing ever opened);
+  a profile that already has projects counts as onboarded.
+- **Wizard** (⇧⌘N; ⌘N on the start screen): name + location (live check, final path shown) →
+  starting point → options (git + first commit on; GitHub off, private, only with gh logged
+  in, the exact command shown; add to a system when one is known; ask the agent with an
+  editable first prompt). Enter next, ⌘Enter create, Alt+← back. After creating: the map, a
+  first-run hints card (sessionStorage `ruah.newProject.hints.v1`) and — when asked — the
+  first prompt, sent once the project's agent is ready.
+- **Home** is `/` (the Ruah mark, G H); the open project's dashboard is one click away at
+  `/?view=project` with everything it had. Filter choice: `localStorage` `ruah.home.filter.v1`.
+- **Pins**: drag a pinned row (or Alt+↑/↓) in the Advanced sidebar or All projects to change
+  ⌘1…⌘9 (`POST /api/projects/reorder`). ⌘1…⌘9, the rail, the sidebar, the launchers and Home
+  all read the daemon's order.
+- **Groups in the rail**: once two or more projects share a tag, a small switcher above the
+  Standard rail's project tiles shows one group at a time (`localStorage`
+  `ruah.rail.group.v1`); the open project always keeps its tile, projects of other groups are
+  counted in the "+N" tile, and ⌘1…⌘9 stay the global pin numbers. With no shared tag there is
+  no switcher.
