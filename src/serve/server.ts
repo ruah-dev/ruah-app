@@ -238,6 +238,12 @@ export function startServer(
       return;
     }
 
+    // No handler above took it: an unknown /api path (or a method the path does not
+    // take, e.g. PUT /api/architecture) is an error, never the SPA's index.html with 200.
+    if (pathname === "/api" || pathname.startsWith("/api/")) {
+      sendJson(res, 404, { error: `no such endpoint: ${req.method ?? "GET"} ${pathname}` });
+      return;
+    }
     const staticResult = serveStatic(options.viewerDir, pathname);
     res.writeHead(staticResult.status, {
       ...(staticResult.contentType !== undefined ? { "content-type": staticResult.contentType } : {}),

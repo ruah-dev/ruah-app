@@ -32,7 +32,10 @@ export type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; message: string; unavailable?: boolean };
 
-/** The daemon answers unknown /api paths with 404 or the SPA's HTML: both mean "not served yet". */
+/**
+ * The daemon answers unknown /api paths with 404 `{ error: "no such endpoint: …" }` (older
+ * daemons: 404 or the SPA's HTML): all mean "not served yet".
+ */
 async function api<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<ApiResult<T>> {
   const origin = store.origin;
   if (!origin) return { ok: false, status: 0, message: "No daemon connected", unavailable: true };
@@ -51,7 +54,7 @@ async function api<T>(method: "GET" | "POST", path: string, body?: unknown): Pro
         ok: false,
         status: r.status,
         message: b.error ?? b.message ?? `${r.status} ${r.statusText}`,
-        ...(r.status === 404 && json === null ? { unavailable: true } : {}),
+        ...(r.status === 404 && (json === null || b.error?.startsWith("no such endpoint") === true) ? { unavailable: true } : {}),
       };
     }
     if (json === null)
