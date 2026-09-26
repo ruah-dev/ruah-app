@@ -19,6 +19,14 @@ const CLASS: Record<VerifyBadge, string> = {
   idle: "",
 };
 
+const DOT: Record<VerifyBadge, string> = {
+  pass: "bg-ok",
+  fail: "bg-bad",
+  unverifiable: "bg-warn",
+  error: "bg-bad",
+  idle: "",
+};
+
 export function VerifyBadgeChip({
   badge,
   detail,
@@ -29,12 +37,22 @@ export function VerifyBadgeChip({
   compact?: boolean;
 }) {
   if (!badge || badge === "idle") return null;
+  if (compact) {
+    // Zoomed out, a word would cover the card's name: a status dot, the word on hover / to AT.
+    return (
+      <span
+        role="img"
+        aria-label={`Verify: ${LABEL[badge]}`}
+        title={detail ?? LABEL[badge]}
+        className={cn("block size-2.5 rounded-full ring-2 ring-card", DOT[badge])}
+      />
+    );
+  }
   return (
     <span
       title={detail ?? LABEL[badge]}
       className={cn(
-        "inline-flex items-center rounded border px-1.5 font-medium uppercase tracking-wide",
-        compact ? "text-[9px] leading-4" : "text-micro leading-5",
+        "inline-flex items-center rounded border px-1.5 text-micro leading-5 font-medium uppercase tracking-wide",
         CLASS[badge],
       )}
     >

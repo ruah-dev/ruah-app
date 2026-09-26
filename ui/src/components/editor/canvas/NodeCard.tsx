@@ -13,7 +13,7 @@ import { keepAgentElement } from "@/lib/architecture-edit";
 import { useMapFlash } from "@/lib/map-activity";
 import { Phantom } from "@/components/brand/Phantom";
 import type { Lod } from "./geometry";
-import { cardText, chipPad, subtitleParts } from "./display";
+import { cardText, cardTool, chipPad, subtitleParts } from "./display";
 import { isGroupNodeId } from "./view-model";
 import { openElementInTerminal } from "@/components/terminal/actions";
 import { VerifyBadgeChip } from "@/components/engines/VerifyBadge";
@@ -314,13 +314,26 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         )}
       >
         <span aria-hidden className={cn("absolute inset-y-2 left-0 w-[5px] rounded-e-pill", style.bar)} />
-        <span
-          className="line-clamp-2 min-w-0 leading-[1.12] font-medium [overflow-wrap:anywhere] text-foreground"
-          style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}
-          title={node.label}
-        >
-          {node.label}
-        </span>
+        {text.title !== text.full ? (
+          // "Kubernetes: prod" → "prod" over "Kubernetes": two short lines instead of the full
+          // name broken mid-word ("Kubernete / s: prod").
+          <span className="flex min-w-0 flex-col leading-[1.12]" title={text.full}>
+            <span className="truncate font-medium text-foreground" style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}>
+              {text.title}
+            </span>
+            <span className="truncate text-muted-foreground" style={{ fontSize: "min(22px, calc(9px * var(--inv-k, 1)))" }}>
+              {cardTool(text)}
+            </span>
+          </span>
+        ) : (
+          <span
+            className="line-clamp-2 min-w-0 leading-[1.12] font-medium [overflow-wrap:break-word] text-foreground"
+            style={{ fontSize: "min(26px, calc(10.5px * var(--inv-k, 1)))" }}
+            title={node.label}
+          >
+            {node.label}
+          </span>
+        )}
         {node.childCount ? (
           <span
             className="ms-[0.4em] shrink-0 pe-5 font-mono text-faint tabular-nums"

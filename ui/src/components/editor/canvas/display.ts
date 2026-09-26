@@ -24,6 +24,15 @@ export function cardText(node: { label: string; subtitle?: string | undefined; t
   return { title: rest, subtitle: sub !== "" ? sub : tool, full };
 }
 
+/** The tool part of a shortened IaC name ("Kubernetes: prod" shown as "prod" → "Kubernetes"). */
+export function cardTool(text: CardText): string {
+  if (text.title === text.full) return "";
+  return text.full
+    .slice(0, text.full.length - text.title.length)
+    .replace(/:\s*$/, "")
+    .trim();
+}
+
 /** A card's second line in the parts it is made of ("TypeScript · Express 4" → two parts). The
  * card drops whole trailing parts that do not fit instead of cutting a word ("TypeScri…"). */
 export function subtitleParts(subtitle: string): string[] {

@@ -24,6 +24,8 @@ import {
   clampZoom,
   contains,
   fitCamera,
+  FIT_ALL,
+  isFitCamera,
   grow,
   intersects,
   lodFor,
@@ -275,7 +277,7 @@ export function EditorCanvas({
     (b: Box | null, opts: { animate?: boolean; maxK?: number } = {}) => {
       const { w, h } = size.current;
       if (!b || w === 0) return;
-      const target = fitCamera(b, w, h, { pad: 56, maxK: opts.maxK ?? 1 });
+      const target = fitCamera(b, w, h, { pad: FIT_ALL.pad, maxK: opts.maxK ?? FIT_ALL.maxK });
       if (opts.animate) animateTo(target);
       else applyCamera(target);
     },
@@ -330,9 +332,21 @@ export function EditorCanvas({
   useLayoutEffect(() => {
     const el = shellRef.current;
     if (!el) return;
+    // The last size the canvas had on screen (it measures 0 × 0 while another page is shown).
+    let shown = { w: 0, h: 0 };
     const measure = () => {
       const r = el.getBoundingClientRect();
       size.current = { w: r.width, h: r.height };
+      if (r.width > 0 && r.height > 0) {
+        const prev = shown;
+        shown = { w: r.width, h: r.height };
+        // A framed map stays framed when the canvas changes size (window resized, the side panel
+        // or the terminal opened): refit instead of leaving part of it off screen.
+        if (prev.w > 0 && (Math.abs(prev.w - r.width) > 1 || Math.abs(prev.h - r.height) > 1)) {
+          const b = boundsRef.current();
+          if (b && isFitCamera(cam.current, b)) fitRef.current(false);
+        }
+      }
       scheduleRecull();
       scheduleMinimap();
     };
@@ -350,6 +364,8 @@ export function EditorCanvas({
   // A level opened: restore its camera or fit it, with a short zoom transition.
   const fitRef = useRef(fitAll);
   fitRef.current = fitAll;
+  const boundsRef = useRef(allBounds);
+  boundsRef.current = allBounds;
   const hasNodes = diagram.nodes.length > 0;
   useLayoutEffect(() => {
     const prev = prevLevel.current;
@@ -367,7 +383,10 @@ export function EditorCanvas({
     setMatchIdx(0);
     stopAnim();
     const saved = cams.current.get(diagram.id) ?? recallCamera(diagram.id);
-    if (saved && dir !== "in") applyCamera(saved);
+    // A saved "fit to view" is re-fitted: it was framed for the window size of that moment.
+    const bounds = boundsRef.current();
+    const savedFit = saved && bounds ? isFitCamera(saved, bounds) : false;
+    if (saved && dir !== "in" && !savedFit) applyCamera(saved);
     else fitRef.current(false);
     const stage = stageRef.current;
     if (stage && dir !== "none" && !prefersReducedMotion() && typeof stage.animate === "function") {

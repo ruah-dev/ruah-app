@@ -40,6 +40,26 @@ export function fitCamera(b: Box, vw: number, vh: number, opts: { pad?: number; 
   return { k, x: vw / 2 - (b.x + b.w / 2) * k, y: vh / 2 - (b.y + b.h / 2) * k };
 }
 
+/** The fit options the canvas frames a level with ("Fit to view", a level opened fresh). */
+export const FIT_ALL = { pad: 56, maxK: 1 } as const;
+
+/**
+ * True when `cam` frames `b` exactly as `fitCamera` would for SOME viewport — i.e. it is a "fit
+ * to view" camera, whatever size the window had when it was taken. A fit camera is centred on the
+ * box, so the viewport it implies is twice the box centre's screen position; the camera is a fit
+ * when fitting the box into that viewport gives it back. A camera the user zoomed or panned does
+ * not round-trip. The canvas re-frames such a camera when its size changes (a panel opened, the
+ * window was resized, a view saved at another size was restored) instead of cutting the map off.
+ */
+export function isFitCamera(cam: Camera, b: Box, opts: { pad?: number; maxK?: number; minK?: number } = FIT_ALL): boolean {
+  if (!(cam.k > 0)) return false;
+  const vw = 2 * (cam.x + (b.x + b.w / 2) * cam.k);
+  const vh = 2 * (cam.y + (b.y + b.h / 2) * cam.k);
+  if (!(vw > 0) || !(vh > 0)) return false;
+  const f = fitCamera(b, vw, vh, opts);
+  return Math.abs(f.k - cam.k) <= 1e-3 * cam.k && Math.abs(f.x - cam.x) <= 0.5 && Math.abs(f.y - cam.y) <= 0.5;
+}
+
 /** The world rectangle visible through the camera. */
 export function viewRect(cam: Camera, vw: number, vh: number): Box {
   return { x: -cam.x / cam.k, y: -cam.y / cam.k, w: vw / cam.k, h: vh / cam.k };

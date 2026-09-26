@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cardText, chipPad, edgeLabelScale, isQuietEdgeKind, subtitleParts } from "@/components/editor/canvas/display";
+import { cardText, cardTool, chipPad, edgeLabelScale, isQuietEdgeKind, subtitleParts } from "@/components/editor/canvas/display";
+import { FIT_ALL, fitCamera, isFitCamera } from "@/components/editor/canvas/geometry";
 
 describe("map card text", () => {
   it("shows what differs for IaC elements named '<Tool>: <what>' and keeps the full name", () => {
@@ -64,5 +65,37 @@ describe("card second line", () => {
     expect(chipPad(undefined)).toBe("pr-7");
     expect(chipPad(4)).toBe("pr-7");
     expect(chipPad(12)).toBe("pr-9");
+  });
+});
+
+describe("a framed map stays framed", () => {
+  const box = { x: 40, y: -20, w: 1540, h: 640 };
+  it("recognises a fit-to-view camera taken at any window size", () => {
+    for (const [w, h] of [
+      [1440 - 72 - 420, 900 - 88],
+      [1024 - 72 - 420, 768 - 88],
+      [3000, 2000],
+    ] as const) {
+      expect(isFitCamera(fitCamera(box, w, h, FIT_ALL), box), `${w}×${h}`).toBe(true);
+    }
+  });
+
+  it("does not take a camera the user zoomed or panned for a fit", () => {
+    const fit = fitCamera(box, 948, 812, FIT_ALL);
+    expect(isFitCamera({ ...fit, x: fit.x + 30 }, box)).toBe(false);
+    expect(isFitCamera({ ...fit, k: fit.k * 1.25 }, box)).toBe(false);
+    // Zoomed in on the box centre: centred, but not the fit zoom for the viewport it implies.
+    const w = 948, h = 812, k = 1.6;
+    expect(isFitCamera({ k, x: w / 2 - (box.x + box.w / 2) * k, y: h / 2 - (box.y + box.h / 2) * k }, box)).toBe(false);
+    expect(isFitCamera({ k: 0, x: 0, y: 0 }, box)).toBe(false);
+  });
+});
+
+describe("zoomed-out cards", () => {
+  it("name the tool of a shortened IaC name on the second line", () => {
+    expect(cardTool(cardText({ label: "Kubernetes: prod", subtitle: "Kubernetes" }))).toBe("Kubernetes");
+    expect(cardTool(cardText({ label: "Helm: api", subtitle: "deploy/charts/api", tech: ["Helm"] }))).toBe("Helm");
+    expect(cardTool(cardText({ label: "CI/CD: GitHub Actions", subtitle: "CI/CD" }))).toBe("CI/CD");
+    expect(cardTool(cardText({ label: "api", subtitle: "TypeScript" }))).toBe("");
   });
 });
