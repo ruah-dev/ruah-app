@@ -1,8 +1,9 @@
 // Pages of the shell and every keyboard shortcut, in one place: the icon rail, "G then a letter",
 // the launcher's Pages group and its "Keyboard shortcuts" sheet all read from here.
 //
-// Rail decisions (2026-09-25 relayout): Map, Agent, Cloud, Tasks on top; Usage, Integrations,
-// Extensions (reserved: shown once its route exists) and Settings at the bottom. Integrations
+// Rail decisions (2026-09-25 relayout): Map, Agent, Cloud, Tasks on top; the projects' tiles in
+// between; Usage, Integrations, Extensions (reserved: shown once its route exists) and Settings
+// at the bottom. The Advanced layout (⌘\) shows the same entries as labelled rows. Integrations
 // stays its own page (not merged into Settings): it is a full
 // page of providers and accounts, and Settings links to it. There is no "Infra" entry: IaC shows
 // on the Map (its infra layer) and there is no separate page or filter for it. Dashboard is the
@@ -93,6 +94,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   { keys: "⌃`", label: "Toggle the terminal", group: "Anywhere" },
   { keys: "⌘I", label: "Toggle the agent panel", group: "Anywhere" },
   { keys: "⌘B", label: "Toggle the page drawer (Map outline, Agent turns)", group: "Anywhere" },
+  { keys: "⌘\\", label: "Layout: Standard (icon rail) ⇄ Advanced (sidebar with projects and chats)", group: "Anywhere" },
   { keys: "⌥Space", label: "Focus Ruah and open the launcher from any app (desktop, off by default)", group: "Anywhere" },
   { keys: "⌘1 … ⌘9", label: "Open a pinned project", group: "Projects & chats" },
   { keys: "⌘O", label: "Open folder…", group: "Projects & chats" },

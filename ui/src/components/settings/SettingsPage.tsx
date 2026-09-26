@@ -15,6 +15,7 @@ import { AgentMark, WarmDot, modeLabel, plain } from "@/components/agent/Compose
 import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { FeaturesSettings } from "./FeaturesSettings";
+import { LayoutSettingsRows } from "@/components/shell/LayoutSettings";
 import { cn } from "@/lib/utils";
 
 const PALETTES: readonly { value: PalettePref; label: string; swatch: string }[] = [
@@ -347,6 +348,7 @@ export function SettingsPage() {
                 ))}
               </div>
             </Row>
+            <LayoutSettingsRows Row={Row} />
           </Group>
 
           <Group title="Help">

@@ -21,6 +21,8 @@ import {
   MessageSquarePlus,
   Moon,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRight,
   RefreshCw,
   ScanSearch,
@@ -28,6 +30,7 @@ import {
   Settings,
   Sparkles,
   SquareTerminal,
+  Tags,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -61,6 +64,8 @@ import { AgentMark } from "@/components/agent/ComposerControls";
 import { openRecentChatsSwitcher } from "@/components/chats/RecentChatsSwitcher";
 import { kindStyles } from "@/components/explorer/kinds";
 import { useNav } from "@/components/shell/nav";
+import { LAYOUT_SHORTCUT, setRailLabels, toggleLayout } from "@/components/shell/layout";
+import { useViewerPrefs } from "@/lib/preferences";
 import { setShellDialog } from "@/components/shell/shellState";
 import { useProjectCloud } from "@/components/shell/useCloudAttention";
 import { newTerminal } from "@/components/terminal/TerminalPanel";
@@ -142,6 +147,7 @@ function LauncherBody() {
   const chats = useRecentChats(daemon, true);
   const cloud = useProjectCloud();
   const [theme, setTheme] = useTheme();
+  const prefs = useViewerPrefs();
   const nav = useNav();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -471,6 +477,17 @@ function LauncherBody() {
       close();
       void downloadDrawio(daemon.httpOrigin);
     }, { keywords: ["diagram", "download"] });
+    // Shell layout (Settings → Appearance; ⌘\).
+    const advanced = prefs.layout === "advanced";
+    more("layout", advanced ? "Layout: Standard (icon rail)" : "Layout: Advanced (sidebar with projects and chats)", advanced ? PanelLeftClose : PanelLeftOpen, () => {
+      close();
+      toggleLayout();
+    }, { kbd: LAYOUT_SHORTCUT, keywords: ["layout", "sidebar", "rail", "advanced", "standard", "simple", "view", "appearance"] });
+    if (!advanced)
+      more("rail-labels", prefs.railLabels ? "Hide rail labels" : "Show rail labels", Tags, () => {
+        close();
+        setRailLabels(!prefs.railLabels);
+      }, { sub: "names under the rail's icons", keywords: ["layout", "rail", "labels", "icons", "appearance"] });
     more("settings-features", "Features & behaviour", Settings, () => go("/settings"), {
       keywords: ["background agents", "notifications", "options", "preferences"],
     });
@@ -513,7 +530,7 @@ function LauncherBody() {
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activity.recent, activity.projects, cloud, mru, chats, daemon.recentProjects, daemon.activeChatId, daemon.agent, current, live, connected, ws.mapArchitecture, ws.architecture.workflows, wb.selectedNode, wb.showPanel, wb.outlineOpen, theme, nav]);
+  }, [activity.recent, activity.projects, cloud, mru, chats, daemon.recentProjects, daemon.activeChatId, daemon.agent, current, live, connected, ws.mapArchitecture, ws.architecture.workflows, wb.selectedNode, wb.showPanel, wb.outlineOpen, theme, nav, prefs.layout, prefs.railLabels]);
 
   // Rows that carry the query itself.
   const q = query.trim();

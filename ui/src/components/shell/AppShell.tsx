@@ -1,7 +1,9 @@
-// The shell (Option A of the 2026-09-25 relayout): a 56px icon rail, one 44px top bar (project,
-// branch, the ⌘K field, activity, terminal, agent), the page with one row of controls, the right
-// agent panel and the bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and
-// the pages' own drawers. Shortcuts are listed in ./nav.ts.
+// The shell (Option A of the 2026-09-25 relayout): the left rail (Standard: 72px icons with
+// labels and project tiles; Advanced, ⌘\: a 240px sidebar with Projects and Chats — ./Rail.tsx),
+// one 44px top bar (project, branch, the ⌘K field, status chips, activity, terminal, agent), the
+// page with one row of controls, the right agent panel (with the recent-chats strip) and the
+// bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and the pages' own
+// drawers. Shortcuts are listed in ./nav.ts.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { Menu, Search } from "lucide-react";
@@ -39,6 +41,7 @@ import { useShellDialogs } from "./shellState";
 import { useSlots } from "./slots";
 import { useProjectView } from "./useProjectView";
 import { useShellResume } from "./useShellResume";
+import { toggleLayout } from "./layout";
 
 export { PageHeader, PageMenu } from "./PageHeader";
 
@@ -72,7 +75,7 @@ function usePathname() {
  * Global shortcuts (the full list is SHORTCUTS in ./nav.ts): ⌘K / ⌘P / "/" launcher, G then a
  * letter for a page, ⌘B page drawer, ⌘I agent panel, ⌘J recent chats (RecentChatsSwitcher),
  * ⌘[ / ⌘] previous / next chat, ⌘O open folder, ⌘N new chat (⇧⌘N new project), ⌘1…⌘9 pinned
- * projects, ⌘. agent · model picker.
+ * projects, ⌘. agent · model picker, ⌘\ Standard ⇄ Advanced layout.
  */
 function useShellKeys() {
   const router = useRouter();
@@ -139,6 +142,11 @@ function useShellKeys() {
         if (e.key === ".") {
           e.preventDefault();
           if (!requestModelPicker()) void router.navigate({ to: "/agent" });
+          return;
+        }
+        if (e.key === "\\" || e.code === "Backslash") {
+          e.preventDefault();
+          toggleLayout();
           return;
         }
         if (/^[1-9]$/.test(e.key)) {
