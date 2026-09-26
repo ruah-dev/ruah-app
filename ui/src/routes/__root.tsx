@@ -154,7 +154,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 // Mirrors lib/theme.ts (applyTheme + applyPalette) so the first paint has the saved theme.
-const THEME_BOOT = `try{var p=localStorage.getItem("ruah.theme")||"dark";var m=p==="system"?(matchMedia("(prefers-contrast: more)").matches?"contrast":matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;if(["dark","light","contrast"].indexOf(m)<0)m="dark";var s=m==="light"?"light":"dark";var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(s);r.dataset.theme=m;r.style.colorScheme=s;var a=localStorage.getItem("ruah.palette");if(a==="dusk"||a==="sunrise")r.dataset.palette=a}catch(e){}`;
+const THEME_BOOT = `try{var p=localStorage.getItem("ruah.theme")||"dark";var m=p==="system"?(matchMedia("(prefers-contrast: more)").matches?"contrast":matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"):p;if(["dark","light","contrast"].indexOf(m)<0)m="dark";var s=m==="light"?"light":"dark";var r=document.documentElement;r.classList.remove("light","dark");r.classList.add(s);r.dataset.theme=m;r.style.colorScheme=s;var a=localStorage.getItem("ruah.palette");if(a==="dusk"||a==="sunrise"||a==="classic")r.dataset.palette=a}catch(e){}`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (

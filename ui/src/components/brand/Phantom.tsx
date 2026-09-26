@@ -8,11 +8,16 @@
 // Motion is off under prefers-reduced-motion and in the high-contrast theme (static mode), and
 // paused while the tab is hidden.
 //
-// Expressions map to the Ruah semantic colours:
-//   idle teal · thinking lavender · tracking teal + cursor-following eyes · agent lavender ·
-//   success sage · loading amber · warning amber · error coral.
-import { useEffect, useId, useRef, useSyncExternalStore, type CSSProperties } from "react";
+// Expressions map to the palette's semantic roles (design/tokens.ts; Teal + Indigo shown):
+//   idle brand (teal) · thinking ai (indigo) · tracking brand + cursor-following eyes ·
+//   agent ai · success ok (sage) · loading soft (mint, as in the design system) ·
+//   warning warn (amber) · error bad (coral).
+// Poses (sleeping, reading, terminal, …), group scenes and the agents' own tinted ghosts are in
+// ./PhantomPose.tsx; everything is exported from ./index.ts.
+import { useEffect, useId, useRef, type CSSProperties } from "react";
+import { useAppearanceKey } from "@/lib/theme";
 import { RUAH_BODY_PATH } from "@/components/brand/RuahLogo";
+import { AGENT_TINT_IDS, type AgentTint } from "@/design/tokens";
 import { cn } from "@/lib/utils";
 
 export type PhantomExpression =
@@ -26,9 +31,66 @@ export type PhantomExpression =
   | "error";
 
 export type EyeShape = "round" | "arc" | "line" | "squint" | "sparkle" | "cross";
-/** Body colour; each expression has one, `tone` overrides it (e.g. "muted" for a cold agent). */
-export type PhantomTone = "teal" | "lavender" | "sage" | "amber" | "coral" | "muted";
+/** Body colours that follow the palette: brand · ai · ok · warn · bad · info · soft (brand
+ * tint, "mint") · extra-1…3 (the palette's categorical hues) · muted · cream ("The Face"). */
+export type SemanticTone =
+  | "brand"
+  | "ai"
+  | "ok"
+  | "warn"
+  | "bad"
+  | "info"
+  | "soft"
+  | "extra-1"
+  | "extra-2"
+  | "extra-3"
+  | "muted"
+  | "cream";
+/** Legacy names from before the palettes: teal = brand, lavender = ai, sage = ok, amber = warn,
+ * coral = bad, slate = info, mint = soft (they follow the palette too). */
+export type LegacyTone = "teal" | "lavender" | "sage" | "amber" | "coral" | "slate" | "mint";
+/** Body colour; each expression has one, `tone` overrides it (e.g. "muted" for a cold agent,
+ * "claude" for Claude's own ghost). */
+export type PhantomTone = SemanticTone | AgentTint | LegacyTone;
+export type CanonicalTone = SemanticTone | AgentTint;
 export type PhantomSize = "xs" | "sm" | "md" | "lg" | "xl";
+
+const LEGACY: Record<LegacyTone, SemanticTone> = {
+  teal: "brand",
+  lavender: "ai",
+  sage: "ok",
+  amber: "warn",
+  coral: "bad",
+  slate: "info",
+  mint: "soft",
+};
+
+export const SEMANTIC_TONES: readonly SemanticTone[] = [
+  "brand",
+  "ai",
+  "ok",
+  "warn",
+  "bad",
+  "info",
+  "soft",
+  "extra-1",
+  "extra-2",
+  "extra-3",
+  "muted",
+  "cream",
+];
+
+export function canonicalTone(tone: PhantomTone): CanonicalTone {
+  return (LEGACY as Record<string, SemanticTone>)[tone] ?? (tone as CanonicalTone);
+}
+
+/** The CSS custom property that holds a tone's body colour. */
+export function toneVar(tone: PhantomTone): string {
+  const t = canonicalTone(tone);
+  if ((AGENT_TINT_IDS as readonly string[]).includes(t)) return `--agent-${t}`;
+  if (t === "soft") return "--ph-brand-soft";
+  return `--ph-${t}`;
+}
 
 export const PHANTOM_EXPRESSIONS: readonly PhantomExpression[] = [
   "idle",
@@ -43,23 +105,23 @@ export const PHANTOM_EXPRESSIONS: readonly PhantomExpression[] = [
 
 export const PHANTOM_SIZES: Record<PhantomSize, number> = { xs: 16, sm: 24, md: 40, lg: 72, xl: 120 };
 
-const EXPRESSION_CONFIG: Record<PhantomExpression, { tone: PhantomTone; eye: EyeShape }> = {
-  idle: { tone: "teal", eye: "round" },
-  thinking: { tone: "lavender", eye: "arc" },
-  tracking: { tone: "teal", eye: "round" },
-  agent: { tone: "lavender", eye: "round" },
-  success: { tone: "sage", eye: "arc" },
-  loading: { tone: "amber", eye: "squint" },
-  warning: { tone: "amber", eye: "line" },
-  error: { tone: "coral", eye: "cross" },
+export const EXPRESSION_CONFIG: Record<PhantomExpression, { tone: CanonicalTone; eye: EyeShape }> = {
+  idle: { tone: "brand", eye: "round" },
+  thinking: { tone: "ai", eye: "arc" },
+  tracking: { tone: "brand", eye: "round" },
+  agent: { tone: "ai", eye: "round" },
+  success: { tone: "ok", eye: "arc" },
+  loading: { tone: "soft", eye: "squint" },
+  warning: { tone: "warn", eye: "line" },
+  error: { tone: "bad", eye: "cross" },
 };
 
-const EYES_X = [237, 363] as const;
-const EYE_Y = 355.2;
+export const EYES_X = [237, 363] as const;
+export const EYE_Y = 355.2;
 
 /** Small ghosts get bigger eyes and bolder strokes, so the face still reads at 16 px (at the
  * website's proportions a drawn eye would be a fifth of a pixel thick). */
-function eyeScale(px: number): { k: number; sw: number } {
+export function eyeScale(px: number): { k: number; sw: number } {
   if (px <= 20) return { k: 1.6, sw: 30 };
   if (px < 32) return { k: 1.3, sw: 16 };
   if (px < 56) return { k: 1.1, sw: 10 };
@@ -69,7 +131,7 @@ function eyeScale(px: number): { k: number; sw: number } {
 /** One eye at (cx, EYE_Y). Round / sparkle eyes follow the offset fully, the drawn ones at 0.3
  * (as on the website). The offset comes from the --ph-ex / --ph-ey custom properties, so the
  * companion can move the eyes without re-rendering. */
-function Eye({ cx, shape, k = 1, sw = 8 }: { cx: number; shape: EyeShape; k?: number; sw?: number }) {
+export function Eye({ cx, shape, k = 1, sw = 8 }: { cx: number; shape: EyeShape; k?: number; sw?: number }) {
   const cy = EYE_Y;
   const f = shape === "round" || shape === "sparkle" ? 1 : 0.3;
   const track: CSSProperties = {
@@ -148,22 +210,6 @@ const eyeMarkup = (cx: number, shape: EyeShape, eye: string, body: string, k: nu
   }
 };
 
-// The resolved theme (html[data-theme]) as a tiny external store: one observer for all sprites.
-const themeListeners = new Set<() => void>();
-let themeObserver: MutationObserver | null = null;
-const readTheme = () =>
-  typeof document === "undefined" ? "dark" : (document.documentElement.dataset["theme"] ?? "dark");
-function subscribeTheme(fn: () => void) {
-  themeListeners.add(fn);
-  if (!themeObserver && typeof MutationObserver !== "undefined") {
-    themeObserver = new MutationObserver(() => themeListeners.forEach((l) => l()));
-    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  }
-  return () => {
-    themeListeners.delete(fn);
-  };
-}
-
 const sprites = new Map<string, string>();
 function spriteUrl(theme: string, tone: PhantomTone, eyes: EyeShape, px: number): string {
   const { k, sw } = eyeScale(px);
@@ -171,7 +217,7 @@ function spriteUrl(theme: string, tone: PhantomTone, eyes: EyeShape, px: number)
   let url = sprites.get(key);
   if (url) return url;
   const css = getComputedStyle(document.documentElement);
-  const body = css.getPropertyValue(`--ph-${tone}`).trim() || "#00d2b9";
+  const body = css.getPropertyValue(toneVar(tone)).trim() || "#00d2b9";
   const eye = css.getPropertyValue("--ph-eye").trim() || "#f0eee9";
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'><path fill='${body}' d='${RUAH_BODY_PATH}'/>` +
@@ -183,12 +229,13 @@ function spriteUrl(theme: string, tone: PhantomTone, eyes: EyeShape, px: number)
 }
 
 function PhantomSprite({ tone, eyes, px }: { tone: PhantomTone; eyes: EyeShape; px: number }) {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "dark");
+  // The resolved theme × palette (one shared <html> observer, lib/theme.ts).
+  const theme = useAppearanceKey();
   return <span className="phantom-sprite" style={{ backgroundImage: spriteUrl(theme, tone, eyes, px) }} />;
 }
 
 /** A stable pseudo-random phase per instance, so a screen full of ghosts does not blink in sync. */
-function phaseOf(id: string) {
+export function phaseOf(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return ((Math.abs(h) % 997) / 997) * 6;
@@ -196,7 +243,7 @@ function phaseOf(id: string) {
 
 // While the tab is hidden every ghost pauses (one listener for the whole app).
 let visibilityHooked = false;
-function hookVisibility() {
+export function hookVisibility() {
   if (visibilityHooked || typeof document === "undefined") return;
   visibilityHooked = true;
   const sync = () => {
@@ -271,7 +318,7 @@ export function Phantom({
     <span
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
       data-expression={expression}
-      data-tone={tone ?? cfg.tone}
+      data-tone={tone ? canonicalTone(tone) : cfg.tone}
       data-still={still ? "" : undefined}
       data-blink={blink ? "" : undefined}
       className={cn("phantom", className)}

@@ -23,11 +23,11 @@ export function ProjectActivityBadge({ projectId, className }: { projectId: stri
       className={cn("pointer-events-none inline-flex shrink-0 items-center gap-1", className)}
     >
       {waitingPermission > 0 ? (
-        <span className="grid size-3.5 place-items-center rounded-full bg-amber-500 text-[9px] font-semibold leading-none text-black">
+        <span className="grid size-3.5 place-items-center rounded-full bg-warn text-[9px] font-semibold leading-none text-black">
           !
         </span>
       ) : running > 0 ? (
-        <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+        <span className="size-1.5 animate-pulse rounded-full bg-ai" />
       ) : null}
       {unread > 0 ? (
         <span className="min-w-3.5 rounded-full bg-primary/15 px-1 text-center text-[9.5px] font-medium leading-[14px] text-primary">

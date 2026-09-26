@@ -29,7 +29,7 @@ import {
   solidButton,
 } from "./common";
 import { JiraConnectDialog } from "./JiraConnectDialog";
-import { Phantom } from "@/components/brand/Phantom";
+import { PhantomPose } from "@/components/brand/PhantomPose";
 import { cn } from "@/lib/utils";
 
 const FAMILIES: { id: IntegrationInfo["family"]; title: string; description: string }[] = [
@@ -299,7 +299,7 @@ export function IntegrationsPage() {
           <RemoteNotice remote={remote} what="Integrations" />
           {list && list.length > 0 && connectedCount === 0 ? (
             <div className="flex items-center gap-4 rounded-xl border border-hairline bg-surface-1 px-4 py-3.5">
-              <Phantom expression="idle" size="md" />
+              <PhantomPose pose="plugging" size={64} noGlow />
               <div className="min-w-0 space-y-0.5">
                 <p className="text-[13px] font-medium text-foreground">Nothing connected yet</p>
                 <p className="text-[12.5px] leading-relaxed text-muted-foreground">

@@ -1,7 +1,9 @@
 // Adapted from t3code apps/web/src/components/usage/usageProviders.ts (MIT).
 // Presentation for the coding agents usage is reported for. Colours come from the design
-// tokens (accent first, then neutrals), assigned in a stable order; marks are initials, never
-// brand artwork.
+// tokens: a known agent always wears its identity tint (--agent-claude, …: the same colour as
+// its ghost and its mark, in every palette), other agents get the categorical series in a
+// stable order; marks are initials, never brand artwork.
+import { agentTintOf } from "@/components/brand/PhantomPose";
 
 const KNOWN_NAMES: Record<string, string> = {
   claude: "Claude Code",
@@ -20,6 +22,7 @@ const SERIES = [
   "var(--series-3)",
   "var(--series-4)",
   "var(--series-5)",
+  "var(--series-6)",
 ];
 
 export function agentLabel(agentId: string, names?: ReadonlyMap<string, string>): string {
@@ -38,6 +41,9 @@ export function orderAgents(ids: Iterable<string>): string[] {
 }
 
 export function agentColor(agentId: string, active: readonly string[]): string {
-  const i = active.indexOf(agentId);
-  return SERIES[(i === -1 ? active.length : i) % SERIES.length]!;
+  const tint = agentTintOf(agentId);
+  if (tint) return `var(--agent-${tint})`;
+  const others = active.filter((a) => !agentTintOf(a));
+  const i = others.indexOf(agentId);
+  return SERIES[(i === -1 ? others.length : i) % SERIES.length]!;
 }

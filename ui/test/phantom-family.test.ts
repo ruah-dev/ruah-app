@@ -1,0 +1,183 @@
+// The Phantom family (components/brand): tones follow the palette tokens, every pose / scene /
+// agent ghost renders as decorative SVG (or an image with a label), agent ids map to tints, and
+// the empty state wires tone + live region.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import {
+  EmptyState,
+  POSES,
+  POSE_NAMES,
+  Phantom,
+  PhantomAgent,
+  PhantomPose,
+  PhantomScene,
+  SCENE_NAMES,
+  agentTintFromName,
+  agentTintOf,
+  canonicalTone,
+  toneVar,
+} from "@/components/brand";
+import { AGENT_TINT_IDS, resolveTokens } from "@/design/tokens";
+import { agentColor } from "@/components/usage/usageAgents";
+
+const html = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el);
+
+describe("tones", () => {
+  it("maps legacy names onto the palette's roles", () => {
+    expect(canonicalTone("teal")).toBe("brand");
+    expect(canonicalTone("lavender")).toBe("ai");
+    expect(canonicalTone("sage")).toBe("ok");
+    expect(canonicalTone("coral")).toBe("bad");
+    expect(canonicalTone("muted")).toBe("muted");
+    expect(canonicalTone("claude")).toBe("claude");
+  });
+
+  it("every tone's variable is a generated token", () => {
+    const tokens = resolveTokens("teal", "dark");
+    for (const tone of ["brand", "ai", "ok", "warn", "bad", "info", "soft", "muted", "cream", "extra-1", "extra-2", "extra-3", ...AGENT_TINT_IDS] as const) {
+      const name = toneVar(tone).slice(2);
+      expect(tokens[name], tone).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("an expression's ghost carries its canonical tone", () => {
+    expect(html(createElement(Phantom, { expression: "agent" }))).toContain('data-tone="ai"');
+    expect(html(createElement(Phantom, { expression: "loading" }))).toContain('data-tone="soft"');
+    expect(html(createElement(Phantom, { expression: "idle", tone: "sage" }))).toContain('data-tone="ok"');
+  });
+});
+
+describe("poses", () => {
+  it("has the roles the app needs (at least 12 new poses)", () => {
+    for (const p of [
+      "sleeping",
+      "celebrating",
+      "reading",
+      "building",
+      "searching",
+      "cloud",
+      "infra",
+      "terminal",
+      "detective",
+      "traveler",
+      "keyholder",
+      "headset",
+    ] as const) {
+      expect(POSE_NAMES).toContain(p);
+    }
+    expect(POSE_NAMES.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it("each pose renders an SVG in the 600-unit box with the body silhouette", () => {
+    for (const pose of POSE_NAMES) {
+      const out = html(createElement(PhantomPose, { pose, size: 96 }));
+      expect(out, pose).toContain('viewBox="0 0 600 600"');
+      expect(out, pose).toContain("phantom-skin");
+      expect(out, pose).toContain(`data-tone="${POSES[pose].tone}"`);
+      expect(out, pose).toContain('aria-hidden="true"');
+      // Colours are tokens, never literals.
+      expect(out, pose).not.toMatch(/fill="#|stroke="#/);
+    }
+  });
+
+  it("a labelled pose is an image", () => {
+    const out = html(createElement(PhantomPose, { pose: "detective", label: "Debugging" }));
+    expect(out).toContain('role="img"');
+    expect(out).toContain('aria-label="Debugging"');
+  });
+
+  it("still ghosts opt out of motion", () => {
+    expect(html(createElement(PhantomPose, { pose: "sleeping", still: true }))).toContain("data-still");
+  });
+
+  it("props move only when lively or hovered, so idle empty states cost no paint", () => {
+    expect(html(createElement(PhantomPose, { pose: "reading" }))).not.toContain("data-lively");
+    expect(html(createElement(PhantomPose, { pose: "reading", lively: true }))).toContain("data-lively");
+    expect(html(createElement(PhantomPose, { pose: "reading", lively: true, still: true }))).not.toContain("data-lively");
+    expect(html(createElement(PhantomScene, { scene: "party", lively: true }))).toContain("data-lively");
+    expect(html(createElement(EmptyState, { pose: "charting", title: "No usage" }))).not.toContain("data-lively");
+    expect(html(createElement(EmptyState, { pose: "reading", title: "Scanning", lively: true }))).toContain("data-lively");
+    // Every infinite part animation sits behind the lively / hover gate.
+    const css = readFileSync(fileURLToPath(new URL("../src/components/brand/phantom.css", import.meta.url)), "utf8");
+    const gate = css.indexOf(".phantom:not([data-still]):is([data-lively], :hover) {");
+    expect(gate).toBeGreaterThan(0);
+    const block = css.slice(gate, css.indexOf("\n  }\n", gate));
+    for (const part of ["ph-z", "ph-bar", "ph-typing", "ph-confetti", "ph-scanbar"]) expect(block).toContain(`& .${part} {`);
+    expect(css.slice(0, gate)).not.toMatch(/& \.ph-/);
+    expect(css).toContain(".phantom-scene:not([data-lively], :hover) .phantom-figure.phantom-float");
+  });
+});
+
+describe("agents and scenes", () => {
+  it("maps daemon agent ids onto tints", () => {
+    expect(agentTintOf("claude")).toBe("claude");
+    expect(agentTintOf("claude-acp")).toBe("claude");
+    expect(agentTintOf("cursor")).toBe("cursor");
+    expect(agentTintOf("open-code")).toBe("opencode");
+    expect(agentTintOf("kiro-cli")).toBe("kiro");
+    expect(agentTintOf("aider")).toBeUndefined();
+    expect(agentTintOf(undefined)).toBeUndefined();
+  });
+
+  it("maps display names onto tints", () => {
+    expect(agentTintFromName("Claude Code")).toBe("claude");
+    expect(agentTintFromName("Cursor Agent")).toBe("cursor");
+    expect(agentTintFromName("Grok Build")).toBe("grok");
+    expect(agentTintFromName("Kiro CLI")).toBe("kiro");
+    expect(agentTintFromName("OpenCode")).toBe("opencode");
+    expect(agentTintFromName("Mock agent")).toBeUndefined();
+  });
+
+  it("usage colours a known agent with its tint, others with the series in order", () => {
+    const active = ["claude", "mock", "cursor", "aider"];
+    expect(agentColor("claude", active)).toBe("var(--agent-claude)");
+    expect(agentColor("cursor", active)).toBe("var(--agent-cursor)");
+    expect(agentColor("mock", active)).toBe("var(--series-1)");
+    expect(agentColor("aider", active)).toBe("var(--series-2)");
+  });
+
+  it("a status keeps its colour on an agent's ghost", () => {
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "idle" }))).toContain('data-tone="claude"');
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "error" }))).toContain('data-tone="bad"');
+    expect(html(createElement(PhantomAgent, { agent: "claude", expression: "warning" }))).toContain('data-tone="warn"');
+  });
+
+  it("an agent's ghost wears its tint, and its emblem from 32 px", () => {
+    const big = html(createElement(PhantomAgent, { agent: "grok", size: 72 }));
+    expect(big).toContain('data-tone="grok"');
+    const small = html(createElement(PhantomAgent, { agent: "grok", size: 16 }));
+    expect(small.length).toBeLessThan(big.length);
+    expect(html(createElement(PhantomAgent, { agent: "aider" }))).toContain('data-tone="ai"');
+  });
+
+  it("scenes render several figures with their own tones", () => {
+    for (const scene of SCENE_NAMES) {
+      const out = html(createElement(PhantomScene, { scene, height: 100 }));
+      expect(out, scene).toContain("phantom-figure");
+      expect((out.match(/phantom-figure/g) ?? []).length, scene).toBeGreaterThanOrEqual(2);
+    }
+    const crew = html(createElement(PhantomScene, { scene: "crew" }));
+    for (const a of AGENT_TINT_IDS) expect(crew).toContain(`data-tone="${a}"`);
+  });
+});
+
+describe("EmptyState", () => {
+  it("renders title, body, eyebrow in the tone colour and a live region", () => {
+    const out = html(
+      createElement(EmptyState, {
+        pose: "detective",
+        eyebrow: "Failed",
+        title: "Couldn't load",
+        body: "The daemon did not answer.",
+        live: "assertive",
+      }),
+    );
+    expect(out).toContain("Couldn&#x27;t load");
+    expect(out).toContain("text-bad");
+    expect(out).toContain('role="alert"');
+    expect(out).toContain("var(--ph-bad)");
+  });
+});

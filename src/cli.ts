@@ -51,6 +51,8 @@ Usage:
   ruah app activity [--since <dur>] [--json] [--project <repo-or-id>]
                                    what agents did across projects (default --since 24h),
                                    unread and waiting-for-permission counts
+  ruah app design <cmd>             the app's design tokens (palettes, WCAG contrast check,
+                                   generated CSS); \`ruah app design help\` for commands
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -317,6 +319,10 @@ async function main(argv: readonly string[]): Promise<number> {
     case "activity": {
       const { runActivity } = await import("./activity/run-activity.js");
       return await runActivity(rest);
+    }
+    case "design": {
+      const { runDesign } = await import("./design/run-design.js");
+      return await runDesign(rest);
     }
     default:
       process.stdout.write(USAGE);

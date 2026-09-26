@@ -1,5 +1,6 @@
-// The terminal follows the app theme: xterm gets the --term-* tokens of styles.css
-// (resolved for the current data-theme) and is updated when the theme changes.
+// The terminal follows the app theme and palette: xterm gets the --term-* tokens (generated from
+// design/tokens.ts into design/tokens.css, resolved for the current data-theme × data-palette)
+// and is updated when either changes.
 import type { ITheme } from "@xterm/xterm";
 
 const KEYS: [keyof ITheme, string][] = [

@@ -35,24 +35,26 @@ import { runCommandInTerminal } from "@/components/terminal/actions";
 
 export { PROVIDER_SETUP_LABEL, providerSetupState, setupCommands, type ProviderSetupState } from "@/lib/integrations";
 
-// Third-party services get the quiet metadata palette (slate / amber / warm), never a vendor's
-// own brand colour; ruah itself carries the spirit mark.
+// Third-party services get a categorical tint from the palette (design tokens cat-1…6: brand,
+// ai and three extra hues, never a status colour and never a vendor's own brand colour), so
+// providers are told apart at a glance while ok / warn / bad stay reserved for health; a few
+// stay neutral. ruah itself carries the spirit mark.
 const PROVIDER_MARK: Record<string, { icon: LucideIcon; className: string }> = {
-  digitalocean: { icon: Droplet, className: "bg-info/15 text-info" },
-  aws: { icon: Cloud, className: "bg-warn/15 text-warn" },
+  digitalocean: { icon: Droplet, className: "bg-cat-3/15 text-cat-3" },
+  aws: { icon: Cloud, className: "bg-cat-5/15 text-cat-5" },
   vercel: { icon: SquareChevronUp, className: "bg-surface-3 text-foreground/85" },
-  supabase: { icon: Zap, className: "bg-info/15 text-info" },
-  kubernetes: { icon: ShipWheel, className: "bg-info/15 text-info" },
-  netlify: { icon: Network, className: "bg-warn/15 text-warn" },
+  supabase: { icon: Zap, className: "bg-cat-1/15 text-cat-1" },
+  kubernetes: { icon: ShipWheel, className: "bg-cat-2/15 text-cat-2" },
+  netlify: { icon: Network, className: "bg-cat-4/15 text-cat-4" },
   hetzner: { icon: Server, className: "bg-surface-3 text-foreground/85" },
-  jira: { icon: SquareKanban, className: "bg-info/15 text-info" },
+  jira: { icon: SquareKanban, className: "bg-cat-2/15 text-cat-2" },
   github: { icon: CircleDot, className: "bg-surface-3 text-foreground/85" },
   // Cloud batch B (CONTRACTS.md §10): generic shapes, never vendor logos or colours.
-  gcp: { icon: Hexagon, className: "bg-info/15 text-info" },
-  azure: { icon: Triangle, className: "bg-info/15 text-info" },
-  cloudflare: { icon: CloudSun, className: "bg-warn/15 text-warn" },
+  gcp: { icon: Hexagon, className: "bg-cat-3/15 text-cat-3" },
+  azure: { icon: Triangle, className: "bg-cat-6/15 text-cat-6" },
+  cloudflare: { icon: CloudSun, className: "bg-cat-4/15 text-cat-4" },
   railway: { icon: TrainFront, className: "bg-surface-3 text-foreground/85" },
-  fly: { icon: Feather, className: "bg-ok/15 text-ok" },
+  fly: { icon: Feather, className: "bg-cat-5/15 text-cat-5" },
 };
 
 export function ProviderMark({ id, className }: { id: string; className?: string }) {

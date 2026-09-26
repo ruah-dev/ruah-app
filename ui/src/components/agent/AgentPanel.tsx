@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { ImagePlus, MessageSquarePlus, RotateCcw } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
-import { Phantom } from "@/components/brand/Phantom";
+import { PhantomAgent, PhantomPose } from "@/components/brand/PhantomPose";
 import type { DiagramNode } from "@/data/graphs";
 import type { Architecture } from "@/lib/contracts";
 import { contextPathOf } from "@/lib/architecture";
@@ -235,7 +235,11 @@ export function AgentPanel({
           </div>
         ) : turns.length === 0 ? (
           <div className="mx-auto flex h-full max-w-[26rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-            <Phantom expression={connected ? "agent" : "thinking"} size={56} />
+            {connected ? (
+              <PhantomAgent agent={daemon.agent?.agents?.currentAgentId ?? ""} expression="agent" size={72} noGlow />
+            ) : (
+              <PhantomPose pose="sleeping" size={80} noGlow />
+            )}
             <div className="space-y-1.5">
               <p className="heading text-[16px] text-foreground">
                 {node ? `Ask about ${node.label}` : "Ask Ruah about this codebase"}

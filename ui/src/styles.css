@@ -1,25 +1,32 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+/* Design tokens (generated from design/tokens.ts: `pnpm design:tokens`) and the Phantom. */
+@import "./design/tokens.css";
+@import "./components/brand/phantom.css";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Ruah design system — the colours, surfaces and marks of the ruah website
- * (ruah-website/src/app/globals.css): warm charcoal surfaces (never blue-black), a warm text
- * scale, teal / lavender / sage / amber / coral / slate.
+ * Ruah design system — the app side of the "Ruah Design System" (Claude Design; reference copy
+ * docs/design/ruah-design-system.html, mapping in docs/design/README.md). Every colour token is
+ * generated from ONE file, design/tokens.ts, into design/tokens.css: warm charcoal surfaces
+ * (never blue-black), a warm text scale and six semantic roles per palette.
  * Typography is app-like, not the website's editorial pairing (the user found DM Sans +
  * Instrument Serif wrong inside the app, 2026-09-23): the system UI font for all text
  * (as in Cursor / Claude Code / t3code), Geist Mono for code, paths, ids and tokens, and Jura
  * only for the "ruah" wordmark.
  *
  * Semantic colour roles (never hardcode colours in components):
- *   teal (primary / ruah-*)  — brand + interactive only: primary actions, focus, selection,
- *                              the active nav indicator, links
- *   lavender (ai / lavender-*) — everything AI / agent
- *   sage (ok)  · amber (warn) · coral (bad / destructive) · slate (info / metadata)
+ *   primary / brand (teal in Teal + Indigo) — brand + interactive only: primary actions, focus,
+ *                              selection, the active nav indicator, links
+ *   ai (indigo in Teal + Indigo) — everything AI / agent; the secondary accent
+ *   ok · warn · bad / destructive · info (metadata)
+ *   cat-1…6 — categorical (charts, provider tints), never a status hue
+ *   agent-claude / -cursor / -grok / -kiro / -opencode — each coding agent's tint
+ * Palettes (html[data-palette]): Teal + Indigo (default) · dusk = Indigo · sunrise · classic.
  *
- * The app's dark theme is lifted above the website's (#111110) so panels and borders stay
+ * The app's dark theme is lifted above the design system's (#111110) so panels and borders stay
  * clearly visible for long working sessions (the user asked for "dark, but more visible").
  *
  * Type + rhythm scale. New UI uses these names instead of arbitrary sizes:
@@ -110,10 +117,6 @@
   --color-slate-700: #26303e;
   --color-slate-800: #1a2028;
   --color-slate-900: #0f1319;
-
-  /* palette variants (Settings → Appearance → Accent) */
-  --color-dusk-500: #8b6ed2;
-  --color-sunrise-500: #d6854a;
 
   --color-warm-50: #faf9f7;
   --color-warm-100: #f0eee9;
@@ -215,6 +218,18 @@
   --color-series-3: var(--series-3);
   --color-series-4: var(--series-4);
   --color-series-5: var(--series-5);
+  --color-series-6: var(--series-6);
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+  --color-agent-claude: var(--agent-claude);
+  --color-agent-cursor: var(--agent-cursor);
+  --color-agent-grok: var(--agent-grok);
+  --color-agent-kiro: var(--agent-kiro);
+  --color-agent-opencode: var(--agent-opencode);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
@@ -235,245 +250,7 @@
   --font-brand: var(--font-brand-stack);
 }
 
-/* ---------------------------------------------------------------------------------------------
- * Dark (default) — the brand's warm charcoal, lifted.
- *   sidebar #1a1a19 < page #20201e < panels #272725 < controls #333331; borders #3a3a37;
- *   text #f0eee9, secondary #b8b3a8, tertiary hints #8f8a7e.
- * ------------------------------------------------------------------------------------------- */
-:root {
-  --radius: 0.5rem;
-  --r-xs: 4px;
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 24px;
-  --r-pill: 999px;
-
-  --font-sans-stack: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono-stack: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --font-brand-stack: "Jura", -apple-system, system-ui, sans-serif;
-
-  --elev-card: 0 1px 2px rgba(0, 0, 0, 0.22), 0 10px 30px -14px rgba(0, 0, 0, 0.45);
-  --elev-elevated: 0 6px 24px -6px rgba(0, 0, 0, 0.45), 0 20px 50px -18px rgba(0, 0, 0, 0.5);
-  --grain-opacity: 0.03;
-
-  --surface-0: #1a1a19;
-  --background: #20201e;
-  --foreground: #f0eee9;
-  --surface-1: #272725;
-  --surface-2: #2e2e2c;
-  --surface-3: #353533;
-  --surface-4: #3d3d3a;
-  --hairline: #3a3a37;
-
-  --card: #272725;
-  --card-foreground: var(--foreground);
-  --popover: #2a2a28;
-  --popover-foreground: var(--foreground);
-
-  --brand: #00d2b9;
-  --primary: #00bea8;
-  --primary-foreground: #111110;
-  --secondary: #2e2e2c;
-  --secondary-foreground: var(--foreground);
-  --muted: #2e2e2c;
-  --muted-foreground: #b8b3a8;
-  --faint: #8f8a7e;
-  --accent: #333331;
-  --accent-foreground: var(--foreground);
-  --destructive: #dc5850;
-  --destructive-foreground: #faf9f7;
-
-  --border: #3a3a37;
-  --input: #77726a;
-  --ring: #00bea8;
-
-  /* agent / AI identity */
-  --ai: #b594f5;
-  --ai-foreground: #1a1426;
-
-  /* chat */
-  --message: #313130;
-  --composer: #2a2a28;
-
-  /* canvas */
-  --canvas: #20201e;
-  --grid: #4f4b44;
-  --edge: #8f8a7e;
-  --edge-active: #00d2b9;
-  --group: #b8b3a8;
-
-  /* element kinds — one brand hue each, bright enough for the lifted dark canvas */
-  --node-service: #00d2b9;
-  --node-frontend: #b594f5;
-  --node-data: #9ec281;
-  --node-queue: #e5a84b;
-  --node-gateway: #f49a92;
-  --node-external: #8a97ae;
-  --node-file: #b8b3a8;
-  --node-step: #cfbdf8;
-
-  --ok: #7fb069;
-  --warn: #e5a84b;
-  --bad: #f07068;
-  --info: #8a97ae;
-
-  --series-1: var(--primary);
-  --series-2: var(--ai);
-  --series-3: var(--warn);
-  --series-4: var(--ok);
-  --series-5: var(--info);
-
-  --sidebar: var(--surface-0);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--hairline);
-  --sidebar-ring: var(--ring);
-}
-
-/* Light — the brand's warm light (Settings → Appearance). */
-html[data-theme="light"] {
-  --elev-card: 0 1px 2px rgba(44, 42, 37, 0.06), 0 10px 30px -16px rgba(44, 42, 37, 0.18);
-  --elev-elevated: 0 6px 24px -8px rgba(44, 42, 37, 0.16), 0 20px 50px -20px rgba(44, 42, 37, 0.2);
-  --grain-opacity: 0.025;
-
-  --surface-0: #f3f1ec;
-  --background: #faf9f7;
-  --foreground: #1a1a19;
-  --surface-1: #f6f4ef;
-  --surface-2: #efece6;
-  --surface-3: #e6e2da;
-  --surface-4: #dcd8cf;
-  --hairline: #e0dcd4;
-  --card: #ffffff;
-  --popover: #ffffff;
-  --brand: #00bea8;
-  --primary: #007e70;
-  --primary-foreground: #ffffff;
-  --secondary: #efece6;
-  --muted: #efece6;
-  --muted-foreground: #565248;
-  --faint: #706b60;
-  --accent: #ebe8e1;
-  --destructive: #b8453e;
-  --border: #e0dcd4;
-  --input: #8f8a7e;
-  --ring: #007e70;
-  --ai: #7d58cc;
-  --ai-foreground: #ffffff;
-  --message: #efece6;
-  --composer: #ffffff;
-  --canvas: #faf9f7;
-  --grid: #cfcac0;
-  --edge: #8f8a7e;
-  --edge-active: #009e8c;
-  --group: #706b60;
-  --node-service: #007e70;
-  --node-frontend: #7d58cc;
-  --node-data: #507e3c;
-  --node-queue: #8a6118;
-  --node-gateway: #b8453e;
-  --node-external: #45536c;
-  --node-file: #565248;
-  --node-step: #412c74;
-  --ok: #507e3c;
-  --warn: #8a6118;
-  --bad: #b8453e;
-  --info: #45536c;
-}
-
-/* High contrast — the brand's contrast theme: true black, white text, brighter accents. */
-html[data-theme="contrast"] {
-  --elev-card: 0 0 0 1px #5a5a5a;
-  --elev-elevated: 0 0 0 1px #8a8a8a, 0 12px 40px -12px rgba(0, 0, 0, 0.8);
-  --grain-opacity: 0;
-
-  --surface-0: #000000;
-  --background: #000000;
-  --foreground: #ffffff;
-  --surface-1: #0a0a0a;
-  --surface-2: #1a1a1a;
-  --surface-3: #2a2a2a;
-  --surface-4: #3a3a3a;
-  --hairline: #5a5a5a;
-  --card: #0a0a0a;
-  --popover: #0f0f0f;
-  --brand: #00f0d3;
-  --primary: #00f0d3;
-  --primary-foreground: #000000;
-  --secondary: #1a1a1a;
-  --muted: #1a1a1a;
-  --muted-foreground: #d0d0d0;
-  --faint: #b0b0b0;
-  --accent: #262626;
-  --destructive: #f49a92;
-  --destructive-foreground: #000000;
-  --border: #5a5a5a;
-  --input: #8a8a8a;
-  --ring: #00f0d3;
-  --ai: #cfbdf8;
-  --ai-foreground: #000000;
-  --message: #1a1a1a;
-  --composer: #0a0a0a;
-  --canvas: #000000;
-  --grid: #4a4a4a;
-  --edge: #b0b0b0;
-  --edge-active: #00f0d3;
-  --group: #d0d0d0;
-  --node-service: #4dd9c5;
-  --node-frontend: #c2a7f7;
-  --node-data: #bcd49e;
-  --node-queue: #edbf5e;
-  --node-gateway: #f49a92;
-  --node-external: #b7c0cf;
-  --node-file: #dedad3;
-  --node-step: #e1d6fb;
-  --ok: #9ec281;
-  --warn: #edbf5e;
-  --bad: #f49a92;
-  --info: #b7c0cf;
-}
-
-/* Accent palettes (Settings → Appearance): swap the interactive accent, keep everything else. */
-html[data-palette="dusk"] {
-  --primary: #9d82e6;
-  --ring: #9d82e6;
-  --edge-active: #b594f5;
-  --brand: #b594f5;
-}
-html[data-palette="sunrise"] {
-  --primary: #d6854a;
-  --ring: #d6854a;
-  --edge-active: #e5a84b;
-  --brand: #e5a84b;
-}
-html[data-theme="light"][data-palette="dusk"] {
-  --primary: #6a4fbf;
-  --ring: #6a4fbf;
-  --edge-active: #7d58cc;
-  --brand: #7d58cc;
-}
-html[data-theme="light"][data-palette="sunrise"] {
-  --primary: #a85f28;
-  --ring: #a85f28;
-  --edge-active: #ad7a22;
-  --brand: #d6854a;
-}
-html[data-theme="contrast"][data-palette="dusk"] {
-  --primary: #cfbdf8;
-  --ring: #cfbdf8;
-  --edge-active: #cfbdf8;
-  --brand: #cfbdf8;
-}
-html[data-theme="contrast"][data-palette="sunrise"] {
-  --primary: #f4b27a;
-  --ring: #f4b27a;
-  --edge-active: #f4d48e;
-  --brand: #f4b27a;
-}
+/* Colour tokens: generated from design/tokens.ts into design/tokens.css (imported above). */
 
 .dark {
   color-scheme: dark;
@@ -683,183 +460,7 @@ html[data-theme="contrast"] .grain::after {
   }
 }
 
-/* ---------------------------------------------------------------------------------------------
- * Phantom — the mascot (components/brand/Phantom.tsx). Body colours are the semantic brand
- * hues, one step deeper in light and one lighter in high contrast; eyes stay light on the body
- * (black in high contrast). Motion is transform / opacity only, per instance phase-shifted
- * (--ph-delay); none under reduced motion or in the high-contrast theme (static), paused while
- * the tab is hidden.
- * ------------------------------------------------------------------------------------------- */
-:root,
-[data-ph-theme="dark"] {
-  --ph-teal: #00d2b9;
-  --ph-lavender: #b594f5;
-  --ph-sage: #7fb069;
-  --ph-amber: #e5a84b;
-  --ph-coral: #f07068;
-  --ph-muted: #8f8a7e;
-  --ph-eye: #f0eee9;
-  --ph-shine: #1a1a19;
-}
-html[data-theme="light"],
-[data-ph-theme="light"] {
-  --ph-teal: #00bea8;
-  --ph-lavender: #9773e4;
-  --ph-sage: #67994f;
-  --ph-amber: #d09430;
-  --ph-coral: #dc5850;
-  --ph-muted: #b8b3a8;
-  --ph-eye: #faf9f7;
-}
-html[data-theme="contrast"],
-[data-ph-theme="contrast"] {
-  --ph-teal: #4dd9c5;
-  --ph-lavender: #c2a7f7;
-  --ph-sage: #9ec281;
-  --ph-amber: #edbf5e;
-  --ph-coral: #f49a92;
-  --ph-muted: #9a9a9a;
-  --ph-eye: #000000;
-  --ph-shine: #ffffff;
-}
-/* In the components layer, so utilities on a <Phantom className> (absolute, hidden, …) win. */
-@layer components {
-.phantom {
-  --ph-body: var(--ph-teal);
-  position: relative;
-  display: inline-block;
-  flex-shrink: 0;
-  line-height: 0;
-  vertical-align: middle;
-}
-.phantom[data-tone="lavender"] { --ph-body: var(--ph-lavender); }
-.phantom[data-tone="sage"] { --ph-body: var(--ph-sage); }
-.phantom[data-tone="amber"] { --ph-body: var(--ph-amber); }
-.phantom[data-tone="coral"] { --ph-body: var(--ph-coral); }
-.phantom[data-tone="muted"] { --ph-body: var(--ph-muted); }
-.phantom-drift,
-.phantom-body {
-  display: block;
-  position: relative;
-}
-.phantom-drift {
-  width: 100%;
-  height: 100%;
-}
-.phantom-skin { fill: var(--ph-body); }
-.phantom-sprite {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: center / 100% 100% no-repeat;
-}
-.phantom-fill { fill: var(--ph-eye); }
-.phantom-stroke { stroke: var(--ph-eye); }
-.phantom-shine { fill: var(--ph-shine); }
-/* A radial gradient, not a blur filter: many glows stay cheap. */
-.phantom-glow {
-  position: absolute;
-  inset: -22%;
-  border-radius: 9999px;
-  pointer-events: none;
-  background: radial-gradient(closest-side, color-mix(in oklab, var(--ph-body) 26%, transparent), transparent);
-}
-.phantom-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-[data-tracking] .phantom-eye {
-  transition: transform 160ms ease-out;
-}
-
-.phantom-float {
-  animation: phantom-float 6s ease-in-out var(--ph-delay, 0s) infinite;
-}
-.phantom[data-blink] .phantom-eyes {
-  animation: phantom-blink 5.4s ease-in-out var(--ph-delay, 0s) infinite;
-}
-.phantom:not([data-still])[data-expression="thinking"] .phantom-body {
-  animation: phantom-bob 3.2s ease-in-out var(--ph-delay, 0s) infinite;
-}
-.phantom:not([data-still])[data-expression="thinking"] .phantom-eyes {
-  animation: phantom-glance 4.2s ease-in-out var(--ph-delay, 0s) infinite;
-}
-.phantom:not([data-still])[data-expression="loading"] .phantom-body {
-  animation: phantom-pulse 1.6s ease-in-out var(--ph-delay, 0s) infinite;
-}
-.phantom:not([data-still])[data-expression="success"] .phantom-body {
-  animation: phantom-hop 720ms cubic-bezier(0.3, 0.7, 0.4, 1) 1 both;
-}
-.phantom:not([data-still])[data-expression="error"] .phantom-body {
-  animation: phantom-shake 460ms ease-in-out 1 both;
-}
-/* Easter egg: the sidebar logo blinks when hovered. */
-.phantom-hoverblink .phantom-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.phantom-hoverblink:hover .phantom-eyes {
-  animation: phantom-blink-once 380ms ease-in-out 2;
-}
-}
-
-@keyframes phantom-float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  33% { transform: translateY(-5%) rotate(1.2deg); }
-  66% { transform: translateY(-2.5%) rotate(-1.2deg); }
-}
-@keyframes phantom-blink {
-  0%, 93%, 100% { transform: scaleY(1); }
-  95.5% { transform: scaleY(0.1); }
-}
-@keyframes phantom-blink-once {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(0.1); }
-}
-@keyframes phantom-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6%); }
-}
-@keyframes phantom-glance {
-  0%, 18%, 100% { transform: translateX(0); }
-  28%, 42% { transform: translateX(-14px); }
-  58%, 72% { transform: translateX(14px); }
-}
-@keyframes phantom-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.92); opacity: 0.72; }
-}
-@keyframes phantom-hop {
-  0% { transform: translateY(0) scaleY(1); }
-  20% { transform: translateY(0) scale(1.06, 0.92); }
-  50% { transform: translateY(-18%) scale(0.97, 1.04); }
-  80% { transform: translateY(0) scale(1.03, 0.97); }
-  100% { transform: translateY(0) scale(1); }
-}
-@keyframes phantom-shake {
-  0%, 100% { transform: translateX(0) rotate(0); }
-  20% { transform: translateX(-7%) rotate(-4deg); }
-  40% { transform: translateX(6%) rotate(3deg); }
-  60% { transform: translateX(-4%) rotate(-2deg); }
-  80% { transform: translateX(2%) rotate(1deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .phantom *,
-  .phantom-hoverblink * {
-    animation: none !important;
-    transition: none !important;
-  }
-}
-html[data-theme="contrast"] .phantom *,
-html[data-theme="contrast"] .phantom-hoverblink *,
-[data-ph-theme="contrast"] .phantom * {
-  animation: none !important;
-  transition: none !important;
-}
-html[data-page-hidden] .phantom * {
-  animation-play-state: paused !important;
-}
+/* Phantom (the mascot): components/brand/phantom.css (imported above). */
 
 /* Map: the ghost that floats at the corner of the element a running turn works on. */
 .map-working-ghost {
@@ -925,77 +526,7 @@ html[data-page-hidden] .phantom * {
   }
 }
 
-/* ---------------------------------------------------------------------------------------------
- * Integrated terminal (components/terminal/*): the 16 ANSI colours mapped onto the brand
- * scales (red = coral, green = sage, yellow = amber, blue = slate, magenta = lavender,
- * cyan = teal), per theme. xterm reads these at runtime (terminal/theme.ts).
- * ------------------------------------------------------------------------------------------- */
-:root {
-  --term-bg: #1a1a19;
-  --term-fg: #f0eee9;
-  --term-cursor: #00d2b9;
-  --term-selection: rgba(0, 190, 168, 0.32);
-  --term-black: #3f3c35;
-  --term-red: #f07068;
-  --term-green: #7fb069;
-  --term-yellow: #e5a84b;
-  --term-blue: #8a97ae;
-  --term-magenta: #b594f5;
-  --term-cyan: #00d2b9;
-  --term-white: #dedad3;
-  --term-bright-black: #8f8a7e;
-  --term-bright-red: #f49a92;
-  --term-bright-green: #9ec281;
-  --term-bright-yellow: #edbf5e;
-  --term-bright-blue: #b7c0cf;
-  --term-bright-magenta: #cfbdf8;
-  --term-bright-cyan: #4dd9c5;
-  --term-bright-white: #faf9f7;
-}
-html[data-theme="light"] {
-  --term-bg: #faf9f7;
-  --term-fg: #1a1a19;
-  --term-cursor: #007e70;
-  --term-selection: rgba(0, 126, 112, 0.2);
-  --term-black: #2c2a25;
-  --term-red: #b8453e;
-  --term-green: #507e3c;
-  --term-yellow: #8a6118;
-  --term-blue: #45536c;
-  --term-magenta: #7d58cc;
-  --term-cyan: #007e70;
-  --term-white: #b8b3a8;
-  --term-bright-black: #706b60;
-  --term-bright-red: #dc5850;
-  --term-bright-green: #67994f;
-  --term-bright-yellow: #ad7a22;
-  --term-bright-blue: #5b6b88;
-  --term-bright-magenta: #9773e4;
-  --term-bright-cyan: #009e8c;
-  --term-bright-white: #dedad3;
-}
-html[data-theme="contrast"] {
-  --term-bg: #000000;
-  --term-fg: #ffffff;
-  --term-cursor: #00f0d3;
-  --term-selection: rgba(0, 240, 211, 0.38);
-  --term-black: #5a5a5a;
-  --term-red: #f49a92;
-  --term-green: #bcd49e;
-  --term-yellow: #edbf5e;
-  --term-blue: #b7c0cf;
-  --term-magenta: #cfbdf8;
-  --term-cyan: #4dd9c5;
-  --term-white: #e6e6e6;
-  --term-bright-black: #b0b0b0;
-  --term-bright-red: #f9c0bb;
-  --term-bright-green: #d5e5c3;
-  --term-bright-yellow: #f4d48e;
-  --term-bright-blue: #d6dce5;
-  --term-bright-magenta: #e1d6fb;
-  --term-bright-cyan: #88e6d7;
-  --term-bright-white: #ffffff;
-}
+/* Terminal ANSI colours (--term-*): generated with the other tokens (design/tokens.css). */
 [data-ruah-terminal] .xterm {
   height: 100%;
   padding: 6px 0 0 10px;

@@ -27,6 +27,7 @@ import { relativeTime } from "@/lib/time";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Phantom } from "@/components/brand/Phantom";
+import { PhantomAgent, PhantomPose } from "@/components/brand/PhantomPose";
 
 function Section({
   title,
@@ -79,7 +80,7 @@ function RecentChats() {
     >
       {chats.length === 0 ? (
         <div className="flex items-center gap-4 py-2">
-          <Phantom expression="agent" size={44} />
+          <PhantomPose pose="chatting" size={64} noGlow />
           <Quiet>
             No chats in this project yet. Ask the agent anything, or about an element on the map —
             or{" "}
@@ -237,8 +238,20 @@ export function DashboardPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-8 max-md:px-4 max-md:py-6">
           {/* repo header */}
-          <header className="flex flex-col gap-2 pb-2">
-            <p className="eyebrow">Project</p>
+          <header className="relative flex flex-col gap-2 pb-2 pe-24 max-md:pe-0">
+            <span className="absolute end-0 top-0 max-md:hidden">
+              {daemon.source === "daemon" && agents?.currentAgentId ? (
+                <PhantomAgent
+                  agent={agents.currentAgentId}
+                  expression={daemon.agent?.state === "busy" ? "thinking" : "idle"}
+                  size={72}
+                  label={agentName ? `${agentName} ${daemon.agent?.state === "busy" ? "is working" : "is ready"}` : undefined}
+                />
+              ) : (
+                <PhantomPose pose="sleeping" size={80} noGlow />
+              )}
+            </span>
+            <p className="text-[11px] font-medium tracking-[0.14em] text-brand uppercase">Project</p>
             <h1 className="heading text-[26px] text-foreground max-md:text-[22px]">
               {app.name}
             </h1>
@@ -317,7 +330,10 @@ export function DashboardPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <Section title="Hotspots">
               {stats.hotspots.length === 0 ? (
-                <Quiet>No links between elements yet.</Quiet>
+                <div className="flex items-center gap-4 py-2">
+                  <PhantomPose pose="searching" size={64} noGlow />
+                  <Quiet>No links between elements yet — the most connected elements show here once the map has links.</Quiet>
+                </div>
               ) : (
                 <ul className="-mx-2">
                   {stats.hotspots.map(({ node, links }) => {
@@ -365,10 +381,13 @@ export function DashboardPage() {
               }
             >
               {recent.length === 0 ? (
-                <Quiet>
-                  Nothing asked yet this session. Ask the agent anything, or about an element on
-                  the map.
-                </Quiet>
+                <div className="flex items-center gap-4 py-2">
+                  <PhantomPose pose="chatting" size={64} noGlow />
+                  <Quiet>
+                    Nothing asked yet this session. Ask the agent anything, or about an element on
+                    the map.
+                  </Quiet>
+                </div>
               ) : (
                 <ul className="-mx-2">
                   {recent.map((t) => {
@@ -435,9 +454,14 @@ export function DashboardPage() {
                   </div>
                 </div>
               ) : usage.status === "loading" ? (
-                <Quiet>Loading…</Quiet>
+                <p className="flex items-center gap-2 py-3 text-[12.5px] text-muted-foreground">
+                  <Phantom expression="loading" size={16} /> Loading…
+                </p>
               ) : (
-                <Quiet>No usage recorded yet.</Quiet>
+                <div className="flex items-center gap-4 py-2">
+                  <PhantomPose pose="charting" size={64} noGlow />
+                  <Quiet>No usage recorded yet — tokens and cost show here after a few agent turns.</Quiet>
+                </div>
               )}
             </Section>
           </div>

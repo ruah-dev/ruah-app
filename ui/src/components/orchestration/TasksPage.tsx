@@ -51,6 +51,8 @@ import { CreateRuahTaskDialog } from "./CreateRuahTaskDialog";
 import { GuardCard } from "@/components/engines/GuardCard";
 import { cn } from "@/lib/utils";
 import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import { EmptyState as GhostState } from "@/components/brand/EmptyState";
+import { PhantomAgent, agentTintOf } from "@/components/brand/PhantomPose";
 
 const STATUS: Record<string, { label: string; tone: StatusTone; order: number }> = {
   "in-progress": { label: "Running", tone: "warn", order: 0 },
@@ -119,8 +121,9 @@ function TaskRow({
           {st.label}
         </Pill>
       </div>
-      <div role="cell" className="truncate font-mono text-[12px] text-muted-foreground">
-        {task.executor ?? "—"}
+      <div role="cell" className="flex min-w-0 items-center gap-1.5 font-mono text-[12px] text-muted-foreground">
+        {agentTintOf(task.executor) ? <PhantomAgent agent={task.executor!} size={14} still /> : null}
+        <span className="truncate">{task.executor ?? "—"}</span>
       </div>
       <div role="cell" className="min-w-0">
         <p className="flex min-w-0 items-center gap-1 font-mono text-[12px] text-foreground/85">
@@ -177,20 +180,25 @@ function TaskRow({
   );
 }
 
+/** ruah isn't initialised: the trio scene shows what it is for — agents working side by side. */
 function NotInitialized({ hint }: { hint?: string | undefined }) {
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center gap-3 px-6 py-16 text-center">
-      <Phantom expression="idle" size={56} />
-      <p className="heading text-[16px] text-foreground">ruah isn&apos;t set up in this repository</p>
-      <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-        {hint ??
-          "ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once without stepping on each other. Initialise it once in the repo root:"}
-      </p>
-      <CopyCommand command="ruah init" className="w-full max-w-xs" />
+    <GhostState
+      scene="trio"
+      size="lg"
+      eyebrow="Parallel agents"
+      title={<>ruah isn&apos;t set up in this repository</>}
+      body={
+        hint ??
+        "ruah runs coding agents on isolated git worktrees with file locks, so several tasks can run at once without stepping on each other. Initialise it once in the repo root:"
+      }
+      className="mx-auto max-w-lg px-6"
+    >
+      <CopyCommand command="ruah init" className="mt-2 w-full max-w-xs text-left" />
       <button type="button" className={quietButton} onClick={() => void loadRuah()}>
         <RefreshCw className="size-3.5" /> Check again
       </button>
-    </div>
+    </GhostState>
   );
 }
 
@@ -361,16 +369,14 @@ export function TasksPage() {
                     />
                   ))
                 ) : (
-                  <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                    <Phantom expression={tasks.length ? "success" : "idle"} size="md" className="mb-1" />
-                    <p className="heading text-[16px] text-foreground">
-                      {tasks.length ? "No open tasks" : "No tasks yet"}
-                    </p>
-                    <p className="max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
-                      Create one here, or from an element's Details on the Map — its files are locked
-                      for the agent.
-                    </p>
-                  </div>
+                  <GhostState
+                    size="sm"
+                    pose={tasks.length ? "celebrating" : "checklist"}
+                    eyebrow={tasks.length ? "All done" : undefined}
+                    title={tasks.length ? "No open tasks" : "No tasks yet"}
+                    body="Create one here, or from an element's Details on the Map — its files are locked for the agent."
+                    className="px-6 py-12"
+                  />
                 )}
                 {hidden > 0 && scope === "active" ? (
                   <button

@@ -1,6 +1,7 @@
 // The Ruah brand mark and wordmark, ported from the ruah website
 // (ruah-website/src/components/brand/logo.tsx) without next/link.
-// The spirit body is ruah-400 teal with two warm-100 eyes; the wordmark is lowercase "ruah" in Jura.
+// The spirit body is the palette's brand fill (teal in Teal + Indigo, as the design system's logo
+// follows its palette) with two warm-100 eyes; the wordmark is lowercase "ruah" in Jura.
 // The mascot with expressions (Phantom) lives in ./Phantom.tsx.
 import { cn } from "@/lib/utils";
 
@@ -29,7 +30,7 @@ export function RuahMark({
       aria-hidden="true"
       className={cn("shrink-0", blinkOnHover && "phantom-hoverblink", className)}
     >
-      <path d={RUAH_BODY_PATH} className="fill-ruah-400" />
+      <path d={RUAH_BODY_PATH} style={{ fill: "var(--ph-brand)" }} />
       <g className="phantom-eyes">
         {EYES.map((cx) => (
           <ellipse key={cx} cx={cx} cy={EYE_Y} rx={24.4} ry={31.5} className="fill-warm-100" />

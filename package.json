@@ -15,6 +15,7 @@
     "build": "tsup src/cli.ts --format esm --target node22 --clean && chmod +x dist/cli.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "design:tokens": "tsx src/cli.ts design css --out ui/src/design/tokens.css",
     "ui:build": "cd ui && bun run build && cd .. && rm -rf viewer && cp -R ui/.output/public viewer",
     "app": "pnpm build && pnpm ui:build && pnpm desktop"
   },

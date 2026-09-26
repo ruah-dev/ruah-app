@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/chat/ProviderModelPicker.tsx,
 // ComposerControl.tsx and CompactComposerControlsMenu.tsx (MIT): quiet ghost controls inside
 // the composer's bottom row, one combined agent + model dropdown grouped by agent.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Phantom, type PhantomExpression } from "@/components/brand/Phantom";
+import { PhantomAgent, agentTintFromName } from "@/components/brand/PhantomPose";
 
 const controlClass =
   "flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-50";
@@ -42,7 +43,9 @@ const cmdItemClass =
 const itemClass =
   "flex items-start gap-2.5 rounded-md px-2 py-1.5 text-[13px] focus:bg-accent data-[disabled]:opacity-45";
 
-/** Small monochrome mark for a coding agent: its initials, no brand artwork. */
+/** Small mark for a coding agent: its initials, no brand artwork. Known agents wear their
+ * identity tint (design tokens --agent-*: the same colour as their ghost and their chart
+ * series) as the fill and ring; the letters stay in the foreground colour so they read. */
 export function AgentMark({ name, className }: { name: string; className?: string }) {
   const initials =
     name
@@ -51,13 +54,18 @@ export function AgentMark({ name, className }: { name: string; className?: strin
       .slice(0, 2)
       .map((w) => w[0]!.toUpperCase())
       .join("") || "?";
+  const tint = agentTintFromName(name);
   return (
     <span
       aria-hidden
       className={cn(
-        "grid size-4 shrink-0 place-items-center rounded-[4px] bg-ai/18 text-[8px] leading-none font-semibold tracking-tight text-ai ring-1 ring-ai/25",
+        "grid size-4 shrink-0 place-items-center rounded-[4px] text-[8px] leading-none font-semibold tracking-tight",
+        tint
+          ? "bg-[color-mix(in_oklab,var(--mark)_24%,transparent)] text-foreground ring-1 ring-[color-mix(in_oklab,var(--mark)_60%,transparent)]"
+          : "bg-ai/18 text-ai ring-1 ring-ai/25",
         className,
       )}
+      style={tint ? ({ "--mark": `var(--agent-${tint})` } as CSSProperties) : undefined}
     >
       {initials}
     </span>
@@ -237,7 +245,7 @@ export function AgentModelPicker({
         aria-label="Choose agent and model"
         title="Agent and model (⌘.)"
       >
-        <Phantom expression={expression} size="xs" />
+        <PhantomAgent agent={agents?.currentAgentId ?? ""} expression={expression} size="xs" />
         <span className="truncate">
           {currentAgent && currentModel
             ? `${currentAgent.name} · ${currentModel.name}`
@@ -274,7 +282,7 @@ export function AgentModelPicker({
                     heading={
                       <span className="flex items-center gap-2">
                         {isCurrent ? (
-                          <Phantom expression={expression} size="xs" />
+                          <PhantomAgent agent={a.id} expression={expression} size="xs" />
                         ) : (
                           <WarmDot warm={a.warm} error={a.warmError} showCold size={16} />
                         )}
