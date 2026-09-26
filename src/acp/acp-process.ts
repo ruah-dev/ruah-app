@@ -8,6 +8,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { ndJsonStream, type Stream } from "@agentclientprotocol/sdk";
+import { withoutDaemonPlumbing } from "../desktop/child-env.js";
 import type { AcpPreset } from "./bridge.js";
 
 const STDERR_RING_BYTES = 64 * 1024;
@@ -33,7 +34,9 @@ export class AgentProcess {
   constructor(preset: AcpPreset, cwd: string, onStderr?: (chunk: string) => void) {
     this.child = spawn(preset.command, preset.args, {
       cwd,
-      env: { ...process.env, ...preset.env },
+      // The daemon's plumbing (ELECTRON_RUN_AS_NODE, …) is not the agent's; a preset that runs on
+      // this binary asks for it itself (presets.ts claudeAcpAdapter).
+      env: { ...withoutDaemonPlumbing(process.env), ...preset.env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let settle: (exit: AgentExit) => void = () => {};

@@ -12,6 +12,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
+import { selfNodeEnv } from "../desktop/child-env.js";
 import type { AcpPreset } from "./bridge.js";
 
 const PASSTHROUGH_ENV = [
@@ -32,6 +33,12 @@ export function claudeCode(): AcpPreset {
     if (value !== undefined) env[key] = value;
   }
   return { command: process.execPath, args: [entry], env };
+}
+
+/** claude-agent-acp on this process's runtime (in the desktop app: its binary, as Node). */
+export function claudeAcpAdapter(): AcpPreset {
+  const preset = claudeCode();
+  return { ...preset, env: { ...preset.env, ...selfNodeEnv() } };
 }
 
 // ---------- agent catalog ----------
@@ -146,7 +153,7 @@ export const AGENTS: readonly AgentDefinition[] = [
     name: "Claude Code (ACP)",
     description: "Claude through the claude-agent-acp adapter",
     listed: false,
-    preset: () => claudeCode(),
+    preset: () => claudeAcpAdapter(),
   },
 ];
 

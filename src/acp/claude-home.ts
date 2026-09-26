@@ -4,6 +4,7 @@
 // with, plus the signed-out hint. t3code's per-instance `homePath` setting is
 // replaced by an inherited CLAUDE_CONFIG_DIR: ruah uses the user's own
 // Claude Code setup (~/.claude, or wherever CLAUDE_CONFIG_DIR points).
+import { withoutDaemonPlumbing } from "../desktop/child-env.js";
 
 /**
  * Variables that mark the *parent* as a Claude Code session. When ruah is
@@ -23,7 +24,8 @@ export function makeClaudeEnvironment(
   overrides: Record<string, string> | undefined,
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...baseEnv, ...overrides };
+  // Never the daemon's plumbing (ELECTRON_RUN_AS_NODE would make Electron-based CLIs the agent runs plain Node).
+  const env: Record<string, string | undefined> = withoutDaemonPlumbing({ ...baseEnv, ...overrides });
   for (const key of PARENT_SESSION_ENV) delete env[key];
   // Isolation is done via CLAUDE_CONFIG_DIR rather than HOME: overriding HOME
   // also relocates the macOS login keychain lookup, so the CLI could not find
