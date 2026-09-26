@@ -56,8 +56,13 @@ tracked files, no file over 1 MiB, pinned and least-privilege workflows.
 
 Maintainers who also work on client projects keep a private list of names that
 must never land in this repository (clients, projects, cloud accounts and
-resources), one per line, in a file **outside** the repo, and point the test at
-it: `RUAH_PRIVATE_TERMS_FILE=~/.config/ruah/private-terms.txt pnpm test`.
+resources, their user name or home folder), one per line, in a file **outside**
+the repo, and point the test at it:
+`RUAH_PRIVATE_TERMS_FILE="$HOME/.config/ruah/private-terms.txt" pnpm test`. When
+the variable is set, a missing or empty file fails the test instead of skipping
+it. `pnpm privacy:scan` checks the whole history (every branch, tag, commit
+message and file name) against the same list; see "Before the history goes
+public" below.
 
 ## Where things live
 

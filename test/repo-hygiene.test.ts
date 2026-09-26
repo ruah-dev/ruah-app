@@ -8,6 +8,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { homeFolderHits, loadPrivateTerms, privateTermMatcher, secretShapeHits } from "../scripts/privacy/patterns.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -38,40 +39,16 @@ function textFiles(): Array<{ file: string; text: string }> {
   return out;
 }
 
-/** Home folders that tests and docs may use as obviously fictional examples. */
-const NEUTRAL_HOMES = new Set(["me", "you", "dev", "other", "someone", "user", "runner", "x"]);
-
-/** Token shapes of real credentials (full length, so short test placeholders do not match). */
-const SECRET_SHAPES: Array<[string, RegExp]> = [
-  ["AWS access key", /\b(AKIA|ASIA)[0-9A-Z]{16}\b/],
-  ["GitHub token", /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,}\b/],
-  ["Anthropic key", /\bsk-ant-[A-Za-z0-9_-]{40,}/],
-  ["OpenAI key", /\bsk-(proj-)?[A-Za-z0-9_-]{40,}/],
-  ["Slack token", /\bxox[abposr]-[0-9]{6,}-[A-Za-z0-9-]{10,}/],
-  ["Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
-  ["DigitalOcean token", /\bdo[por]_v1_[a-f0-9]{64}\b/],
-  ["Supabase token", /\bsbp_[a-f0-9]{40}\b/],
-  ["Stripe live key", /\b(sk|rk)_live_[A-Za-z0-9]{20,}/],
-  ["npm token", /\bnpm_[A-Za-z0-9]{36}\b/],
-  ["private key", /-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----/],
-];
-
 describe.skipIf(!inGit)("tracked files", () => {
-  test("no machine home folders (only fictional ones like /Users/me)", () => {
+  test("no machine home folders or per-user temp folders (only fictional ones like /Users/me)", () => {
     const hits: string[] = [];
-    for (const { file, text } of textFiles()) {
-      for (const m of text.matchAll(/(?:\/Users|\/home)\/([A-Za-z0-9._-]+)/g)) {
-        if (!NEUTRAL_HOMES.has(m[1]!)) hits.push(`${file}: ${m[0]}`);
-      }
-    }
+    for (const { file, text } of textFiles()) for (const label of homeFolderHits(text)) hits.push(`${file}: ${label}`);
     expect(hits).toEqual([]);
   });
 
   test("no secret-shaped strings", () => {
     const hits: string[] = [];
-    for (const { file, text } of textFiles()) {
-      for (const [name, re] of SECRET_SHAPES) if (re.test(text)) hits.push(`${file}: ${name}`);
-    }
+    for (const { file, text } of textFiles()) for (const label of secretShapeHits(text)) hits.push(`${file}: ${label}`);
     expect(hits).toEqual([]);
   });
 
@@ -93,44 +70,49 @@ describe.skipIf(!inGit)("tracked files", () => {
 });
 
 /**
- * Terms from a file kept OUTSIDE the repository (client and project names, account and
- * resource names, a username): one per line, `#` comments, matched case-insensitively.
- * A maintainer sets RUAH_PRIVATE_TERMS_FILE locally; the list itself is never committed.
+ * RUAH_PRIVATE_TERMS_FILE names a list kept OUTSIDE the repository (client and project
+ * names, account and resource names, a user name; format in scripts/privacy/patterns.ts).
+ * Unset: skipped. Set: the file must be readable and hold at least one term — a typo or an
+ * unexpanded `~` fails instead of passing without checking anything.
  */
-function readPrivateTerms(text: string): string[] {
-  return text
-    .split("\n")
-    .map((l) => l.replace(/#.*/, "").trim())
-    .filter((l) => l.length >= 3);
-}
-
-function privateTermHits(entries: ReadonlyArray<{ file: string; text: string }>, terms: readonly string[]): string[] {
-  const lowered = terms.map((t) => t.toLowerCase());
-  const hits: string[] = [];
-  for (const { file, text } of entries) {
-    const hay = text.toLowerCase();
-    lowered.forEach((term, i) => {
-      if (hay.includes(term)) hits.push(`${file}: private term #${i + 1}`);
-    });
-  }
-  return hits;
-}
-
 const TERMS_FILE = process.env.RUAH_PRIVATE_TERMS_FILE;
 
 describe("private terms (RUAH_PRIVATE_TERMS_FILE)", () => {
-  test("terms are read one per line, comments and short lines ignored, matched case-insensitively", () => {
-    const terms = readPrivateTerms("# clients\nAcme-Secret-Client\n\nzz\nother-name  # trailing note\n");
-    expect(terms).toEqual(["Acme-Secret-Client", "other-name"]);
-    const hits = privateTermHits([{ file: "a.md", text: "see acme-secret-client docs" }, { file: "b.ts", text: "nothing" }], terms);
-    expect(hits).toEqual(["a.md: private term #1"]);
-  });
-
-  test.skipIf(!inGit || TERMS_FILE === undefined || !existsSync(TERMS_FILE ?? ""))("no tracked file names a private term", () => {
-    const terms = readPrivateTerms(readFileSync(TERMS_FILE!, "utf8"));
-    expect(privateTermHits(textFiles(), terms)).toEqual([]);
+  test.skipIf(!inGit || TERMS_FILE === undefined)("no tracked file names a private term", () => {
+    const terms = loadPrivateTerms(TERMS_FILE!); // throws: unreadable, or no term of 3+ characters
+    const match = privateTermMatcher(terms);
+    const hits: string[] = [];
+    for (const { file, text } of textFiles()) for (const line of match(text)) hits.push(`${file}: private term on line ${line}`);
+    expect(hits).toEqual([]);
   });
 });
+
+/** Lines of a workflow's `jobs.<name>` block (two-space job keys, as in our workflows). */
+function jobBlock(text: string, job: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => l === `  ${job}:`);
+  if (start < 0) return "";
+  const end = lines.findIndex((l, i) => i > start && (/^ {2}[\w-]+:\s*$/.test(l) || /^\S/.test(l)));
+  return lines.slice(start, end < 0 ? undefined : end).join("\n");
+}
+
+/** Every `<scope>: write` (or `write-all`, as scope "*") in a workflow, with the job it is in. */
+function writeScopes(text: string): Array<{ job: string; scope: string }> {
+  const out: Array<{ job: string; scope: string }> = [];
+  let inJobs = false;
+  let job = "(top level)";
+  for (const line of text.split("\n")) {
+    if (/^jobs:\s*$/.test(line)) inJobs = true;
+    else if (/^\S/.test(line)) inJobs = false;
+    const key = /^ {2}([\w-]+):\s*$/.exec(line);
+    if (inJobs && key) job = key[1]!;
+    const code = line.replace(/\s+#.*$/, "");
+    const scope = /^\s*([\w-]+):\s*write\s*$/.exec(code);
+    if (scope) out.push({ job, scope: scope[1]! });
+    if (/permissions:\s*write-all\b/.test(code)) out.push({ job, scope: "*" });
+  }
+  return out;
+}
 
 describe("GitHub workflows", () => {
   const dir = join(ROOT, ".github", "workflows");

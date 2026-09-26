@@ -2754,8 +2754,10 @@ Commit prefixes `chore(deps)`, `chore(deps-ui)`, `ci`.
 
 Over `git ls-files` (skipped outside a git checkout; lockfiles excluded from text checks):
 
-- no `/Users/<name>` or `/home/<name>` except `me`, `you`, `dev`, `other`, `someone`,
-  `user`, `runner`, `x`;
+- no home folder — `/Users/<name>`, `/home/<name>`, the dash-encoded `-Users-<name>-`
+  that coding-agent tools use for folder names, `C:\Users\<name>` (also with doubled
+  backslashes) — except `me`, `you`, `dev`, `other`, `someone`, `user`, `runner`, `x`,
+  and no macOS per-user temp folder (`/var/folders/<2>/<20+>`);
 - no full-length token shapes: AWS access keys, GitHub (`ghp_…` 36 chars, `github_pat_…`),
   Anthropic `sk-ant-…`, OpenAI `sk-…`, Slack, Google `AIza…`, DigitalOcean `do?_v1_…`,
   Supabase `sbp_…`, Stripe live keys, npm tokens, PEM private keys;
@@ -2768,7 +2770,35 @@ Over `git ls-files` (skipped outside a git checkout; lockfiles excluded from tex
   `packageManager` and `private: true`; the `.gitignore` entries for build output,
   secrets and `/.ruah/`; README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG,
   THIRD_PARTY_NOTICES, the pull request template and `dependabot.yml` exist;
-- when `RUAH_PRIVATE_TERMS_FILE` names a readable file (kept outside the repo: one term
-  per line, `#` comments, terms shorter than 3 characters ignored), no tracked text file
+- when `RUAH_PRIVATE_TERMS_FILE` is set (a file kept outside the repo: one term per
+  line, `#` comments, terms shorter than 3 characters ignored), no tracked text file
   contains any term, case-insensitively; failures name the file and the term's line
-  number, never the term. Without the variable that check is skipped.
+  number in the terms file, never the term. Set but unreadable (a typo, an unexpanded
+  `~`) or without a single term: the check fails. Unset: the check is skipped.
+
+The patterns live in `scripts/privacy/patterns.ts`, shared with §20.6.
+
+### 20.6 History scan (`pnpm privacy:scan`)
+
+`scripts/privacy/scan-history.ts` checks every object reachable from any ref — what
+`git push --mirror` would publish — for the private terms, the §20.5 home folders and
+secret shapes:
+
+- file contents (every blob `git rev-list --objects --all` lists, read with
+  `git cat-file --batch`; a `missing` object is an error), folder and file names (tree
+  entries), commit and annotated-tag messages (not author lines), ref names;
+- options: `--repo <dir>` (default `.`), `--terms <file>` (default
+  `$RUAH_PRIVATE_TERMS_FILE`; set but unreadable or empty exits 2), `--expect-hits`;
+- output: counts of refs, commits, tags, folders, files and bytes scanned, then per
+  check (`private term on line <n>`, a home-folder shape, a secret shape) the number of
+  objects by kind and up to 8 of them (short id + path); a path or ref name that
+  contains a term or home folder is shown as hidden. Terms are never printed;
+- exit 0 nothing found, 1 something found, 2 usage error, unreadable or empty terms
+  file, not a git repository, or commits without a single file read (a broken scan never
+  looks clean);
+- `--expect-hits` is the positive control for a history rewrite: on the ORIGINAL history
+  it exits 0 only when a private term is found (any check without a terms file). The
+  procedure: control on the original (must pass) → `git filter-repo` on a fresh mirror
+  clone (`--replace-text` for contents, `--replace-message` for commit messages,
+  `--path-rename` / `--invert-paths` for names) → scan the rewritten clone without
+  `--expect-hits` (must exit 0).
