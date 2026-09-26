@@ -3,6 +3,7 @@
 // An installed Ruah.app wins (the daily driver: single instance, folders open
 // in the running window through `open -a`); a source checkout falls back to
 // its own Electron. Pure planning here, so it is testable without launching.
+import { spawn } from "node:child_process";
 import * as path from "node:path";
 
 export const APP_BUNDLE_NAME = "Ruah.app";
@@ -68,4 +69,39 @@ export function planDesktopLaunch(input: DesktopLaunchInput): DesktopLaunchPlan 
     return { kind: "error", message: `Electron is not installed — run \`pnpm install\` in ${input.packageRoot} (or install Ruah.app)` };
   }
   return { kind: "electron", command: electron, args: [input.packageRoot, ...repoArgs] };
+}
+
+export type OpenOutcome = { ok: true } | { ok: false; message: string };
+
+/**
+ * Runs the bundle plan's `open` and waits for it: `open -a` returns once the app is
+ * launched or has been handed the folder, and a failure (an app Gatekeeper blocked and
+ * nobody approved, a damaged bundle) is its exit status and stderr — never "Opening Ruah…"
+ * for an app that did not open.
+ */
+export function runOpen(command: string, args: readonly string[], timeoutMs = 60_000): Promise<OpenOutcome> {
+  return new Promise((resolve) => {
+    let stderr = "";
+    let settled = false;
+    const finish = (outcome: OpenOutcome): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(outcome);
+    };
+    const child = spawn(command, [...args], { stdio: ["ignore", "ignore", "pipe"] });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish({ ok: false, message: `${path.basename(command)} did not return within ${Math.round(timeoutMs / 1000)} s` });
+    }, timeoutMs);
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      if (stderr.length < 8192) stderr += chunk;
+    });
+    child.on("error", (err) => finish({ ok: false, message: err.message }));
+    child.on("close", (code, signal) => {
+      if (code === 0) finish({ ok: true });
+      else finish({ ok: false, message: stderr.trim().length > 0 ? stderr.trim() : `${path.basename(command)} exited ${code ?? signal}` });
+    });
+  });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { enclosingAppBundle, findInstalledApp, planDesktopLaunch, type DesktopLaunchInput } from "../src/desktop/launch.js";
+import { enclosingAppBundle, findInstalledApp, planDesktopLaunch, runOpen, type DesktopLaunchInput } from "../src/desktop/launch.js";
 
 const CHECKOUT = "/Users/me/code/ruah-app";
 
@@ -72,5 +72,22 @@ describe("app bundle discovery", () => {
     expect(findInstalledApp({ RUAH_APP_BUNDLE: "/gone/Ruah.app" }, exists)).toBeUndefined();
     expect(findInstalledApp({}, exists)).toBe("/Applications/Ruah.app");
     expect(findInstalledApp({ HOME: "/Users/me" }, () => false)).toBeUndefined();
+  });
+});
+
+describe("runOpen (`ruah app` waits for `open -a`)", () => {
+  test("success is open's exit 0", async () => {
+    expect(await runOpen("/bin/sh", ["-c", "exit 0"])).toEqual({ ok: true });
+  });
+
+  test("a failed launch (e.g. an app Gatekeeper blocked) is reported with open's own message", async () => {
+    const outcome = await runOpen("/bin/sh", ["-c", "echo 'The application cannot be opened because its executable is missing.' >&2; exit 1"]);
+    expect(outcome).toEqual({ ok: false, message: "The application cannot be opened because its executable is missing." });
+    expect(await runOpen("/bin/sh", ["-c", "exit 3"])).toEqual({ ok: false, message: "sh exited 3" });
+    expect(await runOpen("/nonexistent/open", [])).toMatchObject({ ok: false, message: expect.stringMatching(/ENOENT/) });
+  });
+
+  test("an open that hangs is given up on", async () => {
+    expect(await runOpen("/bin/sh", ["-c", "sleep 10"], 200)).toMatchObject({ ok: false, message: expect.stringMatching(/did not return/) });
   });
 });

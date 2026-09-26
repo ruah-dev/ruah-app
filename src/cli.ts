@@ -266,7 +266,7 @@ function isDirectory(p: string): boolean {
 
 /** Opens the desktop app: an installed Ruah.app via `open -a`, else this package's Electron (detached). */
 async function openDesktop(repo: string | undefined): Promise<number> {
-  const { planDesktopLaunch } = await import("./desktop/launch.js");
+  const { planDesktopLaunch, runOpen } = await import("./desktop/launch.js");
   const root = dirname(dirname(fileURLToPath(import.meta.url))); // dist/cli.js → package root
   const target = repo !== undefined ? resolve(repo) : undefined;
   const plan = planDesktopLaunch({
@@ -285,11 +285,20 @@ async function openDesktop(repo: string | undefined): Promise<number> {
     process.stderr.write(`ruah app: ${plan.message}\n`);
     return 1;
   }
+  if (plan.kind === "bundle") {
+    // `open -a` returns quickly; its exit status says whether the app really opened.
+    const outcome = await runOpen(plan.command, plan.args);
+    if (!outcome.ok) {
+      process.stderr.write(`ruah app: could not open ${plan.bundle}: ${outcome.message}\n`);
+      return 1;
+    }
+    process.stdout.write(`Opened Ruah${target !== undefined ? ` on ${target}` : ""} (${plan.bundle})\n`);
+    return 0;
+  }
   const child = spawn(plan.command, plan.args, { detached: true, stdio: "ignore" });
   child.on("error", (err) => process.stderr.write(`ruah app: ${err.message}\n`));
   child.unref();
-  const where = plan.kind === "bundle" ? ` (${plan.bundle})` : "";
-  process.stdout.write(`Opening Ruah${target !== undefined ? ` on ${target}` : ""}${where}…\n`);
+  process.stdout.write(`Opening Ruah${target !== undefined ? ` on ${target}` : ""}…\n`);
   return 0;
 }
 
