@@ -12,6 +12,7 @@ import { costOf, usePrices } from "@/lib/usage";
 import { cn } from "@/lib/utils";
 import {
   STATUS_LABEL,
+  cardAction,
   elapsedShare,
   formatAbsolute,
   formatAgo,
@@ -253,6 +254,7 @@ export function AgentLimitCard({
 }) {
   const quiet = agent.status === "not_installed" || agent.status === "not_logged_in";
   const hasBody = agent.meters.length > 0 || agent.onDemand || agent.local || agent.estimate;
+  const action = cardAction(agent);
   return (
     <section
       aria-label={`${agent.name} limits`}
@@ -324,16 +326,16 @@ export function AgentLimitCard({
 
       {agent.appLogin ? <AppLoginSwitch appLogin={agent.appLogin} /> : null}
 
-      {agent.reason || agent.action ? (
+      {agent.reason || action ? (
         <div className={cn("flex flex-col gap-1 text-[12.5px] leading-relaxed", hasBody && "border-t border-hairline pt-3")}>
           {agent.reason ? (
             <p className={cn(agent.status === "error" || agent.stale ? "text-warn" : "text-muted-foreground")}>
               <InlineCode text={agent.reason} />
             </p>
           ) : null}
-          {agent.action ? (
+          {action ? (
             <p className="text-foreground">
-              <InlineCode text={agent.action} />
+              <InlineCode text={action} />
             </p>
           ) : null}
         </div>
