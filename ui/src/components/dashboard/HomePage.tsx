@@ -200,7 +200,9 @@ function ProjectCard({ card, onChanged }: { card: HomeCard; onChanged: () => voi
         <ProjectTile project={p} className="size-8 rounded-lg text-[13px]" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5">
-            <span className="truncate text-ui font-semibold text-foreground">{p.name}</span>
+            <span className="truncate text-ui font-semibold text-foreground" title={p.name}>
+              {p.name}
+            </span>
             {p.pinned ? <Pin className="size-3 shrink-0 text-faint" aria-label="Pinned" /> : null}
             {o.current ? <span className="shrink-0 rounded-pill bg-primary/12 px-1.5 text-[10.5px] font-medium text-brand">open</span> : null}
           </p>
@@ -208,10 +210,13 @@ function ProjectCard({ card, onChanged }: { card: HomeCard; onChanged: () => voi
             {meta}
           </p>
         </div>
-        <span className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-pill px-2 text-[11px] font-medium", PILL_TONE[card.tone])}>
-          {card.status === "running" ? <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-ai motion-reduce:animate-none" /> : null}
-          {card.pill}
-        </span>
+        {/* A quiet project needs no pill: the name keeps the room. */}
+        {card.status !== "quiet" ? (
+          <span className={cn("flex h-5.5 shrink-0 items-center gap-1 rounded-pill px-2 text-[11px] font-medium", PILL_TONE[card.tone])}>
+            {card.status === "running" ? <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-ai motion-reduce:animate-none" /> : null}
+            {card.pill}
+          </span>
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={`More for ${p.name}`}
