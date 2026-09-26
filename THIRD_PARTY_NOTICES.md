@@ -1,5 +1,16 @@
 # Third-party notices
 
+Ruah's own code is covered by the license in `LICENSE` (to be added). This file
+lists code and assets from other projects that Ruah contains, with their
+licenses. Dependencies installed by pnpm / bun (`package.json`,
+`ui/package.json`) are not copied into this repository and carry their own
+license files; the packaged app ships them under `Contents/Resources/app/node_modules`.
+The bundled `dist/` and `viewer/` code loses the source files' header comments, so
+the packaged app also ships this file as `Ruah.app/Contents/Resources/THIRD_PARTY_NOTICES.md`
+(the build fails without it).
+
+## T3 Code (MIT)
+
 Portions of this software are derived from T3 Code
 https://github.com/pingdotgg/t3code
 Copyright (c) 2026 T3 Tools Inc.
@@ -26,7 +37,30 @@ comment naming its source:
 | `src/terminal/env.ts` | `apps/server/src/terminal/Manager.ts` (`createTerminalSpawnEnv`, shell candidates) |
 | `src/terminal/gateway.ts` | `apps/server/src/terminal/OutputProtocol.ts` (acknowledged output window) |
 
-## MIT License (T3 Code)
+Viewer files whose code or visual patterns were adapted from T3 Code's web app
+(also marked with a header comment):
+
+| ruah file | T3 Code source |
+| --- | --- |
+| `ui/src/components/agent/AgentPanel.tsx` | `apps/web/src/components/ChatView.tsx`, `chat/MessagesTimeline.tsx` |
+| `ui/src/components/agent/Composer.tsx` | `apps/web/src/components/chat/ComposerSurface.tsx`, `ComposerPrimaryActions.tsx` |
+| `ui/src/components/agent/ComposerControls.tsx` | `apps/web/src/components/chat/ProviderModelPicker.tsx`, `ComposerControl.tsx`, `CompactComposerControlsMenu.tsx` |
+| `ui/src/components/agent/Markdown.tsx` | `apps/web/src/components/ChatMarkdown.tsx` |
+| `ui/src/components/agent/PermissionCard.tsx` | `apps/web/src/components/chat/ComposerPendingApprovalPanel.tsx`, `ComposerPendingApprovalActions.tsx` |
+| `ui/src/components/agent/ToolCallRow.tsx` | `apps/web/src/components/chat/MessagesTimeline.tsx` (`SimpleWorkEntryRow`) |
+| `ui/src/components/agent/TurnView.tsx` | `apps/web/src/components/chat/MessagesTimeline.tsx` |
+| `ui/src/components/map/MapPage.tsx` | `apps/web/src/components/chat/ChatHeader.tsx` (header and segmented control) |
+| `ui/src/components/shell/SidebarSections.tsx` | `apps/web/src/components/Sidebar.tsx` |
+| `ui/src/components/usage/UsagePage.tsx` | `apps/web/src/components/usage/UsagePage.tsx` |
+| `ui/src/components/usage/UsageChart.tsx` | `apps/web/src/components/usage/UsageProviderChart.tsx` |
+| `ui/src/components/usage/UsagePriceOverrides.tsx` | `apps/web/src/components/usage/UsagePriceOverrides.tsx`, `usagePriceTable.ts`, `usagePriceTargets.ts` |
+| `ui/src/components/usage/usageAgents.ts` | `apps/web/src/components/usage/usageProviders.ts` |
+| `ui/src/components/usage/usagePagePreferences.ts` | `apps/web/src/components/usage/usagePagePreferences.ts` |
+| `ui/src/components/usage/usagePriceForm.ts` | `apps/web/src/components/usage/usagePriceForm.ts` |
+| `ui/src/lib/usage.ts` | `packages/shared/src/usageFormat.ts` (formatting helpers) |
+| `ui/src/styles.css` | `apps/web/src/components/chat/ComposerSurface.tsx` (composer surface styles) |
+
+### MIT License (T3 Code)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -45,6 +79,53 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## shadcn/ui (MIT)
+
+`ui/src/components/ui/*` started as components generated with the shadcn/ui CLI
+(`ui/components.json`, style "new-york") and were then edited for Ruah.
+https://github.com/shadcn-ui/ui
+
+    MIT License
+
+    Copyright (c) 2023 shadcn
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+## The viewer's origin (Lovable)
+
+The viewer in `ui/` began as a project generated with Lovable
+(https://lovable.dev, TanStack Start template `tanstack_start_ts_current`;
+`ui/.lovable/`) for the Ruah maintainers and has since been rewritten and
+extended by hand. Code Lovable generates belongs to the user it was generated
+for, so the viewer is Ruah's own work under Ruah's license. Its build configuration
+depends on the MIT-licensed npm package `@lovable.dev/vite-tanstack-config`.
+`ui/src/lib/lovable-error-reporting.ts` only reports errors when the viewer runs
+inside Lovable's own preview; the desktop app and `ruah app serve` send nothing.
+
+## Ruah brand assets
+
+The Ruah name, logo, wordmark and the Phantom mascots
+(`ui/src/components/brand/*`, `ui/public/icon.svg`, `ui/public/favicon.ico`,
+`electron/assets/*`, `electron/build/dmg-background.*`) come from the Ruah
+website by the same authors. They identify the project; see the README
+("Name and logo") for how they may be used.
 
 ## Fonts (SIL Open Font License 1.1)
 

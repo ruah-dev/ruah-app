@@ -1,9 +1,47 @@
-node_modules
-dist
-.env*
-viewer/
+# Dependencies
+node_modules/
+
+# Build output (all reproducible: `pnpm build`, `pnpm ui:build`, `pnpm dist`)
+dist/
+/dist-electron/
+/viewer/
+/release/
+/out/
+ui/.output/
+ui/.nitro/
+ui/.tanstack/
+*.tsbuildinfo
+
+# Test and tool caches
 .vitest/
-ui/node_modules
-ui/.output
+coverage/
+.eslintcache
+*.log
+logs/
+
+# Secrets and machine-local configuration: never commit them
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+.npmrc
+
+# Ruah's own per-project files when this repo is opened in Ruah
+# (.ruah/cloud.json can name your cloud accounts; keep them out of the public repo)
+/.ruah/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Coding-agent worktrees and local settings
 .claude/worktrees/
-release/
+.claude/settings.local.json

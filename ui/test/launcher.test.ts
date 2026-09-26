@@ -41,14 +41,14 @@ describe("fuzzyScore", () => {
   });
 
   it("is case-insensitive on the text (queries are lowercased by scoreItem)", () => {
-    expect(scoreItem({ label: "LiquidMoneyApi" }, "LIQUID")).not.toBeNull();
+    expect(scoreItem({ label: "HarborPayApi" }, "HARBOR")).not.toBeNull();
   });
 });
 
 describe("scoreItem", () => {
   it("needs every word to match somewhere (label, sub or keywords)", () => {
-    const chat = { label: "checkout refactor", sub: "chat · liquidmoneystore", keywords: ["Claude"] };
-    expect(scoreItem(chat, "checkout liquid")).not.toBeNull();
+    const chat = { label: "checkout refactor", sub: "chat · harborpaystore", keywords: ["Claude"] };
+    expect(scoreItem(chat, "checkout harbor")).not.toBeNull();
     expect(scoreItem(chat, "checkout claude")).not.toBeNull();
     expect(scoreItem(chat, "checkout cursor")).toBeNull();
   });
@@ -74,11 +74,11 @@ describe("recencyBoost", () => {
 describe("rankLauncher", () => {
   const items: LauncherItem[] = [
     item("a1", "Actions", "Sync cloud"),
-    item("p1", "Projects", "liquidmoneystore", { target: "project:1", recentAt: NOW - 3_600_000 }),
+    item("p1", "Projects", "harborpaystore", { target: "project:1", recentAt: NOW - 3_600_000 }),
     item("p2", "Projects", "acme-infra", { target: "project:2" }),
-    item("r1", "Recent", "liquidmoneystore", { target: "project:1", recentAt: NOW - 3_600_000 }),
-    item("c1", "Chats", "checkout refactor", { target: "chat:1", sub: "liquidmoneystore" }),
-    item("n1", "Needs you", "LiquidMoneyApi", { sub: "Claude wants to run pnpm migrate" }),
+    item("r1", "Recent", "harborpaystore", { target: "project:1", recentAt: NOW - 3_600_000 }),
+    item("c1", "Chats", "checkout refactor", { target: "chat:1", sub: "harborpaystore" }),
+    item("n1", "Needs you", "HarborPayApi", { sub: "Claude wants to run pnpm migrate" }),
     item("e1", "Elements", "payments", { queryOnly: true }),
     item("e2", "Elements", "api / payments", { queryOnly: true }),
     item("ask", "Actions", "Ask the agent", { always: true }),
@@ -107,7 +107,7 @@ describe("rankLauncher", () => {
   });
 
   it("puts a prefix match of a recent project above a weaker chat match", () => {
-    const flat = flattenRanked(rankLauncher(items, "liquid", { now: NOW }));
+    const flat = flattenRanked(rankLauncher(items, "harbor", { now: NOW }));
     expect(flat[0]!.target).toBe("project:1");
     expect(flat.filter((i) => i.target === "project:1")).toHaveLength(1);
     expect(flat.map((i) => i.id)).toContain("c1");

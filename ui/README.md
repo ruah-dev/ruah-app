@@ -1,29 +1,29 @@
-# Welcome to your Lovable project
+# Ruah viewer (`ui/`)
 
-This project was built with [Lovable](https://lovable.dev).
+The Ruah desktop app's user interface: a single-page app that talks only to the
+local Ruah daemon (HTTP `/api/*`, WebSocket `/ws`, terminal `/ws/terminal`).
+The protocol is specified in `../docs/CONTRACTS.md`; the types are mirrored in
+`src/lib/contracts.ts`.
 
-## Build with Lovable
-
-Open your project in the [Lovable editor](https://lovable.dev) and keep building.
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: connect the project to GitHub and every change made in Lovable is committed straight to your repository.
-- **Full ownership**: this code is yours. Push to your repository and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Stack: TanStack Start (SPA mode) + TanStack Router, React 19, Tailwind CSS v4,
+shadcn/ui on Radix, lucide icons, xterm.js. Packages are managed with Bun
+(`bun.lock`, with a 24 h minimum release age in `bunfig.toml`).
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install
+bun run dev      # Vite dev server; use `pnpm dev` at the repo root to get the daemon and Electron too
+bun run build    # → .output/public (the root's `pnpm ui:build` copies it to ../viewer)
+npx tsc --noEmit # typecheck (a CI gate)
 ```
 
-## Built with
+Tests for the viewer's logic live in `test/` and run with the root's
+`pnpm test` (vitest resolves `@/` to `ui/src`).
 
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
+- Design tokens, palettes and themes: `src/design/`, documented in
+  `../docs/design/README.md`. Components use semantic tokens only (no raw hex).
+- Brand: `src/components/brand/` (logo, wordmark, the Phantom family).
+- Shell: `src/components/shell/` (rail, command bar, status chips, layouts).
+
+The viewer started as a Lovable project (`.lovable/`); see
+`../THIRD_PARTY_NOTICES.md`. `AGENTS.md` here is Lovable's note for coding
+agents working on a Lovable-connected copy.

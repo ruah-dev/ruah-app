@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ruah-dev/ruah-app/security/advisories/new
+    about: Privately, never in a public issue (see SECURITY.md).
+  - name: The ruah toolkit (ruah CLI, guard, orchestration, …)
+    url: https://github.com/ruah-dev
+    about: Issues with the other ruah packages belong in their own repositories.

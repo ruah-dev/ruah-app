@@ -2,7 +2,7 @@
 // the afterPack fix-ups and the bundled `ruah-app` shim.
 import { afterEach, describe, expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -76,7 +76,9 @@ describe("electron-builder config", () => {
     for (const pattern of ["package.json", "electron/**/*", "dist/**/*", "viewer/**/*"]) expect(config.files).toContain(pattern);
     expect(config.asar).toBe(false);
     expect(config.npmRebuild).toBe(false);
-    expect(config.extraResources).toEqual([expect.objectContaining({ from: "electron/bin", to: "bin" })]);
+    expect(config.extraResources).toEqual(
+      expect.arrayContaining([expect.objectContaining({ from: "electron/bin", to: "bin" }), { from: "THIRD_PARTY_NOTICES.md", to: "THIRD_PARTY_NOTICES.md" }]),
+    );
     expect(config.afterPack).toBe("./scripts/macos/after-pack.cjs");
     expect(config.afterSign).toBe("./scripts/macos/after-sign.cjs");
   });
@@ -175,6 +177,7 @@ describe("afterPack and the bundled CLI", () => {
     writeFileSync(join(resources, "app", "node_modules", "node-pty", "prebuilds", "darwin-arm64", "spawn-helper"), "bin");
     copyFileSync(resolve("electron/bin/ruah-app"), join(resources, "bin", "ruah-app"));
     chmodSync(join(resources, "bin", "ruah-app"), 0o644);
+    copyFileSync(resolve("THIRD_PARTY_NOTICES.md"), join(resources, "THIRD_PARTY_NOTICES.md"));
     return { bundle, context: { electronPlatformName: "darwin", appOutDir: outDir, packager: { appInfo: { productFilename: "Ruah" } } } };
   }
 
@@ -191,6 +194,24 @@ describe("afterPack and the bundled CLI", () => {
     const { bundle, context } = fakeBundle(dir);
     rmSync(join(bundle, "Contents", "Resources", "app", "node_modules", "node-pty"), { recursive: true });
     await expect(afterPack.default(context)).rejects.toThrow(/spawn-helper/);
+  });
+
+  test("afterPack fails the build when the third-party notices are missing or incomplete", async () => {
+    const { bundle, context } = fakeBundle(tempDir());
+    const notices = join(bundle, "Contents", "Resources", "THIRD_PARTY_NOTICES.md");
+    writeFileSync(notices, "# Third-party notices\n\nPermission is hereby granted\n");
+    await expect(afterPack.default(context)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md lacks: .*T3 Tools/);
+    rmSync(notices);
+    await expect(afterPack.default(context)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md is missing/);
+  });
+
+  test("the notices name every adapted file that exists and ship Ruah's LICENSE once there is one", () => {
+    const text = readFileSync(resolve("THIRD_PARTY_NOTICES.md"), "utf8");
+    const listed = [...text.matchAll(/^\| `((?:src|ui\/src)\/[^`]+)` \|/gm)].map((m) => m[1]!);
+    expect(listed.length).toBeGreaterThan(20);
+    for (const file of listed) expect(existsSync(resolve(file)), file).toBe(true);
+    const license = config.extraResources.some((r) => r.from === "LICENSE");
+    expect(license).toBe(existsSync(resolve("LICENSE")));
   });
 
   test("Resources/bin/ruah-app finds a flavored bundle's binary through Info.plist", () => {

@@ -78,7 +78,7 @@ export const GENERIC_NAMES = new Set([
   "my-app", "myapp", "hello-world", "starter", "template", "root", "workspace", "platform", "infra", "core", "shared",
 ]);
 
-/** "Liquid_Money-Store" → "liquidmoneystore": case and separators never matter for names. */
+/** "Harbor_Pay-Store" → "harborpaystore": case and separators never matter for names. */
 export function squash(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }

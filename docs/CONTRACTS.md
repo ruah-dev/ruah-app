@@ -430,7 +430,7 @@ export type ErrorCode =
 {"type":"hello","protocol":1,"client":"architects-canvas/0.1.0"}
 ```
 ```json
-{"type":"architecture","reason":"initial","revision":3,"root":"/Users/petre/code/acme-platform","path":"/Users/petre/code/acme-platform/architecture.json","architecture":{"version":1,"name":"acme-platform","nodes":[],"edges":[],"workflows":[]}}
+{"type":"architecture","reason":"initial","revision":3,"root":"/Users/dev/code/acme-platform","path":"/Users/dev/code/acme-platform/architecture.json","architecture":{"version":1,"name":"acme-platform","nodes":[],"edges":[],"workflows":[]}}
 {"type":"agent.status","state":"idle","agent":{"name":"@agentclientprotocol/claude-agent-acp","version":"0.78.0"},"sessionId":"b446fcb7-2900-4ab8-aa24-a2f428210c32","modes":{"currentModeId":"default","available":[{"id":"default","name":"Manual","description":"Always ask before making changes"},{"id":"acceptEdits","name":"Accept edits","description":"Automatically accept all file edits"},{"id":"plan","name":"Plan","description":"Create a plan before making changes"},{"id":"auto","name":"Auto","description":"Claude handles permission decisions"},{"id":"bypassPermissions","name":"Bypass permissions","description":"Accepts all permissions"}]}}
 ```
 ```json
@@ -614,7 +614,7 @@ workflows:
 - Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
 [/ruah context]
 
-The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
+The user selected the node above on an architecture diagram of the repository at /Users/dev/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 
 there might be a bug in how invoices are validated
 ```
@@ -1780,7 +1780,7 @@ Each match gives a reason (shown on the row) and a confidence:
 | proof | infrastructure as code (§11): an exact `infra.hints` match (meaningful name) on a node whose Terraform type belongs to the resource's provider (`aws_*` → aws, `digitalocean_*` → digitalocean, …), or a Kubernetes `namespace/name` hint; a Kubernetes namespace the repo's manifests declare (not `default`) |
 | proof | tags / labels on digitalocean, aws, gcp, azure, hetzner, kubernetes: `ruah-project` / `ruah:project` = a project name or its Ruah project id; `project` / `Project` / `app.kubernetes.io/part-of` = a project name (case and separators ignored; DigitalOcean string tags `project:<name>` too); `ruah:node` tags and manual element links (§6) |
 | likely | host names the repo mentions — `.env.example` / `.env.sample` / `.env.template` / `*.example` env files, compose files, `netlify.toml`, `vercel.json` aliases, `CNAME`, `package.json` `homepage`, the App Platform spec, wrangler routes, IaC `settings.hosts` — equal to a resource's URL host / hosts, a CDN origin or bucket endpoint (`<bucket>.<region>[.cdn].digitaloceanspaces.com`, `<bucket>.s3[.<region>].amazonaws.com`, `<ref>.supabase.co`), or under a DNS zone resource; a generic workload name in the repo's manifests / IaC; a normalized IaC name; `supabase/config.toml` `project_id` equal to a project's name; a SAM stack prefix; a bare DigitalOcean tag equal to a project name |
-| weak | the name looks like the project's — equal or containing after dropping case and separators (`liquid-money-store` ~ `liquidmoneystore`), or sharing two meaningful words — against the repo folder, root `package.json` name, git `origin` repo name, the names its link files deploy under, the scope file `name` (and a system's name / repo ids); generic words (`api`, `web`, `admin`, …) never count; a name match to a plain code element (§6 linking) is weak too |
+| weak | the name looks like the project's — equal or containing after dropping case and separators (`harbor-pay-store` ~ `harborpaystore`), or sharing two meaningful words — against the repo folder, root `package.json` name, git `origin` repo name, the names its link files deploy under, the scope file `name` (and a system's name / repo ids); generic words (`api`, `web`, `admin`, …) never count; a name match to a plain code element (§6 linking) is weak too |
 
 - **In scope = manual include + whole account + proof + likely − exclude.** Weak matches are
   **suggestions** ("Looks related"), never in scope on their own.
@@ -2473,6 +2473,7 @@ environments), `electron-builder.config.cjs` + `scripts/macos/` (build).
 | `Resources/app/node_modules/node-pty/prebuilds/darwin-arm64/` | N-API addon (ABI-stable across Node and Electron, no rebuild) + `spawn-helper` (made executable at build time) |
 | `Resources/app/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude` | Claude's native CLI, still signed by Anthropic (excluded from re-signing) |
 | `Resources/bin/ruah-app` | `ruah app …` on the app's runtime (`ELECTRON_RUN_AS_NODE=1 MacOS/Ruah Resources/app/dist/cli.js "$@"`; symlinks resolved) |
+| `Resources/THIRD_PARTY_NOTICES.md` | the repository's `THIRD_PARTY_NOTICES.md`: the copyright and license notices of the code bundled into `dist/` and `viewer/` (T3 Code, shadcn/ui: MIT) and of the fonts (OFL 1.1), whose source headers the bundlers drop; `Resources/LICENSE` too once the repository has a `LICENSE` (added 2026-09-26) |
 
 `Info.plist`: `CFBundleDocumentTypes` = one `public.folder` type, role Viewer,
 `LSHandlerRank: Alternate` (Ruah can open folders; it never becomes their default app);
@@ -2671,7 +2672,9 @@ agent presets: PATH, `~/.local/bin`, their installers' dirs, `RUAH_*_BIN`); `git
   `release/` (git-ignored). `npmRebuild: false`, `electronLanguages: ["en"]`, dmg
   format ULFO, window 540×380 with `electron/build/dmg-background.tiff`.
 - `afterPack` (`scripts/macos/after-pack.cjs`): makes node-pty's `spawn-helper` and
-  `Resources/bin/ruah-app` executable; fails if either is missing.
+  `Resources/bin/ruah-app` executable; fails if either is missing, or if
+  `Resources/THIRD_PARTY_NOTICES.md` is missing or lacks the T3 Code, shadcn/ui or OFL
+  notice.
 - Fuses are flipped after `afterPack`, before signing (§19.1).
 - `afterSign` (`scripts/macos/after-sign.cjs`): with the signed app, as Node:
   `dist/cli.js --version`, a node-pty pty round trip, resolving Claude's native CLI and
@@ -3059,3 +3062,131 @@ frames or Node banner).
 - Viewer: a page opened with `?daemon=` keeps using that daemon after in-app navigation;
   a palette click adds the element right of the level's elements (drag-and-drop is unchanged);
   the Replay button is hidden while `ruah watch` is not installed.
+
+## 22. CI, tagged releases and repository hygiene (2026-09-26)
+
+What GitHub runs for this repository and what a release publishes. Code:
+`.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dependabot.yml`,
+`test/repo-hygiene.test.ts`.
+
+### 22.1 CI (`ci.yml`)
+
+- Triggers: every `pull_request`, `push` to `main`, `workflow_dispatch`. A newer run on the
+  same pull request cancels the older one.
+- Matrix: `macos-15` (Apple silicon; required) and `ubuntu-24.04` (`continue-on-error`
+  until it has proven green: node-pty compiles from source there).
+- Steps, in order: checkout (`persist-credentials: false`) → pnpm from `package.json`
+  `packageManager` → Node from `.nvmrc` (pnpm store cached) → Bun 1.3.9 →
+  `pnpm install --frozen-lockfile` → `(cd ui && bun install --frozen-lockfile)` →
+  `pnpm typecheck` → `pnpm build` → `pnpm test` → `(cd ui && npx tsc --noEmit)` →
+  `(cd ui && bun run build)` → CLI smoke (`--version`, `help`,
+  `scan test/golden --dry-run`, on a temporary `RUAH_HOME`).
+
+### 22.2 Releases (`release.yml`)
+
+- Trigger: a pushed tag `v*`. The tag must equal `v` + `package.json` `version`, or the
+  run fails before building. `workflow_dispatch` is a dry run: same build, workflow
+  artifact only, no release.
+- Job `dmg` (`macos-15`, token `contents: read`, no dependency cache): the §22.1 gates,
+  then `pnpm dist --publish never` (§19.7), then `release/SHA256SUMS.txt`. For tags it
+  runs in the GitHub Environment `release` (`environment: ${{ startsWith(github.ref,
+  'refs/tags/v') && 'release' || '' }}`); a dry run has no environment.
+- Job `publish` (only for tags; `ubuntu-24.04`; token `contents: write`; runs no project
+  code): downloads the artifact and creates the release as a **draft** titled
+  `Ruah v<version>` (a prerelease when the tag contains `-`), or uploads with `--clobber`
+  when the release exists. A maintainer publishes the draft.
+
+| Artifact | Contents |
+| --- | --- |
+| `Ruah-<version>-arm64.dmg` | the app (§19), ad-hoc signed unless the secrets below are set |
+| `SHA256SUMS.txt` | one line per `.dmg`: `<sha256>  <file name>` (`shasum -a 256 -c SHA256SUMS.txt`) |
+| workflow artifact `ruah-macos-arm64` | both files, kept 14 days (also for dry runs) |
+
+Optional secrets of the `release` environment (none set = ad-hoc signing, no
+notarization). They belong in the environment, whose deployment rule allows only tags
+`v*`, and not in repository secrets: then a dry run, or a run of an edited workflow from a
+branch, never receives them, and a dry run is always ad-hoc signed.
+
+| Secret | Becomes (§19.7) |
+| --- | --- |
+| `MAC_CERT_P12_BASE64` | decoded to `$RUNNER_TEMP/developer-id.p12` → `CSC_LINK` (without it: `CSC_IDENTITY_AUTO_DISCOVERY=false`) |
+| `MAC_CERT_PASSWORD` | `CSC_KEY_PASSWORD` (build step only) |
+| `APPLE_API_KEY_P8` | written to `$RUNNER_TEMP/AuthKey.p8` → `APPLE_API_KEY` (only with the certificate) |
+| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | the same names (build step only) |
+
+The `.p12` and `.p8` files are removed at the end of the job, whatever its outcome.
+
+`SHA256SUMS.txt` comes from the same release as the `.dmg`: it shows a download is
+complete and uncorrupted, not that nobody replaced both. Authenticity comes from the
+release page itself (github.com, the maintainers' account) and, once configured,
+Developer ID signing and notarization.
+
+### 22.3 Workflow rules
+
+- Top-level `permissions: contents: read`. No `<scope>: write` anywhere in `ci.yml`
+  (top level or job level); in `release.yml` exactly one, `contents: write` in the
+  `publish` job. No `pull_request_target`, no `write-all`.
+- Signing secrets are read only in `release.yml`'s `dmg` job, which enters the `release`
+  environment for tags only (§22.2).
+- Every `uses:` is pinned to a full 40-character commit SHA with the version in a comment;
+  Dependabot (`github-actions` ecosystem) bumps the pins.
+- Every checkout sets `persist-credentials: false`.
+
+### 22.4 Dependabot (`dependabot.yml`)
+
+Weekly (Monday), grouped minor + patch updates, a 3-day cooldown: `npm` at `/`
+(pnpm-lock.yaml; dev and runtime groups), `bun` at `/ui`, `github-actions` at `/`.
+Commit prefixes `chore(deps)`, `chore(deps-ui)`, `ci`.
+
+### 22.5 Repository hygiene (`test/repo-hygiene.test.ts`, part of `pnpm test`)
+
+Over `git ls-files` (skipped outside a git checkout; lockfiles excluded from text checks):
+
+- no home folder — `/Users/<name>`, `/home/<name>`, the dash-encoded `-Users-<name>-`
+  that coding-agent tools use for folder names, `C:\Users\<name>` (also with doubled
+  backslashes) — except `me`, `you`, `dev`, `other`, `someone`, `user`, `runner`, `x`,
+  and no macOS per-user temp folder (`/var/folders/<2>/<20+>`);
+- no full-length token shapes: AWS access keys, GitHub (`ghp_…` 36 chars, `github_pat_…`),
+  Anthropic `sk-ant-…`, OpenAI `sk-…`, Slack, Google `AIza…`, DigitalOcean `do?_v1_…`,
+  Supabase `sbp_…`, Stripe live keys, npm tokens, PEM private keys;
+- no `.env` files (except `.env.example`), `.p12` / `.p8` / `.pem` / `.key` / `.cer` /
+  provisioning profiles, `.dmg` / `.zip` / `.asar` / `.app` / `.exe` / `.node`, nothing
+  under `dist/`, `dist-electron/`, `release/`, `viewer/`, `out/`, `node_modules/`,
+  `.output/`;
+- no file over 1 MiB;
+- the §22.3 workflow rules; `package.json` `repository`, `homepage`, `bugs`, `license`,
+  `packageManager` and `private: true`; the `.gitignore` entries for build output,
+  secrets and `/.ruah/`; README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG,
+  THIRD_PARTY_NOTICES, the pull request template and `dependabot.yml` exist;
+- when `RUAH_PRIVATE_TERMS_FILE` is set (a file kept outside the repo: one term per
+  line, `#` comments, terms shorter than 3 characters ignored), no tracked text file
+  contains any term, case-insensitively; failures name the file and the term's line
+  number in the terms file, never the term. Set but unreadable (a typo, an unexpanded
+  `~`) or without a single term: the check fails. Unset: the check is skipped.
+
+The patterns live in `scripts/privacy/patterns.ts`, shared with §22.6.
+
+### 22.6 History scan (`pnpm privacy:scan`)
+
+`scripts/privacy/scan-history.ts` checks every object reachable from any ref — what
+`git push --mirror` would publish — for the private terms, the §22.5 home folders and
+secret shapes:
+
+- file contents (every blob `git rev-list --objects --all` lists, read with
+  `git cat-file --batch`; a `missing` object is an error), folder and file names (tree
+  entries), commit and annotated-tag messages (not author lines), ref names;
+- options: `--repo <dir>` (default `.`), `--terms <file>` (default
+  `$RUAH_PRIVATE_TERMS_FILE`; set but unreadable or empty exits 2), `--expect-hits`;
+- output: counts of refs, commits, tags, folders, files and bytes scanned, then per
+  check (`private term on line <n>`, a home-folder shape, a secret shape) the number of
+  objects by kind and up to 8 of them (short id + path); a path or ref name that
+  contains a term or home folder is shown as hidden. Terms are never printed;
+- exit 0 nothing found, 1 something found, 2 usage error, unreadable or empty terms
+  file, not a git repository, or commits without a single file read (a broken scan never
+  looks clean);
+- `--expect-hits` is the positive control for a history rewrite: on the ORIGINAL history
+  it exits 0 only when a private term is found (any check without a terms file). The
+  procedure: control on the original (must pass) → `git filter-repo` on a fresh mirror
+  clone (`--replace-text` for contents, `--replace-message` for commit messages,
+  `--path-rename` / `--invert-paths` for names) → scan the rewritten clone without
+  `--expect-hits` (must exit 0).
