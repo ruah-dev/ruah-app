@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { AGENT_LABEL, describeServer, groupByCategory, matchesQuery, type FeaturedExtension, type Load } from "@/lib/extensions";
 import { Chip, KindMark, primaryButton, solidButton } from "./parts";
 import type { SourceKind } from "./AddExtensionDialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function FeaturedCard({ entry, onAdd }: { entry: FeaturedExtension; onAdd: () => void }) {
   const runs = entry.runs;
@@ -98,8 +99,19 @@ export function DiscoverView({
         </div>
       </section>
 
-      {featured.status === "loading" || featured.status === "idle" ? <p className="text-ui-sm text-muted-foreground">Loading the catalog…</p> : null}
-      {featured.status === "error" ? <p className="text-ui-sm text-bad">{featured.message}</p> : null}
+      {featured.status === "loading" || featured.status === "idle" ? (
+        <div role="status" aria-live="polite" className="grid gap-3 sm:grid-cols-2">
+          <span className="sr-only">Loading the catalog…</span>
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
+          ))}
+        </div>
+      ) : null}
+      {featured.status === "error" ? (
+        <p role="alert" className="text-ui-sm text-bad">
+          Couldn't load the catalog: {featured.message.replace(/\.$/, "")}. Refresh to try again.
+        </p>
+      ) : null}
       {featured.status === "ok" && list.length === 0 ? <p className="text-ui-sm text-muted-foreground">Nothing in the catalog matches “{query}”.</p> : null}
       {groups.map((g) => (
         <section key={g.category} className="flex flex-col gap-3">

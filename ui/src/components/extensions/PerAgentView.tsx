@@ -16,13 +16,26 @@ import {
   type SessionPreview,
 } from "@/lib/extensions";
 import { Chip, KindMark } from "./parts";
+import { Skeleton } from "@/components/ui/skeleton";
+
+/** Two or three lines in the shape of the list that is loading. */
+function SkeletonLines({ label }: { label: string }) {
+  return (
+    <div role="status" aria-live="polite" className="space-y-2 py-0.5">
+      <span className="sr-only">{label}…</span>
+      <Skeleton className="h-3 w-2/3 rounded" />
+      <Skeleton className="h-3 w-1/2 rounded" />
+      <Skeleton className="h-3 w-3/5 rounded" />
+    </div>
+  );
+}
 
 function basename(p: string): string {
   return p.split("/").filter(Boolean).pop() ?? p;
 }
 
 function Injected({ preview }: { preview: SessionPreview | undefined }) {
-  if (preview === undefined) return <p className="text-label text-muted-foreground">Loading…</p>;
+  if (preview === undefined) return <SkeletonLines label="Loading what Ruah hands this agent" />;
   const empty = preview.servers.length + preview.plugins.length + preview.rules.length === 0;
   return (
     <div className="space-y-1.5">
@@ -71,7 +84,7 @@ const KIND_ORDER = ["mcp", "plugin", "power", "skill", "rule"] as const;
 
 function Own({ discovery }: { discovery: AgentDiscovery | undefined }) {
   const [all, setAll] = useState(false);
-  if (discovery === undefined) return <p className="text-label text-muted-foreground">Loading…</p>;
+  if (discovery === undefined) return <SkeletonLines label="Reading this agent's own configuration" />;
   if (discovery.items.length === 0) return <p className="text-label text-muted-foreground">Nothing configured in {discovery.name} itself.</p>;
   // MCP servers and plugins first: they are what runs.
   const items = [...discovery.items].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));

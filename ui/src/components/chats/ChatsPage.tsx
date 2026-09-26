@@ -103,7 +103,7 @@ export function ChatsPage() {
       </PageHeader>
 
       <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pt-5 max-md:px-3">
-        <div className="mb-3 flex h-9 shrink-0 items-center gap-2 rounded-lg bg-surface-2 px-3 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+        <div className="mb-3 flex h-9 shrink-0 items-center gap-2 rounded-lg bg-surface-2 px-3 ring-1 ring-hairline focus-within:ring-ring">
           <Search className="size-3.5 text-muted-foreground" />
           <input
             value={query}

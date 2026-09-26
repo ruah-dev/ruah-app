@@ -32,6 +32,7 @@ import {
 } from "@/components/integrations/common";
 import { CreateIssueDialog } from "./CreateIssueDialog";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Load = { status: "loading" } | { status: "error"; message: string } | { status: "ok"; items: WorkItem[] };
 
@@ -267,9 +268,11 @@ export function IssuesSection({ node }: { node: DiagramNode }) {
       </div>
 
       {load.status === "loading" ? (
-        <p className="flex items-center gap-2 text-label text-muted-foreground">
-          <Loader2 className="size-3 animate-spin" /> Loading issues…
-        </p>
+        <div role="status" aria-live="polite" className="space-y-2">
+          <span className="sr-only">Loading issues…</span>
+          <Skeleton className="h-3 w-3/4 rounded" />
+          <Skeleton className="h-3 w-1/2 rounded" />
+        </div>
       ) : load.status === "error" ? (
         <p className="text-label text-muted-foreground">
           {connected ? `Couldn't load issues: ${load.message}` : null}

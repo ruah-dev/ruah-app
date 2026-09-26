@@ -58,6 +58,7 @@ import { CloudResourceView } from "./CloudDetails";
 import { ConnectProviders } from "./ConnectProviders";
 import { AccountPicker, LooksRelated } from "./ScopePanels";
 import { cn } from "@/lib/utils";
+import { SkeletonRows } from "@/components/ui/skeleton";
 
 function useNow(ms = 30_000) {
   const [now, setNow] = useState(() => Date.now());
@@ -372,6 +373,7 @@ export function CloudPage() {
               className="py-6"
             />
             <ConnectProviders
+              title="Providers"
               providers={s.integrations.status === "ok" ? s.integrations.data.filter((i) => i.family === "cloud") : []}
             />
           </div>
@@ -428,7 +430,7 @@ export function CloudPage() {
         />
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-7 w-64 items-center gap-2 rounded-md bg-foreground/[0.045] px-2 max-sm:w-full">
+          <div className="flex h-7 w-64 items-center gap-2 rounded-lg bg-surface-2 px-2 ring-1 ring-hairline focus-within:ring-ring max-sm:w-full">
             <Search className="size-3.5 shrink-0 text-muted-foreground" />
             <input
               value={query}
@@ -490,7 +492,8 @@ export function CloudPage() {
             {...(sv.supported && writable ? { onScope: (r: CloudResource, a: ScopeResourceAction) => void onScope(r, a) } : {})}
             empty={
               s.cloud.status === "loading" ? (
-                <GhostState pose="cloud" title="Reading what's deployed…" className="h-full min-h-60 px-8" live="polite" />
+                // The table's shape while the providers answer (a sync can take a few seconds).
+                <SkeletonRows rows={6} label="Reading what's deployed" className="gap-3 px-5 py-4 max-md:px-3" />
               ) : (
                 <GhostState
                   className="h-full min-h-60 px-8"

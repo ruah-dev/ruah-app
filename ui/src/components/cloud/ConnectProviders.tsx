@@ -63,8 +63,11 @@ function ProviderLine({ info }: { info: IntegrationInfo }) {
 export function ConnectProviders({
   providers,
   collapsible = false,
+  title,
   className,
 }: {
+  /** Heading (default: "Connect a provider" until one is connected, then "Cloud providers"). */
+  title?: string;
   /** Cloud-family integrations (any status). */
   providers: IntegrationInfo[];
   /** Start folded behind a one-line summary (used once something is connected). */
@@ -89,14 +92,14 @@ export function ConnectProviders({
       <div className="flex items-center gap-3 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-ui font-medium text-foreground">
-            {connected ? "Cloud providers" : "Connect a provider"}
+            {title ?? (connected ? "Cloud providers" : "Connect a provider")}
           </p>
           <p className="text-label text-muted-foreground">
             {connected} of {providers.length} connected · Ruah uses each CLI's own login and only reads. Manage in{" "}
             <IntegrationsLink />.
           </p>
         </div>
-        <button type="button" className={quietButton} onClick={check} disabled={checking} aria-label="Check again">
+        <button type="button" className={quietButton} onClick={check} disabled={checking} title="Read every provider's status again">
           <RefreshCw className={cn("size-3.5", checking && "animate-spin")} />
           Check again
         </button>

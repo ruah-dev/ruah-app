@@ -19,6 +19,7 @@ import { FeaturesSettings } from "./FeaturesSettings";
 import { LayoutSettingsRows } from "@/components/shell/LayoutSettings";
 import { BUILD_ID } from "@/lib/build-reload";
 import { cn } from "@/lib/utils";
+import { solidButton } from "@/components/ui/controls";
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -306,11 +307,8 @@ export function SettingsPage() {
             description="Cloud providers, issue trackers and ruah orchestration."
           >
             <Row label="Connected services" hint="DigitalOcean, AWS, Jira, GitHub, ruah">
-              <Link
-                to="/integrations"
-                className="flex h-7 items-center rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground hover:bg-surface-3"
-              >
-                Manage
+              <Link to="/integrations" className={solidButton}>
+                Open Integrations
               </Link>
             </Row>
           </Group>
@@ -322,11 +320,7 @@ export function SettingsPage() {
 
           <Group title="Help">
             <Row label="Getting started" hint="Show the introduction again.">
-              <button
-                type="button"
-                onClick={wb.resetOnboarding}
-                className="h-7 rounded-lg border border-hairline bg-surface-2 px-2.5 text-ui-sm text-foreground hover:bg-surface-3"
-              >
+              <button type="button" onClick={wb.resetOnboarding} className={solidButton}>
                 Show guide
               </button>
             </Row>
