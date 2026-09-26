@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -278,5 +278,72 @@ describe("ruah without the engine's namespace", () => {
     } else {
       expect(out.ok).toBe(true);
     }
+  });
+});
+
+// Regression: /api/engines/status said "installed" for opt and watch whenever a `ruah` bin was on
+// PATH — until the first call failed with "unknown command". It now reads the toolkit's packages.
+describe("engine status reads the ruah toolkit's namespaces (no spawn)", () => {
+  afterEach(() => resetEngineProbe());
+
+  function toolkit(): { root: string; cli: string } {
+    const root = mkdtempSync(join(tmpdir(), "ruah-toolkit-"));
+    const scope = join(root, "lib", "node_modules", "@ruah-dev");
+    mkdirSync(join(scope, "cli", "dist"), { recursive: true });
+    const cli = join(scope, "cli", "dist", "cli.js");
+    writeFileSync(cli, "#!/usr/bin/env node\n", { mode: 0o755 });
+    writeFileSync(join(scope, "cli", "package.json"), JSON.stringify({ name: "@ruah-dev/cli" }));
+    mkdirSync(join(scope, "opt"), { recursive: true });
+    writeFileSync(join(scope, "opt", "package.json"), JSON.stringify({ name: "@ruah-dev/opt", ruah: { namespace: "opt" } }));
+    // A symlinked package folder: ruah-cli does not discover it, so neither does Ruah.
+    const elsewhere = join(root, "watch-src");
+    mkdirSync(elsewhere, { recursive: true });
+    writeFileSync(join(elsewhere, "package.json"), JSON.stringify({ name: "@ruah-dev/watch", ruah: { namespace: "watch" } }));
+    symlinkSync(elsewhere, join(scope, "watch"));
+    // A known package (conv) resolved from the CLI's own node_modules.
+    mkdirSync(join(scope, "cli", "node_modules", "@ruah-dev", "conv-core"), { recursive: true });
+    writeFileSync(join(scope, "cli", "node_modules", "@ruah-dev", "conv-core", "package.json"), JSON.stringify({ name: "@ruah-dev/conv-core" }));
+    return { root, cli };
+  }
+
+  const noSpawn: Runner = async () => {
+    throw new Error("engine status must not run anything");
+  };
+
+  it("a Homebrew-style shim and an npm symlink both lead to the toolkit's packages", () => {
+    const { root, cli } = toolkit();
+    const shimDir = join(root, "brew-bin");
+    mkdirSync(shimDir);
+    writeFileSync(join(shimDir, "ruah"), `#!/usr/bin/env sh\nexec node '${cli}' "$@"\n`, { mode: 0o755 });
+    const linkDir = join(root, "npm-bin");
+    mkdirSync(linkDir);
+    symlinkSync(cli, join(linkDir, "ruah"));
+    for (const bin of [shimDir, linkDir]) {
+      resetEngineProbe();
+      const status = engineStatus({ runner: noSpawn, env: { PATH: bin } }, ["guard", "opt", "watch", "conv"]);
+      expect(status.opt).toMatchObject({ installed: true, via: "ruah" });
+      expect(status.guard).toMatchObject({ installed: false });
+      expect(status.watch).toMatchObject({ installed: false });
+      expect(status.conv).toMatchObject({ installed: true, via: "ruah" });
+    }
+  });
+
+  it("an install shows up without a restart; a toolkit it cannot read is still tried", () => {
+    const { root, cli } = toolkit();
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    symlinkSync(cli, join(bin, "ruah"));
+    const deps = { runner: noSpawn, env: { PATH: bin } };
+    expect(engineStatus(deps, ["guard"]).guard?.installed).toBe(false);
+    const scope = join(root, "lib", "node_modules", "@ruah-dev");
+    mkdirSync(join(scope, "guard"));
+    writeFileSync(join(scope, "guard", "package.json"), JSON.stringify({ name: "@ruah-dev/guard", ruah: { namespace: "guard" } }));
+    utimesSync(scope, new Date(), new Date(Date.now() + 2_000));
+    expect(engineStatus(deps, ["guard"]).guard).toMatchObject({ installed: true, via: "ruah" });
+    // An opaque `ruah` (no toolkit path in it): assumed to have it until it says otherwise.
+    const opaque = join(root, "opaque");
+    mkdirSync(opaque);
+    writeFileSync(join(opaque, "ruah"), "#!/bin/sh\n", { mode: 0o755 });
+    expect(engineStatus({ runner: noSpawn, env: { PATH: opaque } }, ["watch"]).watch?.installed).toBe(true);
   });
 });
