@@ -1767,9 +1767,24 @@ interface SocketSession {
   alive: boolean;
 }
 
-export function attachSession(hub: SessionHub, socket: WebSocket): void {
+/**
+ * Sockets whose upgrade came from a page on another origin than the daemon's
+ * own (another localhost port, an --allow-origin site). The /ws Origin rule
+ * lets them in; they may not change protected settings (§20.1: reading an
+ * agent app's saved login), the same line src/serve/local-mutation.ts draws
+ * for HTTP.
+ */
+const foreignOriginSockets = new WeakSet<WebSocket>();
+
+export interface AttachSessionOptions {
+  /** False when the upgrade's Origin is not the daemon's own origin (default true: the CLI and tests send none). */
+  ownOrigin?: boolean;
+}
+
+export function attachSession(hub: SessionHub, socket: WebSocket, options: AttachSessionOptions = {}): void {
   const session: SocketSession = { socket, hello: false, alive: true };
   hub.sockets.add(socket);
+  if (options.ownOrigin === false) foreignOriginSockets.add(socket);
 
   socket.on("close", () => {
     session.alive = false;
@@ -1924,6 +1939,10 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
       return;
     }
     case "settings.set": {
+      if (message.usage !== undefined && foreignOriginSockets.has(socket)) {
+        hub.error(socket, "bad_message", "settings.set: reading an app's saved login can only be changed from the viewer this daemon serves");
+        return;
+      }
       hub.setFeatures(
         {
           ...(message.backgroundAgents !== undefined ? { backgroundAgents: message.backgroundAgents } : {}),

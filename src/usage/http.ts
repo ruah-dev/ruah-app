@@ -8,12 +8,18 @@
 // saved login to cursor.com. So another web page must not be able to trigger
 // them (a cross-site <img> or no-cors fetch: refused by Origin / Sec-Fetch-Site)
 // nor read them through DNS rebinding (refused by the Host check).
+//
+// POST /api/usage/settings turns that reading on, so it takes the stricter
+// rule of src/serve/local-mutation.ts (as extensions do): only the viewer this
+// daemon serves (its own origin, application/json, loopback) or a client with
+// no Origin — never another localhost port or an --allow-origin site.
 import { isIP } from "node:net";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { UsageRangeSchema } from "../contracts/usage.js";
 import type { UsageApi } from "./index.js";
 import { UnknownAgentError } from "./limits/service.js";
 import { limitsAgentId } from "./limits/estimate.js";
+import { localMutationRefusal } from "../serve/local-mutation.js";
 
 const PATHS = new Set(["/api/usage/summary", "/api/usage/limits", "/api/usage/agents", "/api/usage/settings"]);
 const SETTINGS_BODY_MAX = 4 * 1024;
@@ -120,6 +126,11 @@ export function handleUsageRequest(req: IncomingMessage, res: ServerResponse, ur
     }
     if (req.method === "GET") {
       json(res, 200, usage.usageSettings());
+      return true;
+    }
+    const strict = localMutationRefusal(req, access?.originAllowed ?? loopbackOrigin, "this setting");
+    if (strict !== undefined) {
+      json(res, strict.status, { error: strict.error });
       return true;
     }
     const setSettings = usage.setUsageSettings.bind(usage);

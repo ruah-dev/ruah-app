@@ -28,6 +28,7 @@ import { hostnameOf, isLoopbackHostName, type TerminalGateway } from "../termina
 import { isIP } from "node:net";
 import { handleSystemRequest, type SystemService } from "./system-http.js";
 import { handleExtensionsRequest } from "../extensions/http.js";
+import { ownOrigin } from "./local-mutation.js";
 import type { ExtensionsService } from "../extensions/service.js";
 import { handlePreviewRequest, type PreviewHttpDeps } from "../preview/http.js";
 
@@ -263,8 +264,11 @@ export function startServer(
       socket.destroy();
       return;
     }
+    // The /ws rule above accepts any loopback port; protected settings (§20.1)
+    // additionally need the daemon's own origin (src/serve/local-mutation.ts).
+    const own = ownOrigin(req);
     wss.handleUpgrade(req, socket, head, (ws) => {
-      attachSession(hub, ws);
+      attachSession(hub, ws, { ownOrigin: own });
     });
   });
 

@@ -506,6 +506,16 @@ describe("background agents (§13.1)", () => {
     socket.receive({ type: "settings.set", usage: { readAppLogins: true } });
     expect(socket.last("activity.snapshot")?.settings.usage).toEqual({ readAppLogins: true, source: "settings" });
     socket.receive({ type: "settings.set", usage: { readAppLogins: false } });
+    // A socket opened from another origin (another localhost port) may not switch it on.
+    const foreign = new FakeSocket();
+    attachSession(hub, foreign as unknown as WebSocket, { ownOrigin: false });
+    foreign.receive({ type: "hello", protocol: 1, client: "test/0" });
+    foreign.sent = [];
+    foreign.receive({ type: "settings.set", usage: { readAppLogins: true } });
+    expect(foreign.last("error")).toMatchObject({ code: "bad_message" });
+    expect(foreign.last("error")?.message).toContain("viewer this daemon serves");
+    expect(settings.usageSettings().readAppLogins).toBe(false);
+    foreign.close();
     expect(hub.maxBackgroundTurns()).toBe(0);
     const a = project("repo-a");
     const b = project("repo-b");

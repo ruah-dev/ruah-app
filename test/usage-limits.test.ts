@@ -993,14 +993,23 @@ describe("§20.1 usage settings over HTTP and the CLI", () => {
     });
     await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/usage/settings`;
-    const post = (body: string, origin?: string) =>
-      fetch(base, { method: "POST", headers: { "content-type": "application/json", ...(origin !== undefined ? { origin } : {}) }, body });
+    const own = new URL(base).origin;
+    const post = (body: string, origin?: string, type = "application/json") =>
+      fetch(base, { method: "POST", headers: { "content-type": type, ...(origin !== undefined ? { origin } : {}) }, body });
     expect(await (await fetch(base)).json()).toEqual({ readAppLogins: false, source: "default" });
     expect((await post(JSON.stringify({ readAppLogins: true }), "https://evil.example")).status).toBe(403);
+    // Stricter than the read rule: another localhost port (a dev server in the Preview) may not turn it on,
+    const otherPort = await post(JSON.stringify({ readAppLogins: true }), "http://localhost:5173");
+    expect(otherPort.status).toBe(403);
+    expect(((await otherPort.json()) as { error: string }).error).toContain("viewer this daemon serves");
+    // nor may a no-preflight text/plain POST, even from the daemon's own origin.
+    expect((await post(JSON.stringify({ readAppLogins: true }), own, "text/plain")).status).toBe(415);
+    expect((await post(JSON.stringify({ readAppLogins: true }), undefined, "text/plain")).status).toBe(415);
     expect(store.usageSettings().readAppLogins).toBe(false);
-    expect((await post("{", "http://localhost:5173")).status).toBe(400);
+    expect(existsSync(path.join(home, "settings.json"))).toBe(false);
+    expect((await post("{", own)).status).toBe(400);
     expect((await post(JSON.stringify({ readAppLogins: "yes" }))).status).toBe(400);
-    const on = await post(JSON.stringify({ readAppLogins: true }), "http://localhost:5173");
+    const on = await post(JSON.stringify({ readAppLogins: true }), own);
     expect(on.status).toBe(200);
     expect(await on.json()).toEqual({ readAppLogins: true, source: "settings" });
     expect(invalidated).toBe(1);
