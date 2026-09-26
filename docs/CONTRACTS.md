@@ -1931,9 +1931,14 @@ interface PreviewFile {
   candidate?: string;   // a candidate id
   command?: string;     // your own command ({port} allowed) — replaces `candidate`
   dir?: string;         // its folder (default ".")
-  url?: string;         // fixed preview URL (default: what the server prints)
+  url?: string;         // fixed preview URL (default: what the server prints): http(s) on this
+                        // computer only — localhost, *.localhost, 127.x.x.x, [::1], no credentials
 }
 ```
+
+The file comes with the repo, so `url` is never another scheme (`javascript:`, `file:`, `data:`)
+or another machine: such a file is invalid (`configError`), and `POST /api/preview/choice`
+answers 400.
 
 Written only by an explicit choice (the command picker with "Remember", `ruah app preview
 --pick|--command … --remember`), only when the content changes, pretty-printed with a stable
@@ -1948,9 +1953,9 @@ never overwritten: edits answer 409.
 | `GET /api/preview/detect` | `PreviewDetection` |
 | `GET /api/preview/logs?lines=` | `{ lines }` — the last ≤ 500 output lines |
 | `POST /api/preview/start` | `{ candidate? , command?, dir?, remember? }` → `PreviewStatus`. Nothing: the saved / selected candidate (409 `{ error, detection }` when the user must pick or nothing was found); the same command already running: its status; something else running: stopped first. Unknown candidate 404, folder outside the project 400. |
-| `POST /api/preview/stop` | → `PreviewStatus` (Ctrl+C, 3 s, hang up, 3 s; a crashed preview goes back to "stopped") |
+| `POST /api/preview/stop` | → `PreviewStatus` (Ctrl+C, 3 s — 12 s for `docker compose up`, which stops its containers first — hang up, 3 s; a crashed preview goes back to "stopped"; the "preview" tab is closed) |
 | `POST /api/preview/restart` | → `PreviewStatus` (the same command, re-detected) |
-| `POST /api/preview/choice` | `{ candidate?, command?, dir?, url? }` (null clears) → `PreviewDetection` |
+| `POST /api/preview/choice` | `{ candidate?, command?, dir?, url? }` (null clears; `url` as in §15.3, else 400) → `PreviewDetection` |
 
 POSTs: the `/ws` Origin rule (403); `Sec-Fetch-Site`, when sent, is `same-origin` or `none`
 (403 — the previewed app on another localhost port passes the Origin rule but must not drive
@@ -1971,9 +1976,16 @@ while output arrives; filter by `status.projectId`. A viewer keeps the status wi
 - **Runner.** A PTY from the terminal manager (§7): `/bin/sh -c "<command>"` in a tab titled
   `preview · <title>` (`kind: "preview"`), output acknowledged at once so flow control never
   pauses the server; stop = Ctrl+C. Without node-pty (or when the PTY is refused): a child
-  process in its own process group (SIGINT, SIGTERM, SIGKILL). The static server runs in the
-  daemon (127.0.0.1, paths confined to the folder, `no-store`, an EventSource script injected
-  into HTML: CSS changes restyle, other changes reload).
+  process in its own process group (SIGINT, SIGTERM, SIGKILL). A stop (also a restart, the idle
+  stop and the daemon's exit) closes the tab; a crashed server's tab stays, with its output, until
+  the next start or stop — so there is at most one preview tab per project. The static server
+  runs in the daemon (127.0.0.1, paths confined to the folder, `no-store`, an EventSource script
+  injected into HTML: CSS changes restyle, other changes reload). Any web page can reach it, so
+  it answers 403 to a `Host` that is not a loopback name (localhost, *.localhost, 127.x, [::1] —
+  DNS rebinding) and to any path with a segment starting with "." (`.env`, `.git/`, `.ssh/`,
+  also through a symlink; `.well-known` is served); a 404 is logged with its path only for the
+  page's own requests (`Sec-Fetch-Site: same-origin`: the log feeds "Ask agent to fix"), and
+  error answers carry no details.
 - **Environment.** The user's login + interactive shell environment, read once (`$SHELL -i -l -c
   env` without a TTY, 8 s timeout; `RUAH_PREVIEW_SHELL_ENV=0` uses the daemon's), so PATH
   from ~/.zshrc works when Ruah started from the Dock; the terminal's rules drop daemon
@@ -1982,14 +1994,22 @@ while output arrives; filter by `status.projectId`. A viewer keeps the status wi
 - **URL.** The first local URL the server prints (ANSI stripped; "Local" beats "Network";
   0.0.0.0 / :: → localhost; remote hosts, debugger and HMR sockets ignored; "listening on port
   N" counts), else — after 2.5 s — the expected ports that were not open before the start are
-  probed; `.ruah/preview.json` `url` overrides both. **Running** = the URL answered HTTP (any
-  status); checked every 400 ms while starting and every 5 s while running (`healthy`).
+  probed; `.ruah/preview.json` `url` overrides both (a line in the log after 30 s without an
+  answer). **Running** = the URL answered HTTP (any status); checked every 400 ms while starting
+  and every 5 s while running (`healthy`); https accepts self-signed certificates on loopback
+  hosts only.
 - **Crash.** An exit that was not asked for → `crashed` with `exitCode` / `signal`, the last
-  lines, and `error` = the last error-looking line. Closing the preview tab counts as a crash.
+  lines, and `error` = the last error-looking line. Closing the preview tab in the terminal panel
+  is a stop (`stopped`, a line in the log), not a crash.
 - **Lifetime.** One server per project. It keeps running while you switch projects and is
   stopped once its project has not been open for `RUAH_PREVIEW_IDLE_MS` (default 10 min; 0 =
   at the next sweep, ≤ 2 s), and every server is stopped when the daemon exits (Ctrl+C, short
-  grace). `RUAH_PREVIEW=0` turns the feature off (endpoints 503).
+  grace; 12 s for `docker compose up`). `RUAH_PREVIEW=0` turns the feature off (endpoints 503).
+- **Shell.** `registerPreview()` (`ui/src/components/preview/register.tsx`, called once by
+  `ui/src/router.tsx`) registers the pane in the shell's preview slot (`shell/slots.ts`, loaded on first open): the top
+  bar's Preview toggle opens it on the right, as "Agent | Preview" tabs or alone; the slot passes
+  `onAskAgent`, which brings the agent (its tab, or the agent panel) to front. `/preview` shows
+  the same pane as a page (its "Ask agent to fix" opens the agent panel beside it).
 - **Viewer.** An iframe sandboxed without top navigation (`allow-scripts allow-same-origin
   allow-forms allow-popups allow-modals allow-downloads allow-pointer-lock allow-presentation`,
   permissions clipboard-write + fullscreen only). `framing: "blocked"` → in the desktop app a

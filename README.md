@@ -25,7 +25,8 @@ desktop app is a thin viewer.
   scripts with the right package manager, Vite / Next / Remix / Astro /
   SvelteKit / Nuxt / Expo web / Storybook, Django / Flask / FastAPI, Rails, Go
   air, docker compose, or a plain index.html), runs it in a "preview" terminal
-  tab and shows the page next to the agent: its edits appear with hot reload;
+  tab and shows the page next to the agent (the top bar's Preview toggle): its
+  edits appear with hot reload;
   a crash shows the last output and "Ask agent to fix".
 
 Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
