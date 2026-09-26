@@ -15,6 +15,7 @@ import { Phantom, PhantomCompanion } from "@/components/brand/Phantom";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmHost } from "@/components/shell/ConfirmHost";
 import { MapActivityToasts } from "@/components/map/MapActivityToasts";
 
 import appCss from "../styles.css?url";
@@ -193,6 +194,7 @@ function RootComponent() {
           </WorkbenchProvider>
         </WorkspaceProvider>
         <Toaster position="bottom-right" theme={scheme} closeButton />
+        <ConfirmHost />
       </TooltipProvider>
     </QueryClientProvider>
   );

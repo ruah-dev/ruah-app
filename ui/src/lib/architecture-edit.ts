@@ -153,6 +153,22 @@ function removeNodes(arch: Architecture, ids: Set<string>): Architecture {
 
 /** Architecture level: delete the node and everything nested under it. Workflow: drop the step
  * (and the node itself when it is a step node nothing else uses). */
+/** The element and every element nested inside it (what deleting it on a map level removes). */
+export function withDescendants(arch: Architecture, nodeId: string): Set<string> {
+  const doomed = new Set([nodeId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of arch.nodes) {
+      if (n.parent && doomed.has(n.parent) && !doomed.has(n.id)) {
+        doomed.add(n.id);
+        grew = true;
+      }
+    }
+  }
+  return doomed;
+}
+
 export function deleteNode(
   arch: Architecture,
   diagramId: string,
@@ -160,20 +176,7 @@ export function deleteNode(
 ): Architecture | null {
   const ref = parseDiagramId(diagramId);
   if (!ref) return null;
-  if (ref.mode === "architecture") {
-    const doomed = new Set([nodeId]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const n of arch.nodes) {
-        if (n.parent && doomed.has(n.parent) && !doomed.has(n.id)) {
-          doomed.add(n.id);
-          grew = true;
-        }
-      }
-    }
-    return removeNodes(arch, doomed);
-  }
+  if (ref.mode === "architecture") return removeNodes(arch, withDescendants(arch, nodeId));
   const wf = arch.workflows.find((w) => w.id === ref.workflowId);
   if (!wf) return null;
   const steps = wf.steps.filter((s) => s !== nodeId);

@@ -33,7 +33,7 @@ import {
 } from "@/lib/architecture";
 import type { ArchNode } from "@/lib/contracts";
 import { asExpanded, invalidateExpansions, requestExpansion } from "@/lib/expand";
-import { dismissError, rescan } from "@/lib/daemon";
+import { daemonActions, dismissError, rescan } from "@/lib/daemon";
 import { downloadDrawio } from "@/lib/export";
 import { toast } from "sonner";
 import { isCloudDiagramId } from "@/lib/integrations";
@@ -436,9 +436,13 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
         onRenameNode={(id, label) => ws.updateNode(diagram.id, id, { label })}
         onConnect={(from, to) => ws.addEdge(diagram.id, from, to)}
         onDeleteNode={(id) => {
-          ws.deleteNode(diagram.id, id);
-          wb.clearSelection();
+          void ws.deleteNode(diagram.id, id).then((deleted) => deleted && wb.clearSelection());
         }}
+        deleteKey={wb.editing}
+        onUndo={() => {
+          if (!daemonActions.undoEdit() && ws.editable) toast("Nothing to undo on the map", { id: "map-undo", description: "Agent changes are undone from their chat turn." });
+        }}
+        onRedo={() => void daemonActions.redoEdit()}
         onDrill={wb.drill}
         onOpenCode={(node) => {
           wb.selectNode(node.id);
@@ -654,8 +658,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
               }
               onDeleteNode={() => {
                 if (!node) return;
-                ws.deleteNode(wb.activeDiagram.id, node.id);
-                wb.clearSelection();
+                void ws.deleteNode(wb.activeDiagram.id, node.id).then((deleted) => deleted && wb.clearSelection());
               }}
               onDeleteEdge={() => {
                 if (!wb.selectedEdge) return;

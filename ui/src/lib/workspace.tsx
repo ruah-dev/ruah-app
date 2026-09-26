@@ -26,7 +26,9 @@ import {
   type Positions,
 } from "./architecture";
 import * as edit from "./architecture-edit";
-import { canEdit, editArchitecture, reportLocalError, useDaemon, type DaemonState } from "./daemon";
+import { toast } from "sonner";
+import { canEdit, daemonSnapshot, editArchitecture, reportLocalError, undoEdit, useDaemon, type DaemonState } from "./daemon";
+import { confirmAction } from "./confirm";
 import { useCloudDiagram, useIntegrationsBinding } from "./integrations";
 import {
   bindExpansions,
@@ -152,7 +154,11 @@ type Ctx = {
   /** `placed` = the user chose the position (drop / double-click); workflow quick-adds auto-layout. */
   addNode: (diagramId: string, node: DiagramNode, placed?: boolean) => void;
   updateNode: (diagramId: string, nodeId: string, patch: Partial<DiagramNode>) => void;
-  deleteNode: (diagramId: string, nodeId: string) => void;
+  /**
+   * Deletes an element (on a map level: with everything nested inside it, after a confirmation
+   * when there is any) and offers Undo in a toast. Resolves true when it was deleted.
+   */
+  deleteNode: (diagramId: string, nodeId: string) => Promise<boolean>;
   addEdge: (diagramId: string, from: string, to: string) => void;
   updateEdge: (
     diagramId: string,
@@ -286,14 +292,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const apply = useCallback((fn: (a: Architecture) => Architecture | null, refusal?: string) => {
+  const apply = useCallback((fn: (a: Architecture) => Architecture | null, refusal?: string, coalesce?: string): boolean => {
     let refused = false;
-    editArchitecture((a) => {
-      const next = fn(a);
-      if (!next) refused = true;
-      return next;
-    });
+    const changed = editArchitecture(
+      (a) => {
+        const next = fn(a);
+        if (!next) refused = true;
+        return next;
+      },
+      coalesce !== undefined ? { coalesce } : {},
+    );
     if (refused && refusal) reportLocalError(refusal);
+    return changed;
   }, []);
 
   const openTabIn = useCallback((p: UiPrefs, paneId: string, type: TabType, diagramId: string) => {
@@ -372,15 +382,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updateDiagram: (id, patch) => {
         const { title, subtitle } = patch;
         if (title === undefined && subtitle === undefined) return;
-        apply((a) =>
-          edit.patchDiagram(a, id, {
-            ...(title !== undefined ? { title } : {}),
-            ...(subtitle !== undefined ? { subtitle } : {}),
-          }),
+        apply(
+          (a) =>
+            edit.patchDiagram(a, id, {
+              ...(title !== undefined ? { title } : {}),
+              ...(subtitle !== undefined ? { subtitle } : {}),
+            }),
+          undefined,
+          `diagram:${id}:${title !== undefined ? "t" : ""}${subtitle !== undefined ? "s" : ""}`,
         );
       },
       deleteDiagram: (id) =>
-        apply((a) => edit.deleteWorkflow(a, id), "Only workflows can be deleted from the list."),
+        void apply((a) => edit.deleteWorkflow(a, id), "Only workflows can be deleted from the list."),
 
       addNode: (diagramId, node, placed = true) => {
         if (ephemeralLevel(diagramId)) {
@@ -424,15 +437,41 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         if ("notes" in rest) archPatch.notes = rest.notes ?? "";
         if ("tech" in rest) archPatch.tech = rest.tech ?? [];
         if ("path" in rest) archPatch.path = rest.path ?? "";
+        // A drag or typing a description is one undo step (edits of the same fields coalesce).
         if (Object.keys(archPatch).length)
-          apply((a) => edit.patchNode(a, diagramId, nodeId, archPatch));
+          apply((a) => edit.patchNode(a, diagramId, nodeId, archPatch), undefined, `node:${nodeId}:${Object.keys(archPatch).sort().join(",")}`);
       },
-      deleteNode: (diagramId, nodeId) => {
+      deleteNode: async (diagramId, nodeId) => {
         if (isEphemeral(nodeId)) {
           reportLocalError(PIN_HINT);
-          return;
+          return false;
         }
-        apply((a) => edit.deleteNode(a, diagramId, nodeId), "A workflow needs at least two steps.");
+        const name = architecture.nodes.find((n) => n.id === nodeId)?.name ?? "the element";
+        const nested = parseDiagramId(diagramId)?.mode === "architecture" ? edit.withDescendants(architecture, nodeId).size - 1 : 0;
+        if (nested > 0) {
+          const ok = await confirmAction({
+            title: `Delete ${name}?`,
+            description: `It has ${nested} element${nested === 1 ? "" : "s"} inside, which are deleted with it (and their links). Undo with ⌘Z.`,
+            confirmLabel: `Delete ${nested + 1} elements`,
+            destructive: true,
+          });
+          if (!ok) return false;
+        }
+        const done = apply((a) => edit.deleteNode(a, diagramId, nodeId), "A workflow needs at least two steps.");
+        if (done) {
+          // The toast's Undo takes back this delete only while it is still the last map edit.
+          const depth = daemonSnapshot().undoDepth;
+          toast(`Deleted ${name}${nested > 0 ? ` and ${nested} inside` : ""}`, {
+            id: "map-delete",
+            action: {
+              label: "Undo",
+              onClick: () => {
+                if (daemonSnapshot().undoDepth !== depth || !undoEdit()) toast(daemonSnapshot().undoDepth > 0 ? "Other map edits came after it: step back with ⌘Z" : "Can't undo it here: the map changed since (an agent, a scan or another window)", { id: "map-delete" });
+              },
+            },
+          });
+        }
+        return done;
       },
       addEdge: (diagramId, from, to) => {
         if (isEphemeral(from) || isEphemeral(to)) {
@@ -442,12 +481,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         apply((a) => edit.addEdge(a, diagramId, from, to));
       },
       updateEdge: (diagramId, from, to, patch) =>
-        apply(
+        void apply(
           (a) => edit.patchEdge(a, diagramId, from, to, patch),
           "Workflow arrows follow the step order; edit the steps instead.",
+          `edge:${from}>${to}:${Object.keys(patch).sort().join(",")}`,
         ),
       deleteEdge: (diagramId, from, to) =>
-        apply(
+        void apply(
           (a) => edit.deleteEdge(a, diagramId, from, to),
           "A workflow needs at least two steps.",
         ),
