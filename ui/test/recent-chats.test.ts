@@ -126,13 +126,16 @@ describe("stripChats", () => {
 });
 
 describe("stripCapacity", () => {
-  it("fits 1…5 chips beside the New button", () => {
+  it("fits 1…5 chips (at least 100 px each, with gaps and padding)", () => {
     expect(stripCapacity(0)).toBe(3);
     expect(stripCapacity(Number.NaN)).toBe(3);
     expect(stripCapacity(100)).toBe(1);
     // The agent panel at its default width (1440 px window): three.
     expect(stripCapacity(419)).toBe(3);
     expect(stripCapacity(520)).toBe(4);
+    // Five chips of 100 px + four 4 px gaps + 16 px padding = 532 px.
+    expect(stripCapacity(531)).toBe(4);
+    expect(stripCapacity(532)).toBe(5);
     expect(stripCapacity(2000)).toBe(5);
   });
 });

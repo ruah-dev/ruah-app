@@ -9,8 +9,9 @@
 //
 // Tooltips carry the G-shortcut; small dots say what needs a look (agent working = lavender,
 // waiting = amber; unhealthy cloud of this project = amber; running ruah tasks = amber). The
-// width animates between layouts (not with reduced motion).
-import type { ReactNode } from "react";
+// width animates between layouts (not with reduced motion). Toggling from the rail keeps the
+// keyboard focus: it moves to the new layout's control.
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace";
@@ -19,7 +20,7 @@ import { RuahLogo, RuahMark } from "@/components/brand/RuahLogo";
 import { useRunningTaskCount } from "@/components/orchestration/navBadges";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { LAYOUT_SHORTCUT, toggleLayout, useShellLayout } from "./layout";
+import { LAYOUT_SHORTCUT, takeLayoutRefocus, toggleLayout, useShellLayout } from "./layout";
 import { isActivePath, useNav, type NavItemDef } from "./nav";
 import { RailProjects } from "./RailProjects";
 import { SidebarChats, SidebarProjects } from "./SidebarLists";
@@ -156,14 +157,17 @@ function SidebarItem({ item, active }: { item: NavItemDef; active: boolean }) {
   );
 }
 
+const toggleFromRail = () => toggleLayout({ refocus: true });
+
 /** Standard ⇄ Advanced, at the bottom of the rail / sidebar. */
-function LayoutToggle({ expanded }: { expanded: boolean }) {
+function LayoutToggle({ expanded, buttonRef }: { expanded: boolean; buttonRef: Ref<HTMLButtonElement> }) {
   const label = expanded ? "Collapse to the icon rail" : "Expand to the sidebar (Advanced layout)";
   if (expanded)
     return (
       <button
+        ref={buttonRef}
         type="button"
-        onClick={toggleLayout}
+        onClick={toggleFromRail}
         aria-label={label}
         className="list-row mt-1 h-8 gap-2.5 whitespace-nowrap text-faint outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
       >
@@ -176,8 +180,9 @@ function LayoutToggle({ expanded }: { expanded: boolean }) {
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          ref={buttonRef}
           type="button"
-          onClick={toggleLayout}
+          onClick={toggleFromRail}
           aria-label={label}
           className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg text-faint outline-none transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -222,10 +227,20 @@ export function Rail() {
   const advanced = layout.effective === "advanced";
   const top = nav.filter((n) => n.rail === "top");
   const bottom = nav.filter((n) => n.rail === "bottom");
+  const toggle = useRef<HTMLButtonElement | null>(null);
+
+  // A toggle from the rail unmounted the focused control with the old layout: give the focus to
+  // the new one (only when it was lost; a folded Advanced keeps the same control, and focus).
+  useEffect(() => {
+    if (!takeLayoutRefocus()) return;
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) toggle.current?.focus();
+  }, [layout.mode, layout.effective]);
 
   return (
     <nav
       aria-label="Pages"
+      data-shell-rail=""
       data-layout={layout.effective}
       style={{ width: layout.width }}
       className="relative flex h-full shrink-0 flex-col overflow-hidden border-e border-hairline bg-sidebar transition-[width] duration-200 ease-out motion-reduce:transition-none"
@@ -262,7 +277,7 @@ export function Rail() {
             {bottom.map((n) => (
               <SidebarItem key={n.to} item={n} active={isActivePath(pathname, n.to)} />
             ))}
-            <LayoutToggle expanded />
+            <LayoutToggle expanded buttonRef={toggle} />
           </div>
         </div>
       ) : (
@@ -280,7 +295,7 @@ export function Rail() {
               <RailItem key={n.to} item={n} labels={layout.labels} active={isActivePath(pathname, n.to)} />
             ))}
           </div>
-          <LayoutToggle expanded={false} />
+          <LayoutToggle expanded={false} buttonRef={toggle} />
         </div>
       )}
     </nav>

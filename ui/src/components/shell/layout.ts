@@ -62,10 +62,29 @@ export function setLayout(mode: LayoutMode) {
   }
 }
 
-/** ⌘\ — Standard ⇄ Advanced. */
-export function toggleLayout() {
+/** Set by a toggle from the rail itself (its control, or ⌘\ with focus in it): the rail's
+ * control unmounts with the old layout, so the new layout's control takes the focus. */
+let refocusToggle = false;
+
+/**
+ * ⌘\ — Standard ⇄ Advanced. `refocus`: the toggle came from inside the rail (its control, or
+ * ⌘\ while something in it has focus), so the focus moves to the new layout's control instead of
+ * dropping to the page (takeLayoutRefocus).
+ */
+export function toggleLayout(opts: { refocus?: boolean } = {}) {
+  refocusToggle = !!opts.refocus;
   setLayout(viewerPrefs().layout === "advanced" ? "standard" : "advanced");
 }
+
+/** Whether the last toggle asked for the focus to follow (read once). */
+export function takeLayoutRefocus(): boolean {
+  const v = refocusToggle;
+  refocusToggle = false;
+  return v;
+}
+
+/** Marks the rail / sidebar element (focus checks for ⌘\). */
+export const RAIL_ATTR = "data-shell-rail";
 
 export function setRailLabels(on: boolean) {
   setViewerPref("railLabels", on);

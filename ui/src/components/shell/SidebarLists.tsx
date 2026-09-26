@@ -324,13 +324,13 @@ export function SidebarChats() {
                           <span className={cn("pointer-events-none min-w-0 flex-1 truncate", st.unread > 0 && "font-medium text-foreground")}>
                             {c.title || "Untitled chat"}
                           </span>
-                          <span className="pointer-events-none shrink-0 text-meta text-faint group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden">
+                          <span className="pointer-events-none shrink-0 text-meta text-faint group-focus-within/chat:hidden group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden">
                             {relativeTime(c.updatedAt)}
                           </span>
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               aria-label={`Chat actions for ${c.title || "Untitled chat"}`}
-                              className="relative hidden size-5 shrink-0 place-items-center rounded text-muted-foreground outline-none group-hover/chat:grid hover:bg-accent hover:text-foreground focus-visible:grid data-[state=open]:grid"
+                              className="relative hidden size-5 shrink-0 place-items-center rounded text-muted-foreground outline-none group-focus-within/chat:grid group-hover/chat:grid hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:grid"
                             >
                               <MoreHorizontal className="size-3.5" />
                             </DropdownMenuTrigger>

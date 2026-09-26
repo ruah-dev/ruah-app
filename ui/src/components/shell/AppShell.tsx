@@ -43,7 +43,7 @@ import { useSlots } from "./slots";
 import { useProjectView } from "./useProjectView";
 import { useShellResume } from "./useShellResume";
 import { useBuildReload } from "./useBuildReload";
-import { toggleLayout } from "./layout";
+import { RAIL_ATTR, toggleLayout } from "./layout";
 
 export { PageHeader, PageMenu } from "./PageHeader";
 
@@ -148,7 +148,8 @@ function useShellKeys() {
         }
         if (e.key === "\\" || e.code === "Backslash") {
           e.preventDefault();
-          toggleLayout();
+          // With focus in the rail, the focus follows to the new layout's control.
+          toggleLayout({ refocus: !!(document.activeElement as HTMLElement | null)?.closest(`[${RAIL_ATTR}]`) });
           return;
         }
         if (/^[1-9]$/.test(e.key)) {

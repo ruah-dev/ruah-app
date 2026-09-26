@@ -105,10 +105,10 @@ export function stripChats<T extends { id: string; updatedAt: string }>(
 }
 
 /**
- * Chips that fit in a strip `widthPx` wide (each at least ~100 px, the "New" button reserved),
- * 1…5: three in the agent panel's default width, five on the Agent page.
+ * Chips that fit in a strip `widthPx` wide (each at least ~100 px, `gap` between them, the strip's
+ * own `padding`), 1…5: three in the agent panel's default width, five on the Agent page.
  */
-export function stripCapacity(widthPx: number, chip = 100, reserved = 64): number {
+export function stripCapacity(widthPx: number, chip = 100, gap = 4, padding = 16): number {
   if (!Number.isFinite(widthPx) || widthPx <= 0) return 3;
-  return Math.max(1, Math.min(5, Math.floor((widthPx - reserved) / chip)));
+  return Math.max(1, Math.min(5, Math.floor((widthPx - padding + gap) / (chip + gap))));
 }

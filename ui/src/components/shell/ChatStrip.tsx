@@ -1,10 +1,10 @@
 // The project's recent chats, always in view (Standard layout): one row of chips under the agent
 // panel's header and the Agent page's header — status dot (working / waiting / done / failed),
-// title (bold when unread), click to open, "New" (⌘N). As many as fit the width, 1…5, the chat
-// in front always among them (lib/recent-chats.ts). The Advanced layout lists chats in its
-// sidebar instead, so the strip steps aside there.
+// title (bold when unread), click to open. As many as fit the width, 1…5, the chat in front always
+// among them (lib/recent-chats.ts), so the row reads like tabs. No "New" here: the header right
+// above has the chat switcher and the New chat button (⌘N). The Advanced layout lists chats in
+// its sidebar instead, so the strip steps aside there.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
 import { prefetchChat } from "@/lib/daemon";
 import { CHAT_STATE_LABEL, stripCapacity, stripChats } from "@/lib/recent-chats";
 import { relativeTime } from "@/lib/time";
@@ -97,22 +97,6 @@ export function ChatStrip({ className }: { className?: string }) {
           </Tooltip>
         );
       })}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={actions.startChat}
-            aria-label="New chat"
-            className="ms-auto flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Plus className="size-3.5" />
-            New
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          New chat <span className="ms-1 text-muted-foreground">⌘N</span>
-        </TooltipContent>
-      </Tooltip>
     </div>
   );
 }
