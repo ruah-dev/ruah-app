@@ -390,7 +390,13 @@ export function CloudPage() {
       <>
       <div className="flex shrink-0 flex-col gap-3 px-5 pt-4 pb-3 max-md:px-3">
         <RemoteNotice remote={s.cloud} what="Cloud" />
-        {syncError ? <Notice tone="bad" title="Sync failed" body={syncError} /> : null}
+        {syncError ? (
+          <Notice
+            tone="bad"
+            title="Couldn't sync"
+            body={`${syncError.replace(/\.$/, "")}. Check the provider's login in Integrations, then sync again.`}
+          />
+        ) : null}
         {scopeError ? <Notice tone="bad" title="Couldn't change the project's scope" body={scopeError} /> : null}
         {scopeFileError ? (
           <Notice
