@@ -463,6 +463,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           const depth = daemonSnapshot().undoDepth;
           toast(`Deleted ${name}${nested > 0 ? ` and ${nested} inside` : ""}`, {
             id: "map-delete",
+            // Long enough to find the Undo (the default 4 s was gone before it could be clicked).
+            duration: 10_000,
             action: {
               label: "Undo",
               onClick: () => {
