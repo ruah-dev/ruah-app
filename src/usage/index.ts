@@ -80,7 +80,10 @@ export class UsageService implements UsageSink, UsageApi {
       workflows?: () => Array<{ id: string; steps: string[] }> | undefined;
       /** Replaces the default per-agent limits service (tests). */
       agentLimits?: AgentLimitsService;
+      /** Ruah's version (User-Agent, Kiro's clientInfo). */
       version?: string;
+      /** The daemon's debug log (RUAH_DEBUG=1): provider failures land here. */
+      debug?: (line: string) => void;
     } = {},
   ) {
     this.agentLimitsService =
@@ -88,7 +91,11 @@ export class UsageService implements UsageSink, UsageApi {
       new AgentLimitsService({
         providers: defaultProviders(() => limitsService.claudePlan()),
         records: () => log.records(),
-        context: { ...(options.now !== undefined ? { now: options.now } : {}), version: options.version ?? "0.1.0" },
+        context: {
+          ...(options.now !== undefined ? { now: options.now } : {}),
+          ...(options.debug !== undefined ? { debug: options.debug } : {}),
+          version: options.version ?? "0.0.0",
+        },
       });
   }
 

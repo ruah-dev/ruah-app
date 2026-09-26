@@ -127,6 +127,8 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   };
   const usage = new UsageService(new UsageLog(home), limits, {
     onError,
+    version,
+    debug,
     workflows: () => {
       const arch = hubRef?.store?.current();
       return arch?.workflows.map((w) => ({ id: w.id, steps: w.steps }));

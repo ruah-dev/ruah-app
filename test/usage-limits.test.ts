@@ -49,6 +49,7 @@ import { decodeJwtPayload, tokenExpired } from "../src/usage/limits/cursor.js";
 import { parseCompactNumber, isoFrom, planName } from "../src/usage/limits/common.js";
 import type { Spawner } from "../src/usage/limits/stdio-rpc.js";
 import { runUsage, runUsageLimits } from "../src/usage/run-usage.js";
+import { opensDesktop } from "../src/cli.js";
 
 const FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "usage-limits");
 const fixture = (name: string): string => readFileSync(path.join(FIXTURES, name), "utf8");
@@ -912,6 +913,18 @@ describe("ruah app usage limits", () => {
     expect(out.join("")).toContain("ruah app usage limits");
   });
 
+  it("runs `usage` even where the current folder holds a usage/ folder", () => {
+    const everyPathIsAFolder = () => true;
+    expect(opensDesktop("usage", everyPathIsAFolder)).toBe(false);
+    expect(opensDesktop("cloud", everyPathIsAFolder)).toBe(false);
+    expect(opensDesktop("./usage", everyPathIsAFolder)).toBe(true);
+    expect(opensDesktop("my-repo", everyPathIsAFolder)).toBe(true);
+    expect(opensDesktop("my-repo", () => false)).toBe(false);
+    expect(opensDesktop("open")).toBe(true);
+    expect(opensDesktop(undefined)).toBe(true);
+    expect(opensDesktop("--json", everyPathIsAFolder)).toBe(false);
+  });
+
   it("formats every status", () => {
     const text = formatLimitsReport(
       {
@@ -926,5 +939,15 @@ describe("ruah app usage limits", () => {
     expect(text).toMatch(/OpenCode\s+no plan limits/);
     expect(text).toContain("Local stats    17 sessions · 9.81M tokens · $1.25 (rounded)");
     expect(text).toMatch(/Grok Build\s+not installed/);
+  });
+
+  it("prints a currency Intl does not know instead of failing the whole report", () => {
+    const kiro = parseKiroUsage({ usageBreakdownList: [{ currentUsage: 5, usageLimit: 50, currency: "credits", overageCharges: 1.5 }], overageConfiguration: { overageStatus: "ENABLED" } })!;
+    expect(kiro.onDemand?.currency).toBe("CREDITS");
+    const text = formatLimitsReport(
+      { checkedAt: new Date(NOW).toISOString(), agents: [{ agentId: "kiro", name: "Kiro CLI", installed: true, loggedIn: true, plan: null, status: "ok", meters: kiro.meters, onDemand: kiro.onDemand!, source: "kiro", checkedAt: new Date(NOW).toISOString() }] },
+      NOW,
+    );
+    expect(text).toContain("1.50 CREDITS");
   });
 });

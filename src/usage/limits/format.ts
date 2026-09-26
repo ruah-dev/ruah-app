@@ -50,8 +50,13 @@ function tokens(n: number): string {
   return String(Math.round(n));
 }
 
+/** "$4.20"; a currency Intl does not know (a provider's "credits") prints as "4.20 credits" instead of throwing. */
 export function money(value: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2 }).format(value);
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2 }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency}`;
+  }
 }
 
 function amount(value: number, unit: LimitMeter["unit"]): string {
