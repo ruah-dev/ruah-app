@@ -3,7 +3,8 @@
 // one 44px top bar (project, branch, the ⌘K field, status chips, activity, terminal, agent), the
 // page with one row of controls, the right agent panel (with the recent-chats strip) and the
 // bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and the pages' own
-// drawers. Shortcuts are listed in ./nav.ts.
+// drawers. Shortcuts are listed in ./nav.ts. A newer viewer build reloads the window
+// (./useBuildReload.tsx).
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { Menu, Search } from "lucide-react";
@@ -41,6 +42,7 @@ import { useShellDialogs } from "./shellState";
 import { useSlots } from "./slots";
 import { useProjectView } from "./useProjectView";
 import { useShellResume } from "./useShellResume";
+import { useBuildReload } from "./useBuildReload";
 import { toggleLayout } from "./layout";
 
 export { PageHeader, PageMenu } from "./PageHeader";
@@ -311,6 +313,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useGlobalLauncherShortcut();
   useRecordChatVisits(daemon);
   useSwitchPaintProbe(daemon);
+  useBuildReload();
   const { saved, projectId } = useProjectView();
   const resume = useShellResume(projectId);
   const { dismissedFor, dismiss } = useResumeDismissal(projectId);

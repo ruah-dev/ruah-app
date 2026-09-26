@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/shell/AppShell";
 import { Segmented } from "@/components/map/MapPage";
 import { FeaturesSettings } from "./FeaturesSettings";
 import { LayoutSettingsRows } from "@/components/shell/LayoutSettings";
+import { BUILD_ID } from "@/lib/build-reload";
 import { cn } from "@/lib/utils";
 
 const PALETTES: readonly { value: PalettePref; label: string; swatch: string }[] = [
@@ -365,7 +366,10 @@ export function SettingsPage() {
 
           <Group title="About">
             <Row label="Viewer">
-              <span className="font-mono text-[12px] text-muted-foreground">{CLIENT_ID.replace("architects-canvas", "ruah")}</span>
+              <span className="font-mono text-[12px] text-muted-foreground">
+                {CLIENT_ID.replace("architects-canvas", "ruah")}
+                {BUILD_ID ? ` · build ${BUILD_ID}` : ""}
+              </span>
             </Row>
             <Row label="Daemon">
               <span className="font-mono text-[12px] text-muted-foreground">

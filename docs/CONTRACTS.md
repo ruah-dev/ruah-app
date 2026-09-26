@@ -409,7 +409,7 @@ export type ErrorCode =
 | --- | --- | --- |
 | `GET /` and any non-`/api` path without an extension | viewer `index.html` (SPA fallback) | static dir from `--viewer <dir>`, default bundled |
 | `GET /assets/*` | viewer assets | `Cache-Control: public, max-age=31536000, immutable` |
-| `GET /api/health` | `{ ok: true, version, agent: AgentState }` | |
+| `GET /api/health` | `{ ok: true, version, agent: AgentState, project: string \| null, viewerBuild: string \| null }` | `project`: the open project's id. `viewerBuild` (2026-09-26, §2.6): the id of the viewer build the daemon serves now, from the `<meta name="ruah-build">` of `<viewer>/index.html`; null without a viewer directory or for a build without the tag |
 | `GET /api/architecture` | current `Architecture` JSON | same payload as the WS message |
 | `GET /api/context/:nodeId` | `text/plain` context pack for the node | used by "Copy context" in the node popover |
 | `GET /api/file?path=<rel>` | `{ path, lang, content }` | inside root only; max 512 KiB; binary → 415; missing → 404 |
@@ -478,6 +478,37 @@ The option ids above (`allow`, `allow_always`, `reject`) are illustrative. The d
 | `agent.status.modes` | `NewSessionResponse.modes` and `current_mode_update`; agents without `modes` (OpenCode): the `select` config option with category `mode`, switched via `session/set_config_option` |
 | `agent.status.models` | `NewSessionResponse.configOptions` (the `select` option with category `model`) and `config_option_update`; fallback: the unstable `NewSessionResponse.models` |
 | ignored | `user_message_chunk`, `available_commands_update`, `config_option_update` (except the model option), `usage_update`, `session_info_update`, any `_`-prefixed extension method |
+
+### 2.6 Viewer build id and auto-reload (2026-09-26)
+
+A window left open on an older viewer reloads onto the newer one the daemon serves (after
+`pnpm ui:build`, or a daemon restarted with another `--viewer`), without losing anything.
+
+- **Build id.** Every `vite build` of the viewer (`ui/vite.config.ts`) makes one id
+  (`<base36 time>-<random>`) and stamps it twice: into the client code
+  (`import.meta.env.VITE_RUAH_BUILD_ID`) and into the prerendered `index.html` as
+  `<meta name="ruah-build" content="<id>">`. The dev server (`vite dev`) has none and never compares.
+- **Daemon.** `GET /api/health` → `viewerBuild` reads that tag from `<viewer>/index.html` on
+  demand, cached by the file's mtime + size, so a rebuild that replaces the directory while the
+  daemon runs is seen at once (no restart). `null`: no viewer directory, or a build without the tag.
+- **Viewer** (`ui/src/lib/build-reload.ts`, `ui/src/components/shell/useBuildReload.tsx`): asks
+  1.5 s after the socket opens, when the window gets focus or becomes visible, and every 30 s (hidden
+  windows too). Only a page served by that daemon compares (same origin; not a dev server or a
+  Lovable preview pointed at a daemon). When the ids differ:
+  - **Silent reload** when nothing would be lost: no turn running or waiting for a permission in the
+    chat in front, no typed text in a text field (the composer, a dialog, a rename; the terminal's
+    hidden input does not count), the map not in Edit mode or saving, no open dialog or menu. The
+    reload waits 600 ms so debounced view-state saves go out; the per-project view state (§13.5)
+    brings back the page, map level and panels.
+  - **Otherwise it says so**: a 10 s toast at the top ("Ruah was updated — Reload when you are
+    ready (<reasons>)", away from the composer being typed in) and an "Update ready" chip in the top
+    bar's status area that reloads on click. The window still reloads by itself later, once it is
+    idle and in the background (hidden or unfocused).
+  - **Never a loop**: before reloading, the served id is stored in `sessionStorage`
+    (`ruah.buildReload.v1`); a window that still differs from that same id after reloading only
+    prompts. Without `sessionStorage` there is no automatic reload.
+- Complements the stale-chunk recovery (`ui/src/lib/stale-build.ts`): a lazy route chunk that no
+  longer exists after a rebuild reloads once per minute at most.
 
 ---
 
