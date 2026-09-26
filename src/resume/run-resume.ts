@@ -71,7 +71,7 @@ function sinceLine(info: ResumeInfo): string {
   const s = info.since;
   const parts: string[] = [];
   if (s.turnsFinished > 0) parts.push(`${plural(s.turnsFinished, "turn")} finished`);
-  if (s.turnsFailed > 0) parts.push(`${s.turnsFailed} failed`);
+  if (s.turnsFailed > 0) parts.push(`${s.turnsFailed} failed or stopped`);
   if (s.permissionsRequested > 0) parts.push(plural(s.permissionsRequested, "permission request"));
   if (s.filesTotal > 0) parts.push(`${plural(s.filesTotal, "file")} edited (${s.files.slice(0, 3).join(", ")}${s.filesTotal > 3 ? ", …" : ""})`);
   if (s.mapChanges > 0) parts.push(plural(s.mapChanges, "map change"));

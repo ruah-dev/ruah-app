@@ -1552,7 +1552,7 @@ interface ActivityEvent {
   stopReason?: StopReason;    // turn.finished
   error?: string;             // turn.finished (error / limit), agent.error
   requestId?: string;         // permission.*
-  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + diffs; ≤ 20)
+  files?: string[];           // turn.finished: files the agent edited (edit/delete/move tool calls + their diffs that completed — a denied or cancelled edit is not listed; ≤ 20)
   mapChanges?: number;        // turn.finished, map.changed
 }
 interface ProjectActivity {
@@ -1633,8 +1633,9 @@ interface ResumeInfo {
               lastPrompt: string | null; lastReply: string | null } | null;  // active chat (else newest); ≤ 200 chars each
   lastFocus: { nodeId: string; name: string; at?: string } | null;           // last focus.set; name from architecture.json
   since: { from: string | null;  // = lastViewedAt (null: everything logged)
-           turnsFinished; turnsFailed; permissionsRequested;
-           files: string[]; filesTotal;   // files agents edited, most recent first (≤ 20)
+           turnsFinished; turnsFailed;    // turnsFailed: stopReason error or cancelled
+           permissionsRequested;
+           files: string[]; filesTotal;   // files agents edited (completed edit tool calls only), most recent first (≤ 20)
            mapChanges;                    // sum of map.changed
            events: ActivityEvent[] };     // the last 20
   unread: number;
