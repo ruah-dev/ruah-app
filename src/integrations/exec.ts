@@ -6,6 +6,7 @@
 import { execFile } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import * as path from "node:path";
+import { withoutDaemonPlumbing } from "../desktop/child-env.js";
 
 export const CLI_TIMEOUT_MS = 20_000;
 const MAX_BUFFER = 32 * 1024 * 1024;
@@ -88,7 +89,7 @@ export const defaultRunner: Runner = (file, args, options = {}) =>
         maxBuffer: MAX_BUFFER,
         encoding: "utf8",
         windowsHide: true,
-        env: { ...process.env, PATH: searchPath(), NO_COLOR: "1", AWS_PAGER: "", GH_PROMPT_DISABLED: "1", ...options.env },
+        env: { ...withoutDaemonPlumbing(process.env), PATH: searchPath(), NO_COLOR: "1", AWS_PAGER: "", GH_PROMPT_DISABLED: "1", ...options.env },
         ...(options.signal !== undefined ? { signal: options.signal } : {}),
       },
       (error, stdout, stderr) => {

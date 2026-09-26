@@ -515,6 +515,8 @@ export interface RuahDesktopBridge {
   onLauncherShortcut?(callback: () => void): () => void;
   /** §18.6: the window allows <webview> for the live preview (pages that refuse iframes). */
   previewWebview?: boolean;
+  /** §19.4: application-menu commands ("settings"); subscribing replaces the preload's default (routing to /settings). Returns an unsubscribe function. */
+  onMenuCommand?(callback: (command: string) => void): () => void;
 }
 
 export interface NotificationTarget {

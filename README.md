@@ -36,14 +36,45 @@ desktop app is a thin viewer.
 Part of the [ruah](https://github.com/ruah-dev) toolkit: with the `ruah` CLI
 installed this package is `ruah app`.
 
+## Install (macOS, Apple silicon)
+
+1. Get `Ruah-<version>-arm64.dmg` — download it, or build it from this
+   checkout with `pnpm dist` (it lands in `release/`).
+2. Open it and drag **Ruah** onto **Applications**.
+3. Start Ruah from Applications, Spotlight or `ruah app`.
+
+**First launch (Gatekeeper).** Builds are ad-hoc signed, not notarized by
+Apple. A `.dmg` you built on this Mac opens straight away. A downloaded one is
+quarantined: macOS says it cannot verify Ruah — click **Done**, then
+**System Settings → Privacy & Security → Open Anyway** (once per version;
+`xattr -dr com.apple.quarantine /Applications/Ruah.app` does the same). macOS
+also asks once before Ruah reads a project in Documents, Desktop or Downloads.
+
+**Daily use.**
+- `ruah app ~/code/api`, `open -a Ruah ~/code/api`, or a folder dropped on the
+  Dock icon opens it in the running Ruah (one Ruah at a time).
+- Closing the window keeps Ruah in the Dock — agents keep working and
+  notifications still arrive; **⌘Q** quits (and stops the daemon).
+- Everything runs inside the app (its own runtime, Claude Code included); the
+  other agents and CLIs (Cursor Agent, Grok, Kiro, OpenCode, git, gh, kubectl,
+  doctl, vercel, supabase, …) are found on your login shell's `PATH`, and what
+  your shell profile exports (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK`,
+  `AWS_PROFILE`, `KUBECONFIG`, proxies, `LANG`, …) reaches them too — even when
+  Ruah starts from the Dock (a Dock launch waits for your shell, ≤ 5 s).
+  `ruah app doctor` lists what it finds and which variables the app adds.
+- No ruah toolkit? The CLI ships in the app:
+  `ln -s /Applications/Ruah.app/Contents/Resources/bin/ruah-app /usr/local/bin/ruah-app`.
+- Logs: **Help → Show Logs in Finder** (`~/Library/Logs/Ruah/daemon.log`).
+
 ## Run
 
 ```sh
 pnpm install
 pnpm app                      # build engine + viewer, open the desktop app
 
-ruah app                      # open the desktop app (start screen)
-ruah app .                    # open it on the current repo
+ruah app                      # open the desktop app (start screen): the installed Ruah.app, else this checkout's Electron
+ruah app .                    # open it on the current repo (in the running app)
+ruah app doctor               # which agents / git / cloud CLIs Ruah finds on your login shell's PATH (--json)
 ruah app scan <repo>          # write <repo>/architecture.json (--no-infra: code only)
 ruah app infra <repo>         # print the Terraform / k8s / Helm / Ansible / CI it finds (--json, --kind); writes nothing
 ruah app serve [<repo>]       # daemon + viewer in the browser (http://127.0.0.1:4177)
@@ -81,7 +112,16 @@ variables: `RUAH_AGENT` (claude | cursor | grok | kiro | opencode | mock),
 default 45000; `RUAH_CLOUD_WATCH=0` turns it off),
 `RUAH_MAX_BACKGROUND_TURNS` (default 3), `RUAH_PREVIEW_IDLE_MS` (stop a project's
 preview server once the project has been closed this long, default 600000;
-`RUAH_PREVIEW=0` turns the live preview off). `~/.ruah/settings.json` switches
+`RUAH_PREVIEW=0` turns the live preview off). `RUAH_APP_DEV=1` (`ruah app` runs this
+checkout's Electron even with Ruah.app installed), `RUAH_APP_BUNDLE` (which
+Ruah.app `ruah app` opens), `RUAH_USER_DATA` (the desktop app's Chromium profile;
+with `RUAH_HOME` set it defaults to `$RUAH_HOME/desktop`, logs to `$RUAH_HOME/logs`),
+`RUAH_DEVTOOLS=1` (developer tools in a packaged build). `RUAH_HOME` separates
+data, profile, single-instance lock and logs — not how folders reach the app:
+macOS hands `open -a`, Finder "Open With" and Dock drops to whichever app with
+that bundle id is running, so an instance on a scratch `RUAH_HOME` asks before
+it opens such a folder, and a copy meant to run next to the installed app should
+be a flavored build (below). `~/.ruah/settings.json` switches
 features off: `"backgroundAgents": false`, `"notifications": "off"` (or
 `"always"`; default `"background"`).
 
@@ -98,6 +138,8 @@ pnpm build       # tsup → dist/cli.js (run before pnpm test: the smoke test us
 pnpm test        # vitest run
 pnpm ui:build    # ui/ → viewer/
 pnpm desktop     # Electron on the built viewer
+pnpm dist        # release/Ruah-<version>-arm64.dmg (+ release/mac-arm64/Ruah.app)
+pnpm dist:app    # just the .app, no .dmg (faster)
 ```
 
 `pnpm dev` (scripts/dev.ts) runs three things, so a change — yours or an agent's
@@ -114,6 +156,48 @@ Ports: the daemon from 4190, the viewer from 8080 (`--daemon-port`, `--viewer-po
 (`--mock`, `--agent`). `RUAH_ELECTRON_ARGS` adds Electron switches (e.g.
 `--remote-debugging-port=9333`). Ctrl+C or closing the window stops everything. Use a
 scratch `RUAH_HOME` to keep dev runs out of your real recent projects.
+
+### Package
+
+`pnpm dist` builds the daemon and the viewer, then electron-builder
+(`electron-builder.config.cjs`) makes `Ruah.app` (bundle id `dev.ruah.app`) and
+the `.dmg`. Before the image is written, a build check runs the packaged binary
+as Node the way the app starts its daemon: `dist/cli.js`, a real node-pty
+terminal and Claude's bundled CLI must all work, and the Electron fuses must be
+as configured (**Security** below), or the build fails. The dev app (`pnpm app`) keeps a profile
+per checkout (`Ruah Dev-<id>`), so a worktree never hands off to the installed
+Ruah or to another worktree's dev app; a second launch of the same checkout
+says on stderr which running instance (pid, profile) got its folder.
+
+**Side by side.** `RUAH_APP_FLAVOR=test pnpm dist:app` builds `Ruah Test.app`
+(bundle id `dev.ruah.app.test`, its own profile and logs, `Ruah-test-…` artifacts)
+to try a build next to the installed Ruah: with its own bundle id macOS never
+sends it your real folders, nor the installed app its test folders. Start it
+with `RUAH_APP_BUNDLE="$PWD/release/mac-arm64/Ruah Test.app" ruah app …`.
+
+**Security.** The daemon is the app's own binary running as Node
+(`ELECTRON_RUN_AS_NODE`), so the RunAsNode fuse stays on — which also lets any
+program already running as you start its own JavaScript under Ruah's identity
+(`open --env ELECTRON_RUN_AS_NODE=1 -a Ruah --args -e …`) and use the folder
+access you gave Ruah (Documents, Desktop, Downloads, external and network
+volumes). With a Developer ID build that access carries over from version to
+version. What the daemon does not need is off: the `NODE_OPTIONS` /
+`NODE_EXTRA_CA_CERTS`, `--inspect` and extra `file://` privilege fuses, and the
+daemon ignores SIGUSR1 (`--disable-sigusr1`), so nothing can attach a debugger
+to the running backend. The way out is to run the daemon on a separate helper
+runtime and turn RunAsNode off on the app itself; until then, grant Ruah folder
+access only where you keep code.
+
+**Signing.** Ad-hoc by default (nothing to set up). For a Developer ID build set
+`RUAH_MAC_IDENTITY="Your Name (TEAMID)"` (a keychain identity) or `CSC_LINK`
+(a `.p12`) + `CSC_KEY_PASSWORD`; the hardened runtime and
+`electron/build/entitlements.mac.plist` then apply. It is notarized when Apple
+credentials are present too: `APPLE_API_KEY` (path to the `.p8`) +
+`APPLE_API_KEY_ID` + `APPLE_API_ISSUER`, or `APPLE_ID` +
+`APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, or `APPLE_KEYCHAIN_PROFILE`
+(from `xcrun notarytool store-credentials`). Claude's native CLI keeps
+Anthropic's signature in every build. The `.dmg` window art is
+`electron/build/dmg-background.svg` (`scripts/macos/render-dmg-background.sh`).
 
 Specs: `docs/CONTRACTS.md` (every message, endpoint and file format),
 `docs/DESIGN-PATTERNS.md` (the patterns behind Ruah and why),

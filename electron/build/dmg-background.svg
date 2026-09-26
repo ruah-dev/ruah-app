@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="380" viewBox="0 0 540 380">
+  <!-- The .dmg window (540×380). Finder draws Ruah.app at (140, 196) and the
+       Applications link at (400, 196), 96 pt icons, labels in the system
+       appearance's colour (white in Dark Mode). Colours: Ruah design system
+       (bg #111110, fg #f0eee9, fg-dim #8f8a7e, sage-400 #00d2b9).
+       Regenerate: scripts/macos/render-dmg-background.sh -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="52%" r="62%">
+      <stop offset="0" stop-color="#00d2b9" stop-opacity="0.13"/>
+      <stop offset="0.55" stop-color="#00d2b9" stop-opacity="0.035"/>
+      <stop offset="1" stop-color="#00d2b9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="arrow" gradientUnits="userSpaceOnUse" x1="214" y1="196" x2="324" y2="196">
+      <stop offset="0" stop-color="#00d2b9" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#00d2b9" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="540" height="380" fill="#111110"/>
+  <rect width="540" height="380" fill="url(#glow)"/>
+  <text x="270" y="62" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="21" font-weight="600" fill="#f0eee9" letter-spacing="0.2">Install Ruah</text>
+  <text x="270" y="86" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12.5" fill="#8f8a7e">Drag Ruah onto the Applications folder</text>
+  <g fill="none" stroke="url(#arrow)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M214 196 H322"/>
+    <path d="M312 185 L324 196 L312 207"/>
+  </g>
+  <line x1="40" y1="318" x2="500" y2="318" stroke="#2a2a28" stroke-width="1"/>
+  <text x="270" y="342" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="11" fill="#706b60">If macOS blocks the first launch: System Settings › Privacy &amp; Security › Open Anyway</text>
+</svg>

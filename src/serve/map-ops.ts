@@ -17,6 +17,7 @@ import type { AgentMapTools, StdioMcpServerSpec } from "../acp/bridge.js";
 import { applyOps, OpError, revertTurn } from "../mcp/ops.js";
 import { MAP_SERVER_INSTRUCTIONS, MAP_SERVER_NAME, sdkToolNames, type MapBackend } from "../mcp/tools.js";
 import { createMapSdkServer } from "../mcp/sdk-server.js";
+import { selfNodeEnv } from "../desktop/child-env.js";
 import type { ArchitectureStore } from "./architecture-store.js";
 
 /** What the service needs from the SessionHub. */
@@ -68,7 +69,7 @@ function defaultLaunch(): { command: string; args: string[]; env?: Record<string
   return {
     command: process.execPath,
     args: [...process.execArgv, entry],
-    ...(process.env.ELECTRON_RUN_AS_NODE !== undefined ? { env: { ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE } } : {}),
+    ...(Object.keys(selfNodeEnv()).length > 0 ? { env: selfNodeEnv() } : {}),
   };
 }
 

@@ -13,6 +13,7 @@ import { RuahTaskNameSchema } from "../contracts/integrations.js";
 import type { RuahResume, RuahTaskSummary } from "../contracts/resume.js";
 import { arr, cliMessage, CliError, defaultRunner, IntegrationError, obj, parseJson, resolveBin, searchPath, str, stripAnsi, type Runner } from "./exec.js";
 import type { Integration, ProjectContext } from "./registry.js";
+import { withoutDaemonPlumbing } from "../desktop/child-env.js";
 import { projectIdOf } from "./store.js";
 
 const SETUP_HINT = "npm i -g @ruah-dev/cli";
@@ -30,7 +31,7 @@ export const detachedLauncher: Launcher = (bin, args, cwd, logFile) => {
       cwd,
       detached: true,
       stdio: ["ignore", fd, fd],
-      env: { ...process.env, PATH: searchPath(), NO_COLOR: "1" },
+      env: { ...withoutDaemonPlumbing(process.env), PATH: searchPath(), NO_COLOR: "1" },
     });
     child.on("error", () => {});
     child.unref();

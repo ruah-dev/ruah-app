@@ -10,6 +10,7 @@ import {
   type Runner,
   defaultRunner,
 } from "../integrations/exec.js";
+import { selfNodeEnv } from "../desktop/child-env.js";
 
 export const ENGINE_TIMEOUT_MS = 120_000;
 
@@ -105,7 +106,7 @@ export function resetEngineProbe(): void {
 export function resolveEngineInvocation(
   namespace: EngineNamespace,
   deps: EngineCliDeps = {},
-): { kind: "ruah"; bin: string; prefix: string[] } | { kind: "direct"; bin: string; prefix: string[] } | null {
+): { kind: "ruah"; bin: string; prefix: string[] } | { kind: "direct"; bin: string; prefix: string[]; env?: Record<string, string> } | null {
   const env = deps.env ?? process.env;
   if (env.RUAH_ENGINES_OFF === "1") return null;
   const workspace = deps.workspaceRoot ?? (env.RUAH_WORKSPACE?.trim() || undefined);
@@ -116,7 +117,7 @@ export function resolveEngineInvocation(
   if (direct) return { kind: "direct", bin: direct, prefix: [] };
 
   const ws = workspaceCli(namespace, workspace);
-  if (ws) return { kind: "direct", bin: process.execPath, prefix: [ws] };
+  if (ws) return { kind: "direct", bin: process.execPath, prefix: [ws], env: selfNodeEnv() };
 
   return null;
 }
@@ -147,6 +148,8 @@ export async function runEngineJson<T>(
     const result = await runner(inv.bin, fullArgs, {
       cwd: options.cwd,
       timeoutMs: options.timeoutMs ?? ENGINE_TIMEOUT_MS,
+      // A workspace engine runs on this process's runtime (in the desktop app: its binary, as Node).
+      ...(inv.kind === "direct" && inv.env !== undefined ? { env: inv.env } : {}),
     });
     const parsed = parseJson(result.stdout);
     if (parsed === undefined && inv.kind === "ruah" && isUnknownNamespace(`${result.stdout}\n${result.stderr}`, namespace)) {
