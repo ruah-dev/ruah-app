@@ -4,7 +4,7 @@
 // (files, notes, layer, unknown node types, generatedBy, ...) survives a save.
 import type { Architecture, ArchEdge, ArchNode, Workflow } from "./contracts";
 import type { DiagramNode, NodeKind } from "@/data/graphs";
-import { ORIGIN, isFlowType, parseDiagramId, typeFor } from "./architecture";
+import { NODE_W, ORIGIN, isFlowType, parseDiagramId, typeFor } from "./architecture";
 
 // Same rule as the daemon (src/contracts/validate.ts): multi-repo systems
 // namespace ids as "<repoId>:<nodeId>".
@@ -99,6 +99,22 @@ export function keepAgentElement(arch: Architecture, nodeId: string): Architectu
 }
 
 /** Add a node on a diagram. Architecture level: child of that level. Workflow: appended step. */
+const QUICK_ADD_GAP = 48;
+
+/**
+ * Where an element added from the palette with a click (not dropped at a spot) goes on an
+ * architecture level, in canvas coordinates: right of everything already on that level, on the
+ * top row — never on top of another element (it used to land at a fixed spot, often on the
+ * level's first element).
+ */
+export function quickAddPosition(arch: Architecture, parentId: string | null): { x: number; y: number } {
+  const level = arch.nodes.filter((n) => (n.parent ?? null) === parentId);
+  if (level.length === 0) return { x: ORIGIN + 32, y: ORIGIN + 32 };
+  const right = Math.max(...level.map((n) => (n.x ?? 0) + NODE_W));
+  const top = Math.min(...level.map((n) => n.y ?? 0));
+  return { x: ORIGIN + right + QUICK_ADD_GAP, y: ORIGIN + top };
+}
+
 export function addNode(
   arch: Architecture,
   diagramId: string,
