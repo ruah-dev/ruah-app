@@ -45,7 +45,10 @@ app) listens on `127.0.0.1` by default. State-changing HTTP endpoints and the
 WebSocket accept only loopback origins (plus explicit `--allow-origin` globs),
 and every request's `Host` header must be a loopback name, an IP literal or the
 bind name, which defends against CSRF from websites you have open and against
-DNS rebinding. Binding to another address
+DNS rebinding. Reads that start a program (git or `gh` for the new project
+wizard, agent CLIs for usage limits) also refuse a browser request from another
+site that carries no `Origin` (an `<img>` or a `no-cors` fetch), so such a page
+cannot make the daemon run anything. Binding to another address
 with `--host` turns the integrated terminal off unless you also pass
 `--allow-remote-terminal`: anyone who can reach that port then gets a shell.
 The live preview's static server follows the same host rules and never serves
@@ -61,16 +64,34 @@ agent to do is not a Ruah vulnerability.
 
 **Credentials stay with their owners.** Cloud providers use their own CLIs'
 logins (doctl, aws, gcloud, az, vercel, supabase, kubectl, …). Ruah stores only
-which accounts you picked (`~/.ruah/integrations.json`, mode 0600). The few
-secrets Ruah must hold (a Jira API token, extension secrets such as an MCP
-server's token) go to the macOS Keychain, written through stdin so they never
-appear in a process list. Integration errors pass through a redactor for
-token-shaped strings before the viewer sees them. To show Cursor's included usage, Ruah reads the Cursor
-app's saved login for a single GET to cursor.com (never stored or logged);
-`RUAH_USAGE_READ_LOGINS=0` turns that off.
+which accounts you picked (`$RUAH_HOME/integrations.json`, default
+`~/.ruah/integrations.json`, mode 0600). The few secrets Ruah must hold (a Jira
+API token, extension secrets such as an MCP server's token) go to the macOS
+Keychain, written through stdin so they never appear in a process list.
+Integration errors pass through a redactor for token-shaped strings before the
+viewer sees them.
+
+**Another app's saved login is read only with your permission.** Cursor's plan
+usage comes from cursor.com with the Cursor app's saved login. Ruah reads that
+login only after you allow it (`"usage": { "readAppLogins": true }` in
+`$RUAH_HOME/settings.json`, set by the switch on Cursor's limits card, Settings
+→ Features & behaviour or `ruah app usage settings --read-app-logins on`; off by
+default), and uses it only when `cursor-agent` is signed in to the same
+account: for one read-only GET, kept in memory, never stored or logged. Only the
+viewer this daemon serves (or a local client that sends no `Origin`) can turn
+the switch on; a page on another localhost port or an
+`--allow-origin` site cannot. `RUAH_USAGE_READ_LOGINS=0|1` overrides the saved
+choice for one process.
 
 **Cloud access is read-only.** Syncs, status and "what runs where" only list and
 describe resources. Ruah never creates, changes or deletes cloud resources.
+
+**Your repositories.** Ruah writes only files meant to be committed
+(`architecture.json`, `ruah.system.json` and a few files in `.ruah/`, listed in
+the README under "What Ruah writes into your repositories"), and only on your
+action; caches and run outputs live in `$RUAH_HOME/projects/<id>/`. A new
+project never overwrites anything: its folder must not exist, and `gh repo
+create` runs only when you ask for a GitHub repository.
 
 **The desktop app.** The renderer has context isolation and a narrow preload
 bridge (no Node, no `ipcRenderer`). The daemon is the app's own binary running
@@ -78,7 +99,8 @@ as Node, so Electron's `RunAsNode` fuse stays on; that lets any program already
 running as you run JavaScript under Ruah's identity and use the folder access
 you granted Ruah. The `NODE_OPTIONS`, `--inspect` and extra `file://`
 privilege fuses are off, and the daemon ignores `SIGUSR1`. See README
-"Security" for details; grant Ruah folder access only where you keep code.
+"Security of the packaged app" for details; grant Ruah folder access only where
+you keep code.
 
 **Builds.** Releases are built by GitHub Actions from a tag
 (`.github/workflows/release.yml`) with a read-only token and pinned actions.
@@ -92,8 +114,9 @@ is complete and uncorrupted; it does not protect against a tampered release.
 **In scope**, for example: a website or another machine reaching the daemon's
 API or terminal; a crafted repository (its `architecture.json`, `.ruah/*`
 files, package scripts or dev-server config) making Ruah run code or read files
-without you asking; a secret written to a log, an error, a file in the repo or
-a process argument; escaping the renderer sandbox.
+without you asking; Ruah writing into a repository without you asking, or
+reading an app's saved login you did not allow; a secret written to a log, an
+error, a file in the repo or a process argument; escaping the renderer sandbox.
 
 **Out of scope**: what an agent does after you approved it; programs already
 running as your user (they can read your files anyway); a daemon you bound to
