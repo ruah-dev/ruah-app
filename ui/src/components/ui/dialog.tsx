@@ -34,7 +34,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  * app's dialogs open from state (a button's onClick, a menu item, a shortcut), and then focus fell
  * to <body>: a keyboard user had to Tab from the top of the page again. This remembers the element
  * that had focus when the dialog opened and puts focus back there, unless the caller handles
- * `onCloseAutoFocus` itself or that element is gone.
+ * `onCloseAutoFocus` itself, something else took focus meanwhile, or that element is gone.
  */
 export function useReturnFocus(
   onOpenAutoFocus: ((event: Event) => void) | undefined,
@@ -52,6 +52,11 @@ export function useReturnFocus(
       const el = opener.current;
       opener.current = null;
       if (event.defaultPrevented) return;
+      // Something else took focus as the dialog closed (a launcher command focused the composer):
+      // leave it there.
+      const active = document.activeElement;
+      const inside = event.target instanceof Node && active !== null && event.target.contains(active);
+      if (active !== null && active !== document.body && !inside) return;
       if (el instanceof HTMLElement && el !== document.body && el.isConnected) {
         event.preventDefault();
         el.focus({ preventScroll: true });
