@@ -3,6 +3,7 @@
 // themes side by side, for any palette (each column is a live data-ruah-preview scope, so it
 // shows exactly what the app paints).
 import { useState } from "react";
+import * as RadioGroup from "@radix-ui/react-radio-group";
 import { PALETTES, PALETTE_IDS, type PaletteId } from "@/design/tokens";
 import { readPalette } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -181,23 +182,25 @@ export function GhostSheet() {
             </p>
           </div>
           <AppearanceMenu />
-          <div role="radiogroup" aria-label="Sheet palette" className="flex flex-wrap gap-1">
+          <RadioGroup.Root
+            aria-label="Sheet palette"
+            value={palette}
+            onValueChange={(v) => setPalette(v as PaletteId)}
+            className="flex flex-wrap gap-1"
+          >
             {PALETTE_IDS.map((p) => (
-              <button
+              <RadioGroup.Item
                 key={p}
-                type="button"
-                role="radio"
-                aria-checked={palette === p}
-                onClick={() => setPalette(p)}
+                value={p}
                 className={cn(
-                  "h-7 rounded-lg px-2.5 text-[12.5px] transition-colors",
+                  "h-7 rounded-lg px-2.5 text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   palette === p ? "bg-surface-3 text-foreground ring-1 ring-hairline" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 {PALETTES[p].label}
-              </button>
+              </RadioGroup.Item>
             ))}
-          </div>
+          </RadioGroup.Root>
         </div>
         <div role="tablist" aria-label="Section" className="flex flex-wrap gap-1 border-b border-hairline pb-2">
           {SECTIONS.map((s) => (

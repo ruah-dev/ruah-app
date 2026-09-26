@@ -2,11 +2,14 @@
 // mock of the app rendered inside a data-ruah-preview="<theme>:<palette>" scope (design/css.ts),
 // so it shows exactly the tokens the app would use — surfaces, the primary action, the agent
 // colour, statuses, chart series and the Phantoms — in the theme currently in effect.
-// Self-contained: it reads and writes the same stores as the rest of the app (lib/theme.ts).
+// Self-contained: it reads and writes the same stores as the rest of the app (lib/theme.ts). The
+// palette cards are an ARIA radio group (Radix): one Tab stop, arrow keys move and choose.
 import { useEffect, useState, type ReactNode } from "react";
+import * as RadioGroup from "@radix-ui/react-radio-group";
 import { Check } from "lucide-react";
 import { PALETTES, PALETTE_IDS, type PaletteId, type ThemeId } from "@/design/tokens";
-import { usePalette, useTheme, type ThemePref } from "@/lib/theme";
+import { usePalette, usePaletteNotice, useTheme, type ThemePref } from "@/lib/theme";
+import { Button } from "@/components/ui/button";
 import { Phantom } from "@/components/brand/Phantom";
 import { PhantomPose } from "@/components/brand/PhantomPose";
 import { Segmented } from "@/components/map/MapPage";
@@ -105,6 +108,7 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
 export function AppearanceSettings() {
   const [theme, setTheme] = useTheme();
   const [palette, setPalette] = usePalette();
+  const notice = usePaletteNotice();
   const resolved = useResolvedTheme();
   return (
     <>
@@ -119,20 +123,41 @@ export function AppearanceSettings() {
             {resolved === "contrast" ? "high-contrast" : resolved} theme.
           </p>
         </div>
-        <div role="radiogroup" aria-label="Palette" className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+        {notice.show ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-hairline border-l-[3px] border-l-info bg-surface-2 px-3 py-2.5">
+            <div>
+              <p className="text-[12.5px] font-medium text-info">Dusk is now Indigo</p>
+              <p className="text-[12px] leading-snug text-muted-foreground">
+                Your saved Dusk palette now follows the Ruah design system: indigo for actions, dusty rose for agents (it
+                was a lavender accent). Classic teal is the app&apos;s look from before.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button size="sm" variant="outline" onClick={notice.dismiss}>
+                Keep Indigo
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setPalette("classic")}>
+                Use Classic teal
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        <RadioGroup.Root
+          aria-label="Palette"
+          value={palette}
+          onValueChange={(v) => setPalette(v as PaletteId)}
+          className="grid grid-cols-2 gap-3 max-sm:grid-cols-1"
+        >
           {PALETTE_IDS.map((id) => {
             const p = PALETTES[id];
             const active = palette === id;
             return (
-              <button
+              <RadioGroup.Item
                 key={id}
-                type="button"
-                role="radio"
-                aria-checked={active}
+                value={id}
                 aria-label={`${p.label}: ${p.description}`}
-                onClick={() => setPalette(id)}
                 className={cn(
-                  "group/pal flex flex-col gap-2 rounded-xl p-2 text-left transition-colors",
+                  "group/pal flex flex-col gap-2 rounded-xl p-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                   active ? "bg-primary/10 ring-2 ring-primary" : "ring-1 ring-hairline hover:bg-accent/60",
                 )}
               >
@@ -149,10 +174,10 @@ export function AppearanceSettings() {
                   </span>
                   <Check className={cn("mt-0.5 size-4 shrink-0 text-primary", !active && "invisible")} />
                 </span>
-              </button>
+              </RadioGroup.Item>
             );
           })}
-        </div>
+        </RadioGroup.Root>
       </div>
     </>
   );

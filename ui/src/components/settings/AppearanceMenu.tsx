@@ -2,10 +2,12 @@
 // button that opens a popover with the theme and the four palettes (each with its six role
 // colours, drawn from a data-ruah-preview scope so they are the real tokens). Same stores as
 // Settings → Appearance (lib/theme.ts), so both stay in sync after a reload; within a session
-// the page reflects the change immediately through <html data-theme / data-palette>.
+// the page reflects the change immediately through <html data-theme / data-palette>. Both groups
+// are ARIA radio groups (Radix): one Tab stop each, arrow keys move and choose.
+import * as RadioGroup from "@radix-ui/react-radio-group";
 import { Check, Palette } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { PALETTES, PALETTE_IDS } from "@/design/tokens";
+import { PALETTES, PALETTE_IDS, type PaletteId } from "@/design/tokens";
 import { usePalette, useTheme, type ThemePref } from "@/lib/theme";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -38,35 +40,39 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
       </PopoverTrigger>
       <PopoverContent side={side} align="end" sideOffset={6} className="w-72 rounded-xl border-hairline p-2 shadow-elevated">
         <p className="px-1.5 pt-1 pb-1.5 text-[11px] font-medium tracking-[0.14em] text-faint uppercase">Theme</p>
-        <div role="radiogroup" aria-label="Theme" className="grid grid-cols-4 gap-1 px-1">
+        <RadioGroup.Root
+          aria-label="Theme"
+          value={theme}
+          onValueChange={(v) => setTheme(v as ThemePref)}
+          className="grid grid-cols-4 gap-1 px-1"
+        >
           {THEMES.map((t) => (
-            <button
+            <RadioGroup.Item
               key={t.value}
-              type="button"
-              role="radio"
-              aria-checked={theme === t.value}
-              onClick={() => setTheme(t.value)}
+              value={t.value}
               className={cn(
-                "h-7 rounded-md text-[12px] transition-colors",
+                "h-7 rounded-md text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                 theme === t.value ? "bg-primary/12 font-medium text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {t.label}
-            </button>
+            </RadioGroup.Item>
           ))}
-        </div>
+        </RadioGroup.Root>
         <p className="px-1.5 pt-3 pb-1.5 text-[11px] font-medium tracking-[0.14em] text-faint uppercase">Palette</p>
-        <div role="radiogroup" aria-label="Palette" className="flex flex-col gap-0.5">
+        <RadioGroup.Root
+          aria-label="Palette"
+          value={palette}
+          onValueChange={(v) => setPalette(v as PaletteId)}
+          className="flex flex-col gap-0.5"
+        >
           {PALETTE_IDS.map((id) => (
-            <button
+            <RadioGroup.Item
               key={id}
-              type="button"
-              role="radio"
-              aria-checked={palette === id}
+              value={id}
               aria-label={PALETTES[id].label}
-              onClick={() => setPalette(id)}
               className={cn(
-                "flex h-9 items-center gap-2.5 rounded-md px-1.5 text-left transition-colors",
+                "flex h-9 items-center gap-2.5 rounded-md px-1.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                 palette === id ? "bg-accent" : "hover:bg-accent/60",
               )}
             >
@@ -77,9 +83,9 @@ export function AppearanceMenu({ className, side = "bottom" }: { className?: str
               </span>
               <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">{PALETTES[id].label}</span>
               <Check className={cn("size-3.5 shrink-0 text-primary", palette !== id && "invisible")} />
-            </button>
+            </RadioGroup.Item>
           ))}
-        </div>
+        </RadioGroup.Root>
         <div className="mt-2 border-t border-hairline px-1.5 pt-2">
           <Link to="/settings" className="text-[12px] text-muted-foreground hover:text-foreground">
             Previews in Settings → Appearance
