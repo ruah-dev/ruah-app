@@ -315,12 +315,22 @@ export function cursorProvider(): LimitsProvider {
           dashboardUrl: DASHBOARD,
         });
       }
-      const tier = about?.tier ?? null;
+      // Without cursor-agent's own answer there is no account to match the
+      // app's login against: its saved login is not read, nothing is fetched.
+      if (about === undefined) {
+        return agentLimits(CURSOR_ID, CURSOR_NAME, "error", {
+          checkedAt,
+          source: SOURCE_TIER,
+          reason: "`cursor-agent about` did not answer, so its account could not be confirmed and the Cursor app's usage was not read.",
+          dashboardUrl: DASHBOARD,
+        });
+      }
+      const tier = about.tier;
       const partial = (reason: string, action?: string): AgentLimits =>
         agentLimits(CURSOR_ID, CURSOR_NAME, "partial", {
           checkedAt,
           source: SOURCE_TIER,
-          loggedIn: about?.loggedIn ?? null,
+          loggedIn: about.loggedIn,
           plan: tier,
           reason,
           ...(action !== undefined ? { action } : {}),
@@ -334,7 +344,14 @@ export function cursorProvider(): LimitsProvider {
         return partial(`${app.reason} Included usage is read with the Cursor app's login (cursor-agent keeps its own in the Keychain, which Ruah does not read).`, "Sign in to the Cursor app with the same account, or open cursor.com/dashboard.");
       }
       const { auth } = app;
-      if (about?.email !== undefined && about.email !== null && auth.email !== null && about.email.toLowerCase() !== auth.email.toLowerCase()) {
+      // Only usage of the account cursor-agent itself uses: both must name it.
+      if (about.email === null || auth.email === null) {
+        return partial(
+          `${about.email === null ? "cursor-agent" : "The Cursor app"} does not say which account it is signed in to, so the app's usage cannot be matched to cursor-agent and is not shown.`,
+          "Open cursor.com/dashboard to see included usage.",
+        );
+      }
+      if (about.email.toLowerCase() !== auth.email.toLowerCase()) {
         return partial("The Cursor app is signed in to a different account than cursor-agent, so its usage is not shown here.", "Sign in to the Cursor app with the account cursor-agent uses.");
       }
       if (tokenExpired(auth.accessToken, ctx.now())) {
@@ -345,7 +362,7 @@ export function cursorProvider(): LimitsProvider {
       const fetched = await fetchUsage(ctx, cookie);
       if (fetched.kind === "rejected") return partial(fetched.reason, "Open the Cursor app once to refresh its login.");
       if (fetched.kind === "failed") {
-        return agentLimits(CURSOR_ID, CURSOR_NAME, "error", { checkedAt, source: SOURCE_USAGE, loggedIn: about?.loggedIn ?? null, plan: tier, reason: fetched.reason, dashboardUrl: DASHBOARD });
+        return agentLimits(CURSOR_ID, CURSOR_NAME, "error", { checkedAt, source: SOURCE_USAGE, loggedIn: about.loggedIn, plan: tier, reason: fetched.reason, dashboardUrl: DASHBOARD });
       }
       const usage = parseCursorUsage(fetched.body);
       if (usage === undefined || usage.meters.length === 0) {
@@ -354,7 +371,7 @@ export function cursorProvider(): LimitsProvider {
       return agentLimits(CURSOR_ID, CURSOR_NAME, "ok", {
         checkedAt,
         source: SOURCE_USAGE,
-        loggedIn: true,
+        loggedIn: about.loggedIn,
         plan: tier ?? usage.plan ?? planName(auth.membership ?? undefined),
         meters: usage.meters,
         ...(usage.onDemand !== undefined ? { onDemand: usage.onDemand } : {}),

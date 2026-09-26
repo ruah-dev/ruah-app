@@ -339,16 +339,21 @@ describe("Cursor limits", () => {
     expect(cursorStateDbPath({ HOME: "/h" }, "linux")).toBe("/h/.config/Cursor/User/globalStorage/state.vscdb");
   });
 
-  function cursorSetup(options: { email?: string; token?: string; status?: number; body?: string; about?: string } = {}) {
+  function cursorSetup(options: { email?: string | null; token?: string; status?: number; body?: string; about?: string; aboutFails?: boolean } = {}) {
     const bins = stubBins(["cursor-agent", "sqlite3"]);
     const db = path.join(bins.dir, "state.vscdb");
     writeFileSync(db, "");
     const token = options.token ?? fakeJwt({ sub: "auth0|user_42", exp: NOW / 1000 + 3600 });
     const { run, calls } = fakeRunner({
-      "cursor-agent": () => ({ stdout: options.about ?? fixture("cursor-about.json") }),
+      "cursor-agent": () => {
+        if (options.aboutFails === true) throw new Error("cursor-agent timed out after 20 s");
+        return { stdout: options.about ?? fixture("cursor-about.json") };
+      },
       sqlite3: (args) => {
         expect(args.slice(0, 2)).toEqual(["-readonly", "-json"]);
-        return { stdout: JSON.stringify([{ key: "cursorAuth/accessToken", value: token }, { key: "cursorAuth/cachedEmail", value: options.email ?? "dev@example.com" }]) };
+        const rows = [{ key: "cursorAuth/accessToken", value: token }];
+        if (options.email !== null) rows.push({ key: "cursorAuth/cachedEmail", value: options.email ?? "dev@example.com" });
+        return { stdout: JSON.stringify(rows) };
       },
     });
     const requests: Array<{ url: string; headers: Record<string, string> | undefined; method: string | undefined }> = [];
@@ -402,6 +407,18 @@ describe("Cursor limits", () => {
     const noApp = cursorSetup();
     noApp.context.env.RUAH_CURSOR_STATE_DB = path.join(tmpdir(), "ruah-no-such-state.vscdb");
     expect(await cursorProvider().read(noApp.context)).toMatchObject({ status: "partial", reason: expect.stringContaining("Keychain") });
+
+    // cursor-agent's account unknown (about failed, or names no email): the app's login is not used.
+    const noAbout = cursorSetup({ aboutFails: true });
+    expect(await cursorProvider().read(noAbout.context)).toMatchObject({ status: "error", loggedIn: null, reason: expect.stringContaining("could not be confirmed") });
+    expect(noAbout.requests).toHaveLength(0);
+    expect(noAbout.calls.some((c) => c.startsWith("sqlite3"))).toBe(false);
+    const tierOnly = cursorSetup({ about: JSON.stringify({ subscriptionTier: "Pro" }) });
+    expect(await cursorProvider().read(tierOnly.context)).toMatchObject({ status: "partial", plan: "Pro", loggedIn: true, reason: expect.stringContaining("cursor-agent does not say") });
+    expect(tierOnly.requests).toHaveLength(0);
+    const appNoEmail = cursorSetup({ email: null });
+    expect(await cursorProvider().read(appNoEmail.context)).toMatchObject({ status: "partial", reason: expect.stringContaining("The Cursor app does not say") });
+    expect(appNoEmail.requests).toHaveLength(0);
 
     const signedOut = cursorSetup({ about: fixture("cursor-about-logged-out.json") });
     expect(await cursorProvider().read(signedOut.context)).toMatchObject({ status: "not_logged_in", action: "Run `cursor-agent login`." });
