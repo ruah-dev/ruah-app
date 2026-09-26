@@ -6,6 +6,7 @@
 import { execFile } from "node:child_process";
 import type { GitState } from "../contracts/resume.js";
 import { searchPath } from "../integrations/exec.js";
+import { withoutDaemonPlumbing } from "../desktop/child-env.js";
 
 export const GIT_TIMEOUT_MS = 3000;
 export const GIT_CACHE_MS = 5000;
@@ -38,7 +39,7 @@ function runGit(bin: string, root: string, args: string[], timeoutMs: number): P
         encoding: "utf8",
         windowsHide: true,
         // Never prompt, never page, no optional locks (a background status must not block the user's git).
-        env: { ...process.env, PATH: searchPath(), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
+        env: { ...withoutDaemonPlumbing(process.env), PATH: searchPath(), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
       },
       (error, stdout) => {
         if (error === null) {
