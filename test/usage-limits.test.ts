@@ -51,7 +51,7 @@ import { SettingsStore } from "../src/projects/settings-store.js";
 import { resolveUsageSettings, type UsageSettingsView } from "../src/usage/settings.js";
 import type { Spawner } from "../src/usage/limits/stdio-rpc.js";
 import { runUsage, runUsageLimits, runUsageSettings } from "../src/usage/run-usage.js";
-import { opensDesktop } from "../src/cli.js";
+import { opensDesktop, SUBCOMMANDS } from "../src/cli.js";
 
 const FIXTURES = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "usage-limits");
 const fixture = (name: string): string => readFileSync(path.join(FIXTURES, name), "utf8");
@@ -1091,6 +1091,17 @@ describe("ruah app usage limits", () => {
     expect(opensDesktop("open")).toBe(true);
     expect(opensDesktop(undefined)).toBe(true);
     expect(opensDesktop("--json", everyPathIsAFolder)).toBe(false);
+  });
+
+  // Regression: the folder guard was a hand-kept list that missed design, doctor, ext,
+  // extensions and preview, so `ruah app design check` next to a design/ folder opened the
+  // folder in the desktop app (and scanned it) instead of running the command.
+  it("never lets a same-named folder swallow any dispatched subcommand", () => {
+    const everyPathIsAFolder = () => true;
+    const names = Object.keys(SUBCOMMANDS);
+    expect(names).toEqual(expect.arrayContaining(["serve", "scan", "new", "infra", "system", "export", "mcp", "doctor", "cloud", "resume", "usage", "activity", "design", "ext", "extensions", "preview"]));
+    for (const name of names) expect(opensDesktop(name, everyPathIsAFolder), name).toBe(false);
+    expect(opensDesktop("toString", everyPathIsAFolder)).toBe(true);
   });
 
   it("formats every status", () => {
