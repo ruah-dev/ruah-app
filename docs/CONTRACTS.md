@@ -1856,8 +1856,17 @@ interface Extension {                        // zod: ExtensionSchema (src/contra
   env?: string[];                            // env var NAMES (values: Keychain, else the daemon's environment)
   notes?: string; homepage?: string;
   addedAt: string;
-  installedInto?: { target: "claude-code" | "cursor" | "kiro"; scope: "global" | "project"; path: string;
-                    type: "json-key" | "copy" | "claude-cli"; key?: string[]; sha256?: string; at: string }[];
+  // No install records here: a committed file must not be able to tell Remove what to delete
+  // (an `installedInto` key from an older file is dropped when read).
+}
+
+interface InstallRecord {                    // $RUAH_HOME/extensions-installs.json only
+  target: "claude-code" | "cursor" | "kiro"; scope: "global" | "project";
+  path: string;                              // absolute; must be one of the files / folders install-into writes
+  type: "json-key" | "copy" | "claude-cli";
+  key?: ["mcpServers", string];              // json-key, claude-cli
+  sha256?: string;                           // what Ruah wrote: the entry (stable JSON) or the copied file
+  at: string;
 }
 ```
 
@@ -1866,15 +1875,28 @@ interface Extension {                        // zod: ExtensionSchema (src/contra
 | `$RUAH_HOME/extensions.json` | `{ version: 1, extensions: Extension[] }` — global (this machine), mode 0600 |
 | `<repo>/.ruah/extensions.json` | same shape — the project's, committable: sorted by id, pretty, no secrets, no file written for an untouched project |
 | `$RUAH_HOME/extensions-trust.json` | `{ version: 1, approved: { "<scopeKey>/<id>": fingerprint } }` — scopeKey = `global` or the project id (§5.1) |
+| `$RUAH_HOME/extensions-installs.json` | `{ version: 1, installs: { "<scopeKey>/<id>": InstallRecord[] } }` — "Also install into" writes made from this machine (mode 0600) |
 | `$RUAH_HOME/extensions/src/` | git clones (fetched, never executed) |
-| `$RUAH_HOME/extensions/runtime/<agent>-<hash>/` | generated plugin `ruah-ext` (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `skills/<name>` → symlinks); content-addressed, pruned after 7 days |
+| `$RUAH_HOME/extensions/runtime/<agent>-<hash>/` | generated plugin `ruah-ext` (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `skills/<name>` → symlinks); content-addressed, touched whenever a session reuses it, pruned by a session start after 7 days unused (never by a preview) |
 
 - An unreadable file (bad JSON, schema error, > 1 MiB) is reported (`errors[]`) and never
   overwritten; writes answer 409 until it is fixed. Duplicate ids: the first wins.
 - A folder is recognised by its layout (read only, ≤ 256 KiB per file): `SKILL.md` → skill;
   `POWER.md` (+ `mcp.json`, `steering/*.md`) → power; `.claude-plugin/plugin.json` or
-  `.cursor-plugin/plugin.json` (or a `skills/*/SKILL.md` folder) → plugin (`.mcp.json` / manifest
-  `mcpServers`, `hooks/hooks.json`); `.mcp.json` / `mcp.json` → mcp; `.md` / `.mdc` files → rule.
+  `.cursor-plugin/plugin.json` (or a `skills/*/SKILL.md` folder) → plugin; `.mcp.json` /
+  `mcp.json` → mcp; `.md` / `.mdc` files → rule.
+- What a plugin runs is read the way Claude Code's loader reads it, for every manifest present:
+  `hooks/hooks.json` always, plus manifest `hooks` as a path, an inline `{ Event: [...] }` object
+  or a list of those; `.mcp.json` always (`{ mcpServers }` or a bare table), merged with manifest
+  `mcpServers` as a path, an object or a list (later names win); LSP servers (`.lsp.json`,
+  `lspServers`), monitors (`(experimental.)monitors`, `monitors/monitors.json`) and the subagent
+  status line (`settings.json` / `settings`). They are listed in `what.hooks` ("LSP server …",
+  "Monitor …", "Subagent status line: …"). A form Ruah cannot read — an unknown type, a file
+  outside the folder, unparsable JSON, an `.mcpb` bundle, a server with no command / URL, a hook
+  with no command — makes the extension `invalid` (fail closed), never "runs nothing".
+- Remote servers read from a folder get the same URL rule as inline ones (else `invalid`).
+- A folder whose `.ruah` is `$RUAH_HOME` (e.g. `$HOME` with the default `~/.ruah`) is never a
+  project: its `extensions.json` is the global file (project calls there → 409).
 - Secrets: macOS Keychain, service `ruah`, account `ext:<scopeKey>:<id>:<NAME>` (§6 Keychain
   helper). Nothing else stores a value.
 
@@ -1893,13 +1915,24 @@ interface Extension {                        // zod: ExtensionSchema (src/contra
 - ACP stdio servers get an absolute `command` (PATH + Homebrew lookup, as ACP requires).
 - Project entries win over global ones with the same id. Server names are unique per session;
   `ruah` stays the map tools' server (§1.7).
+- A plugin whose MCP servers need secrets (env names without a literal value): Claude gets it
+  with `skipMcpDiscovery: true` and Ruah starts its servers itself (`<id>-<server>`, through the
+  launcher, `${CLAUDE_PLUGIN_ROOT}` expanded), so Keychain values reach them. Cursor and Grok load
+  the plugin folder themselves: those servers read the values from the agent's own environment
+  (said in the card's per-agent note and the session notes).
 - `OPENCODE_CONFIG_CONTENT` is merged with an existing value of the daemon's environment.
 
 ### 15.3 HTTP (`/api/extensions`)
 
-Every POST passes the `/ws` Origin check (403). Bodies: JSON ≤ 64 KiB, zod-validated; errors
-`{ error }` never echo received values. Project-scoped calls use the daemon's open project (409
-without one).
+A POST can make every future session run a command, so it is accepted only from the viewer the
+daemon serves, on this machine: loopback peer and loopback `Host` (403; DNS rebinding, network
+peers of a `--host 0.0.0.0` daemon), `Content-Type: application/json` (415; a cross-site
+text/plain "simple" POST needs no preflight, JSON does and the daemon grants none),
+`Sec-Fetch-Site` same-origin / none when sent, and `Origin`, when sent, equal to the Host's own
+origin and allowed by the `/ws` rule (403 — so neither another localhost port nor an
+`--allow-origin` site can change extensions). The CLI does not use HTTP. Bodies: JSON ≤ 64 KiB,
+zod-validated (a larger one is answered 413, `Connection: close`); errors `{ error }` never echo
+received values. Project-scoped calls use the daemon's open project (409 without one).
 
 | Endpoint | Body / query → answer |
 | --- | --- |
@@ -1907,20 +1940,21 @@ without one).
 | `GET /api/extensions/featured` | → `{ featured: FeaturedExtension[] }` (`added` set) |
 | `GET /api/extensions/discover[?agent=a,b]` | → `{ agents: AgentDiscovery[] }` — read-only, names / commands / URLs / env NAMES; secret-looking args masked |
 | `GET /api/extensions/preview?agent=<id>` | → `SessionPreview` — what a session of that agent receives now |
-| `POST /api/extensions/add` | `{ scope, source, id?, name?, kind?, enableFor? }` (`source.inline = { runs, env? }`; local paths absolute) → `{ extension }`; nothing runs (git: clone only) |
-| `POST /api/extensions/enable` | `{ id, scope, agents[] }` → `{ extension }`; records the approval; 422 for an agent that cannot use the kind |
+| `POST /api/extensions/add` | `{ scope, source, id?, name?, kind?, enableFor? }` (`source.inline = { runs, env? }`; local paths absolute) → `{ extension }`; nothing runs (git: clone only). `enableFor` is approved at once only when the request spells out what runs (inline, featured) or it runs nothing; a folder / clone that runs commands stays `review` until enabled with its fingerprint. A `builtin` featured entry → 422 |
+| `POST /api/extensions/enable` | `{ id, scope, agents[], fingerprint? }` → `{ extension }`; records the approval; 409 when `fingerprint` (the one the user reviewed) is not the current one; 422 for an agent that cannot use the kind |
 | `POST /api/extensions/disable` | `{ id, scope, agents? }` (absent = all) → `{ extension }` |
-| `POST /api/extensions/remove` | `{ id, scope, uninstall? }` → `{ ok, notes }` — undoes install records, deletes its Keychain items and approval, removes an unused clone |
+| `POST /api/extensions/remove` | `{ id, scope, uninstall? }` → `{ ok, notes }` — undoes this machine's install records, deletes its Keychain items and approval, removes an unused clone |
 | `POST /api/extensions/fetch` | `{ id, scope }` → `{ extension }` — clones a git source missing on this machine |
 | `POST /api/extensions/secret` | `{ id, scope, name, value }` → `{ ok: true }` (name must be declared; value → Keychain only) |
 | `POST /api/extensions/secret/delete` | `{ id, scope, name }` → `{ ok, deleted }` |
-| `POST /api/extensions/install-into` | `{ id, scope, target: "claude-code"\|"cursor"\|"kiro", targetScope }` → `{ extension, written[], notes[] }` |
+| `POST /api/extensions/install-into` | `{ id, scope, target: "claude-code"\|"cursor"\|"kiro", targetScope }` → `{ extension, written[], notes[] }`; 409 while it is in review |
 
 `ExtensionView` = `Extension` + `{ scope, path?, status: "ready"|"missing"|"review"|"invalid",
 statusDetail?, what: { servers: ServerPreview[], hooks: string[], files: string[], launcher },
 secrets: { name, set, fromEnv }[], support: Record<agent, { delivery: "session"|"install"|
-"partial"|"none", note }> }`; `ServerPreview = { name, transport, command?, args?, url?, env:
-string[], headers?: string[] }`.
+"partial"|"none", note }>, fingerprint, installedInto?: InstallRecord[] }` (`what.hooks`: every
+command a plugin runs besides its MCP servers; `installedInto`: this machine's records);
+`ServerPreview = { name, transport, command?, args?, url?, env: string[], headers?: string[] }`.
 
 ### 15.4 Security rules
 
@@ -1929,10 +1963,14 @@ string[], headers?: string[] }`.
   `GIT_TERMINAL_PROMPT=0`, args array, URL after `--`; https / ssh / `git@host:path` only;
   `subdir` must stay inside the clone.
 - **Explicit enable per agent, tied to what runs.** Enabling records a fingerprint (sha256 of
-  kind, source, server definitions incl. bundled `.mcp.json` servers, env names and plugin hook
-  commands). An extension whose fingerprint differs (edited folder, pulled commit, a teammate's
-  project file) is `review`: shown with what it runs, **not injected** until approved again. A
-  project file from the repo is never trusted until approved on this machine.
+  kind, source, server definitions incl. bundled ones, env names, the hashed literal env / header
+  values of bundled servers, plugin hooks / LSP servers / monitors / status line, and a digest of
+  the runnable config files as read plus the content of the files their commands point to inside
+  the extension folder, e.g. `${CLAUDE_PLUGIN_ROOT}/hooks/start.sh`, `server.js`). An extension
+  whose fingerprint differs (edited folder or script, pulled commit, a teammate's project file) is
+  `review`: shown with what it runs, **not injected** until approved again. A project file from
+  the repo is never trusted until approved on this machine. Not covered: files outside the
+  folder, and what a command downloads (`npx -y pkg@latest`).
 - **What it runs is shown first** — command + args or URL, env var / header NAMES, hooks, files —
   on the card, in the add dialog and in the enable confirmation.
 - **Secrets**: stdio servers that need values start through `ruah app ext exec --secrets
@@ -1945,10 +1983,15 @@ string[], headers?: string[] }`.
   MCP entries merged into `.mcp.json` / `.cursor/mcp.json` / `.kiro/settings/mcp.json` (secrets as
   `${NAME}` / `${env:NAME}` references; an existing entry not added by Ruah → 409), Claude Code user
   scope through `claude mcp add-json -s user` (never `~/.claude.json` directly), skills copied with
-  a `.ruah-installed.json` marker, rules written with a recorded sha256. Remove undoes exactly
-  those writes (unchanged files only).
-- URLs: https (http only for loopback), no credentials in URLs. Commands are one executable (no
-  shell line). `RUAH_EXTENSIONS=0` turns injection and the endpoints off.
+  a `.ruah-installed.json` marker (links pointing outside the skill folder are not copied), rules
+  written with a recorded sha256. The records live in `$RUAH_HOME/extensions-installs.json`, never
+  in an extensions file. Remove undoes exactly those writes: only records of this machine, only at
+  the paths / keys install-into writes, and only while the entry or file is still what Ruah wrote
+  (Claude Code's user entry is compared, read-only, with `~/.claude.json` /
+  `$CLAUDE_CONFIG_DIR/.claude.json` before `claude mcp remove`); anything else is left with a note.
+- URLs: https (http only for loopback), no credentials in URLs (git: no user name in https URLs,
+  use git's credential helper). Commands are one executable (no shell line).
+  `RUAH_EXTENSIONS=0` turns injection and the endpoints off.
 
 ### 15.5 Session injection
 
@@ -1956,7 +1999,10 @@ string[], headers?: string[] }`.
 { resolve(preset?) }` (src/acp/bridge.ts) and call it at every process start (ACP: before the
 spawn — the returned `acp.preset` replaces the launch) and session open (Claude: every
 `query()`; ACP: `session/new` and `session/load`). A failure resolves to "no extensions" plus a
-note in the debug log; a changed switch applies to the next session, no restart.
+note in the debug log; a changed switch applies to the next session. ACP plugin folders (Cursor /
+Grok `--plugin-dir`) and env (`OPENCODE_CONFIG_CONTENT`) are fixed per process: when a new or
+loaded session's resolution changes the launch, the bridge restarts the agent process first
+(logged), otherwise the process is kept and only `mcpServers` change.
 
 ### 15.6 CLI (`ruah app ext`, no daemon)
 
@@ -1966,12 +2012,17 @@ note in the debug log; a changed switch applies to the next session, no restart.
 NAME]…`, `enable|disable <id> [--agent <id>]…`, `remove <id> [--keep-installs]`, `fetch <id>`,
 `secret set|delete <id> <NAME>` (value from stdin, hidden on a TTY), `install-into <id> --target
 claude-code|cursor|kiro [--global]`; `--project` = the repo's file (`--repo <dir>`, default: the
-git repo around the cwd). Exit 0 ok, 1 not found / failure, 2 usage.
+git repo around the cwd, or a folder below `$HOME` with its own `.ruah/extensions.json`; `$HOME`
+and Ruah's home are never a project, and outside a repo `--project` needs `--repo`). Exit 0 ok,
+1 not found / failure, 2 usage.
 
 ### 15.7 Featured catalog (`src/extensions/featured.json`, metadata only)
 
-Claude Design (remote `https://api.anthropic.com/v1/design/mcp`; sign-in through `/design-login`
-in Claude Code or the OAuth prompt — Ruah stores no credentials), Filesystem, GitHub (Docker,
+Claude Design (`builtin: "claude"`: a Claude Code tool, not an MCP server Ruah injects — its
+endpoint `https://api.anthropic.com/v1/design/mcp` answers 401 with RFC 9728 metadata naming
+`https://claude.ai/v1/design/mcp` as the authorization server, whose metadata is not publicly
+discoverable, and Claude Code calls it with its own claude.ai / `/design login` credential; the
+card says how to turn it on and there is nothing to add), Filesystem, GitHub (Docker,
 `GITHUB_PERSONAL_ACCESS_TOKEN`), Playwright, Chrome DevTools, Context7, Sentry, Linear, Figma,
 Notion, Supabase, Terraform, AWS Documentation, Cloudflare Docs, Kubernetes (read-only), Memory,
 Sequential Thinking, Fetch. Adding one copies its `runs` / `env` into the extension (what the

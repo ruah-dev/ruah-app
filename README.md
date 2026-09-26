@@ -18,8 +18,9 @@ desktop app is a thin viewer.
   where and whether it is healthy right now, live while you look), Jira / GitHub (issues on elements), ruah
   orchestration (tasks and workflows).
 - **Extensions:** skills, MCP servers, Kiro powers, plugins and rules — add once (folder, git
-  URL or a curated catalog incl. Claude Design), turn on per agent; Ruah injects them when a
-  session starts, secrets stay in the Keychain (`ruah app ext`, the Extensions page).
+  URL or a curated catalog; Claude Design is listed as built into Claude Code), turn on per agent
+  after seeing what it runs; Ruah injects them when a session starts, secrets stay in the
+  Keychain (`ruah app ext`, the Extensions page in the sidebar).
 - **Export:** draw.io with every technical spec; usage and plan limits.
 - **Context switching:** agents keep working when you switch projects; an
   activity feed, unread badges and desktop notifications tell you when one
@@ -55,7 +56,7 @@ ruah app cloud list | watch   # the repo's resources · live health changes (--r
 ruah app cloud scope          # the repo's accounts, resources with why they belong, "looks related" (--json)
 ruah app cloud scope add|remove|reset <resource-id>…      # edit .ruah/cloud.json (committable)
 ruah app cloud scope accounts add|remove <provider> [<account>] [--whole]
-ruah app ext featured         # curated skills / MCP servers (Claude Design, GitHub, Playwright, …)
+ruah app ext featured         # curated skills / MCP servers (GitHub, Playwright, …; Claude Design is built into Claude Code)
 ruah app ext add featured:github --agent claude   # add (runs nothing) and enable for an agent
 ruah app ext add ./my-skill --project             # a skill / plugin / Kiro power / rule folder, or a git URL
 ruah app ext list | discover  # what Ruah injects per agent · what each agent has configured itself
