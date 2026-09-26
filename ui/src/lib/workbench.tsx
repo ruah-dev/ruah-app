@@ -35,6 +35,7 @@ import {
 import { fetchContext, setFocus } from "./daemon";
 import { isCloudNodeId } from "./integrations";
 import { isExpandedId, requestExpansion, requestPeek } from "./expand";
+import { shouldOnboard } from "./start-screen";
 
 export type PanelView = "agent" | "details" | "code" | "properties";
 export type EdgeRef = { from: string; to: string };
@@ -169,12 +170,26 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setOutlineOpenState(readFlag(OUTLINE_KEY));
-    if (!readFlag(ONBOARDING_KEY)) {
-      // First run: the start screen carries the introduction.
-      setOnboardingOpen(true);
-      setLauncherOpen(true);
-    }
   }, []);
+
+  // First run (lib/start-screen.ts): the "Getting started" card only when nothing was ever opened;
+  // the start screen itself shows because no project is open — never as an overlay on page load.
+  const onboardingDecided = useRef(false);
+  const { projectsLoaded, project: openProjectInfo } = ws.daemon;
+  const recentCount = ws.daemon.recentProjects.length;
+  useEffect(() => {
+    if (onboardingDecided.current) return;
+    const verdict = shouldOnboard({
+      onboarded: readFlag(ONBOARDING_KEY),
+      projectsLoaded,
+      recentCount,
+      projectOpen: !!openProjectInfo,
+    });
+    if (verdict === "wait") return;
+    onboardingDecided.current = true;
+    if (verdict === "show") setOnboardingOpen(true);
+    else if (!readFlag(ONBOARDING_KEY)) writeFlag(ONBOARDING_KEY, true);
+  }, [projectsLoaded, recentCount, openProjectInfo]);
 
   // Project changed: reset what the user was looking at. A new, empty project starts in Edit
   // mode so the element palette is right there.

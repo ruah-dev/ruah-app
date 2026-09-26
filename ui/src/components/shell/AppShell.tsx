@@ -16,6 +16,7 @@ import { Launcher, AllProjectsHost } from "@/components/launcher/Launcher";
 import { NewProjectDialog, OpenFolderDialog } from "@/components/projects/ProjectDialogs";
 import { TagsDialog } from "@/components/projects/TagsDialog";
 import { useFirstRunHints } from "@/components/projects/firstRun";
+import { startScreenMode } from "@/lib/start-screen";
 import { SystemDialogs } from "@/components/system/SystemDialogs";
 import { ProjectMenu } from "@/components/projects/ProjectMenu";
 import { CommandLauncher } from "@/components/projects/CommandLauncher";
@@ -369,12 +370,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     </>
   );
 
-  const launcherState = daemon.projectsSupported && daemon.project === null && !switching;
-  if (launcherState || (wb.launcherOpen && !switching)) {
+  // The start screen covers the shell only without an open project, or when asked for (§20:
+  // never on page load over an open project — lib/start-screen.ts).
+  const startScreen = startScreenMode({
+    projectsSupported: daemon.projectsSupported,
+    projectOpen: daemon.project !== null,
+    switching: !!switching,
+    launcherOpen: wb.launcherOpen,
+  });
+  if (startScreen !== "none") {
     return (
       <>
         {dialogs}
-        <Launcher overlay={!launcherState} />
+        <Launcher overlay={startScreen === "overlay"} />
       </>
     );
   }
