@@ -3,9 +3,16 @@
 // into HTML pages; a CSS change swaps the stylesheets in place, anything else
 // reloads the page. Paths never leave the folder (symlinks resolved), nothing
 // is cached, and no framing headers are sent so the preview pane can show it.
+// It is reachable by any web page the user has open, so:
+//   - the Host header must be a loopback name (DNS rebinding: a rebound
+//     attacker hostname would otherwise read the folder same-origin);
+//   - dotfiles and dot-folders (.env, .git, .ssh, …) are never served;
+//   - request paths reach the preview log (and so "Ask agent to fix") only for
+//     the page's own same-origin requests, and error answers carry no details.
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
+import { hostnameOf, isLoopbackHostName } from "../terminal/gateway.js";
 
 export const LIVE_PATH = "/__ruah/live";
 
@@ -64,7 +71,26 @@ function inside(child: string, root: string): boolean {
   return child === root || child.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 }
 
-/** The file for a URL path inside `root`, or undefined (404) / null (403). */
+/** A path segment that starts with "." (.env, .git, .ssh, .npmrc …); `.well-known` is public by design. */
+function hasHiddenSegment(rel: string): boolean {
+  return rel.split(/[/\\]+/).some((seg) => seg.startsWith(".") && seg !== "." && seg !== ".well-known");
+}
+
+/**
+ * May a request with this Host header be served? Loopback names only
+ * (localhost, *.localhost, 127.x, [::1]) plus the bind name; no Host at all
+ * (HTTP/1.0, non-browser clients) is allowed — browsers always send one.
+ */
+export function staticHostAllowed(hostHeader: string | undefined, bindHost = "127.0.0.1"): boolean {
+  if (hostHeader === undefined || hostHeader.length === 0) return true;
+  const name = hostnameOf(hostHeader);
+  if (name === undefined) return false;
+  if (isLoopbackHostName(name)) return true;
+  const bind = bindHost.replace(/^\[|\]$/g, "").toLowerCase();
+  return bind !== "0.0.0.0" && bind !== "::" && name.toLowerCase() === bind;
+}
+
+/** The file for a URL path inside `root`, or undefined (404) / null (403: outside the folder, or a dotfile). */
 export function resolveStaticPath(root: string, urlPath: string): string | null | undefined {
   let decoded: string;
   try {
@@ -73,20 +99,31 @@ export function resolveStaticPath(root: string, urlPath: string): string | null 
     return null;
   }
   if (decoded.includes("\0")) return null;
-  const target = path.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
+  const normalized = path.posix.normalize(`/${decoded}`);
+  if (hasHiddenSegment(normalized)) return null;
+  const target = path.resolve(root, `.${normalized}`);
   if (!inside(target, root)) return null;
+  if (hasHiddenSegment(path.relative(root, target))) return null;
   const tryFiles = [target, path.join(target, "index.html"), `${target}.html`];
   for (const file of tryFiles) {
     try {
       const stat = fs.statSync(file);
       if (!stat.isFile()) continue;
+      const realRoot = fs.realpathSync(root);
       const real = fs.realpathSync(file);
-      return inside(real, fs.realpathSync(root)) ? file : null;
+      // A symlink may point into a dot-folder of the project (config -> .git/config).
+      return inside(real, realRoot) && !hasHiddenSegment(path.relative(realRoot, real)) ? file : null;
     } catch {
       /* next */
     }
   }
   return undefined;
+}
+
+/** A request path for the log: raw (percent-encoded) path only, printable, short. */
+function loggablePath(url: string): string {
+  const raw = (url.split("?")[0] ?? "/").replace(/[^\x21-\x7e]/g, "");
+  return raw.length > 160 ? `${raw.slice(0, 160)}…` : raw;
 }
 
 export function startStaticServer(options: StaticServerOptions): Promise<StaticServer> {
@@ -98,6 +135,11 @@ export function startStaticServer(options: StaticServerOptions): Promise<StaticS
 
   const server = http.createServer((req, res) => {
     const url = req.url ?? "/";
+    if (!staticHostAllowed(req.headers.host, host)) {
+      res.writeHead(403, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+      res.end("host not allowed");
+      return;
+    }
     if (live && url.startsWith(LIVE_PATH)) {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
       res.write(": ruah live reload\n\n");
@@ -117,7 +159,9 @@ export function startStaticServer(options: StaticServerOptions): Promise<StaticS
       return;
     }
     if (file === undefined) {
-      log(`404 ${url.split("?")[0]}`);
+      // Any page can request any path here (an <img> needs no CORS), so only the preview's own
+      // requests may put a path in the log that "Ask agent to fix" hands to the agent.
+      if (req.headers["sec-fetch-site"] === "same-origin") log(`404 ${loggablePath(url)}`);
       res.writeHead(404, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(live ? injectLiveReload("<!doctype html><title>Not found</title><p>Not found</p>") : "Not found");
       return;
@@ -125,8 +169,8 @@ export function startStaticServer(options: StaticServerOptions): Promise<StaticS
     const type = MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream";
     fs.readFile(file, (err, data) => {
       if (err !== null) {
-        res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-        res.end(err.message);
+        res.writeHead(500, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+        res.end("could not read the file");
         return;
       }
       const body = live && type.startsWith("text/html") ? Buffer.from(injectLiveReload(data.toString("utf8"))) : data;

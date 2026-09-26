@@ -47,6 +47,30 @@ export const PreviewCandidateSchema = z.object({
 });
 export type PreviewCandidate = z.infer<typeof PreviewCandidateSchema>;
 
+/**
+ * A fixed preview URL: http(s) on this computer — localhost, *.localhost,
+ * 127.x.x.x or [::1], no credentials. It is framed by the viewer and checked by
+ * the daemon, and `.ruah/preview.json` comes with the repo: never another
+ * scheme (javascript:, file:, data:) or another machine.
+ */
+export function isLocalPreviewUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  if (url.username !== "" || url.password !== "") return false;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+export const PreviewUrlSchema = z
+  .string()
+  .max(2048)
+  .refine(isLocalPreviewUrl, { message: "must be an http(s) address on this computer (localhost, *.localhost, 127.0.0.1 or [::1])" });
+
 /** `<repo>/.ruah/preview.json` — committable, no secrets. */
 export const PreviewFileSchema = z.object({
   version: z.literal(1),
@@ -56,8 +80,8 @@ export const PreviewFileSchema = z.object({
   command: z.string().min(1).max(4096).optional(),
   /** Folder for `command` (repo-relative, default "."). */
   dir: z.string().min(1).max(1024).optional(),
-  /** Fixed preview URL (e.g. "http://localhost:3000/app"); default: the URL the server prints. */
-  url: z.string().url().max(2048).optional(),
+  /** Fixed preview URL (e.g. "http://localhost:3000/app"; http(s) on this computer only); default: the URL the server prints. */
+  url: PreviewUrlSchema.optional(),
 });
 export type PreviewFile = z.infer<typeof PreviewFileSchema>;
 
@@ -130,7 +154,7 @@ export const PreviewChoiceBodySchema = z.object({
   /** null clears the saved command (a command needs the terminal token). */
   command: z.string().min(1).max(4096).nullable().optional(),
   dir: z.string().min(1).max(1024).nullable().optional(),
-  url: z.string().url().max(2048).nullable().optional(),
+  url: PreviewUrlSchema.nullable().optional(),
 });
 export type PreviewChoiceBody = z.infer<typeof PreviewChoiceBodySchema>;
 

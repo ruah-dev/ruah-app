@@ -7,6 +7,8 @@
 // page may be framed. Status changes are pushed through `onStatus` (the daemon
 // broadcasts them as `preview` frames). A project's server is stopped once the
 // project has not been open for `idleMs`, and every server when the daemon exits.
+// A stop closes the server's terminal tab; a crash leaves it (its output) until
+// the next start or stop, so restarts never pile up exited tabs.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PreviewCandidate, PreviewDetection, PreviewStartBody, PreviewStatus } from "../contracts/preview.js";
@@ -50,6 +52,10 @@ export interface PreviewTiming {
   healthEveryMs: number;
   /** Ctrl+C → wait → hang up → wait. */
   stopGraceMs: number;
+  /** The wait after Ctrl+C for `docker compose up`: it stops the containers first (up to 10 s each). */
+  composeStopGraceMs: number;
+  /** A fixed URL (.ruah/preview.json) that has not answered this long gets a hint in the log. */
+  fixedUrlHintMs: number;
   /** Log-only status pushes at most this often. */
   broadcastMs: number;
 }
@@ -60,6 +66,8 @@ const DEFAULT_TIMING: PreviewTiming = {
   startCheckMs: 400,
   healthEveryMs: 5000,
   stopGraceMs: 3000,
+  composeStopGraceMs: 12_000,
+  fixedUrlHintMs: 30_000,
   broadcastMs: 250,
 };
 
@@ -89,6 +97,8 @@ interface Entry {
   project: PreviewProject;
   status: PreviewStatus;
   proc: RunningProcess | undefined;
+  /** A crashed process whose terminal tab still shows its output: closed at the next start / stop. */
+  leftover: RunningProcess | undefined;
   staticServer: StaticServer | undefined;
   logs: string[];
   splitter: LineSplitter;
@@ -340,6 +350,7 @@ export class PreviewManager {
         project,
         status: emptyStatus(project),
         proc: undefined,
+        leftover: undefined,
         staticServer: undefined,
         logs: [],
         splitter: new LineSplitter(),
@@ -448,10 +459,27 @@ export class PreviewManager {
     return previewEnv({ projectRoot: project.root, version: this.options.version });
   }
 
+  /** Closes the terminal tab a crashed server left behind. */
+  private closeLeftover(entry: Entry): void {
+    const leftover = entry.leftover;
+    entry.leftover = undefined;
+    leftover?.close();
+  }
+
+  /** Tells the user when the fixed URL never answers (the preview would otherwise just keep "starting"). */
+  private fixedUrlHint(entry: Entry, gen: number, url: string): void {
+    this.later(entry, this.timing.fixedUrlHintMs, () => {
+      if (gen !== entry.generation || entry.status.state !== "starting") return;
+      this.appendLine(entry, `ruah: no answer from ${url} (the url in .ruah/preview.json) — is that where the dev server listens?`);
+      this.emit(entry);
+    });
+  }
+
   private async launch(entry: Entry, candidate: PreviewCandidate, fixedUrl: string | undefined): Promise<PreviewStatus> {
     entry.generation += 1;
     const gen = entry.generation;
     this.clearTimers(entry);
+    this.closeLeftover(entry);
     entry.logs = [];
     entry.splitter = new LineSplitter();
     entry.stopRequested = false;
@@ -510,6 +538,7 @@ export class PreviewManager {
         entry.status = { ...entry.status, runner: "static", url: fixedUrl ?? server.url, port: server.port, pid: null };
         this.emit(entry);
         this.healthLoop(entry, gen);
+        if (fixedUrl !== undefined) this.fixedUrlHint(entry, gen, fixedUrl);
         return this.snapshot(entry);
       } catch (err) {
         return fail(`could not start the static server: ${err instanceof Error ? err.message : String(err)}`);
@@ -534,7 +563,7 @@ export class PreviewManager {
     let proc: RunningProcess;
     const events = {
       onData: (text: string) => this.onData(entry, gen, text),
-      onExit: (code: number | null, signal: number | null) => this.onExit(entry, gen, code, signal),
+      onExit: (code: number | null, signal: number | null, closed?: boolean) => this.onExit(entry, gen, code, signal, closed === true),
     };
     const spec = { command, cwd, env, title: `preview · ${candidate.title}`.slice(0, 80) };
     try {
@@ -557,6 +586,8 @@ export class PreviewManager {
     if (entry.status.state === "crashed" || entry.status.state === "stopped") {
       // It exited while we were still wiring it up (onExit already ran).
       proc.dispose();
+      if (entry.status.state === "crashed") entry.leftover = proc;
+      else proc.close();
       return this.snapshot(entry);
     }
     entry.proc = proc;
@@ -566,6 +597,7 @@ export class PreviewManager {
       entry.status = { ...entry.status, url: fixedUrl };
       entry.urlScore = Number.POSITIVE_INFINITY;
       this.healthLoop(entry, gen);
+      this.fixedUrlHint(entry, gen, fixedUrl);
     } else {
       this.later(entry, this.timing.probeAfterMs, () => this.probeLoop(entry, gen));
     }
@@ -632,16 +664,22 @@ export class PreviewManager {
     void check();
   }
 
-  private onExit(entry: Entry, gen: number, exitCode: number | null, signal: number | null): void {
+  /** `closed`: the user closed the preview's terminal tab — a stop, not a crash. */
+  private onExit(entry: Entry, gen: number, exitCode: number | null, signal: number | null, closed = false): void {
     if (gen !== entry.generation) return;
     for (const line of entry.splitter.flush()) this.appendLine(entry, line);
     this.clearTimers(entry);
-    entry.proc?.dispose();
+    const proc = entry.proc;
+    proc?.dispose();
     entry.proc = undefined;
-    if (entry.stopRequested || this.closing) {
-      entry.status = { ...entry.status, state: "stopped", healthy: false, exitCode, signal, pid: null };
+    if (entry.stopRequested || this.closing || closed) {
+      if (closed && !entry.stopRequested && !this.closing) this.appendLine(entry, "ruah: the preview's terminal tab was closed — the dev server stopped");
+      // Its tab is closed (or was, by the user): the output stays in `logs`.
+      entry.status = { ...entry.status, state: "stopped", healthy: false, exitCode, signal, pid: null, terminalId: null };
       delete entry.status.error;
+      proc?.close();
     } else {
+      entry.leftover = proc;
       const reason = crashReason(entry.logs);
       const how = exitCode !== null ? `exited with code ${exitCode}` : signal !== null ? `was stopped (signal ${signal})` : "exited";
       entry.status = { ...entry.status, state: "crashed", healthy: false, exitCode, signal, pid: null, error: reason !== undefined ? `The dev server ${how}: ${reason}` : `The dev server ${how}` };
@@ -665,6 +703,7 @@ export class PreviewManager {
   private async stopEntry(entry: Entry, graceMs = this.timing.stopGraceMs): Promise<void> {
     entry.stopRequested = true;
     this.clearTimers(entry);
+    this.closeLeftover(entry);
     const server = entry.staticServer;
     if (server !== undefined) {
       entry.staticServer = undefined;
@@ -673,7 +712,9 @@ export class PreviewManager {
     const proc = entry.proc;
     if (proc !== undefined) {
       proc.interrupt();
-      if (!(await this.waitExit(entry, graceMs))) {
+      // `docker compose up` stops its containers after Ctrl+C: hanging up earlier leaves them running.
+      const interruptGrace = entry.status.candidate?.kind === "compose" ? Math.max(graceMs, this.timing.composeStopGraceMs) : graceMs;
+      if (!(await this.waitExit(entry, interruptGrace))) {
         proc.kill();
         if (!(await this.waitExit(entry, graceMs))) {
           // Unresponsive: forget it (the PTY / process group was sent SIGKILL).
@@ -683,8 +724,8 @@ export class PreviewManager {
       }
     }
     entry.generation += 1; // late events of the old process are ignored
-    if (entry.status.state !== "stopped" || entry.status.error !== undefined) {
-      entry.status = { ...entry.status, state: "stopped", healthy: false, pid: null };
+    if (entry.status.state !== "stopped" || entry.status.error !== undefined || entry.status.terminalId !== null) {
+      entry.status = { ...entry.status, state: "stopped", healthy: false, pid: null, terminalId: null };
       delete entry.status.error;
       this.emit(entry);
     }

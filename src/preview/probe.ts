@@ -3,6 +3,7 @@
 import * as http from "node:http";
 import * as https from "node:https";
 import * as net from "node:net";
+import { isLoopbackHostName } from "../terminal/gateway.js";
 
 /** True when something accepts TCP connections on the port (IPv4 or IPv6 loopback). */
 export async function isPortOpen(port: number, timeoutMs = 400): Promise<boolean> {
@@ -86,7 +87,7 @@ export interface HttpCheck {
   error?: string;
 }
 
-/** GET the URL; any HTTP answer (even 404 / 500) means the server is up. Loopback https accepts self-signed certificates. */
+/** GET an http(s) URL; any HTTP answer (even 404 / 500) means the server is up. https on a loopback host (only) accepts self-signed certificates. */
 export function checkHttp(url: string, timeoutMs = 2000): Promise<HttpCheck> {
   return new Promise((resolve) => {
     let parsed: URL;
@@ -96,7 +97,12 @@ export function checkHttp(url: string, timeoutMs = 2000): Promise<HttpCheck> {
       resolve({ ok: false, framing: "unknown", error: "invalid URL" });
       return;
     }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      resolve({ ok: false, framing: "unknown", error: `not an http(s) URL (${parsed.protocol})` });
+      return;
+    }
     const secure = parsed.protocol === "https:";
+    const loopback = isLoopbackHostName(parsed.hostname.replace(/^\[|\]$/g, ""));
     const get = secure ? https.get : http.get;
     let settled = false;
     const finish = (result: HttpCheck): void => {
@@ -109,7 +115,7 @@ export function checkHttp(url: string, timeoutMs = 2000): Promise<HttpCheck> {
       {
         timeout: timeoutMs,
         headers: { accept: "text/html,*/*", "user-agent": "ruah-preview" },
-        ...(secure ? { rejectUnauthorized: false } : {}),
+        ...(secure && loopback ? { rejectUnauthorized: false } : {}),
       },
       (res) => {
         finish({ ok: true, status: res.statusCode ?? 0, framing: framingFromHeaders(res.headers) });

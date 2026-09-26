@@ -1,7 +1,10 @@
 // How a dev server process runs. Three runners behind one interface:
 //   - PtyRunner: a PTY from the daemon's terminal manager (§7), so the output
 //     is a "preview" tab in the terminal panel and the server sees a real TTY
-//     (colours, Vite's key shortcuts); stop = Ctrl+C, then hang up.
+//     (colours, Vite's key shortcuts); stop = Ctrl+C, then hang up. After a
+//     stop the tab is closed (`close`); a crashed server's tab stays (its
+//     output) until the next start or stop. The user closing the tab reports
+//     the exit as `closed` (a stop, not a crash).
 //   - ProcessRunner: a plain child process in its own process group (node-pty
 //     missing, or the CLI); stop = SIGINT to the group, then SIGTERM / SIGKILL.
 //   - the static server (static-server.ts) runs in-process; the manager
@@ -20,7 +23,8 @@ export interface RunSpec {
 
 export interface RunnerEvents {
   onData(text: string): void;
-  onExit(exitCode: number | null, signal: number | null): void;
+  /** `closed`: the user closed its terminal tab (the process was hung up) — a stop, not a crash. */
+  onExit(exitCode: number | null, signal: number | null, closed?: boolean): void;
 }
 
 export interface RunningProcess {
@@ -33,6 +37,8 @@ export interface RunningProcess {
   kill(): void;
   /** The runner's resources (listeners) — after the exit. */
   dispose(): void;
+  /** Removes what is left after the exit: the PTY's (exited) terminal tab. No-op for a plain process. */
+  close(): void;
 }
 
 export interface Runner {
@@ -63,11 +69,11 @@ export class PtyRunner implements Runner {
     const id = info.id;
     const terminals = this.terminals;
     let exited = false;
-    const exit = (code: number | null, signal: number | null): void => {
+    const exit = (code: number | null, signal: number | null, closed = false): void => {
       if (exited) return;
       exited = true;
       offChange();
-      events.onExit(code, signal);
+      events.onExit(code, signal, closed);
     };
     const sink: TerminalSink = (message) => {
       if (message.type === "output" && message.id === id) {
@@ -78,10 +84,10 @@ export class PtyRunner implements Runner {
     };
     const { replay } = terminals.attach(id, sink);
     if (replay.length > 0) events.onData(replay);
-    // Closing the tab in the terminal panel kills the process without an exit event to this sink.
+    // Closing the tab in the terminal panel hangs the process up without an exit event to this sink.
     const offChange = terminals.onChange((projectId) => {
       if (projectId !== info.projectId || exited) return;
-      if (!terminals.list(projectId).some((t) => t.id === id)) exit(null, 1);
+      if (!terminals.list(projectId).some((t) => t.id === id)) exit(null, 1, true);
     });
     return {
       kind: "pty",
@@ -104,6 +110,15 @@ export class PtyRunner implements Runner {
       dispose: () => {
         offChange();
         terminals.detach(id, sink);
+      },
+      close: () => {
+        offChange();
+        terminals.detach(id, sink);
+        try {
+          terminals.kill(id);
+        } catch {
+          /* the user closed it already */
+        }
       },
     };
   }
@@ -179,6 +194,7 @@ export class ProcessRunner implements Runner {
             setTimeout(() => send("SIGKILL"), 2000).unref();
           },
           dispose: () => {},
+          close: () => {},
         });
       });
     });
