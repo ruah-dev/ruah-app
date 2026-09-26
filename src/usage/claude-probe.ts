@@ -6,7 +6,7 @@
 // request to the model; we ask get_usage (skipping the transcript scan) and
 // abort. Cost: one CLI start (a few seconds of CPU), zero tokens.
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { ClaudePlanUsage } from "../acp/bridge.js";
+import { claudeAccountAuth, type ClaudePlanUsage } from "../acp/bridge.js";
 import { resolveClaudeSdkExecutablePath } from "../acp/claude-executable.js";
 import { makeClaudeEnvironment } from "../acp/claude-home.js";
 import { claudeCode } from "../acp/presets.js";
@@ -59,7 +59,10 @@ export async function probeClaudePlanUsage(cwd: string, queryImpl: typeof sdkQue
     },
   });
   try {
-    await withTimeout(q.initializationResult(), INIT_TIMEOUT_MS, "Claude initialization");
+    const init = await withTimeout(q.initializationResult(), INIT_TIMEOUT_MS, "Claude initialization");
+    // How the CLI signs in (not the email): a signed-out CLI answers get_usage
+    // exactly like an API key does, and only this tells them apart.
+    const account = claudeAccountAuth(init.account);
     const response = await withTimeout(
       q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
       USAGE_TIMEOUT_MS,
@@ -69,6 +72,7 @@ export async function probeClaudePlanUsage(cwd: string, queryImpl: typeof sdkQue
       rate_limits_available: response.rate_limits_available,
       rate_limits: response.rate_limits as Record<string, unknown> | null,
       ...(response.subscription_type !== undefined ? { subscription_type: response.subscription_type } : {}),
+      ...(account !== undefined ? { account } : {}),
     };
   } finally {
     if (!abort.signal.aborted) abort.abort();

@@ -10,7 +10,8 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentLimitsReportSchema, AgentLimitsSchema, type AgentLimits } from "../src/contracts/agent-limits.js";
-import type { ClaudePlanUsage } from "../src/acp/bridge.js";
+import { claudeAccountAuth, type ClaudePlanUsage } from "../src/acp/bridge.js";
+import { probeClaudePlanUsage } from "../src/usage/claude-probe.js";
 import type { Runner } from "../src/integrations/exec.js";
 import { ClaudeLimitsState } from "../src/usage/claude-limits.js";
 import { handleUsageRequest } from "../src/usage/http.js";
@@ -164,13 +165,52 @@ describe("Claude limits", () => {
     expect(state.snapshot()).toMatchObject({ subscriptionType: "max", extraUsage: { used_credits: 420 } });
   });
 
-  it("says why when there is nothing to show", () => {
-    const unsupported = new ClaudeLimitsState().recordUsageResponse({ rate_limits_available: false, rate_limits: null, subscription_type: null }, "t");
-    expect(valid(claudeLimitsFromReading({ snapshot: unsupported, error: undefined, canProbe: true }, NOW))).toMatchObject({
+  it("keeps one reset time when get_usage and a streamed event disagree by a second", () => {
+    const state = new ClaudeLimitsState();
+    state.recordUsageResponse({ rate_limits_available: true, rate_limits: { five_hour: { utilization: 80, resets_at: "2026-09-26T04:39:59.591Z" } } }, "t");
+    // The event's reset is whole epoch seconds: 04:40:00.
+    state.recordRateLimit({ rateLimitType: "five_hour", utilization: 0.85, resetsAt: Date.parse("2026-09-26T04:40:00.000Z") / 1000 }, "t2");
+    expect(state.snapshot()?.windows[0]).toMatchObject({ usedPercent: 85, resetsAt: "2026-09-26T04:39:59.591Z" });
+    // A genuinely new window still moves it.
+    state.recordRateLimit({ rateLimitType: "five_hour", utilization: 0.01, resetsAt: Date.parse("2026-09-26T09:40:00.000Z") / 1000 }, "t3");
+    expect(state.snapshot()?.windows[0]?.resetsAt).toBe("2026-09-26T09:40:00.000Z");
+  });
+
+  it("tells a signed-out CLI from an API key or a cloud provider (all report no windows)", () => {
+    const noWindows = (account?: ClaudePlanUsage["account"]) =>
+      valid(
+        claudeLimitsFromReading(
+          {
+            snapshot: new ClaudeLimitsState().recordUsageResponse({ rate_limits_available: false, rate_limits: null, subscription_type: null, ...(account ? { account } : {}) }, "t"),
+            error: undefined,
+            canProbe: true,
+          },
+          NOW,
+        ),
+      );
+    // What a CLI with no credentials at all answers (a scratch HOME): not "API key".
+    expect(noWindows({ tokenSource: "none", apiProvider: "firstParty" })).toMatchObject({
+      status: "not_logged_in",
+      loggedIn: false,
+      plan: null,
+      action: expect.stringContaining("/login"),
+    });
+    expect(noWindows({ tokenSource: "none", apiKeySource: "ANTHROPIC_API_KEY", apiProvider: "firstParty" })).toMatchObject({
       status: "unsupported",
+      loggedIn: true,
       plan: "API key",
       reason: expect.stringContaining("API key"),
     });
+    expect(noWindows({ apiProvider: "bedrock" })).toMatchObject({ status: "unsupported", loggedIn: null, plan: null, reason: expect.stringContaining("Amazon Bedrock") });
+    expect(noWindows({ tokenSource: "claude.ai", apiProvider: "firstParty" })).toMatchObject({ status: "unsupported", loggedIn: true, plan: null });
+    // Without the account info nothing is claimed about the login.
+    const unknown = noWindows();
+    expect(unknown).toMatchObject({ status: "unsupported", loggedIn: null, plan: null, action: expect.stringContaining("/login") });
+    expect(unknown.reason).toContain("not signed in");
+    expect(claudeLimitsFromReading({ snapshot: undefined, error: undefined, canProbe: false, installed: false }, NOW)).toMatchObject({ status: "not_installed", installed: false });
+  });
+
+  it("says why when there is nothing to show", () => {
     expect(claudeLimitsFromReading({ snapshot: undefined, error: "Not logged in · Please run /login", canProbe: true }, NOW)).toMatchObject({
       status: "not_logged_in",
       loggedIn: false,
@@ -186,6 +226,22 @@ describe("Claude limits", () => {
     });
     const snapshot = new ClaudeLimitsState().recordUsageResponse(response, "2026-09-25T11:00:00.000Z");
     expect(claudeLimitsFromReading({ snapshot, error: "network down", canProbe: true }, NOW)).toMatchObject({ status: "ok", stale: true });
+  });
+
+  it("the probe keeps how the CLI signs in, never the email", async () => {
+    let closed = false;
+    const fakeQuery = (() => ({
+      initializationResult: async () => ({ account: { email: "dev@example.com", organization: "Acme", tokenSource: "none", apiProvider: "firstParty" } }),
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({ rate_limits_available: false, rate_limits: null, subscription_type: null }),
+      close: () => {
+        closed = true;
+      },
+    })) as unknown as Parameters<typeof probeClaudePlanUsage>[1];
+    const usage = await probeClaudePlanUsage(tempDir("ruah-probe-cwd-"), fakeQuery);
+    expect(usage).toEqual({ rate_limits_available: false, rate_limits: null, subscription_type: null, account: { tokenSource: "none", apiProvider: "firstParty" } });
+    expect(JSON.stringify(usage)).not.toContain("dev@example.com");
+    expect(closed).toBe(true);
+    expect(claudeAccountAuth({ email: "x@y.z" })).toBeUndefined();
   });
 
   it("probes once for the CLI and reads through the daemon's service", async () => {
@@ -213,6 +269,22 @@ describe("Claude limits", () => {
     const report = AgentLimitsReportSchema.parse(await usage.agentLimits({ agentId: "claude" }));
     expect(report.agents).toHaveLength(1);
     expect(report.agents[0]).toMatchObject({ agentId: "claude", status: "ok", plan: "Max" });
+
+    // installed comes from the daemon's agent catalog, and nothing is probed without Claude.
+    let catalogProbes = 0;
+    const without = new UsageLimitsService({
+      agents: () => [{ id: "cursor", name: "Cursor Agent", installed: true }],
+      currentAgentId: () => "cursor",
+      currentBridge: () => undefined,
+      probeClaude: async () => {
+        catalogProbes++;
+        return response;
+      },
+      now: () => NOW,
+    });
+    const none = await new UsageService(new UsageLog(tempDir("ruah-limits-log-")), without, { now: () => NOW }).agentLimits({ agentId: "claude" });
+    expect(none.agents[0]).toMatchObject({ status: "not_installed", installed: false });
+    expect(catalogProbes).toBe(0);
   });
 });
 
