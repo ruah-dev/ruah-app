@@ -151,6 +151,19 @@ describe("detection", () => {
     expect(d.packageManager).toBe("pnpm");
   });
 
+  // Regression: a package.json with only scripts (`node server.js`) showed "Dependencies look
+  // missing — npm install first", even under an unrelated crash.
+  test("no install hint for a package with nothing to install", () => {
+    const root = tempDir();
+    write(root, "package.json", pkg({ dev: "node server.js" }));
+    const bare = detectPreview(root, { pathEnv: "" }).candidates[0]!;
+    expect(bare.command).toBe("npm run dev");
+    expect(bare.setup).toBeUndefined();
+    const withDeps = tempDir();
+    write(withDeps, "package.json", pkg({ dev: "node server.js" }, { dependencies: { express: "^5" } }));
+    expect(detectPreview(withDeps, { pathEnv: "" }).candidates[0]!.setup).toBe("npm install");
+  });
+
   test("frameworks from scripts and dependencies; build watchers are not servers", () => {
     expect(frameworkOf("next dev")?.framework).toBe("next");
     expect(frameworkOf("next start")?.hmr).toBe(false);
