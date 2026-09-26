@@ -2796,3 +2796,16 @@ not_initialized` (`not_git`: no `.git` folder or file up the tree; checked witho
 Workflows are empty there, mutations answer 409 with the fix, and the ruah integration card
 says so. Any other ruah failure is one readable line (no colours, source excerpt, stack
 frames or Node banner).
+
+### 20.8 Smaller behaviour changes from the sweep
+
+- §9 Kubernetes: kubectl with no context at all (no kubeconfig) is `not_connected` ("no
+  contexts in your kubeconfig …", hint `kubectl config use-context <context>`) instead of an
+  `error` from asking localhost:8080; it is no longer listed as "could not read".
+- §18 preview logs: kept lines lose spinner frames (`⠙`) as well as colours; a line left
+  empty is dropped. The crash reason prefers the thrown error's own message and never picks a
+  stack frame, the error object's dump, Node's banner or npm's footer / notices.
+- §12.1: writing `.ruah/system-scan.json` also ensures `.ruah/.gitignore` (§20.3).
+- Viewer: a page opened with `?daemon=` keeps using that daemon after in-app navigation;
+  a palette click adds the element right of the level's elements (drag-and-drop is unchanged);
+  the Replay button is hidden while `ruah watch` is not installed.
