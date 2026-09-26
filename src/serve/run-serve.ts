@@ -30,6 +30,7 @@ import { SystemService } from "./system-http.js";
 import { ActivityLog } from "../activity/log.js";
 import { ActivityService, DEFAULT_MAX_BACKGROUND_TURNS } from "./activity.js";
 import { computeResume } from "../resume/resume.js";
+import { ExtensionsService } from "../extensions/service.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -99,9 +100,15 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   let hubRef: SessionHub | undefined;
   // Agents edit the open project's map through the ruah_* tools (CONTRACTS §1.7); RUAH_MAP_TOOLS=0 turns them off.
   const mapOps = process.env.RUAH_MAP_TOOLS === "0" ? undefined : new MapOpsService(() => hubRef, { version });
+  // Agent extensions (CONTRACTS §17), injected when sessions start; RUAH_EXTENSIONS=0 turns them off.
+  const extensions = process.env.RUAH_EXTENSIONS === "0" ? undefined : new ExtensionsService({ home: ruahHome() });
   const catalog = new AgentCatalog(
     { root: initialRoot, clientVersion: version, onStderr: debug },
-    { mock: flags.mock, ...(mapOps !== undefined ? { mapTools: (agentId: string, root: string) => mapOps.toolsFor({ agentId, root }) } : {}) },
+    {
+      mock: flags.mock,
+      ...(mapOps !== undefined ? { mapTools: (agentId: string, root: string) => mapOps.toolsFor({ agentId, root }) } : {}),
+      ...(extensions !== undefined ? { extensions: (agentId: string, root: string) => extensions.providerFor(agentId, root) } : {}),
+    },
   );
   const home = ruahHome();
   const settings = new SettingsStore(home, { onError: (line) => process.stderr.write(`${line}\n`) });
@@ -271,6 +278,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     // Multi-repo systems management (§12): the library in src/system/* + the open system's store and the current agent.
     system: new SystemService({ host: hub, projects, version, home, chats }),
     integrations,
+    ...(extensions !== undefined ? { extensions } : {}),
   });
 
   mapOps?.setDaemonUrl(running.url);

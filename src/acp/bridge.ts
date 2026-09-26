@@ -1,6 +1,6 @@
 // src/acp/bridge.ts — shared by WP-A (implements) and WP-B (consumes). Verbatim
 // from the WP-0 block in PROMPTS.md.
-import type { ContentBlock } from "@agentclientprotocol/sdk";
+import type { ContentBlock, McpServer } from "@agentclientprotocol/sdk";
 import type { AgentState, ModeState, ModelState, PermissionOption, StopReason, StreamEvent, ToolCallView } from "../contracts/ws.js";
 
 export interface AcpPreset { command: string; args: string[]; env?: Record<string, string> }
@@ -14,6 +14,31 @@ export interface BridgeOptions {
   additionalDirectories?: string[];
   /** Ruah map tools (ruah_* MCP server, CONTRACTS §1.7) for this agent's sessions. */
   mapTools?: AgentMapTools;
+  /** Extensions enabled for this agent (CONTRACTS §17), resolved when a process / session starts. */
+  extensions?: AgentExtensions;
+}
+
+/**
+ * What Ruah's extensions add to one agent session (CONTRACTS §17.5).
+ * Resolved fresh at every process start (ACP) and session open, so enabling
+ * or disabling an extension applies to the next session without a restart.
+ */
+export interface SessionExtensions {
+  /**
+   * Claude Agent SDK: extra mcpServers (the map tools' "ruah" server wins), local plugin folders
+   * (`pluginsWithoutMcp`: of those, the ones loaded with skipMcpDiscovery because Ruah starts their
+   * servers itself), text appended to the system prompt.
+   */
+  sdk?: { mcpServers: Record<string, unknown>; plugins: string[]; pluginsWithoutMcp?: string[]; append?: string };
+  /** ACP: extra mcpServers for session/new and session/load; `preset` replaces the launch (plugin folders, env) when the process starts. */
+  acp?: { mcpServers: McpServer[]; preset?: AcpPreset };
+  /** Things that were skipped, for the debug log. */
+  notes: string[];
+}
+
+export interface AgentExtensions {
+  /** Never rejects (a failure resolves to no extensions + a note). ACP bridges pass their base preset. */
+  resolve(preset?: AcpPreset): Promise<SessionExtensions>;
 }
 
 /** A stdio MCP server for ACP session/new `mcpServers` (ACP McpServerStdio). */

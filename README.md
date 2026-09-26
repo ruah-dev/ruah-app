@@ -17,6 +17,10 @@ desktop app is a thin viewer.
   Supabase / Kubernetes / Railway / Fly.io / Netlify / Hetzner (what runs
   where and whether it is healthy right now, live while you look), Jira / GitHub (issues on elements), ruah
   orchestration (tasks and workflows).
+- **Extensions:** skills, MCP servers, Kiro powers, plugins and rules — add once (folder, git
+  URL or a curated catalog; Claude Design is listed as built into Claude Code), turn on per agent
+  after seeing what it runs; Ruah injects them when a session starts, secrets stay in the
+  Keychain (`ruah app ext`, the Extensions page in the sidebar).
 - **Export:** draw.io with every technical spec; usage and plan limits.
 - **Context switching:** agents keep working when you switch projects; an
   activity feed, unread badges and desktop notifications tell you when one
@@ -54,6 +58,10 @@ ruah app cloud scope add|remove|reset <resource-id>…      # edit .ruah/cloud.j
 ruah app cloud scope accounts add|remove <provider> [<account>] [--whole]
 ruah app design check         # WCAG contrast of every colour token, every palette × theme (docs/design)
 ruah app design tokens --palette dusk --theme light [--json]
+ruah app ext featured         # curated skills / MCP servers (GitHub, Playwright, …; Claude Design is built into Claude Code)
+ruah app ext add featured:github --agent claude   # add (runs nothing) and enable for an agent
+ruah app ext add ./my-skill --project             # a skill / plugin / Kiro power / rule folder, or a git URL
+ruah app ext list | discover  # what Ruah injects per agent · what each agent has configured itself
 ruah app help
 ```
 

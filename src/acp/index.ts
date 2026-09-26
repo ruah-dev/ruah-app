@@ -5,13 +5,13 @@
 // what the SessionHub uses to switch agents at runtime (agent.set).
 import { systemRootsFor } from "../system/roots.js";
 import type { AgentChoiceState, ErrorCode } from "../contracts/ws.js";
-import type { AcpBridge, AgentMapTools, BridgeOptions } from "./bridge.js";
+import type { AcpBridge, AgentExtensions, AgentMapTools, BridgeOptions } from "./bridge.js";
 import { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
 import { ClaudeSdkBridge } from "./claude-sdk-bridge.js";
 import { AcpProcessBridge } from "./acp-bridge.js";
 import { AGENTS, agentDefinition, claudeCode, type AgentId } from "./presets.js";
 
-export type { AcpBridge, BridgeOptions, BridgeEvent, TurnHandle } from "./bridge.js";
+export type { AcpBridge, AgentExtensions, BridgeOptions, BridgeEvent, SessionExtensions, TurnHandle } from "./bridge.js";
 export { BusyError } from "./bridge.js";
 export { MockBridge, type MockBridgeOptions } from "./mock-bridge.js";
 export type { AgentId } from "./presets.js";
@@ -45,6 +45,8 @@ export class AgentCatalog {
       env?: NodeJS.ProcessEnv;
       /** The ruah_* map tools for a new bridge (CONTRACTS §1.7); absent = agents get no map tools. */
       mapTools?: (agentId: string, root: string) => AgentMapTools;
+      /** Extensions enabled for an agent (CONTRACTS §17); absent = none are injected. */
+      extensions?: (agentId: string, root: string) => AgentExtensions | undefined;
     } = {},
   ) {
     this.refresh();
@@ -110,7 +112,12 @@ export class AgentCatalog {
     const agent = agentDefinition(agentId);
     if (agent === undefined) throw new Error(`unknown agent: ${agentId}`);
     const mapTools = this.options.mapTools?.(agent.id, withDirs.root);
-    const base: BaseOptions = mapTools !== undefined ? { ...withDirs, mapTools } : withDirs;
+    const extensions = this.options.extensions?.(agent.id, withDirs.root);
+    const base: BaseOptions = {
+      ...withDirs,
+      ...(mapTools !== undefined ? { mapTools } : {}),
+      ...(extensions !== undefined ? { extensions } : {}),
+    };
     if (agent.id === "claude") {
       const env = claudeCode().env;
       return new ClaudeSdkBridge({ ...base, preset: { command: "none", args: [], ...(env !== undefined ? { env } : {}) } });

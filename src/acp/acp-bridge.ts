@@ -30,6 +30,7 @@ import {
   type ClientConnection,
   type ContentBlock,
   type InitializeResponse,
+  type McpServer,
   type NewSessionResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
@@ -38,7 +39,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import path from "node:path";
 import type { AgentState, ModeState, ModelState, PermissionOption, StopReason } from "../contracts/ws.js";
-import type { AcpBridge, BridgeEvent, BridgeOptions, RateLimitSample, StdioMcpServerSpec, TurnHandle, TurnUsage } from "./bridge.js";
+import type { AcpBridge, AcpPreset, BridgeEvent, BridgeOptions, RateLimitSample, SessionExtensions, StdioMcpServerSpec, TurnHandle, TurnUsage } from "./bridge.js";
 import { BusyError } from "./bridge.js";
 import {
   applyModeChange,
@@ -90,6 +91,14 @@ interface Runtime {
   session: ActiveSession | undefined;
   ready: boolean;     // start() completed; exits are reported by onExit from here on
   retiring: boolean;  // we are killing it on purpose (stop / cancel timeout / failed start)
+  /** §17: extensions resolved for this process's launch, used by its first session (later sessions re-resolve). */
+  extensions?: SessionExtensions | undefined;
+  /** §17: the launch (command, args, env) this process started with; a later session whose extensions change it restarts the process. */
+  launchKey: string;
+}
+
+function launchKeyOf(preset: AcpPreset): string {
+  return JSON.stringify([preset.command, preset.args, Object.entries(preset.env ?? {}).sort(([a], [b]) => a.localeCompare(b))]);
 }
 
 function errorMessage(err: unknown): string {
@@ -327,8 +336,9 @@ export class AcpProcessBridge implements AcpBridge {
       await this.start();
       return;
     }
+    if (await this.relaunchIfLaunchChanged(rt)) return;
     const oldSessionId = this.sessionId;
-    rt.session.dispose();
+    rt.session?.dispose();
     rt.session = undefined;
     this.sessionId = undefined;
     this.modes = undefined;
@@ -371,8 +381,9 @@ export class AcpProcessBridge implements AcpBridge {
       if (this.state !== "stopped") await this.start();
       return;
     }
+    if (await this.relaunchIfLaunchChanged(rt)) return;
     const oldSessionId = this.sessionId;
-    rt.session.dispose();
+    rt.session?.dispose();
     rt.session = undefined;
     this.sessionId = undefined;
     this.modes = undefined;
@@ -423,9 +434,50 @@ export class AcpProcessBridge implements AcpBridge {
 
   // ---------- lifecycle ----------
 
-  private async startOnce(): Promise<void> {
+  /**
+   * §17: plugin folders (Cursor / Grok skills and plugins) and env
+   * (OPENCODE_CONFIG_CONTENT) are fixed when the process starts; only MCP
+   * servers go in each session/new. When a later session's extensions change
+   * the launch, the process is restarted (the new session starts in it).
+   * true when it restarted.
+   */
+  private async relaunchIfLaunchChanged(rt: Runtime): Promise<boolean> {
+    if (this.options.extensions === undefined) return false;
+    const next = await this.resolveExtensions();
+    if (this.runtime !== rt) return false;
+    const preset = next?.acp?.preset ?? this.options.preset;
+    if (launchKeyOf(preset) === rt.launchKey) {
+      rt.extensions = next; // this session's servers (extensionServers takes them instead of resolving again)
+      return false;
+    }
+    this.options.onStderr?.("ruah extensions: the enabled plugins or skills changed the agent's launch; restarting it\n");
+    rt.retiring = true;
+    for (const pending of [...this.permissions.values()]) pending.settle({ cancelled: true });
+    rt.session?.dispose();
+    rt.session = undefined;
+    rt.conn.close();
+    this.runtime = undefined;
+    this.sessionId = undefined;
+    this.modes = undefined;
+    this.modeSelector = undefined;
+    this.models = undefined;
+    this.modelSelector = undefined;
+    await rt.proc.kill(this.killGraceMs);
+    const starting = this.startOnce(next).finally(() => {
+      if (this.starting === starting) this.starting = undefined;
+    });
+    this.starting = starting;
+    await starting;
+    return true;
+  }
+
+  private async startOnce(resolved?: SessionExtensions): Promise<void> {
     this.emitStatus("starting");
-    const proc = new AgentProcess(this.options.preset, this.root, this.options.onStderr);
+    // §17: enabled extensions can change the launch (plugin folders, env); resolved before the spawn.
+    const extensions = resolved ?? (this.options.extensions !== undefined ? await this.resolveExtensions() : undefined);
+    if (extensions !== undefined && this.stopRequested) throw new Error("agent stopped during start");
+    const preset: AcpPreset = extensions?.acp?.preset ?? this.options.preset;
+    const proc = new AgentProcess(preset, this.root, this.options.onStderr);
     const rt: Runtime = {
       proc,
       conn: client({ name: "ruah" })
@@ -435,6 +487,8 @@ export class AcpProcessBridge implements AcpBridge {
       session: undefined,
       ready: false,
       retiring: false,
+      extensions,
+      launchKey: launchKeyOf(preset),
     };
     this.runtime = rt;
     void proc.exited.then((exit) => this.onExit(rt, exit));
@@ -499,6 +553,7 @@ export class AcpProcessBridge implements AcpBridge {
       const builder = rt.conn.agent.buildSession(this.root);
       const mcp = await this.mapToolsServer();
       if (mcp !== undefined) builder.withMcpServer(mcp);
+      for (const server of await this.extensionServers(rt)) builder.withMcpServer(server);
       session = await this.raceExit(rt, builder.start());
     }
     rt.session = session;
@@ -518,10 +573,49 @@ export class AcpProcessBridge implements AcpBridge {
    */
   private async loadSession(rt: Runtime, sessionId: string): Promise<ActiveSession> {
     const mcp = await this.mapToolsServer();
-    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: mcp !== undefined ? [mcp] : [] }));
+    const extra = await this.extensionServers(rt);
+    const response = await this.raceExit(rt, rt.conn.agent.request("session/load", { sessionId, cwd: this.root, mcpServers: [...(mcp !== undefined ? [mcp] : []), ...extra] }));
     const agent = rt.conn.agent as unknown as { attachSession?: (response: NewSessionResponse) => ActiveSession };
     if (typeof agent.attachSession !== "function") throw new Error("the ACP SDK cannot attach a loaded session");
     return agent.attachSession.call(rt.conn.agent, { ...(response ?? {}), sessionId } as NewSessionResponse);
+  }
+
+  /** §17: the enabled extensions (never rejects; failures are logged and mean "none"). */
+  private async resolveExtensions(): Promise<SessionExtensions | undefined> {
+    const provider = this.options.extensions;
+    if (provider === undefined) return undefined;
+    try {
+      const resolved = await provider.resolve(this.options.preset);
+      for (const note of resolved.notes) this.options.onStderr?.(`ruah extensions: ${note}\n`);
+      return resolved;
+    } catch (err) {
+      this.options.onStderr?.(`ruah: extensions unavailable (${errorMessage(err)})\n`);
+      return undefined;
+    }
+  }
+
+  /**
+   * §17: extension MCP servers for session/new and session/load. The first
+   * session of a process reuses what its launch resolved; later ones (reset,
+   * load) re-resolve. Remote (http / sse) servers go only to agents that
+   * advertise mcpCapabilities for them.
+   */
+  private async extensionServers(rt: Runtime): Promise<McpServer[]> {
+    if (this.options.extensions === undefined) return [];
+    let resolved = rt.extensions;
+    rt.extensions = undefined;
+    resolved ??= await this.resolveExtensions();
+    const caps = rt.init?.agentCapabilities?.mcpCapabilities;
+    const servers: McpServer[] = [];
+    for (const server of resolved?.acp?.mcpServers ?? []) {
+      const transport = "type" in server ? server.type : "stdio";
+      if ((transport === "http" && caps?.http !== true) || (transport === "sse" && caps?.sse !== true)) {
+        this.options.onStderr?.(`ruah extensions: ${server.name}: this agent does not support ${transport} MCP servers; skipped\n`);
+        continue;
+      }
+      servers.push(server);
+    }
+    return servers;
   }
 
   /** The ruah_* map tools as a stdio MCP server for session/new and session/load (CONTRACTS §1.7). */
