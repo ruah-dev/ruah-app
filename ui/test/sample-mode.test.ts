@@ -5,6 +5,9 @@
 // real open project — while the sample was on screen.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+// sonner touches the DOM when it loads; only its calls matter here.
+vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), loading: vi.fn(), message: vi.fn() }) }));
+
 class FakeSocket {
   static instances: FakeSocket[] = [];
   static readonly OPEN = 1;
@@ -85,6 +88,13 @@ describe("the bundled sample never reaches a daemon", () => {
     expect(fetched).toEqual([]);
     // Nothing that saves either (projects API).
     await expect(daemon.setScanOptions({ infra: false })).rejects.toThrow(/exploring the sample/);
+    // System dialogs say why (not "No daemon connected"); the draw.io export stays local too.
+    const system = await import("../src/lib/system");
+    await expect(system.systemApi.renameRepo(null, "web", "shop")).rejects.toThrow(/exploring the sample/);
+    const { toast } = await import("sonner");
+    const { downloadDrawio } = await import("../src/lib/export");
+    await downloadDrawio("http://127.0.0.1:4177");
+    expect(toast.error).toHaveBeenCalledWith(daemon.SAMPLE_MODE_MESSAGE);
     expect(fetched).toEqual([]);
 
     // The daemon comes up in the launcher state (no project): the sample map goes, it is not the daemon's.

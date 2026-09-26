@@ -3,6 +3,7 @@
 // of being saved as a .drawio file, then handed to the browser as a download
 // (in the desktop app Electron's will-download shows the save dialog).
 import { toast } from "sonner";
+import { daemonSnapshot, SAMPLE_MODE_MESSAGE } from "./daemon";
 
 function fileNameFrom(disposition: string | null, fallback: string): string {
   const match = disposition !== null ? /filename="([^"]+)"/.exec(disposition) : null;
@@ -10,6 +11,11 @@ function fileNameFrom(disposition: string | null, fallback: string): string {
 }
 
 export async function downloadDrawio(httpOrigin: string | null): Promise<void> {
+  // §20.5: with the bundled sample on screen the daemon's open project is not what the user sees.
+  if (daemonSnapshot().source === "sample") {
+    toast.error(SAMPLE_MODE_MESSAGE);
+    return;
+  }
   if (httpOrigin === null) {
     toast.error("No daemon connected");
     return;

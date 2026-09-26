@@ -3,6 +3,7 @@
 // can open them without the workbench knowing about systems. Self-contained on purpose:
 // the dialogs mount once (SystemDialogs) and move with whatever layout hosts them.
 import { useSyncExternalStore } from "react";
+import { daemonSnapshot, SAMPLE_MODE_MESSAGE } from "./daemon";
 import type { ArchEdge } from "./contracts";
 
 // ---- types (mirror src/system/status.ts, github.ts, suggestions-store.ts) -----------------
@@ -96,7 +97,7 @@ export interface SuggestionsView {
 // ---- HTTP -----------------------------------------------------------------------------------
 
 async function call<T>(origin: string | null, path: string, body?: unknown): Promise<T> {
-  if (!origin) throw new Error("No daemon connected");
+  if (!origin) throw new Error(daemonSnapshot().source === "sample" ? SAMPLE_MODE_MESSAGE : "No daemon connected");
   const r = await fetch(`${origin}${path}`, {
     ...(body !== undefined
       ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
