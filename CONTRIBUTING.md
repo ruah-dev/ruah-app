@@ -54,6 +54,11 @@ Both must pass before you open a pull request. `pnpm test` also runs
 `test/repo-hygiene.test.ts`: no home folders or secret-shaped strings in
 tracked files, no file over 1 MiB, pinned and least-privilege workflows.
 
+Maintainers who also work on client projects keep a private list of names that
+must never land in this repository (clients, projects, cloud accounts and
+resources), one per line, in a file **outside** the repo, and point the test at
+it: `RUAH_PRIVATE_TERMS_FILE=~/.config/ruah/private-terms.txt pnpm test`.
+
 ## Where things live
 
 | Path | What |

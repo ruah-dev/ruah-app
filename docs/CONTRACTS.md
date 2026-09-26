@@ -2767,4 +2767,8 @@ Over `git ls-files` (skipped outside a git checkout; lockfiles excluded from tex
 - the §20.3 workflow rules; `package.json` `repository`, `homepage`, `bugs`, `license`,
   `packageManager` and `private: true`; the `.gitignore` entries for build output,
   secrets and `/.ruah/`; README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG,
-  THIRD_PARTY_NOTICES, the pull request template and `dependabot.yml` exist.
+  THIRD_PARTY_NOTICES, the pull request template and `dependabot.yml` exist;
+- when `RUAH_PRIVATE_TERMS_FILE` names a readable file (kept outside the repo: one term
+  per line, `#` comments, terms shorter than 3 characters ignored), no tracked text file
+  contains any term, case-insensitively; failures name the file and the term's line
+  number, never the term. Without the variable that check is skipped.

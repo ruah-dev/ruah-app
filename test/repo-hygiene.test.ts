@@ -92,6 +92,46 @@ describe.skipIf(!inGit)("tracked files", () => {
   });
 });
 
+/**
+ * Terms from a file kept OUTSIDE the repository (client and project names, account and
+ * resource names, a username): one per line, `#` comments, matched case-insensitively.
+ * A maintainer sets RUAH_PRIVATE_TERMS_FILE locally; the list itself is never committed.
+ */
+function readPrivateTerms(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.replace(/#.*/, "").trim())
+    .filter((l) => l.length >= 3);
+}
+
+function privateTermHits(entries: ReadonlyArray<{ file: string; text: string }>, terms: readonly string[]): string[] {
+  const lowered = terms.map((t) => t.toLowerCase());
+  const hits: string[] = [];
+  for (const { file, text } of entries) {
+    const hay = text.toLowerCase();
+    lowered.forEach((term, i) => {
+      if (hay.includes(term)) hits.push(`${file}: private term #${i + 1}`);
+    });
+  }
+  return hits;
+}
+
+const TERMS_FILE = process.env.RUAH_PRIVATE_TERMS_FILE;
+
+describe("private terms (RUAH_PRIVATE_TERMS_FILE)", () => {
+  test("terms are read one per line, comments and short lines ignored, matched case-insensitively", () => {
+    const terms = readPrivateTerms("# clients\nAcme-Secret-Client\n\nzz\nother-name  # trailing note\n");
+    expect(terms).toEqual(["Acme-Secret-Client", "other-name"]);
+    const hits = privateTermHits([{ file: "a.md", text: "see acme-secret-client docs" }, { file: "b.ts", text: "nothing" }], terms);
+    expect(hits).toEqual(["a.md: private term #1"]);
+  });
+
+  test.skipIf(!inGit || TERMS_FILE === undefined || !existsSync(TERMS_FILE ?? ""))("no tracked file names a private term", () => {
+    const terms = readPrivateTerms(readFileSync(TERMS_FILE!, "utf8"));
+    expect(privateTermHits(textFiles(), terms)).toEqual([]);
+  });
+});
+
 describe("GitHub workflows", () => {
   const dir = join(ROOT, ".github", "workflows");
   const workflows = existsSync(dir) ? readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)) : [];
