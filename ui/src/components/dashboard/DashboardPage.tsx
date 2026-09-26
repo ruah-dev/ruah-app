@@ -1,8 +1,11 @@
-// Dashboard: the repo at a glance, built only from what the daemon already serves
-// (architecture.json over the socket, agent.status, this session's turns, /api/usage).
+// The Ruah mark / "/" page: Home (every project, sorted by what needs you — ./HomePage.tsx, §20.5)
+// and, one click away (`/?view=project`), the open project's dashboard: the repo at a glance,
+// built only from what the daemon already serves (architecture.json over the socket,
+// agent.status, this session's turns, /api/usage).
 import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Download, RefreshCw } from "lucide-react";
+import { Link, useRouter, useRouterState } from "@tanstack/react-router";
+import { ArrowRight, Download, FolderPlus, Home, LayoutDashboard, RefreshCw } from "lucide-react";
+import { HomePage } from "./HomePage";
 import { downloadDrawio } from "@/lib/export";
 import { kindFor } from "@/lib/architecture";
 import { useWorkspace } from "@/lib/workspace";
@@ -171,7 +174,65 @@ function RescanButton() {
   );
 }
 
+/** Home | the open project's dashboard — a segmented control in the page header. */
+function ViewToggle({ view }: { view: "home" | "project" }) {
+  const router = useRouter();
+  const { daemon } = useWorkspace();
+  const item = (id: "home" | "project", label: ReactNode, icon: ReactNode, disabled = false) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={view === id}
+      disabled={disabled}
+      onClick={() => void router.navigate({ to: "/", search: id === "project" ? { view: "project" } : {} })}
+      className={cn(
+        "flex h-7 max-w-52 items-center gap-1.5 rounded-md px-2.5 text-ui-sm transition-colors disabled:opacity-40",
+        view === id ? "bg-popover text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
+  );
+  return (
+    <div role="tablist" aria-label="Home or this project" className="flex items-center rounded-lg bg-surface-2 p-0.5">
+      {item("home", "All projects", <Home className="size-3.5" />)}
+      {item("project", daemon.project?.name ?? "This project", <LayoutDashboard className="size-3.5" />, !daemon.project)}
+    </div>
+  );
+}
+
 export function DashboardPage() {
+  const { daemon } = useWorkspace();
+  const actions = useProjectActions();
+  const view = useRouterState({ select: (s) => String((s.location.search as Record<string, unknown>)["view"] ?? "") });
+  // Home needs a daemon with projects; without one (the sample) this is the project's dashboard.
+  const homeAvailable = daemon.source === "daemon" && daemon.projectsSupported;
+  if (!homeAvailable || (view === "project" && daemon.project)) return <ProjectDashboard toggle={homeAvailable ? <ViewToggle view="project" /> : null} />;
+  return (
+    <HomePage
+      header={
+        <PageHeader title="Home">
+          <ViewToggle view="home" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={actions.newProject}
+                className="flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <FolderPlus className="size-3.5" /> New project
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>From a template, with git (⇧⌘N)</TooltipContent>
+          </Tooltip>
+        </PageHeader>
+      }
+    />
+  );
+}
+
+function ProjectDashboard({ toggle }: { toggle: ReactNode }) {
   const { daemon, architecture, app } = useWorkspace();
   const wb = useWorkbench();
   const [usage] = useUsageSummary("7d");
@@ -223,6 +284,7 @@ export function DashboardPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Dashboard">
+        {toggle}
         <RescanButton />
         <PageMenu>
           <DropdownMenuItem disabled={daemon.source !== "daemon"} onSelect={() => void downloadDrawio(daemon.httpOrigin)}>

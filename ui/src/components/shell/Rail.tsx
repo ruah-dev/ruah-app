@@ -1,7 +1,7 @@
 // The left edge of the shell, in two layouts (./layout.ts, ⌘\):
 //
 // - Standard (default): the icon rail, 72 px with a name under each icon (56 px without, Settings
-//   → Appearance → Rail labels). The Ruah mark (Dashboard); Map, Agent, Cloud, Tasks; the
+//   → Appearance → Rail labels). The Ruah mark (Home); Map, Agent, Cloud, Tasks; the
 //   projects as avatar tiles (./RailProjects.tsx); Usage, Integrations, (Extensions), Settings;
 //   the layout control.
 // - Advanced: a 240 px labelled sidebar with the same pages as rows, a Projects section and the
@@ -202,7 +202,7 @@ function DashboardMark({ home }: { home: boolean }) {
       <TooltipTrigger asChild>
         <Link
           to="/"
-          aria-label="Dashboard"
+          aria-label="Home"
           aria-current={home ? "page" : undefined}
           className={cn(
             "mb-1.5 grid size-10 shrink-0 place-items-center rounded-[10px] outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring",
@@ -213,7 +213,7 @@ function DashboardMark({ home }: { home: boolean }) {
         </Link>
       </TooltipTrigger>
       <TooltipContent side="right">
-        Dashboard <span className="ms-1 text-muted-foreground">G D</span>
+        Home: every project <span className="ms-1 text-muted-foreground">G H</span>
       </TooltipContent>
     </Tooltip>
   );
@@ -252,7 +252,7 @@ export function Rail() {
               <TooltipTrigger asChild>
                 <Link
                   to="/"
-                  aria-label="Dashboard"
+                  aria-label="Home"
                   aria-current={home ? "page" : undefined}
                   className={cn("flex h-8 items-center rounded-lg px-1.5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring", home && "bg-accent")}
                 >
@@ -260,7 +260,7 @@ export function Rail() {
                 </Link>
               </TooltipTrigger>
               <TooltipContent side="right">
-                Dashboard <span className="ms-1 text-muted-foreground">G D</span>
+                Home: every project <span className="ms-1 text-muted-foreground">G H</span>
               </TooltipContent>
             </Tooltip>
           </div>

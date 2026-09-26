@@ -6,7 +6,7 @@
 // at the bottom. The Advanced layout (⌘\) shows the same entries as labelled rows. Integrations
 // stays its own page (not merged into Settings): it is a full
 // page of providers and accounts, and Settings links to it. There is no "Infra" entry: IaC shows
-// on the Map (its infra layer) and there is no separate page or filter for it. Dashboard is the
+// on the Map (its infra layer) and there is no separate page or filter for it. Home is the
 // Ruah mark at the top of the rail; Chats (the full list) is reached from the agent panel's chat
 // switcher, the launcher and G C.
 import { useMemo } from "react";
@@ -15,7 +15,7 @@ import {
   BarChart3,
   Puzzle,
   Cloud,
-  LayoutDashboard,
+  Home,
   ListChecks,
   Map as MapIcon,
   MessageSquare,
@@ -50,7 +50,8 @@ export interface NavItemDef {
 }
 
 export const NAV: readonly NavItemDef[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, key: "d", rail: null },
+  // §20.5: Home = every project sorted by what needs you; the open project's dashboard is one click away.
+  { to: "/", label: "Home", icon: Home, key: "h", rail: null },
   { to: "/map", label: "Map", icon: MapIcon, key: "m", rail: "top" },
   { to: "/agent", label: "Agent", icon: MessageSquare, key: "a", rail: "top" },
   { to: "/cloud", label: "Cloud", icon: Cloud, key: "l", rail: "top" },
