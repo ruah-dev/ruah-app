@@ -59,8 +59,8 @@ export const NAV: readonly NavItemDef[] = [
   { to: "/chats", label: "Chats", icon: MessagesSquare, key: "c", rail: null },
   { to: "/usage", label: "Usage", icon: BarChart3, key: "u", rail: "bottom" },
   { to: "/integrations", label: "Integrations", icon: Plug, key: "i", rail: "bottom" },
-  // Skills, MCP servers, Kiro powers, plugins: appears once routes/extensions.tsx exists.
-  { to: "/extensions", label: "Extensions", icon: Puzzle, key: "e", rail: "bottom", optional: true },
+  // Skills, MCP servers, Kiro powers, plugins (routes/extensions.tsx).
+  { to: "/extensions", label: "Extensions", icon: Puzzle, key: "e", rail: "bottom" },
   { to: "/settings", label: "Settings", icon: Settings, key: "s", rail: "bottom" },
 ];
 

@@ -2038,8 +2038,9 @@ folder; open such a folder with `ruah app open usage` or `ruah app ./usage`).
   on-demand, "Recorded locally", "Ruah estimate" (plus the viewer's model-price overrides for
   turns without a reported cost; "(1/2 turns)" when the cost covers only some turns), reason +
   action, source · checked · refresh · Dashboard ↗.
-- `AgentLimitHint agentId` — "62% left · resets 4h" for the tightest window (tie → shorter
-  window), for the top-bar agent pill; renders nothing without a percentage.
+- The top-bar agent pill's hint — "62% left · resets 4h" for the tightest window (tie →
+  shorter window), nothing without a percentage — is fed by `usage/register.tsx` through
+  `shell/slots.ts` `setAgentLimitHint` (the standalone `AgentLimitHint` component is gone).
 - `AgentLimitToasts` — one toast per agent, window, level and reset (the reset rounded to the
   minute, so two sources a second apart are one window; remembered in `localStorage`
   `ruah.usage.limit-announced.v1`); the panel mounts it, the shell may instead. It fetches
