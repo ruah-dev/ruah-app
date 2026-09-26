@@ -30,7 +30,8 @@ Usage:
     add [<system>] <path|<id>=<path>|gh:owner/name> [--id <id>] [--into <dir>]
                                             add a repo (gh: clones it with \`gh repo clone\`)
     remove <id>                             take a repo out (its files are untouched)
-    rename <id> <new-id>                    rename a repo id (map, suggestions, links, chats)
+    rename <id> <new-id> [--offline]        rename a repo id (map, suggestions, links, chats);
+                                            refused while a running daemon has a turn in it
     status [<system>] [--json]              branch, ahead/behind, dirty, last scan, nodes
     signals [<system>] [--json]             deterministic cross-repo edges (zero tokens)
     scan [<system>] [--out <path>] [--dry-run]   write <system>/architecture.json
@@ -60,6 +61,9 @@ Usage:
                                    plan limits per coding agent: Claude windows, Cursor included
                                    usage + on-demand, Kiro credits, Grok / OpenCode local stats,
                                    and Ruah's own estimate (no daemon needed)
+  ruah app usage settings [--read-app-logins on|off] [--json]
+                                   whether Ruah may read the Cursor app's saved login to show
+                                   Cursor's plan usage (off by default; shared with the app)
   ruah app ext <cmd> ...            skills, MCP servers, Kiro powers, plugins and rules for the
                                    agents (no daemon needed; \`ruah app ext help\` for all):
     list | featured | discover [--json]     installed (global + project) · catalog · agents' own config
