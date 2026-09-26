@@ -22,6 +22,6 @@ workflows:
 - Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
 [/ruah context]
 
-The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
+The user selected the node above on an architecture diagram of the repository at /Users/dev/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 
 there might be a bug in how invoices are validated

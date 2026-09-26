@@ -245,7 +245,7 @@ function hostHits(r: CloudResource, ctx: UnitContext): Hit[] {
   return [];
 }
 
-/** Name words that say something: "liquid-money-store" → liquid, money, store. */
+/** Name words that say something: "harbor-pay-store" → harbor, pay, store. */
 function words(name: string): string[] {
   return name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !GENERIC_NAMES.has(w) && !/^\d+$/.test(w));
 }
@@ -256,7 +256,7 @@ function nameHits(r: CloudResource, ctx: UnitContext): Hit[] {
   for (const n of ctx.names) {
     if (rn === n || (n.length >= 5 && rn.includes(n)) || (rn.length >= 5 && n.includes(rn))) return [{ confidence: "weak", reason: `name looks like ${n}` }];
   }
-  // "liquid-money-sibiu-postgres" ~ "liquid-money-store": two or more meaningful words in common.
+  // "harbor-pay-north-postgres" ~ "harbor-pay-store": two or more meaningful words in common.
   const rw = new Set(words(r.name));
   for (const raw of ctx.rawNames) {
     const shared = words(raw).filter((w) => rw.has(w));

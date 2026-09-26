@@ -5,7 +5,7 @@ import { ArchIndex } from "../src/context/graph.js";
 import { buildContextPack, buildPromptBlocks } from "../src/context/pack.js";
 import type { Architecture } from "../src/contracts/architecture.js";
 
-const ROOT = "/Users/petre/code/acme-platform";
+const ROOT = "/Users/dev/code/acme-platform";
 const arch = JSON.parse(
   readFileSync(join(import.meta.dirname, "golden", "architecture.json"), "utf8"),
 ) as Architecture;
@@ -172,7 +172,7 @@ test("buildPromptBlocks: one resource_link per file, file:// URIs, text block la
   expect(blocks[4]).toEqual({ type: "text", text: GOLDEN });
   expect(blocks[0]).toEqual({
     type: "resource_link",
-    uri: "file:///Users/petre/code/acme-platform/services/invoices-api/src/app.ts",
+    uri: "file:///Users/dev/code/acme-platform/services/invoices-api/src/app.ts",
     name: "services/invoices-api/src/app.ts",
   });
 });

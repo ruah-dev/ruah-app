@@ -430,7 +430,7 @@ export type ErrorCode =
 {"type":"hello","protocol":1,"client":"architects-canvas/0.1.0"}
 ```
 ```json
-{"type":"architecture","reason":"initial","revision":3,"root":"/Users/petre/code/acme-platform","path":"/Users/petre/code/acme-platform/architecture.json","architecture":{"version":1,"name":"acme-platform","nodes":[],"edges":[],"workflows":[]}}
+{"type":"architecture","reason":"initial","revision":3,"root":"/Users/dev/code/acme-platform","path":"/Users/dev/code/acme-platform/architecture.json","architecture":{"version":1,"name":"acme-platform","nodes":[],"edges":[],"workflows":[]}}
 {"type":"agent.status","state":"idle","agent":{"name":"@agentclientprotocol/claude-agent-acp","version":"0.78.0"},"sessionId":"b446fcb7-2900-4ab8-aa24-a2f428210c32","modes":{"currentModeId":"default","available":[{"id":"default","name":"Manual","description":"Always ask before making changes"},{"id":"acceptEdits","name":"Accept edits","description":"Automatically accept all file edits"},{"id":"plan","name":"Plan","description":"Create a plan before making changes"},{"id":"auto","name":"Auto","description":"Claude handles permission decisions"},{"id":"bypassPermissions","name":"Bypass permissions","description":"Accepts all permissions"}]}}
 ```
 ```json
@@ -614,7 +614,7 @@ workflows:
 - Create invoice: step 3 of 7 (api-gateway -> THIS -> Validate)
 [/ruah context]
 
-The user selected the node above on an architecture diagram of the repository at /Users/petre/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
+The user selected the node above on an architecture diagram of the repository at /Users/dev/code/acme-platform. Treat that node as the scope of the request. Open the listed path and files first; search elsewhere only if they do not answer the question. If you change files outside this node, say so explicitly.
 
 there might be a bug in how invoices are validated
 ```
@@ -1780,7 +1780,7 @@ Each match gives a reason (shown on the row) and a confidence:
 | proof | infrastructure as code (§11): an exact `infra.hints` match (meaningful name) on a node whose Terraform type belongs to the resource's provider (`aws_*` → aws, `digitalocean_*` → digitalocean, …), or a Kubernetes `namespace/name` hint; a Kubernetes namespace the repo's manifests declare (not `default`) |
 | proof | tags / labels on digitalocean, aws, gcp, azure, hetzner, kubernetes: `ruah-project` / `ruah:project` = a project name or its Ruah project id; `project` / `Project` / `app.kubernetes.io/part-of` = a project name (case and separators ignored; DigitalOcean string tags `project:<name>` too); `ruah:node` tags and manual element links (§6) |
 | likely | host names the repo mentions — `.env.example` / `.env.sample` / `.env.template` / `*.example` env files, compose files, `netlify.toml`, `vercel.json` aliases, `CNAME`, `package.json` `homepage`, the App Platform spec, wrangler routes, IaC `settings.hosts` — equal to a resource's URL host / hosts, a CDN origin or bucket endpoint (`<bucket>.<region>[.cdn].digitaloceanspaces.com`, `<bucket>.s3[.<region>].amazonaws.com`, `<ref>.supabase.co`), or under a DNS zone resource; a generic workload name in the repo's manifests / IaC; a normalized IaC name; `supabase/config.toml` `project_id` equal to a project's name; a SAM stack prefix; a bare DigitalOcean tag equal to a project name |
-| weak | the name looks like the project's — equal or containing after dropping case and separators (`liquid-money-store` ~ `liquidmoneystore`), or sharing two meaningful words — against the repo folder, root `package.json` name, git `origin` repo name, the names its link files deploy under, the scope file `name` (and a system's name / repo ids); generic words (`api`, `web`, `admin`, …) never count; a name match to a plain code element (§6 linking) is weak too |
+| weak | the name looks like the project's — equal or containing after dropping case and separators (`harbor-pay-store` ~ `harborpaystore`), or sharing two meaningful words — against the repo folder, root `package.json` name, git `origin` repo name, the names its link files deploy under, the scope file `name` (and a system's name / repo ids); generic words (`api`, `web`, `admin`, …) never count; a name match to a plain code element (§6 linking) is weak too |
 
 - **In scope = manual include + whole account + proof + likely − exclude.** Weak matches are
   **suggestions** ("Looks related"), never in scope on their own.

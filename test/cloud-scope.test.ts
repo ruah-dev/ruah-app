@@ -242,15 +242,15 @@ describe("evaluateScope", () => {
 
   test("bucket and CDN endpoints the repo mentions → likely (Spaces, S3, Supabase refs)", () => {
     const repo = tempDir();
-    write(repo, ".env.example", "CDN=https://shop-assets.fra1.cdn.digitaloceanspaces.com\nBUCKET=https://acme-uploads.s3.eu-west-1.amazonaws.com\nSUPABASE_URL=https://abcdefghijklmnop.supabase.co\n");
+    write(repo, ".env.example", "CDN=https://acme-static.fra1.cdn.digitaloceanspaces.com\nBUCKET=https://acme-uploads.s3.eu-west-1.amazonaws.com\nSUPABASE_URL=https://abcdefghijklmnop.supabase.co\n");
     const s = scopeOf([unit(repo)], [
-      res("do:space:fra1:shop-assets", "digitalocean", { name: "shop-assets", type: "storage", service: "spaces", region: "fra1" }),
-      res("do:cdn:1", "digitalocean", { name: "shop-assets.fra1.digitaloceanspaces.com", type: "cdn", service: "cdn" }),
+      res("do:space:fra1:acme-static", "digitalocean", { name: "acme-static", type: "storage", service: "spaces", region: "fra1" }),
+      res("do:cdn:1", "digitalocean", { name: "acme-static.fra1.digitaloceanspaces.com", type: "cdn", service: "cdn" }),
       res("arn:aws:s3:::acme-uploads", "aws", { name: "acme-uploads", type: "storage", service: "s3", region: "eu-west-1" }),
       res("supabase:project:abcdefghijklmnop", "supabase", { name: "db", type: "database" }),
       res("do:space:fra1:other", "digitalocean", { name: "other", type: "storage", service: "spaces", region: "fra1" }),
     ]);
-    expect(s.get("do:space:fra1:shop-assets")).toMatchObject({ in: true, confidence: "likely" });
+    expect(s.get("do:space:fra1:acme-static")).toMatchObject({ in: true, confidence: "likely" });
     expect(s.get("do:cdn:1")).toMatchObject({ in: true, confidence: "likely" });
     expect(s.get("arn:aws:s3:::acme-uploads")).toMatchObject({ in: true, confidence: "likely" });
     expect(s.get("supabase:project:abcdefghijklmnop")).toMatchObject({ in: true, confidence: "likely" });
@@ -258,21 +258,21 @@ describe("evaluateScope", () => {
   });
 
   test("weak name similarity is a suggestion (not in scope); generic names never suggest", () => {
-    const repo = join(tempDir(), "liquidmoneystore");
+    const repo = join(tempDir(), "harborpaystore");
     mkdirSync(repo);
     const s = scopeOf([unit(repo)], [
-      res("vercel:project:a", "vercel", { name: "liquid-money-store" }),
-      res("vercel:project:b", "vercel", { name: "liquidmoneystore-admin" }),
+      res("vercel:project:a", "vercel", { name: "harbor-pay-store" }),
+      res("vercel:project:b", "vercel", { name: "harborpaystore-admin" }),
       res("vercel:project:c", "vercel", { name: "web" }),
-      res("vercel:project:d", "vercel", { name: "solid-money" }),
+      res("vercel:project:d", "vercel", { name: "solid-pay" }),
     ]);
-    const words = scopeOf([unit(repo, { config: { name: "liquid-money-store", accounts: [], include: [], exclude: [] } })], [
-      res("do:dbaas:x", "digitalocean", { name: "liquid-money-sibiu-postgres" }),
-      res("do:dbaas:y", "digitalocean", { name: "solid-money-postgres" }),
+    const words = scopeOf([unit(repo, { config: { name: "harbor-pay-store", accounts: [], include: [], exclude: [] } })], [
+      res("do:dbaas:x", "digitalocean", { name: "harbor-pay-north-postgres" }),
+      res("do:dbaas:y", "digitalocean", { name: "solid-pay-postgres" }),
     ]);
-    expect(words.get("do:dbaas:x")).toEqual({ in: false, confidence: "weak", reasons: ["name shares liquid, money with liquid-money-store"] });
+    expect(words.get("do:dbaas:x")).toEqual({ in: false, confidence: "weak", reasons: ["name shares harbor, pay with harbor-pay-store"] });
     expect(words.get("do:dbaas:y")?.confidence).toBeUndefined();
-    expect(s.get("vercel:project:a")).toEqual({ in: false, confidence: "weak", reasons: ["name looks like liquidmoneystore"] });
+    expect(s.get("vercel:project:a")).toEqual({ in: false, confidence: "weak", reasons: ["name looks like harborpaystore"] });
     expect(s.get("vercel:project:b")).toMatchObject({ in: false, confidence: "weak" });
     expect(s.get("vercel:project:c")).toEqual({ in: false, reasons: [] });
     expect(s.get("vercel:project:d")).toEqual({ in: false, reasons: [] });
