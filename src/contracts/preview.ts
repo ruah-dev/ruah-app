@@ -93,8 +93,10 @@ export const PreviewDetectionSchema = z.object({
   packageManager: z.enum(["pnpm", "yarn", "npm", "bun"]).optional(),
   /** What a start without arguments runs: the saved choice, else the single obvious candidate; null = ask the user. */
   selected: z.string().nullable(),
-  /** The saved choice (`.ruah/preview.json`), null when there is none. */
+  /** The saved choice, null when there is none: this computer's (§20.3), else the repo's `.ruah/preview.json`. */
   choice: PreviewFileSchema.nullable(),
+  /** Where `choice` comes from: "local" = `$RUAH_HOME/projects/<id>/preview.json`, "repo" = `.ruah/preview.json`. */
+  choiceFrom: z.enum(["local", "repo"]).optional(),
   /** `.ruah/preview.json` exists but is invalid (it is never overwritten then). */
   configError: z.string().optional(),
   /** The folder walk stopped at its bounds. */
@@ -143,8 +145,10 @@ export const PreviewStartBodySchema = z.object({
   /** Your own command (needs the terminal token, §18.4). */
   command: z.string().min(1).max(4096).optional(),
   dir: z.string().min(1).max(1024).optional(),
-  /** Also save it as the project's choice (`.ruah/preview.json`). */
+  /** Also remember it as the project's choice on this computer (`$RUAH_HOME/projects/<id>/preview.json`). */
   remember: z.boolean().optional(),
+  /** Save it in the repo instead (`.ruah/preview.json`, committable; replaces this computer's choice). */
+  saveToRepo: z.boolean().optional(),
 });
 export type PreviewStartBody = z.infer<typeof PreviewStartBodySchema>;
 
@@ -155,6 +159,8 @@ export const PreviewChoiceBodySchema = z.object({
   command: z.string().min(1).max(4096).nullable().optional(),
   dir: z.string().min(1).max(1024).nullable().optional(),
   url: PreviewUrlSchema.nullable().optional(),
+  /** Apply the patch to the repo's `.ruah/preview.json` (committable) instead of this computer's choice. */
+  saveToRepo: z.boolean().optional(),
 });
 export type PreviewChoiceBody = z.infer<typeof PreviewChoiceBodySchema>;
 

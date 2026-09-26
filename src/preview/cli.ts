@@ -2,12 +2,15 @@
 // (CONTRACTS §18.7): prints how the repo's dev server runs (--detect, --json)
 // or runs it in the foreground with the same detection, URL discovery and
 // health check the app uses, printing the preview URL once it answers.
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import type { PreviewCandidate, PreviewDetection, PreviewStatus } from "../contracts/preview.js";
 import { terminalEnv } from "../terminal/env.js";
-import { writePreviewChoice } from "./config.js";
+import { projectIdFor } from "../projects/fs-util.js";
+import { ruahHome } from "../usage/log.js";
+import { localPreviewFileOf, writeLocalPreviewChoice, writePreviewChoice } from "./config.js";
 import { detectPreview } from "./detect.js";
 import { PreviewError, PreviewManager } from "./manager.js";
 import { ProcessRunner } from "./runner.js";
@@ -23,7 +26,8 @@ Options:
   --pick <id>        run this candidate (ids from --detect, e.g. apps/web#dev)
   --command <cmd>    run your own command instead ({port} = a free port)
   --dir <folder>     folder for --command (repo-relative, default .)
-  --remember         save --pick / --command in <repo>/.ruah/preview.json (committable)
+  --remember         remember --pick / --command for this repo on this computer ($RUAH_HOME)
+  --save-to-repo     save it in <repo>/.ruah/preview.json instead (committable, shared)
   --open             open the URL in the default browser once it answers
 
 Exit codes: 0 stopped cleanly (Ctrl+C) · 1 nothing found / crashed · 2 bad arguments or a pick is needed.
@@ -39,7 +43,7 @@ export function formatDetection(d: PreviewDetection): string {
   lines.push(`Preview for ${d.root}${meta.length > 0 ? `  (${meta})` : ""}`);
   if (d.configError !== undefined) lines.push(`  ! ${d.configError}`);
   if (d.candidates.length === 0) {
-    lines.push("  No dev server found. Run your own: ruah app preview --command \"<cmd>\" [--dir <folder>] --remember");
+    lines.push("  No dev server found. Run your own: ruah app preview --command \"<cmd>\" [--dir <folder>] [--remember]");
     return `${lines.join("\n")}\n`;
   }
   const idW = Math.min(28, Math.max(...d.candidates.map((c) => c.id.length)));
@@ -52,10 +56,10 @@ export function formatDetection(d: PreviewDetection): string {
     lines.push(`  ${mark} ${c.id.padEnd(idW)}  ${c.title.padEnd(titleW)}  ${c.command}  [${c.dir}${port}, ${hmrLabel(c)}]${missing}${setup}`);
   }
   if (d.selected !== null) {
-    const saved = d.choice !== null ? " (saved in .ruah/preview.json)" : "";
+    const saved = d.choice === null ? "" : d.choiceFrom === "local" ? " (remembered on this computer)" : " (saved in .ruah/preview.json)";
     lines.push(`Runs: ${d.selected}${saved}`);
   } else {
-    lines.push("Several apps: pick one with --pick <id> (add --remember to save it)");
+    lines.push("Several apps: pick one with --pick <id> (add --remember to keep the pick)");
   }
   return `${lines.join("\n")}\n`;
 }
@@ -82,6 +86,7 @@ export async function runPreview(argv: readonly string[], version: string): Prom
         command: { type: "string" },
         dir: { type: "string" },
         remember: { type: "boolean", default: false },
+        "save-to-repo": { type: "boolean", default: false },
         open: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
@@ -106,9 +111,18 @@ export async function runPreview(argv: readonly string[], version: string): Prom
     return 2;
   }
   const root = path.resolve(positionals[0] ?? ".");
+  // The same project id (and so the same remembered choice) as the app's.
+  let real = root;
+  try {
+    real = fs.realpathSync(root);
+  } catch {
+    real = root;
+  }
+  const project = { id: projectIdFor(real), name: path.basename(root), root };
+  const localChoice = localPreviewFileOf(ruahHome(), project.id);
   let detection: PreviewDetection;
   try {
-    detection = detectPreview(root);
+    detection = detectPreview(root, { localChoiceFile: localChoice });
   } catch (err) {
     process.stderr.write(`ruah app preview: ${(err as Error).message}\n`);
     return 1;
@@ -125,16 +139,22 @@ export async function runPreview(argv: readonly string[], version: string): Prom
     process.stderr.write(`ruah app preview: unknown candidate "${values.pick}"\n${formatDetection(detection)}`);
     return 2;
   }
-  if (values.remember === true && (values.pick !== undefined || values.command !== undefined)) {
+  const toRepo = values["save-to-repo"] === true;
+  if ((values.remember === true || toRepo) && (values.pick !== undefined || values.command !== undefined)) {
+    const patch = values.pick !== undefined ? { candidate: values.pick } : { command: values.command ?? null, dir: values.dir ?? null };
     try {
-      writePreviewChoice(root, values.pick !== undefined ? { candidate: values.pick } : { command: values.command ?? null, dir: values.dir ?? null });
+      if (toRepo) {
+        writePreviewChoice(root, patch);
+        writeLocalPreviewChoice(localChoice, { candidate: null, command: null, url: null });
+      } else {
+        writeLocalPreviewChoice(localChoice, patch);
+      }
     } catch (err) {
       process.stderr.write(`ruah app preview: ${(err as Error).message}\n`);
       return 1;
     }
   }
 
-  const project = { id: "cli", name: path.basename(root), root };
   let announced = false;
   let finished: (status: PreviewStatus) => void = () => {};
   const done = new Promise<PreviewStatus>((resolve) => (finished = resolve));

@@ -38,6 +38,8 @@ export interface PreviewDetection {
   packageManager?: "pnpm" | "yarn" | "npm" | "bun";
   selected: string | null;
   choice: PreviewFile | null;
+  /** §20.3: "local" = remembered on this computer, "repo" = the committable `.ruah/preview.json`. */
+  choiceFrom?: "local" | "repo";
   configError?: string;
   truncated: boolean;
 }

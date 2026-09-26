@@ -196,12 +196,15 @@ export const previewActions = {
     }
   },
 
-  /** A candidate id, your own command (+ folder), or nothing: the saved / obvious choice. */
-  start(projectId: string, body: { candidate?: string; command?: string; dir?: string; remember?: boolean } = {}) {
+  /**
+   * A candidate id, your own command (+ folder), or nothing: the saved / obvious choice.
+   * `remember` keeps it on this computer; `saveToRepo` writes `.ruah/preview.json` (§20.3).
+   */
+  start(projectId: string, body: { candidate?: string; command?: string; dir?: string; remember?: boolean; saveToRepo?: boolean } = {}) {
     return run(projectId, "start", async () => {
       const status = await api<PreviewStatus>("/api/preview/start", { method: "POST", body, withToken: body.command !== undefined });
       noteStatus(status);
-      if (body.remember) void previewActions.refresh(projectId);
+      if (body.remember || body.saveToRepo) void previewActions.refresh(projectId);
       return status;
     });
   },
@@ -222,8 +225,8 @@ export const previewActions = {
     });
   },
 
-  /** Saves the project's choice (.ruah/preview.json); null clears a field. */
-  choose(projectId: string, patch: { candidate?: string | null; command?: string | null; dir?: string | null; url?: string | null }) {
+  /** Saves the project's choice on this computer, or with `saveToRepo` in `.ruah/preview.json`; null clears a field. */
+  choose(projectId: string, patch: { candidate?: string | null; command?: string | null; dir?: string | null; url?: string | null; saveToRepo?: boolean }) {
     return run(projectId, "choose", async () => {
       const detection = await api<PreviewDetection>("/api/preview/choice", { method: "POST", body: patch, withToken: typeof patch.command === "string" });
       set({ detections: { ...state.detections, [projectId]: detection } });

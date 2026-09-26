@@ -70,7 +70,7 @@ Usage:
     add <folder|git-url|featured:<id>> [--project] [--agent <id>]...   (nothing runs on add)
     enable | disable <id> [--agent <id>]... [--project]
     remove <id> [--project]                 also undoes "install into" writes
-  ruah app preview [<repo>] [--detect] [--json] [--pick <id>] [--command <cmd>] [--remember] [--open]
+  ruah app preview [<repo>] [--detect] [--json] [--pick <id>] [--command <cmd>] [--remember | --save-to-repo] [--open]
                                    live preview: how the repo's dev server runs (--detect, --json) or
                                    run it in the foreground and print its URL (no daemon needed;
                                    \`ruah app preview --help\` for options)

@@ -110,7 +110,7 @@ export function PickPanel({
         <div className="flex flex-col gap-1">
           <p className="eyebrow">Live preview</p>
           <p className="heading text-title text-foreground">What should the preview run?</p>
-          <p className="text-ui-sm text-muted-foreground">This project has several apps. Your pick is remembered for the project.</p>
+          <p className="text-ui-sm text-muted-foreground">This project has several apps. Your pick is remembered on this computer; nothing is written into the repo.</p>
         </div>
         {groups.map((g) => (
           <section key={`${g.dir}-${g.label}`} className="flex flex-col gap-1.5">
