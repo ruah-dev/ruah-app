@@ -5,11 +5,19 @@
 import { useEffect } from "react";
 import { Hash, MessageSquare, Pin, Play, SquareMousePointer, X } from "lucide-react";
 import { sendPrompt } from "@/lib/daemon";
+import { setupStatus, type SetupStatus } from "@/lib/new-project";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { Phantom } from "@/components/brand/Phantom";
 import { useProjectActions } from "@/components/projects/useProjectActions";
-import { hasFirstPrompt, setFirstRunHints, takeFirstPrompt, useFirstRunHints, usePendingPromptProject } from "@/components/projects/firstRun";
+import {
+  hasFirstPrompt,
+  markFirstPromptSent,
+  setFirstRunHints,
+  takeFirstPrompt,
+  useFirstRunHints,
+  usePendingPromptProject,
+} from "@/components/projects/firstRun";
 import { setTagsDialog } from "@/components/projects/TagsDialog";
 
 /** Sends the wizard's first prompt once the new project is open (its agent may still be starting). */
@@ -27,6 +35,7 @@ export function useFirstPromptSender() {
     const text = takeFirstPrompt(projectId!);
     if (!text) return;
     sendPrompt(null, text);
+    markFirstPromptSent(projectId!);
     wb.setPanelView("agent");
     wb.setShowPanel(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,6 +51,24 @@ function Tip({ icon: Icon, children }: { icon: typeof Play; children: React.Reac
   );
 }
 
+/** The agent line of the card — never "setting it up" unless the prompt went out and the agent is fine. */
+function setupLine(status: SetupStatus, kbd: (k: string) => React.ReactNode): React.ReactNode {
+  switch (status) {
+    case "waiting":
+      return <>Waiting for the agent to start — the setup prompt goes out as soon as it's ready ({kbd("⌘I")}).</>;
+    case "blocked":
+      return <>The agent can't start, so the setup prompt hasn't been sent — open the panel ({kbd("⌘I")}) to see why; it's sent once the agent is ready.</>;
+    case "lost":
+      return <>The setup prompt wasn't sent (the page reloaded first) — ask the agent in the panel ({kbd("⌘I")}).</>;
+    case "error":
+      return <>The agent stopped with an error while setting it up — see the panel ({kbd("⌘I")}).</>;
+    case "working":
+      return <>The agent is setting it up — follow along in the panel ({kbd("⌘I")}).</>;
+    default:
+      return <>Ask the agent anything about it: {kbd("⌘I")}, or select an element first.</>;
+  }
+}
+
 export function NewProjectHints() {
   const hints = useFirstRunHints();
   const { daemon } = useWorkspace();
@@ -49,6 +76,7 @@ export function NewProjectHints() {
   const wb = useWorkbench();
   const project = daemon.project;
   const visible = !!hints && !!project && project.id === hints.projectId && !daemon.projectSwitch;
+  const pendingFor = usePendingPromptProject();
 
   useEffect(() => {
     if (!visible) return;
@@ -68,6 +96,12 @@ export function NewProjectHints() {
 
   if (!visible || !hints || !project) return null;
   const kbd = (k: string) => <kbd className="kbd mx-0.5">{k}</kbd>;
+  const setup = setupStatus({
+    askedAgent: hints.askedAgent,
+    promptSent: hints.promptSent === true,
+    pending: pendingFor === project.id,
+    agentState: daemon.agent?.state,
+  });
 
   return (
     <section
@@ -107,9 +141,7 @@ export function NewProjectHints() {
             {hints.template === "infra-terraform" ? " — nothing is applied until you run apply." : ", then Preview."}
           </Tip>
         ) : null}
-        <Tip icon={MessageSquare}>
-          {hints.askedAgent ? <>The agent is setting it up — follow along in the panel ({kbd("⌘I")}).</> : <>Ask the agent anything about it: {kbd("⌘I")}, or select an element first.</>}
-        </Tip>
+        <Tip icon={MessageSquare}>{setupLine(setup, kbd)}</Tip>
         <Tip icon={Pin}>
           Pin it for {kbd("⌘1")}…{kbd("⌘9")} and give it a group (a client, “Job”) so Home can filter it.
         </Tip>
@@ -131,7 +163,7 @@ export function NewProjectHints() {
         >
           <Hash className="size-3.5" /> Group…
         </button>
-        {!hints.askedAgent ? (
+        {setup !== "working" && setup !== "waiting" ? (
           <button
             type="button"
             onClick={() => {

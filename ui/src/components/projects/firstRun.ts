@@ -12,6 +12,8 @@ export interface FirstRunHints {
   /** false: the "Empty" template (no scan; the map starts empty in Edit mode). */
   scanned: boolean;
   askedAgent: boolean;
+  /** The wizard's first prompt reached the agent (the card says "setting it up" only then). */
+  promptSent?: boolean;
   gitCommit: string | null;
   githubUrl?: string;
 }
@@ -82,6 +84,11 @@ export function takeFirstPrompt(projectId: string): string | null {
   pendingPrompt = null;
   emit();
   return text;
+}
+
+/** The first prompt went out: the hints card stops saying it waits. */
+export function markFirstPromptSent(projectId: string) {
+  if (hints && hints.projectId === projectId && !hints.promptSent) setFirstRunHints({ ...hints, promptSent: true });
 }
 
 export function hasFirstPrompt(projectId: string | undefined): boolean {
