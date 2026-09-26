@@ -201,7 +201,7 @@ export function AppLoginSwitch({ appLogin }: { appLogin: NonNullable<AgentLimits
   return (
     <div className="flex items-start gap-3 rounded-lg bg-foreground/[0.035] px-3 py-2.5">
       <KeyRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-[12.5px] leading-relaxed">
+      <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-ui-sm leading-relaxed">
         <span className="block text-foreground">Read Cursor&apos;s saved login to show plan usage</span>
         <span className="block text-muted-foreground">
           {locked

@@ -921,7 +921,7 @@ function RunningSuggestionsNotice({
           <p className="flex items-start gap-1.5 text-ui-sm text-foreground">
             <ShieldQuestion className="mt-0.5 size-3.5 shrink-0 text-warn" aria-hidden />
             <span>
-              Waiting for your permission: <span className="font-mono text-[12px]">{waiting.toolCall.title}</span>
+              Waiting for your permission: <span className="font-mono text-label">{waiting.toolCall.title}</span>
             </span>
           </p>
           <div className="flex flex-wrap gap-1.5 ps-5">
