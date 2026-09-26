@@ -421,7 +421,8 @@ function ManageSystemDialog({ open, tab }: { open: boolean; tab: "repos" | "conn
           <DialogTitle className="text-title font-semibold">{name}</DialogTitle>
           <DialogDescription className="text-ui-sm">Repos of this system and the connections between them.</DialogDescription>
         </DialogHeader>
-        <Tabs value={current} onValueChange={(v) => setCurrent(v as "repos" | "connections")} className="px-5 pb-5">
+        {/* min-w-0: a grid item (DialogContent is a grid) would otherwise grow with a long path or the repo table. */}
+        <Tabs value={current} onValueChange={(v) => setCurrent(v as "repos" | "connections")} className="min-w-0 px-5 pb-5">
           <TabsList className="h-8">
             <TabsTrigger value="repos" className="text-ui-sm">
               Repos
@@ -442,7 +443,6 @@ function ManageSystemDialog({ open, tab }: { open: boolean; tab: "repos" | "conn
   );
 }
 
-/** Repos of the open system: git state, last scan, add / remove / rename / rescan. Movable as a page section. */
 /**
  * Why a repo cannot be renamed right now: an agent turn of this system is running (it would save
  * the old element ids into its chat when it finishes — the daemon refuses with 409 too).
@@ -456,6 +456,7 @@ function useRenameBlocked(): string | null {
     : null;
 }
 
+/** Repos of the open system: git state, last scan, add / remove / rename / rescan. Movable as a page section. */
 export function ReposPanel() {
   const origin = useOrigin();
   const pick = useFolderPicker();
