@@ -5,11 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BUILD_ID,
   busyReasons,
+  hasComposerPending,
   hasOpenOverlay,
   hasUnsavedInput,
   reloadAttempted,
   reloadDecision,
   reloadForBuild,
+  setComposerPending,
+  takeBuildReloadResume,
   type ReloadInputs,
 } from "@/lib/build-reload";
 
@@ -46,13 +49,26 @@ describe("reloadDecision", () => {
 
 describe("busyReasons", () => {
   it("names what a reload would interrupt", () => {
-    expect(busyReasons({ turnRunning: false, unsavedInput: false, mapEditing: false, dialogOpen: false })).toEqual([]);
-    expect(busyReasons({ turnRunning: true, unsavedInput: true, mapEditing: true, dialogOpen: true })).toEqual([
+    expect(busyReasons({ turnRunning: false, unsavedInput: false, pendingAttachments: false, mapEditing: false, dialogOpen: false })).toEqual([]);
+    expect(busyReasons({ turnRunning: true, unsavedInput: true, pendingAttachments: true, mapEditing: true, dialogOpen: true })).toEqual([
       "an agent turn is running",
       "there is unsent input",
+      "images are attached but not sent",
       "the map is being edited",
       "a dialog is open",
     ]);
+  });
+
+  it("counts images attached in any composer until they are sent or the composer goes", () => {
+    expect(hasComposerPending()).toBe(false);
+    setComposerPending("panel", 2);
+    setComposerPending("page", 0);
+    expect(hasComposerPending()).toBe(true);
+    setComposerPending("page", 1);
+    setComposerPending("panel", 0);
+    expect(hasComposerPending()).toBe(true);
+    setComposerPending("page", 0);
+    expect(hasComposerPending()).toBe(false);
   });
 });
 
@@ -69,6 +85,25 @@ describe("the one-reload guard", () => {
     expect(reload).not.toHaveBeenCalled();
     vi.advanceTimersByTime(600);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the open project once, so the reloaded page skips its resume card", () => {
+    vi.useFakeTimers();
+    const store = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    vi.stubGlobal("window", { location: { reload: vi.fn() } });
+    expect(takeBuildReloadResume()).toBeNull();
+    reloadForBuild("b2", 0, "proj-1");
+    expect(takeBuildReloadResume()).toBe("proj-1");
+    expect(takeBuildReloadResume()).toBeNull(); // read once
+    // No project open: no mark (and an old one goes).
+    store.set("ruah.buildReload.resumed", "stale");
+    reloadForBuild("b3", 0, null);
+    expect(takeBuildReloadResume()).toBeNull();
   });
 
   it("does not reload when the guard cannot be stored", () => {

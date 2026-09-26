@@ -5,7 +5,7 @@
 // bottom terminal. Everything else lives in the ⌘K launcher, the ⋯ menus and the pages' own
 // drawers. Shortcuts are listed in ./nav.ts. A newer viewer build reloads the window
 // (./useBuildReload.tsx).
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { Menu, Search } from "lucide-react";
 import { requestModelPicker } from "@/lib/bus";
@@ -28,7 +28,9 @@ import { useRecordChatVisits } from "@/lib/mru";
 import { neighborChat } from "@/lib/switching";
 import { reportSwitchPainted, switchPending } from "@/lib/switch-timing";
 import { sameRoot, type DaemonState } from "@/lib/daemon";
+import type { ResumeInfo } from "@/lib/contracts";
 import { shouldShowResumeCard } from "@/lib/resume-card";
+import { takeBuildReloadResume } from "@/lib/build-reload";
 import { useViewerPrefs } from "@/lib/preferences";
 import { TerminalPanel } from "@/components/terminal/TerminalPanel";
 import { useTerminal } from "@/lib/terminal";
@@ -242,8 +244,8 @@ function readDismissed(): Record<string, string> {
 
 /** Dismissed per visit: the lastViewedAt the user dismissed (a later visit has a newer one). */
 function useResumeDismissal(projectId: string | null) {
-  const [dismissed, setDismissed] = useState<Record<string, string>>({});
-  useEffect(() => setDismissed(readDismissed()), []);
+  // readDismissed is safe without a window (prerender): {}.
+  const [dismissed, setDismissed] = useState<Record<string, string>>(readDismissed);
   const dismiss = useCallback(
     (lastViewedAt: string | null) => {
       if (!projectId || !lastViewedAt) return;
@@ -260,6 +262,26 @@ function useResumeDismissal(projectId: string | null) {
     [projectId],
   );
   return { dismissedFor: projectId ? (dismissed[projectId] ?? null) : null, dismiss };
+}
+
+/**
+ * After an automatic reload onto a newer build (./useBuildReload.tsx), the project that was open
+ * would greet the user with "Where you left off" listing what they just watched live: its entry
+ * counts as dismissed for this visit. Only that project, only the first answer (before paint).
+ */
+function useSkipResumeAfterBuildReload(entry: ResumeInfo | null, projectId: string | null, dismiss: (lastViewedAt: string | null) => void) {
+  const [reloadedIn, setReloadedIn] = useState<string | null>(takeBuildReloadResume);
+  useLayoutEffect(() => {
+    if (reloadedIn === null) return;
+    if (projectId && projectId !== reloadedIn) {
+      setReloadedIn(null); // another project opened first: its card is news
+      return;
+    }
+    if (!entry) return;
+    if (entry.project.id === reloadedIn) dismiss(entry.lastViewedAt);
+    setReloadedIn(null);
+  }, [reloadedIn, entry, projectId, dismiss]);
+  return reloadedIn !== null;
 }
 
 function MobileNav({ onNavigate }: { onNavigate: () => void }) {
@@ -318,6 +340,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { saved, projectId } = useProjectView();
   const resume = useShellResume(projectId);
   const { dismissedFor, dismiss } = useResumeDismissal(projectId);
+  const skipResume = useSkipResumeAfterBuildReload(resume.entry, projectId, dismiss);
 
   // An open project replaces the (first-run / on-demand) start screen.
   const switching = daemon.projectSwitch;
@@ -355,6 +378,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hideContent = terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon";
   const showResume =
     !isMobile &&
+    !skipResume &&
     shouldShowResumeCard({
       resume: resume.entry,
       projectId,

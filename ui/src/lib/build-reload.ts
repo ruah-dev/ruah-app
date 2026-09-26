@@ -2,8 +2,10 @@
 // import.meta.env.VITE_RUAH_BUILD_ID, also a <meta name="ruah-build"> in index.html); the daemon
 // reports the id of the viewer it serves (`viewerBuild` in GET /api/health, CONTRACTS §2.3). A
 // window still running older code reloads by itself when nothing would be lost, else offers a
-// "Reload" toast. One reload per served build (sessionStorage): never a loop.
-// The decision is pure; unit-tested in ui/test/build-reload.test.ts. Contract: CONTRACTS §2.6.
+// "Reload" toast. One reload per served build (sessionStorage): never a loop. The page it reloads
+// into does not greet the user with "Where you left off" for the project they were watching
+// (takeBuildReloadResume). The decision is pure; unit-tested in ui/test/build-reload.test.ts.
+// Contract: CONTRACTS §2.6.
 
 /** This window's build (null in `vite dev` and tests: never compared). */
 export const BUILD_ID: string | null = import.meta.env.DEV ? null : (import.meta.env.VITE_RUAH_BUILD_ID ?? null);
@@ -38,6 +40,8 @@ export interface BusyState {
   turnRunning: boolean;
   /** Typed text that is not sent or saved yet (composer, dialog fields, a rename). */
   unsavedInput: boolean;
+  /** Images attached in a composer but not sent yet (they live in memory only): hasComposerPending. */
+  pendingAttachments: boolean;
   /** The map is in edit mode or an edit is still being saved. */
   mapEditing: boolean;
   /** A dialog or menu is open (the user is in the middle of something). */
@@ -48,12 +52,15 @@ export function busyReasons(s: BusyState): string[] {
   return [
     s.turnRunning ? "an agent turn is running" : "",
     s.unsavedInput ? "there is unsent input" : "",
+    s.pendingAttachments ? "images are attached but not sent" : "",
     s.mapEditing ? "the map is being edited" : "",
     s.dialogOpen ? "a dialog is open" : "",
   ].filter(Boolean);
 }
 
 const KEY = "ruah.buildReload.v1";
+/** One-shot: the project that was open when this tab reloaded for a build. */
+const RESUME_KEY = "ruah.buildReload.resumed";
 
 /** The served build id this window (tab session) already reloaded for. */
 export function reloadAttempted(): string | null {
@@ -64,16 +71,55 @@ export function reloadAttempted(): string | null {
   }
 }
 
-/** Records the attempt, then reloads; false when storage is unavailable (no guard = no reload). */
-export function reloadForBuild(served: string, delayMs = 0): boolean {
+/**
+ * Records the attempt, then reloads; false when storage is unavailable (no guard = no reload).
+ * `projectId`: the project open now, whose "Where you left off" card the reloaded page skips
+ * (takeBuildReloadResume): the user was watching, there is nothing to catch up on.
+ */
+export function reloadForBuild(served: string, delayMs = 0, projectId: string | null = null): boolean {
   try {
     sessionStorage.setItem(KEY, served);
   } catch {
     return false;
   }
+  try {
+    if (projectId) sessionStorage.setItem(RESUME_KEY, projectId);
+    else sessionStorage.removeItem(RESUME_KEY);
+  } catch {
+    /* the card may show once: nothing is lost */
+  }
   // The delay lets debounced saves (view state: 400 ms) go out first.
   setTimeout(() => window.location.reload(), delayMs);
   return true;
+}
+
+/**
+ * After a reload for a build: the project that was open then (its resume card counts as seen for
+ * this visit), else null. Read once: the mark is removed.
+ */
+export function takeBuildReloadResume(): string | null {
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    const id = sessionStorage.getItem(RESUME_KEY);
+    if (id !== null) sessionStorage.removeItem(RESUME_KEY);
+    return id || null;
+  } catch {
+    return null;
+  }
+}
+
+// Composers report what they hold outside a text field: attached images (and a send waiting for
+// their upload). A reload would drop them, so they count as busy.
+const composerPending = new Map<string, number>();
+
+/** A composer's count of images attached and not sent (0 or unmount: none). */
+export function setComposerPending(owner: string, count: number) {
+  if (count > 0) composerPending.set(owner, count);
+  else composerPending.delete(owner);
+}
+
+export function hasComposerPending(): boolean {
+  return composerPending.size > 0;
 }
 
 /** Text fields holding typed text, ignoring the terminal's hidden input. DOM only. */

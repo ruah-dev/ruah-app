@@ -497,13 +497,21 @@ A window left open on an older viewer reloads onto the newer one the daemon serv
   Lovable preview pointed at a daemon). When the ids differ:
   - **Silent reload** when nothing would be lost: no turn running or waiting for a permission in the
     chat in front, no typed text in a text field (the composer, a dialog, a rename; the terminal's
-    hidden input does not count), the map not in Edit mode or saving, no open dialog or menu. The
-    reload waits 600 ms so debounced view-state saves go out; the per-project view state (§13.5)
-    brings back the page, map level and panels.
+    hidden input does not count), no image attached in a composer and not sent (attachments live
+    in memory; composers report them through `setComposerPending`), the map not in Edit mode or
+    saving, no open dialog or menu. The reload waits 600 ms so debounced view-state saves go out;
+    the per-project view state (§13.5) brings back the page, map level and panels.
   - **Otherwise it says so**: a 10 s toast at the top ("Ruah was updated — Reload when you are
     ready (<reasons>)", away from the composer being typed in) and an "Update ready" chip in the top
-    bar's status area that reloads on click. The window still reloads by itself later, once it is
-    idle and in the background (hidden or unfocused).
+    bar's status area that reloads on click (its tooltip says what holds the reload back when it
+    shows). The window still reloads by itself later, once it is idle and in the background
+    (hidden or unfocused). If the daemon serves this window's own build again (restarted with the
+    previous `--viewer`, a rollback), the chip and the toast go away.
+  - **No "Where you left off" for what the user just watched**: every reload for a build (silent
+    or from the chip / toast) stores the open project's id in `sessionStorage`
+    (`ruah.buildReload.resumed`, read once). On the reloaded page that project's resume card
+    (§13.4) counts as dismissed for its current `lastViewedAt`; another project, or a later visit,
+    shows it as usual.
   - **Never a loop**: before reloading, the served id is stored in `sessionStorage`
     (`ruah.buildReload.v1`); a window that still differs from that same id after reloading only
     prompts. Without `sessionStorage` there is no automatic reload.

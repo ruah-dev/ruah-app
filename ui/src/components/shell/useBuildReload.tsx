@@ -3,23 +3,27 @@
 // opens, when the window gets focus or becomes visible, and every 30 s (hidden too: a window in
 // the background is the best moment for a silent reload). Differs →
 // reload silently when nothing would be lost (no running turn, no typed text, no map edit, no
-// open dialog; the per-project view state restores the page, map level and panels), else say so:
-// a short "Ruah was updated" toast at the top (away from the composer being typed in) and a calm
-// "Update ready" chip in the top bar's status area until the reload. A prompted window still
-// reloads by itself once it is in the background and idle. One reload per served build: never a
-// loop.
+// open dialog, no image attached and unsent; the per-project view state restores the page, map
+// level and panels), else say so: a short "Ruah was updated" toast at the top (away from the
+// composer being typed in) and a calm "Update ready" chip in the top bar's status area until the
+// reload (its tooltip says what holds the reload back, as of now). A prompted window still
+// reloads by itself once it is in the background and idle, and drops the prompt if the daemon
+// serves this window's build again (restarted with the previous viewer, a rollback). One reload
+// per served build: never a loop.
 import { useEffect, useRef } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   BUILD_ID,
   busyReasons,
+  hasComposerPending,
   hasOpenOverlay,
   hasUnsavedInput,
   reloadAttempted,
   reloadDecision,
   reloadForBuild,
 } from "@/lib/build-reload";
+import type { DaemonState } from "@/lib/daemon";
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { registerStatusItem } from "./slots";
@@ -29,22 +33,42 @@ const POLL_MS = 30_000;
 const TOAST_ID = "ruah-updated";
 const CHIP_ID = "ruah-update";
 
-function reloadNow(served: string) {
-  if (!reloadForBuild(served, 0)) window.location.reload();
+/** What a reload would lose or interrupt right now (DOM checks included). */
+function busyNow(daemon: DaemonState, editing: boolean): string[] {
+  return busyReasons({
+    turnRunning: daemon.turns.some((t) => !t.stopReason),
+    unsavedInput: hasUnsavedInput(document),
+    pendingAttachments: hasComposerPending(),
+    mapEditing: editing || daemon.save === "pending" || daemon.save === "saving",
+    dialogOpen: hasOpenOverlay(document),
+  });
 }
 
-function UpdateChip({ served, reasons }: { served: string; reasons: readonly string[] }) {
+function reloadNow(served: string, projectId: string | null) {
+  if (!reloadForBuild(served, 0, projectId)) window.location.reload();
+}
+
+/** The chip's tooltip line, computed when it shows (not when the chip was registered). */
+function UpdateReasons() {
+  const { daemon } = useWorkspace();
+  const { editing } = useWorkbench();
+  const reasons = busyNow(daemon, editing);
+  return reasons.length ? <span className="block text-muted-foreground">Not reloaded by itself: {reasons.join(", ")}.</span> : null;
+}
+
+function UpdateChip({ served }: { served: string }) {
+  const { daemon } = useWorkspace();
   return (
     <StatusChip
       icon={RefreshCw}
       label="Update ready"
       short="Update"
       ariaLabel="Ruah was updated: reload to use the new version"
-      onClick={() => reloadNow(served)}
+      onClick={() => reloadNow(served, daemon.project?.id ?? null)}
       title={
         <>
           <span className="block">Ruah was updated. Click to reload.</span>
-          {reasons.length ? <span className="block text-muted-foreground">Not reloaded by itself: {reasons.join(", ")}.</span> : null}
+          <UpdateReasons />
           <span className="block text-muted-foreground">It reloads by itself once you are away and nothing would be lost.</span>
         </>
       }
@@ -66,6 +90,13 @@ export function useBuildReload() {
     if (!BUILD_ID || typeof window === "undefined") return;
     let stopped = false;
 
+    const clearPrompt = () => {
+      promptedFor.current = null;
+      removeChip.current?.();
+      removeChip.current = null;
+      toast.dismiss(TOAST_ID);
+    };
+
     const check = async () => {
       const { daemon } = latest.current;
       if (checking.current || stopped || daemon.source !== "daemon" || daemon.connection !== "open" || !daemon.httpOrigin) return;
@@ -82,12 +113,7 @@ export function useBuildReload() {
       }
       if (stopped || !served) return;
       const { daemon: now, editing } = latest.current;
-      const busy = busyReasons({
-        turnRunning: now.turns.some((t) => !t.stopReason),
-        unsavedInput: hasUnsavedInput(document),
-        mapEditing: editing || now.save === "pending" || now.save === "saving",
-        dialogOpen: hasOpenOverlay(document),
-      });
+      const busy = busyNow(now, editing);
       const decision = reloadDecision({
         own: BUILD_ID,
         served,
@@ -95,24 +121,29 @@ export function useBuildReload() {
         busy: busy.length > 0,
         attempted: reloadAttempted(),
       });
-      if (decision === "none") return;
+      if (decision === "none") {
+        // The daemon serves this window's build again (restarted with the previous viewer, a
+        // rollback): nothing to reload for any more.
+        if (served === BUILD_ID) clearPrompt();
+        return;
+      }
       const away = document.visibilityState === "hidden" || !document.hasFocus();
       // Silently when nothing is lost; after a prompt, only while the user looks elsewhere.
       if (decision === "reload" && (promptedFor.current !== served || away)) {
         toast.dismiss(TOAST_ID);
-        reloadForBuild(served, 600);
+        reloadForBuild(served, 600, now.project?.id ?? null);
         return;
       }
       if (promptedFor.current === served) return;
       promptedFor.current = served;
       removeChip.current?.();
-      removeChip.current = registerStatusItem({ id: CHIP_ID, order: 0, render: () => <UpdateChip served={served} reasons={busy} /> });
+      removeChip.current = registerStatusItem({ id: CHIP_ID, order: 0, render: () => <UpdateChip served={served} /> });
       toast("Ruah was updated", {
         id: TOAST_ID,
         position: "top-center",
         description: busy.length ? `Reload when you are ready (${busy.join(", ")}).` : "Reload to use the new version.",
         duration: 10_000,
-        action: { label: "Reload", onClick: () => reloadNow(served) },
+        action: { label: "Reload", onClick: () => reloadNow(served, latest.current.daemon.project?.id ?? null) },
       });
     };
 
