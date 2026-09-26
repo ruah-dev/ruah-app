@@ -63,6 +63,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const CLI = path.join(ROOT, "dist", "cli.js");
 // The daemon runs on this app's own binary as Node (ELECTRON_RUN_AS_NODE): no system Node needed.
 const NODE = process.env.RUAH_NODE ?? process.execPath;
+// A process running as Node opens an inspector on SIGUSR1 whatever the fuses say (they guard this
+// main process only): the long-lived daemon turns that off (its own children inherit execArgv).
+const NODE_ARGS = NODE === process.execPath ? ["--disable-sigusr1"] : [];
 
 function log(line) {
   const text = line.endsWith("\n") ? line : `${line}\n`;
@@ -93,7 +96,7 @@ function startDaemon(repoDir) {
   daemonReady = false;
   const child = spawn(
     NODE,
-    [CLI, "serve", ...repoArgs, ...agentArgs, "--viewer", VIEWER_DIR, "--port", String(PORT)],
+    [...NODE_ARGS, CLI, "serve", ...repoArgs, ...agentArgs, "--viewer", VIEWER_DIR, "--port", String(PORT)],
     {
       stdio: ["ignore", "pipe", "pipe"],
       env: {

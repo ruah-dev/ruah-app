@@ -19,6 +19,7 @@ interface BuilderConfig {
   extraResources: { from: string; to: string }[];
   afterPack: string;
   afterSign: string;
+  electronFuses: Record<string, boolean>;
   mac: {
     target: { target: string; arch: string[] }[];
     icon: string;
@@ -26,7 +27,7 @@ interface BuilderConfig {
     hardenedRuntime: boolean;
     notarize: boolean;
     signIgnore: string[];
-    extendInfo: { CFBundleDocumentTypes: { LSItemContentTypes: string[]; LSHandlerRank: string }[] };
+    extendInfo: { CFBundleDocumentTypes: { LSItemContentTypes: string[]; LSHandlerRank: string }[] } & Record<string, unknown>;
   };
   dmg: { contents: { type: string; path?: string }[]; background: string };
 }
@@ -40,6 +41,7 @@ interface Signing {
 const config = require("../electron-builder.config.cjs") as BuilderConfig;
 const { macSigning } = require("../scripts/macos/signing.cjs") as { macSigning: (env: Record<string, string>) => Signing };
 const afterPack = require("../scripts/macos/after-pack.cjs") as { default: (context: unknown) => Promise<void> };
+const afterSign = require("../scripts/macos/after-sign.cjs") as { checkFuses: (binary: string, env: NodeJS.ProcessEnv, cwd: string) => Promise<string> };
 
 const cleanups: (() => void)[] = [];
 afterEach(() => {
@@ -67,6 +69,25 @@ describe("electron-builder config", () => {
     expect(config.extraResources).toEqual([expect.objectContaining({ from: "electron/bin", to: "bin" })]);
     expect(config.afterPack).toBe("./scripts/macos/after-pack.cjs");
     expect(config.afterSign).toBe("./scripts/macos/after-sign.cjs");
+  });
+
+  test("fuses: the daemon's RunAsNode stays; NODE_OPTIONS, --inspect and file:// privileges are off", () => {
+    expect(config.electronFuses).toEqual({
+      runAsNode: true,
+      enableNodeOptionsEnvironmentVariable: false,
+      enableNodeCliInspectArguments: false,
+      grantFileProtocolExtraPrivileges: false,
+    });
+  });
+
+  test("privacy strings are Ruah's own (Electron's generic \"This app needs access…\" never ships)", () => {
+    const info = config.mac.extendInfo;
+    for (const key of ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSAudioCaptureUsageDescription", "NSBluetoothAlwaysUsageDescription", "NSBluetoothPeripheralUsageDescription"]) {
+      expect(info[key]).toMatch(/terminal or through its coding agents .* Ruah itself never does\.$/);
+    }
+    for (const key of ["NSDocumentsFolderUsageDescription", "NSDesktopFolderUsageDescription", "NSDownloadsFolderUsageDescription"]) {
+      expect(info[key]).toMatch(/^Ruah /);
+    }
   });
 
   test("Claude's native CLI keeps Anthropic's signature; nothing else is skipped", () => {
@@ -102,6 +123,15 @@ describe("signing", () => {
   test("CSC_LINK / CSC_NAME leave the identity to electron-builder", () => {
     expect(macSigning({ CSC_LINK: "/secure/cert.p12" })).toMatchObject({ identity: undefined, hardenedRuntime: true, developerId: true });
     expect(macSigning({ CSC_NAME: "Jane Doe (TEAM123456)" })).toMatchObject({ identity: undefined, developerId: true });
+  });
+});
+
+describe("afterSign fuse check", () => {
+  test("it rejects a binary with Electron's default fuses (NODE_OPTIONS honoured)", async () => {
+    const electron = require("electron") as string;
+    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+    delete env.NODE_OPTIONS;
+    await expect(afterSign.checkFuses(electron, env, tempDir())).rejects.toThrow(/fuse EnableNodeOptionsEnvironmentVariable is on, expected off/);
   });
 });
 

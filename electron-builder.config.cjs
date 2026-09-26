@@ -15,10 +15,23 @@
 // Why no native rebuild: node-pty 1.1.0 is an N-API addon with a darwin-arm64
 // prebuild, ABI-stable across Node and Electron. scripts/macos/after-sign.cjs
 // proves it on every build: the packaged binary, as Node, opens a real pty.
+//
+// Fuses: RunAsNode must stay on — the daemon is this binary as Node. That also
+// lets any local process run its own JS under Ruah's identity and with the
+// folder access macOS granted Ruah (README "Security"; the way out is a separate
+// helper runtime for the daemon). What the daemon does not need is off:
+// NODE_OPTIONS / NODE_EXTRA_CA_CERTS, --inspect / SIGUSR1, and file:// pages'
+// extra privileges (the window only loads the daemon's http origin).
 
 const { macSigning } = require("./scripts/macos/signing.cjs");
 
 const signing = macSigning();
+
+// Electron's Info.plist asks for camera, microphone and Bluetooth "for this app". Ruah
+// itself uses none of them, but agents and the integrated terminal run as its children:
+// macOS attributes their requests to Ruah and stops a process whose app has no usage
+// string, so the keys stay — saying what they are for.
+const CHILD_PROGRAMS = "Programs you run in Ruah's terminal or through its coding agents";
 
 /** @type {import("electron-builder").Configuration} */
 const config = {
@@ -44,6 +57,12 @@ const config = {
   extraResources: [{ from: "electron/bin", to: "bin", filter: ["ruah-app"] }],
   asar: false,
   npmRebuild: false,
+  electronFuses: {
+    runAsNode: true,
+    enableNodeOptionsEnvironmentVariable: false,
+    enableNodeCliInspectArguments: false,
+    grantFileProtocolExtraPrivileges: false,
+  },
   electronLanguages: ["en"],
   afterPack: "./scripts/macos/after-pack.cjs",
   afterSign: "./scripts/macos/after-sign.cjs",
@@ -72,6 +91,11 @@ const config = {
       NSDownloadsFolderUsageDescription: "Ruah reads projects and saves exports where you choose.",
       NSRemovableVolumesUsageDescription: "Ruah maps projects on external drives when you open them.",
       NSNetworkVolumesUsageDescription: "Ruah maps projects on network volumes when you open them.",
+      NSCameraUsageDescription: `${CHILD_PROGRAMS} may ask to use the camera. Ruah itself never does.`,
+      NSMicrophoneUsageDescription: `${CHILD_PROGRAMS} may ask to use the microphone. Ruah itself never does.`,
+      NSAudioCaptureUsageDescription: `${CHILD_PROGRAMS} may ask to capture audio. Ruah itself never does.`,
+      NSBluetoothAlwaysUsageDescription: `${CHILD_PROGRAMS} may ask to use Bluetooth. Ruah itself never does.`,
+      NSBluetoothPeripheralUsageDescription: `${CHILD_PROGRAMS} may ask to use Bluetooth. Ruah itself never does.`,
     },
   },
   dmg: {
