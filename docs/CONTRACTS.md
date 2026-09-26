@@ -1838,16 +1838,16 @@ errors (unknown provider, not inside a repo without `--repo`).
 
 `pnpm dist` turns the Electron shell into `Ruah.app` (bundle id `dev.ruah.app`) and
 `release/Ruah-<version>-arm64.dmg`, good enough to be the daily driver: no system Node,
-the login shell's `PATH`, one instance that takes folders from `open -a`, `ruah app` and
-the Dock. Code: `electron/main.cjs` (wiring), `electron/app-shell.cjs` (decisions,
-unit-tested), `src/desktop/` (login PATH, `ruah app doctor`, launch planning),
-`electron-builder.config.cjs` + `scripts/macos/` (build).
+the login shell's environment, one instance that takes folders from `open -a`, `ruah app`
+and the Dock. Code: `electron/main.cjs` (wiring), `electron/app-shell.cjs` (decisions,
+unit-tested), `src/desktop/` (login environment, `ruah app doctor`, launch planning, child
+environments), `electron-builder.config.cjs` + `scripts/macos/` (build).
 
 ### 15.1 Bundle layout and runtime
 
 | Path in `Ruah.app/Contents` | What |
 | --- | --- |
-| `MacOS/Ruah` | Electron main process (`electron/main.cjs`) **and** the daemon: main spawns it with `ELECTRON_RUN_AS_NODE=1` on `Resources/app/dist/cli.js serve …` (`RUAH_NODE` overrides the binary) |
+| `MacOS/Ruah` | Electron main process (`electron/main.cjs`) **and** the daemon: main spawns it with `ELECTRON_RUN_AS_NODE=1` as `--disable-sigusr1 Resources/app/dist/cli.js serve …` (`RUAH_NODE` overrides the binary, then without the flag) |
 | `Resources/app/` | `package.json`, `electron/`, `dist/`, `viewer/`, production `node_modules/` — no asar (the daemon spawns binaries from `node_modules`) |
 | `Resources/app/node_modules/node-pty/prebuilds/darwin-arm64/` | N-API addon (ABI-stable across Node and Electron, no rebuild) + `spawn-helper` (made executable at build time) |
 | `Resources/app/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude` | Claude's native CLI, still signed by Anthropic (excluded from re-signing) |
@@ -1856,31 +1856,78 @@ unit-tested), `src/desktop/` (login PATH, `ruah app doctor`, launch planning),
 `Info.plist`: `CFBundleDocumentTypes` = one `public.folder` type, role Viewer,
 `LSHandlerRank: Alternate` (Ruah can open folders; it never becomes their default app);
 `NS*FolderUsageDescription` strings for Documents, Desktop, Downloads, removable and
-network volumes.
+network volumes. Camera, microphone, audio-capture and Bluetooth strings replace
+Electron's generic ones: Ruah never uses them, but macOS attributes requests from its
+children (agents, the integrated terminal) to Ruah and stops a process whose app has no
+string, so they say "Programs you run in Ruah's terminal or through its coding agents may
+ask … Ruah itself never does."
 
-### 15.2 Login-shell `PATH` (daemon)
+Fuses (`electronFuses`): `RunAsNode` **on** (the daemon, the MCP server and the
+claude-agent-acp adapter are this binary as Node); `EnableNodeOptionsEnvironmentVariable`
+(`NODE_OPTIONS`, `NODE_EXTRA_CA_CERTS`), `EnableNodeCliInspectArguments` (`--inspect`,
+SIGUSR1 — for the main process only: a process running as Node still takes them, so main
+starts the daemon with `--disable-sigusr1`, which its self-spawned children inherit through
+`execArgv`) and `GrantFileProtocolExtraPrivileges` **off**; the rest Electron's defaults (no
+asar). The daemon makes no outbound TLS connections of its own, so `NODE_EXTRA_CA_CERTS`
+not reaching it changes nothing; agents and CLIs still read it from their environment. Trade-off: with RunAsNode any local process can run its own JS as Ruah
+(`open --env ELECTRON_RUN_AS_NODE=1 -a Ruah --args -e …`) and inherit the folder access
+granted to Ruah — for a Developer ID build across versions. Removing it needs the daemon
+on a separate helper runtime (a bundled Node or a helper app that asks for no folder
+access); README "Security" says so.
 
-An app started by Finder, the Dock or `open` gets launchd's `PATH`
-(`/usr/bin:/bin:/usr/sbin:/sbin`). main.cjs starts the daemon with `RUAH_LOGIN_PATH=1`;
-`ruah app serve` then (before anything is looked up, and removing the variable):
+Child environments (`src/desktop/child-env.ts`): `ELECTRON_RUN_AS_NODE`,
+`ELECTRON_NO_ATTACH_CONSOLE`, `RUAH_PARENT_PID` and `RUAH_LOGIN_ENV` are the daemon's
+only — agents (ACP processes, the Claude Agent SDK child), the integrations' CLIs and the
+terminal (§7) never get them, so an Electron-based CLI an agent runs (`code`, `cursor`)
+is not turned into Node. Children on the daemon's own binary set
+`ELECTRON_RUN_AS_NODE=1` explicitly (only under Electron): the `ruah app mcp` server
+(map tools), the `claude-acp` preset, a `RUAH_WORKSPACE` engine.
+
+Flavors (`scripts/macos/flavor.cjs`): `RUAH_APP_FLAVOR=<name>` (`[a-z][a-z0-9-]{0,23}`)
+builds a side-by-side app — product `Ruah <Name>` (`Ruah Test.app`), bundle id
+`dev.ruah.app.<name>`, artifacts `Ruah-<name>-<version>-arm64.*`, `ruahFlavor` in the
+packaged `package.json` (main.cjs names the app, profile and logs after it). macOS routes
+`open -a`, Finder and the Dock by bundle id, so only a separate id keeps a test build and
+the installed app from receiving each other's folders. `Resources/bin/ruah-app` finds the
+binary through `CFBundleExecutable`.
+
+### 15.2 Login-shell environment (daemon)
+
+An app started by Finder, the Dock or `open` gets launchd's environment: `PATH`
+`/usr/bin:/bin:/usr/sbin:/sbin` and none of what the user's shell profile exports
+(`ANTHROPIC_API_KEY`, `CLAUDE_CODE_USE_BEDROCK`, `AWS_PROFILE`, `KUBECONFIG`,
+`HCLOUD_TOKEN`, proxies, `LANG`, …). main.cjs starts the daemon with `RUAH_LOGIN_ENV=1`;
+`ruah app serve` then (before any agent or CLI starts, removing the variable):
 
 1. runs the login shell — `$SHELL` if absolute and executable, else `/bin/zsh` — as
-   `-i -l -c 'printf "%s%s%s" __RUAH_LOGIN_PATH__ "$PATH" __RUAH_LOGIN_PATH__'`
-   (fish: `(string join : $PATH)`; csh/tcsh: `-c` only), stdin closed, its own process
-   group, killed after 5 s; daemon plumbing (`ELECTRON_RUN_AS_NODE`, `RUAH_PARENT_PID`,
-   `RUAH_MCP_TOKEN`, `RUAH_LOGIN_PATH`) removed from its environment,
-   `DISABLE_AUTO_UPDATE=true` added. Output outside the markers (banners) is ignored; the
-   value must be one line of absolute directories.
-2. sets `PATH` = login `PATH` first, then the entries only the process had (deduplicated,
-   trailing `/` and relative entries dropped).
-3. caches it in `$RUAH_HOME/cache/login-path.json`:
-   `{ version: 1, shell: string, path: string, resolvedAt: string }` (per shell; not a secret).
+   `-i -l -c "printf '%s' __RUAH_LOGIN_ENV__; /usr/bin/env -0 || /usr/bin/env; printf '%s' __RUAH_LOGIN_ENV__"`
+   (fish: `-l -i -c`; csh/tcsh: `-c` only), stdin closed, its own process group, killed
+   after 5 s; daemon plumbing (§15.1 child environments, plus `RUAH_MCP_TOKEN`) removed from
+   its environment, `DISABLE_AUTO_UPDATE=true` added. Output outside the markers (banners)
+   is ignored; between them, NUL-separated `NAME=value` entries (values may hold newlines;
+   names `[A-Za-z_][A-Za-z0-9_]*`; an `env` without `-0` prints lines, read with a line that
+   does not start with `NAME=` continuing the previous value). It must include a `PATH`
+   with absolute entries.
+2. `PATH`: for launchd's bare `PATH`, the login `PATH` first, then what only the process
+   had; for a `PATH` that already looks like a terminal's (`pnpm app`, `ruah app` with
+   `RUAH_APP_DEV=1`), the process's order is kept and only the login shell's missing
+   entries are appended (an active venv, `nvm use`, a project `bin` stay first). Always
+   deduplicated, trailing `/` and relative entries dropped.
+3. every other variable the process does **not** have is added — never overwritten, and
+   never `PATH`, `PWD`, `OLDPWD`, `SHLVL`, `_`, `TERM`, `DISABLE_AUTO_UPDATE`, the plumbing,
+   `RUAH_HOME`, `RUAH_USER_DATA`, `RUAH_PORT` or `RUAH_DAEMON_URL`. The log line names only
+   the count (`environment from the zsh login shell (<ms> ms): PATH + <n> variables`).
+4. caches the login `PATH` only in `$RUAH_HOME/cache/login-path.json`:
+   `{ version: 1, shell: string, path: string, resolvedAt: string }` (per shell). The other
+   variables are never written to disk (they may be secrets).
 
-Timing: with a cache for this shell the cached value applies at once and a background
-refresh replaces it (and the cache) when the shell answers. Without a cache the daemon
-**waits** (≤ 5 s) only when its `PATH` is launchd's bare one; otherwise it refreshes in
-the background. A failing shell leaves `PATH` unchanged (logged). The integrated
-terminal is unaffected (it runs `$SHELL -l` itself, §7).
+Timing: with launchd's bare `PATH` the daemon **waits** for the shell (≤ 5 s) on every
+launch — agents read their environment when they start (the Claude SDK bridge takes a
+copy), so it must be complete first; if the shell fails, the cached `PATH` applies (logged;
+no other variables). With a terminal's `PATH` the process already has the user's
+environment: the shell only fills gaps, in the background. A failing shell leaves the
+environment unchanged (logged). The integrated terminal is unaffected (it runs `$SHELL -l`
+itself, §7).
 
 ### 15.3 One instance, opening folders
 
@@ -1891,20 +1938,28 @@ terminal is unaffected (it runs `$SHELL -l` itself, §7).
   after the app path, packaged: after the binary; relative to its cwd).
 - `open -a Ruah <folder>`, a folder dropped on the Dock icon, Finder "Open With": the
   `open-file` event (registered before `ready`; at launch the folder becomes the daemon's
-  startup repo). A file opens its folder.
+  startup repo). A file opens its folder. macOS delivers these to whichever running app
+  has the bundle id, whatever its `RUAH_HOME`: an instance started with `RUAH_HOME` asks
+  **Open <name> in this Ruah?** (Open / Cancel, default Cancel) before opening a folder
+  that arrives this way after its first window (its own launch folder is trusted). A copy
+  meant to run next to the installed app is a flavored build (§15.1).
 - Opening = `POST /api/projects/open { path }` (§5.3) from main to its daemon (no
   `Origin`, so the origin check passes), then the window comes up; the viewer follows
   through the `project` broadcast. Requests that arrive while the daemon starts are
   queued; the last one wins. A non-200 answer shows a dialog with the daemon's `error`.
 - **File → Open Folder…** (native picker) does the same. Its ⌘O is displayed but not
   registered: the viewer's own ⌘O handler keeps working.
-- `ruah app [<folder>]` (`src/desktop/launch.ts`): on macOS with an installed app —
+- `ruah app [<folder>]` (`src/desktop/launch.ts`): on macOS the bundle is the one the CLI
+  itself runs from (`…/X.app/Contents/Resources/app`), else an installed app —
   `$RUAH_APP_BUNDLE` (only if it exists), `/Applications/Ruah.app`,
-  `~/Applications/Ruah.app`, or the bundle the CLI itself runs from — it runs
+  `~/Applications/Ruah.app`, first found. It runs
   `open -a <bundle> [--env RUAH_HOME=…] [--env RUAH_AGENT=…] [--env RUAH_PORT=…] [<folder>]`
-  (env only applies when this starts the app). Otherwise, or with `RUAH_APP_DEV=1`, it
-  starts this checkout's Electron detached (`electron <root> [<folder>]`), which hands off
-  to a running dev instance through the lock.
+  (env only applies when this starts the app) and **waits** for `open`: exit 0 prints
+  `Opened Ruah [on <folder>] (<bundle>)`; a non-zero exit (a Gatekeeper-blocked app, a
+  damaged bundle) prints `ruah app: could not open <bundle>: <open's stderr>` and exits 1.
+  Otherwise, or with `RUAH_APP_DEV=1`, it starts this checkout's Electron detached
+  (`electron <root> [<folder>]`), which hands off to that checkout's running dev instance
+  through the lock (§15.5).
 
 ### 15.4 Desktop bridge additions (§5.4)
 
@@ -1927,11 +1982,14 @@ terminal is unaffected (it runs `$SHELL -l` itself, §7).
   keep running per §2.2 rule 6 and notifications still fire); Dock click / `activate`,
   a notification click, `open -a` or a second launch show it again. ⌘Q (or SIGTERM)
   quits and stops the daemon.
-- Daemon exit after it was healthy → dialog **Restart** (daemon on the start screen,
-  viewer reloaded) / **Show Logs** / **Quit**. A crashed viewer process reloads.
-- `target=_blank` links and `window.open`: `http(s)` URLs outside the daemon's origin open
-  in the default browser; the daemon's own pages may open in an app window; anything
-  else is refused.
+- Daemon exit after it was healthy → one dialog at a time: **Restart** (daemon on the
+  start screen, viewer reloaded, folders that arrived meanwhile opened) / **Later** (Esc;
+  the backend stays down — a Dock click or an arriving folder asks again) / **Show Logs**
+  / **Quit**. A restart that dies before it is healthy returns to the same dialog ("It
+  could not be restarted (…)"), never a second one. A crashed viewer process reloads.
+- `target=_blank` links and `window.open` never open an app window: `http(s)` URLs — the
+  daemon's own included — open in the default browser; anything else is refused. A
+  navigation of the window itself stays in the window only on the daemon's origin.
 - Menu: Ruah (About, Settings…, Services, Hide, Hide Others, Show All, Quit), File (Open
   Folder…, Close Window), Edit (standard roles), View (Reload ⌘R, Force Reload ⇧⌘R,
   Toggle Developer Tools ⌥⌘I **only in dev** or with `RUAH_DEVTOOLS=1`, zoom items shown
@@ -1939,20 +1997,29 @@ terminal is unaffected (it runs `$SHELL -l` itself, §7).
   Window, Help (Ruah on GitHub, Show Logs in Finder). Packaged builds disable DevTools
   in `webPreferences` too.
 - Profile (`userData`, which also holds the single-instance lock): `RUAH_USER_DATA`, else
-  `$RUAH_HOME/desktop` when `RUAH_HOME` is set (a scratch home = an isolated instance),
-  else `~/Library/Application Support/Ruah Dev` for a checkout (seeded once with the
-  viewer's Local Storage from `…/Ruah`), else Electron's default
-  `~/Library/Application Support/Ruah` (packaged).
+  `$RUAH_HOME/desktop` when `RUAH_HOME` is set (its own profile, lock and logs — folders
+  from macOS still arrive by bundle id, §15.3), else
+  `~/Library/Application Support/<profile>`: `Ruah` (packaged; `Ruah <Name>` for a
+  flavor) or `Ruah Dev-<id>` for a checkout, `<id>` = the first 8 hex digits of the
+  SHA-256 of the checkout's real path — one dev instance per worktree, each seeded once
+  with the viewer's Local Storage from `…/Ruah`.
+- A launch that finds its profile's lock taken quits after handing over its folder
+  (`second-instance`) and prints on stderr
+  `[ruah] <app> is already running with this profile (<userData>, pid <pid>); handed <folder> to it.`
+  (or `brought it to the front.`; the pid from Chromium's `SingletonLock`).
 - Logs: main and daemon output go to `daemon.log` in `$RUAH_HOME/logs` (when set), else
-  `~/Library/Logs/Ruah` (packaged) or `~/Library/Logs/Ruah Dev` (dev; also mirrored to
-  the terminal). Rotated to `daemon.1.log` past 5 MB at startup. Lines main adds:
-  `[ruah] opening <folder> (<source>)`, `[ruah] window loaded <url> "<title>" in <ms> ms`,
-  window load failures, viewer crashes, `[ruah] backend exited (<code>)`.
+  `~/Library/Logs/<profile>` (dev: also mirrored to the terminal). Rotated to
+  `daemon.1.log` whenever the next write would take it past 5 MB — at startup and while
+  the app runs (one previous file kept). Lines main adds: the start banner (`--- <app>
+  <version> (dev, <checkout> | app) <time> ---`), `[ruah] opening <folder> (<source>)`,
+  `[ruah] window loaded <url> "<title>" in <ms> ms`, window load failures, viewer crashes,
+  `[ruah] backend exited (<code>)`, `[ruah] restart failed: …`.
 
 ### 15.6 `ruah app doctor [--json] [--no-login-shell]` (no daemon)
 
 Which tools Ruah can find on the `PATH` the desktop app uses (§15.2: login shell first,
-then this process's; `--no-login-shell` skips the shell). Exit 0 (it is a diagnosis).
+then this process's; `--no-login-shell` skips the shell), and which variables the app
+takes from the shell profile. Exit 0 (it is a diagnosis).
 
 ```ts
 interface DoctorReport {
@@ -1960,6 +2027,10 @@ interface DoctorReport {
   shell: string;                                 // the login shell asked
   loginShell: { ok: true; ms: number } | { ok: false; ms: number; error: string } | { ok: false; skipped: true };
   path: string;                                  // the PATH searched
+  environment: {
+    bare: boolean;                               // this process has launchd's bare PATH (not a terminal)
+    fromLoginShell: string[];                    // variables the login shell exports that this process lacks (names only, §15.2 step 3)
+  };
   tools: { name: string; label: string; group: "agent" | "source" | "cloud"; path: string | null }[];
   home: string;                                  // $RUAH_HOME (default ~/.ruah)
   app: string | null;                            // the Ruah.app `ruah app` opens (null: this checkout's Electron)
@@ -1980,10 +2051,14 @@ agent presets: PATH, `~/.local/bin`, their installers' dirs, `RUAH_*_BIN`); `git
   format ULFO, window 540×380 with `electron/build/dmg-background.tiff`.
 - `afterPack` (`scripts/macos/after-pack.cjs`): makes node-pty's `spawn-helper` and
   `Resources/bin/ruah-app` executable; fails if either is missing.
+- Fuses are flipped after `afterPack`, before signing (§15.1).
 - `afterSign` (`scripts/macos/after-sign.cjs`): with the signed app, as Node:
   `dist/cli.js --version`, a node-pty pty round trip, resolving Claude's native CLI and
-  running `claude --version` (throwaway `HOME`), `codesign --verify --strict` on it. Any
-  failure fails the build.
+  running `claude --version` (throwaway `HOME`), `codesign --verify --strict` on it, the
+  fuse wire of the signed framework (read with electron-builder's `@electron/fuses`) against
+  the four states above, and by behaviour: `NODE_OPTIONS=--require /nonexistent/…` must not
+  stop `-e`, and `--disable-sigusr1` must be accepted. Any failure fails the build.
+- `RUAH_APP_FLAVOR=<name>`: a side-by-side build (§15.1 flavors).
 - Signing (`scripts/macos/signing.cjs`): ad-hoc (`identity: "-"`, no hardened runtime) unless
   `RUAH_MAC_IDENTITY` (not `-`), `CSC_LINK` or `CSC_NAME` is set — then the hardened
   runtime with `electron/build/entitlements.mac.plist` (allow-jit,
