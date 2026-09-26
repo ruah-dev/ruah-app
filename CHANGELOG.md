@@ -15,11 +15,16 @@ things; the notes say so).
   experimental): install, typecheck, build, test, viewer typecheck and build.
 - Release workflow: a `v*` tag builds the macOS arm64 `.dmg` with a
   `SHA256SUMS.txt` and attaches them to a draft GitHub Release; optional
-  Developer ID signing and notarization from repository secrets.
+  Developer ID signing and notarization from secrets of a tag-only `release`
+  environment.
 - Dependabot for pnpm, bun and the pinned GitHub Actions.
 - `test/repo-hygiene.test.ts`: tracked files carry no home folders, secret-shaped
   strings, signing material or files over 1 MiB; workflows stay pinned and
   least-privilege.
+- `pnpm privacy:scan`: checks every object in the history (files, names, commit
+  messages, refs) for private terms, home folders and secret shapes, with a
+  positive control for history rewrites.
+- The app ships `THIRD_PARTY_NOTICES.md` in `Contents/Resources`.
 
 ### Changed
 - `package.json`: repository metadata, `packageManager`, license placeholder.

@@ -62,9 +62,11 @@ own agent and cloud logins; there is no Ruah server, account or telemetry.
 
 ## Install (macOS, Apple silicon)
 
-1. Download `Ruah-<version>-arm64.dmg` and `SHA256SUMS.txt` from
-   [Releases](https://github.com/ruah-dev/ruah-app/releases), and check it:
-   `shasum -a 256 -c SHA256SUMS.txt`. (Or build it yourself, below.)
+1. Download `Ruah-<version>-arm64.dmg` from this repository's
+   [Releases](https://github.com/ruah-dev/ruah-app/releases) page (or build it
+   yourself, below). `shasum -a 256 -c SHA256SUMS.txt`, with the
+   `SHA256SUMS.txt` from the same release, checks the download is complete; it
+   is not a signature.
 2. Open the `.dmg` and drag **Ruah** onto **Applications**.
 3. Start Ruah from Applications, Spotlight or `ruah app`.
 
@@ -134,7 +136,8 @@ every option.
 
 **Configuration.** `RUAH_HOME` (default `~/.ruah`) holds recent projects,
 chats, usage and settings; `RUAH_AGENT` (claude | cursor | grok | kiro |
-opencode | mock) picks the starting agent; `RUAH_PORT` the daemon's port.
+opencode | mock) picks the starting agent; `RUAH_PORT` the desktop app's
+daemon port (`ruah app serve` takes `--port`, default 4177).
 `~/.ruah/settings.json` turns features off: `"backgroundAgents": false`,
 `"notifications": "off"` (or `"always"`; default `"background"`); Settings →
 Features & behaviour does the same in the app. Other switches:

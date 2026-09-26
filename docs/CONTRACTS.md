@@ -2744,10 +2744,18 @@ branch, never receives them, and a dry run is always ad-hoc signed.
 
 The `.p12` and `.p8` files are removed at the end of the job, whatever its outcome.
 
+`SHA256SUMS.txt` comes from the same release as the `.dmg`: it shows a download is
+complete and uncorrupted, not that nobody replaced both. Authenticity comes from the
+release page itself (github.com, the maintainers' account) and, once configured,
+Developer ID signing and notarization.
+
 ### 20.3 Workflow rules
 
-- Top-level `permissions: contents: read`; only `release.yml`'s `publish` job has
-  `contents: write`. No `pull_request_target`, no `write-all`.
+- Top-level `permissions: contents: read`. No `<scope>: write` anywhere in `ci.yml`
+  (top level or job level); in `release.yml` exactly one, `contents: write` in the
+  `publish` job. No `pull_request_target`, no `write-all`.
+- Signing secrets are read only in `release.yml`'s `dmg` job, which enters the `release`
+  environment for tags only (§20.2).
 - Every `uses:` is pinned to a full 40-character commit SHA with the version in a comment;
   Dependabot (`github-actions` ecosystem) bumps the pins.
 - Every checkout sets `persist-credentials: false`.

@@ -137,5 +137,26 @@ public" below.
    attaches them to a **draft** release.
 3. Check the draft (download, verify the checksum, open the app), then publish.
 
-Signing and notarization are optional repository secrets; the workflow's header
-lists them.
+Signing and notarization are optional. Their secrets belong to the GitHub
+Environment `release` (Settings → Environments; deployment rule: tags `v*`
+only), not to repository secrets; the workflow's header lists them.
+
+## Before the history goes public (maintainers)
+
+`pnpm privacy:scan` (`scripts/privacy/scan-history.ts`) reads every object
+reachable from any ref, so it also finds what only old commits, commit messages,
+file names or other branches contain. It never prints a term, only the line of
+the terms file.
+
+```sh
+# 1. Positive control, on the ORIGINAL repository: must find something (exit 0).
+#    If it finds nothing, the list or the scan is wrong: do not trust step 3.
+pnpm privacy:scan --repo /path/to/original --terms "$HOME/.config/ruah/private-terms.txt" --expect-hits
+
+# 2. Rewrite a fresh mirror clone with git filter-repo: --replace-text for file
+#    contents, --replace-message for commit messages, --path-rename or
+#    --invert-paths for file names.
+
+# 3. The rewritten clone must be clean (exit 0; exit 1 lists what is left).
+pnpm privacy:scan --repo /path/to/rewritten --terms "$HOME/.config/ruah/private-terms.txt"
+```

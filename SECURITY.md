@@ -81,10 +81,13 @@ privilege fuses are off, and the daemon ignores `SIGUSR1`. See README
 "Security" for details; grant Ruah folder access only where you keep code.
 
 **Builds.** Releases are built by GitHub Actions from a tag
-(`.github/workflows/release.yml`) with a read-only token, pinned actions and a
-`SHA256SUMS.txt` next to the `.dmg`. Until Developer ID signing and
-notarization are configured, builds are ad-hoc signed: verify the checksum
-before you open a downloaded `.dmg`.
+(`.github/workflows/release.yml`) with a read-only token and pinned actions.
+Signing credentials, once configured, live in a GitHub Environment that only
+`v*` tag builds can enter. Until Developer ID signing and notarization are
+configured, builds are ad-hoc signed, so macOS cannot vouch for who built them:
+download only from this repository's Releases page. The `SHA256SUMS.txt` next
+to the `.dmg` comes from the same release, so it only shows that your download
+is complete and uncorrupted; it does not protect against a tampered release.
 
 **In scope**, for example: a website or another machine reaching the daemon's
 API or terminal; a crafted repository (its `architecture.json`, `.ruah/*`
