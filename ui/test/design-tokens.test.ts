@@ -130,9 +130,58 @@ describe("mapping", () => {
     expect(PALETTE_BOOT_IDS).toContain("sunrise");
   });
 
+  it("provider tiles: every categorical colour reads on its own 15 % tint", () => {
+    for (const p of PALETTE_IDS) {
+      for (const t of THEME_IDS) {
+        const tk = resolveTokens(p, t);
+        for (let i = 1; i <= 6; i++) {
+          const fg = tk[`cat-${i}`]!;
+          for (const bg of ["background", "card", "popover"]) {
+            expect(contrast(fg, over(fg, 0.15, tk[bg]!)), `${p}/${t} cat-${i} over ${bg}`).toBeGreaterThanOrEqual(3);
+          }
+        }
+      }
+    }
+  });
+
   it("swatches come from the resolved tokens", () => {
     expect(paletteSwatches("teal").brand).toBe("#00d2b9");
     expect(paletteSwatches("teal").ai).toBe("#6578ff");
+  });
+});
+
+// The shell's first-paint script (routes/__root.tsx, owned by the shell) must apply every stored
+// non-default palette, or a reload shows Teal + Indigo until the viewer's JS has run.
+describe("first-paint boot script (THEME_BOOT)", () => {
+  const rootTsx = readFileSync(fileURLToPath(new URL("../src/routes/__root.tsx", import.meta.url)), "utf8");
+  const boot = /const THEME_BOOT = `([^`]*)`/.exec(rootTsx)?.[1] ?? "";
+
+  /** Runs the boot script with `ruah.palette` = stored; returns the data-palette it set. */
+  function bootPalette(stored: string): string | undefined {
+    const items: Record<string, string> = { "ruah.theme": "dark", "ruah.palette": stored };
+    const classes = new Set<string>();
+    const root = {
+      classList: { add: (c: string) => classes.add(c), remove: (...cs: string[]) => cs.forEach((c) => classes.delete(c)) },
+      dataset: {} as Record<string, string>,
+      style: {} as Record<string, string>,
+    };
+    const run = new Function("localStorage", "matchMedia", "document", boot) as (...args: unknown[]) => void;
+    run({ getItem: (k: string) => items[k] ?? null }, () => ({ matches: false }), { documentElement: root });
+    expect(root.dataset["theme"]).toBe("dark"); // the script ran to the palette step
+    return root.dataset["palette"];
+  }
+
+  it("is found and leaves the default palette unset", () => {
+    expect(boot).toContain("ruah.palette");
+    expect(bootPalette("teal")).toBeUndefined();
+    expect(bootPalette("dusk")).toBe("dusk");
+    expect(bootPalette("sunrise")).toBe("sunrise");
+  });
+
+  // Expected to fail until the shell owner applies docs/design/README.md "Wiring" step 1 (accept
+  // `classic`, ideally generated from PALETTE_BOOT_IDS); then drop `.fails`.
+  it.fails("applies every id in PALETTE_BOOT_IDS", () => {
+    for (const id of PALETTE_BOOT_IDS) expect(bootPalette(id), id).toBe(id);
   });
 });
 

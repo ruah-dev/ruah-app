@@ -1,4 +1,5 @@
-// Verify status badge on a map node. Unverifiable is never styled as pass.
+// Verify status badge on a map node. Unverifiable is never styled as pass. Colours are the
+// palette's status tokens (the WCAG check holds each on its own 15 % tint).
 import { cn } from "@/lib/utils";
 import type { VerifyBadge } from "@/lib/engines";
 
@@ -13,7 +14,7 @@ const LABEL: Record<VerifyBadge, string> = {
 const CLASS: Record<VerifyBadge, string> = {
   pass: "bg-ok/15 text-ok border-ok/30",
   fail: "bg-bad/15 text-bad border-bad/30",
-  unverifiable: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  unverifiable: "bg-warn/15 text-warn border-warn/30",
   error: "bg-bad/15 text-bad border-bad/30",
   idle: "",
 };

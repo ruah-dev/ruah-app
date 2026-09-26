@@ -454,7 +454,8 @@ export function themeTokens(themeId: ThemeId): Tokens {
   const out: Tokens = { ...s };
   out["foreground"] = t.text.foreground;
   out["muted-foreground"] = t.text["muted-foreground"];
-  out["faint"] = readable(t.text.faint, textBgs, t.textRatio);
+  // Hints sit on hovered rows (accent), raised panels (surface-3) and messages too.
+  out["faint"] = readable(t.text.faint, [...textBgs, s["surface-3"], s.accent, s.message, s.muted], t.textRatio);
   out["node-file"] = readable(t.text["node-file"], [s.background, s.card], t.textRatio);
   for (const [k, v] of Object.entries(t.effects)) out[k] = v;
   // Phantom neutrals: the eyes, the cream "Face", props (paper, ink, headset, hat…).
@@ -498,6 +499,8 @@ export function paletteTokens(paletteId: PaletteId, themeId: ThemeId): Tokens {
   const accent = (hex: string) => readable(hex, [...tinted, t.ink], R);
   const text = (hex: string) => readable(hex, tinted, R);
   const ui = (hex: string) => readable(hex, uiBgs, 3);
+  // Categorical marks also draw an icon on a 15 % tint of themselves (provider tiles).
+  const catBgs: Backdrop[] = [...uiBgs, (fg) => over(fg, 0.15, s.background), (fg) => over(fg, 0.15, s.card), (fg) => over(fg, 0.15, s.popover)];
   const r = p.roles;
 
   const out: Tokens = {};
@@ -526,10 +529,10 @@ export function paletteTokens(paletteId: PaletteId, themeId: ThemeId): Tokens {
   out["node-external"] = text(fill(r.info));
   out["node-step"] = text(t.id === "light" ? shift(r.ai[500], -0.1) : r.ai[200]);
 
-  // Categorical (charts, provider tints): brand, ai, three extras, info.
+  // Categorical (charts, provider tiles `bg-cat-N/15 text-cat-N`): brand, ai, three extras, info.
   const cats = [r.brand, r.ai, p.extra[0], p.extra[1], p.extra[2], r.info];
   cats.forEach((sc, i) => {
-    out[`cat-${i + 1}`] = ui(fill(sc));
+    out[`cat-${i + 1}`] = readable(fill(sc), catBgs, 3);
   });
 
   // Phantom bodies (3:1 against the page; the design system's exact fill when it passes).
@@ -625,13 +628,16 @@ const pairs = (fgs: readonly string[], bgs: readonly string[], kind: ContrastPai
   fgs.flatMap((fg) => bgs.map((bg) => (tint === undefined ? { fg, bg, kind } : { fg, bg, kind, tint })));
 
 const SEMANTIC = ["primary", "brand", "ai", "ok", "warn", "bad", "info", "destructive"] as const;
+/** Surfaces that carry secondary text (muted, faint hints): every surface up to surface-3, rows
+ * on hover (accent), messages. surface-4 only fills controls whose text turns foreground. */
+const TEXT_SURFACES = ["background", "surface-0", "surface-1", "surface-2", "surface-3", "card", "popover", "message", "accent", "muted"];
+const CATS = ["cat-1", "cat-2", "cat-3", "cat-4", "cat-5", "cat-6"];
 const NODES = ["node-service", "node-frontend", "node-data", "node-queue", "node-gateway", "node-external", "node-step", "node-file"];
 const ANSI = ["red", "green", "yellow", "blue", "magenta", "cyan"];
 
 export const CONTRAST_PAIRS: readonly ContrastPair[] = [
-  ...pairs(["foreground"], ["background", "surface-0", "surface-1", "surface-2", "surface-3", "card", "popover", "message", "composer", "accent", "muted"], "text"),
-  ...pairs(["muted-foreground"], ["background", "surface-0", "surface-1", "surface-2", "card", "popover", "message", "accent"], "text"),
-  ...pairs(["faint"], ["background", "surface-0", "surface-1", "surface-2", "card", "popover"], "text"),
+  ...pairs(["foreground"], ["background", "surface-0", "surface-1", "surface-2", "surface-3", "surface-4", "card", "popover", "message", "composer", "accent", "muted"], "text"),
+  ...pairs(["muted-foreground", "faint"], TEXT_SURFACES, "text"),
   { fg: "primary-foreground", bg: "primary", kind: "text" },
   { fg: "ai-foreground", bg: "ai", kind: "text" },
   { fg: "destructive-foreground", bg: "destructive", kind: "text" },
@@ -641,7 +647,9 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   ...pairs(["term-fg", "term-bright-black", ...ANSI.flatMap((c) => [`term-${c}`, `term-bright-${c}`])], ["term-bg"], "text"),
   ...pairs(["ring", "input", "edge-active"], ["background", "card"], "ui"),
   ...pairs(["edge"], ["canvas"], "ui"),
-  ...pairs(["cat-1", "cat-2", "cat-3", "cat-4", "cat-5", "cat-6"], ["background", "card", "popover"], "ui"),
+  ...pairs(CATS, ["background", "card", "popover"], "ui"),
+  // Provider tiles: the icon in the categorical colour on a 15 % tint of it.
+  ...pairs(CATS, ["background", "card", "popover"], "ui", 0.15),
   ...pairs(AGENT_TINT_IDS.map((id) => `agent-${id}`), ["background", "card", "popover"], "ui"),
   ...pairs(
     ["ph-brand", "ph-brand-soft", "ph-ai", "ph-ok", "ph-warn", "ph-bad", "ph-info", "ph-muted", "ph-cream", "ph-extra-1", "ph-extra-2", "ph-extra-3"],
