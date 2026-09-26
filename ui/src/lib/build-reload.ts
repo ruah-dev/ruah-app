@@ -94,8 +94,24 @@ export function reloadForBuild(served: string, delayMs = 0, projectId: string | 
 }
 
 /**
- * After a reload for a build: the project that was open then (its resume card counts as seen for
- * this visit), else null. Read once: the mark is removed.
+ * Any reload of this window (⌘R, a crash reload): the page going away marks the project open now,
+ * so the reloaded page skips its "Where you left off" card like after a build reload — it would
+ * list what happened in front of the user ("1 permission request waiting, 1 agent still working").
+ * A new window (a new session) still shows the card.
+ */
+export function markReloadResume(projectId: string | null): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    if (projectId) sessionStorage.setItem(RESUME_KEY, projectId);
+    else sessionStorage.removeItem(RESUME_KEY);
+  } catch {
+    /* the card may show once: nothing is lost */
+  }
+}
+
+/**
+ * After a reload (for a build, or any other: markReloadResume): the project that was open then
+ * (its resume card counts as seen for this visit), else null. Read once: the mark is removed.
  */
 export function takeBuildReloadResume(): string | null {
   try {
