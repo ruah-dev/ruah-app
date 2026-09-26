@@ -1,6 +1,7 @@
 // src/serve/files.ts — GET /api/file?path=<rel>: serves a file inside the
-// repo root only. Rejects "..", absolute paths, and symlinks resolving
-// outside root; 512 KiB cap; binary -> 415; lang from the extension.
+// repo root only. Rejects "..", absolute paths, and paths whose real location
+// (every symlinked segment resolved) is outside root; 512 KiB cap;
+// binary -> 415; lang from the extension.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ServerResponse } from "node:http";
@@ -60,7 +61,9 @@ function looksBinary(buf: Buffer): boolean {
     if (byte === 0) return true;
   }
   return false;
-}export function serveFile(store: ArchitectureStore, relPath: string, res: ServerResponse): void {
+}
+
+export function serveFile(store: ArchitectureStore, relPath: string, res: ServerResponse): void {
   const fail = (status: number, message: string): void => {
     res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: message }));
@@ -96,18 +99,18 @@ function looksBinary(buf: Buffer): boolean {
     fail(400, "path escapes the repo root");
     return;
   }
+  // Resolve every segment, not just the last: a real file reached through a
+  // symlinked folder (etc -> /etc, up -> ..) must not leave the root either.
+  let real: string;
   let stat: fs.Stats;
   try {
-    stat = fs.lstatSync(abs);
-    if (stat.isSymbolicLink()) {
-      const real = fs.realpathSync(abs);
-      const realNormalized = path.resolve(real);
-      if (realNormalized !== rootAbs && !realNormalized.startsWith(rootAbs + path.sep)) {
-        fail(400, "symlink resolves outside the repo root");
-        return;
-      }
-      stat = fs.statSync(abs);
+    const realRoot = fs.realpathSync(rootAbs);
+    real = fs.realpathSync(abs);
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+      fail(400, "symlink resolves outside the repo root");
+      return;
     }
+    stat = fs.statSync(real);
   } catch {
     fail(404, "file not found");
     return;
@@ -122,7 +125,7 @@ function looksBinary(buf: Buffer): boolean {
   }
   let content: Buffer;
   try {
-    content = fs.readFileSync(abs);
+    content = fs.readFileSync(real);
   } catch {
     fail(404, "file not found");
     return;
