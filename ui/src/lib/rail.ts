@@ -242,7 +242,7 @@ export function railGroupProjects(projects: readonly ProjectInfo[], group: strin
   return projects.filter((p) => inGroup(p) || p.id === currentId);
 }
 
-/** Two letters for the switcher's tile ("Liquid Money" → "LM", "Job" → "Jo"). */
+/** Two letters for the switcher's tile ("Acme Studio" → "AS", "Job" → "Jo"). */
 export function groupInitials(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (words[0]![0]! + words[1]![0]!).toUpperCase();

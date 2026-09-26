@@ -2763,7 +2763,7 @@ downloads. Every path is checked to stay inside the new folder.
 ```ts
 pinOrder?: number;   // pinned only: 0 = ⌘1, 1 = ⌘2, …
 pinnedAt?: string;   // pinned only: ISO, when it was pinned
-tags?: string[];     // free-form groups ("Liquid Money", "Job", "Freelance"); the first is the project's group
+tags?: string[];     // free-form groups ("Acme Studio", "Job", "Freelance"); the first is the project's group
 ```
 
 - The recent list sorts pinned projects by `pinOrder` (then most recently opened), then the

@@ -110,7 +110,7 @@ export function TagsDialog() {
                   setTags(tags.slice(0, -1));
                 }
               }}
-              placeholder={tags.length ? "Add another…" : "Liquid Money, Job…"}
+              placeholder={tags.length ? "Add another…" : "Acme Studio, Job…"}
               aria-label="Add a tag"
               className="h-6 min-w-24 flex-1 bg-transparent text-ui outline-none placeholder:text-faint"
             />

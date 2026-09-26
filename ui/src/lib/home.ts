@@ -274,7 +274,7 @@ export function homeSummary(cards: readonly HomeCard[]): string {
   return parts.filter(Boolean).join(" · ") || "No projects yet";
 }
 
-/** Parses "Freelance, Liquid Money,  job" into tags (trimmed, de-duplicated ignoring case, ≤ 6, ≤ 40 chars). */
+/** Parses "Freelance, Acme Studio,  job" into tags (trimmed, de-duplicated ignoring case, ≤ 6, ≤ 40 chars). */
 export function parseTags(input: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

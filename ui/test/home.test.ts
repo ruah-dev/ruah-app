@@ -97,14 +97,14 @@ describe("homeCard", () => {
 
 describe("filters and tags", () => {
   const list = [
-    project("a", { pinned: true, pinOrder: 0, tags: ["Freelance", "Liquid Money"] }),
+    project("a", { pinned: true, pinOrder: 0, tags: ["Freelance", "Acme Studio"] }),
     project("b", { tags: ["freelance"] }),
     project("c", { tags: ["Job"] }),
     project("d", { tags: ["Freelance"] }),
     project("e"),
   ];
   it("All · Pinned · tags by use, case-insensitive, majority spelling", () => {
-    expect(homeFilters(list).map((f) => `${f.label}:${f.count}`)).toEqual(["All:5", "Pinned:1", "Freelance:3", "Job:1", "Liquid Money:1"]);
+    expect(homeFilters(list).map((f) => `${f.label}:${f.count}`)).toEqual(["All:5", "Pinned:1", "Freelance:3", "Acme Studio:1", "Job:1"]);
     expect(tagCounts([project("x")])).toEqual([]);
     expect(list.filter((p) => matchesFilter(p, tagKey("FREELANCE"))).map((p) => p.id)).toEqual(["a", "b", "d"]);
     expect(list.filter((p) => matchesFilter(p, "pinned")).map((p) => p.id)).toEqual(["a"]);
@@ -113,7 +113,7 @@ describe("filters and tags", () => {
     expect(groupOf(list[4]!)).toBeNull();
   });
   it("parses the tag field", () => {
-    expect(parseTags(" Freelance ,liquid  money,, freelance, Job")).toEqual(["Freelance", "liquid money", "Job"]);
+    expect(parseTags(" Freelance ,acme  studio,, freelance, Job")).toEqual(["Freelance", "acme studio", "Job"]);
     expect(parseTags("a,b,c,d,e,f,g")).toHaveLength(6);
   });
   it("greets and summarizes", () => {

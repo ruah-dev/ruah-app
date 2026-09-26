@@ -214,15 +214,15 @@ describe("§20 pin order, reorder and groups", () => {
   it("keeps ⌘ numbers global when the rail shows one group", async () => {
     const { railGroupProjects, railGroups, groupInitials } = await import("@/lib/rail");
     const tagged = (id: string, pinned: boolean, tags: string[]) => ({ ...project(id, pinned), tags });
-    const list = [tagged("A", true, ["Job"]), tagged("B", true, ["Liquid Money"]), tagged("c", false, ["job"]), tagged("d", false, ["Liquid Money"]), tagged("e", false, ["Solo"])];
-    expect(railGroups(list).map((g) => `${g.label}:${g.count}`)).toEqual(["Job:2", "Liquid Money:2"]);
+    const list = [tagged("A", true, ["Job"]), tagged("B", true, ["Acme Studio"]), tagged("c", false, ["job"]), tagged("d", false, ["Acme Studio"]), tagged("e", false, ["Solo"])];
+    expect(railGroups(list).map((g) => `${g.label}:${g.count}`)).toEqual(["Acme Studio:2", "Job:2"]);
     expect(railGroups([tagged("x", false, ["Solo"])])).toEqual([]);
-    const lm = railGroupProjects(list, "liquid money", "e");
+    const lm = railGroupProjects(list, "acme studio", "e");
     expect(lm.map((p) => p.id)).toEqual(["B", "d", "e"]);
     expect(railGroupProjects(list, "nope", null)).toHaveLength(5);
     const layout = railProjects(lm, "e", 10, [], { complete: false, pinnedIds: ["A", "B"] });
     expect(layout.tiles.map((t) => [t.project.id, t.shortcut])).toEqual([["B", "⌘2"], ["d", null], ["e", null]]);
-    expect(groupInitials("Liquid Money")).toBe("LM");
+    expect(groupInitials("Acme Studio")).toBe("AS");
     expect(groupInitials("job")).toBe("Jo");
   });
 });

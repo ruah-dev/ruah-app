@@ -118,16 +118,16 @@ describe("ProjectsStore §20: stable pinned order and tags", () => {
   });
 
   it("normalizes tags and lists them by use; touch keeps them", () => {
-    expect(normalizeTags(["  Job ", "job", "Liquid\u0007  Money", "", "x".repeat(60), "a", "b", "c", "d"])).toEqual(["Job", "Liquid Money", "x".repeat(40), "a", "b", "c"]);
+    expect(normalizeTags(["  Job ", "job", "Acme\u0007  Studio", "", "x".repeat(60), "a", "b", "c", "d"])).toEqual(["Job", "Acme Studio", "x".repeat(40), "a", "b", "c"]);
     const store = new ProjectsStore(tempDir("ruah-home-"), { now: tick });
     touchAll(store);
-    expect(store.setTags(ids[0]!, ["Freelance", "Liquid Money"])?.tags).toEqual(["Freelance", "Liquid Money"]);
+    expect(store.setTags(ids[0]!, ["Freelance", "Acme Studio"])?.tags).toEqual(["Freelance", "Acme Studio"]);
     store.setTags(ids[1]!, ["freelance"]);
     store.setTags(ids[3]!, ["Freelance"]);
     store.setTags(ids[2]!, ["Job"]);
-    expect(store.tags()).toEqual(["Freelance", "Job", "Liquid Money"]);
+    expect(store.tags()).toEqual(["Freelance", "Acme Studio", "Job"]);
     store.touch({ id: ids[0]!, name: "p0", root: "/p0", kind: "repo" });
-    expect(store.get(ids[0]!)?.tags).toEqual(["Freelance", "Liquid Money"]);
+    expect(store.get(ids[0]!)?.tags).toEqual(["Freelance", "Acme Studio"]);
     expect(store.setTags(ids[0]!, [])).not.toHaveProperty("tags");
     expect(store.setTags("nope", ["x"])).toBeUndefined();
     // A tie between spellings: the capitalized one names the group ("Job", not "job").
