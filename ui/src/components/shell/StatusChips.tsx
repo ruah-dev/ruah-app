@@ -91,7 +91,7 @@ export function CloudHealthChip() {
   const listed = integrations.status === "ok" ? integrations.data : null;
   const summary = snapshot ? cloudHealthSummary(snapshot.resources, cloudConnected(listed, snapshot)) : null;
   if (!summary) return null;
-  const reported = summary.total - summary.unknown;
+  const reported = summary.total - summary.unknown - summary.unrated;
   const lines = [
     `This project's cloud: ${summary.total} resource${summary.total === 1 ? "" : "s"}${reported ? ` — ${summary.label}` : ", no health reported"}`,
     reported && summary.unknown ? `${summary.unknown} without a known health (scaled to 0, never ran)` : "",

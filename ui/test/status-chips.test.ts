@@ -50,13 +50,15 @@ describe("cloudHealthSummary", () => {
     });
   });
 
-  it("puts down first, counts deploying, and reads older status-only resources", () => {
+  it("puts down first, counts deploying, and leaves out resources without a health notion", () => {
     const s = cloudHealthSummary(
       [
         res("db", { health: "down" }),
         res("web", { health: "degraded" }),
         res("next", { health: "deploying" }),
-        bare("legacy-vm", "error"),
+        res("api"),
+        // §9.2: no health = no health notion (domains, buckets, deployment rows), whatever the status.
+        bare("old-preview", "error"),
         bare("new-db", "creating"),
         bare("bucket"),
       ],
@@ -64,9 +66,48 @@ describe("cloudHealthSummary", () => {
     );
     expect(s).toMatchObject({
       tone: "bad",
-      label: "1 ok · 1 degraded · 2 down · 2 deploying",
-      short: "2 down",
-      unhealthy: ["db", "legacy-vm", "web"],
+      label: "1 ok · 1 degraded · 1 down · 1 deploying",
+      short: "1 down",
+      unhealthy: ["db", "web"],
+      unrated: 3,
+      total: 7,
+    });
+  });
+
+  it("agrees with the Cloud page for a Vercel project and its deployment rows", () => {
+    // 9 healthy + 1 degraded droplets, a healthy Vercel project, its failed preview deployment and
+    // its live production deployment (rows with a status, no health: the project counts once).
+    const resources = [
+      ...Array.from({ length: 9 }, (_, i) => res(`droplet${i}`, { scope: inProject })),
+      res("billing", { health: "degraded", scope: inProject }),
+      res("shop-web", { scope: inProject }),
+      { ...bare("shop-web preview", "error"), scope: inProject },
+      { ...bare("shop-web production", "ready"), scope: inProject },
+    ];
+    expect(cloudHealthSummary(resources, true)).toMatchObject({
+      tone: "warn",
+      label: "10 ok · 1 degraded",
+      unhealthy: ["billing"],
+      unrated: 2,
+      total: 13,
+    });
+  });
+
+  it("reads status strings only from an older daemon (nothing carries a health)", () => {
+    const s = cloudHealthSummary([bare("legacy-vm", "error"), bare("new-db", "creating"), bare("bucket"), bare("web", "degraded")], true);
+    expect(s).toMatchObject({
+      tone: "bad",
+      label: "1 ok · 1 degraded · 1 down · 1 deploying",
+      unhealthy: ["legacy-vm", "web"],
+      unrated: 0,
+    });
+  });
+
+  it("stays quiet when nothing in scope has a health notion", () => {
+    expect(cloudHealthSummary([res("api", { scope: elsewhere }), { ...bare("example.com"), scope: inProject }], true)).toMatchObject({
+      tone: "muted",
+      label: "1 resource",
+      unrated: 1,
     });
   });
 

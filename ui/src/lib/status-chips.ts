@@ -2,7 +2,8 @@
 // ("9 ok · 1 degraded", §9 health within the §14 scope) and the current agent's remaining limit
 // (the hint fed through shell/slots.ts setAgentLimitHint). No React; unit-tested in
 // ui/test/status-chips.test.ts.
-import type { CloudResource, CloudSyncResult, IntegrationInfo } from "./contracts";
+import type { CloudHealth, CloudResource, CloudSyncResult, IntegrationInfo } from "./contracts";
+import { healthCounts, isUnhealthy } from "./integrations";
 
 export type ChipTone = "ok" | "warn" | "bad" | "muted";
 
@@ -30,6 +31,9 @@ export interface CloudSummary {
   deploying: number;
   /** Resources whose provider says "unknown" (scaled to 0, never ran): neither ok nor a problem. */
   unknown: number;
+  /** Resources without a health notion (§9.2: domains, buckets, a Vercel project's deployment
+   * rows): in `total`, not in the label. */
+  unrated: number;
   total: number;
   /** Names of the unhealthy resources (tooltip), worst first. */
   unhealthy: string[];
@@ -40,9 +44,12 @@ const inScope = (r: Pick<CloudResource, "scope">) => r.scope === undefined || r.
 
 /**
  * The chip for the open project's cloud: null (hidden) when no provider is connected or nothing
- * is in the project's scope. Resources without a health notion count as ok when their status
- * does not say otherwise; "unknown" health (§9.3: scaled to 0, never ran) is left out of the
- * label and the tone.
+ * is in the project's scope. Counts what the Cloud page and the rail's Cloud dot count
+ * (healthCounts, isUnhealthy): only resources with a `health`. One without has no health notion
+ * (§9.2: domains, buckets, a Vercel project's deployment rows, so the project counts once) and is
+ * left out, whatever its status says. Only a snapshot where nothing carries a health (an older
+ * daemon) reads the status strings instead. "unknown" health (§9.3: scaled to 0, never ran) is
+ * left out of the label and the tone.
  */
 export function cloudHealthSummary(
   resources: readonly Pick<CloudResource, "name" | "health" | "status" | "scope">[],
@@ -51,32 +58,21 @@ export function cloudHealthSummary(
   if (!connected) return null;
   const scoped = resources.filter(inScope);
   if (scoped.length === 0) return null;
-  let healthy = 0;
-  let degraded = 0;
-  let down = 0;
-  let deploying = 0;
-  let unknown = 0;
-  const bad: string[] = [];
-  const warn: string[] = [];
-  for (const r of scoped) {
-    const h = r.health ?? statusHealth(r.status);
-    if (h === "unknown") unknown += 1;
-    else if (h === "down") {
-      down += 1;
-      bad.push(r.name);
-    } else if (h === "degraded") {
-      degraded += 1;
-      warn.push(r.name);
-    } else if (h === "deploying") deploying += 1;
-    else healthy += 1;
-  }
+  const legacy = !resources.some((r) => r.health !== undefined);
+  const rated = legacy
+    ? scoped.map((r) => ({ name: r.name, health: statusHealth(r.status) }))
+    : scoped.flatMap((r) => (r.health ? [{ name: r.name, health: r.health }] : []));
+  const { healthy, degraded, down, deploying, unknown } = healthCounts(rated);
+  const unhealthy = rated.filter(isUnhealthy);
+  const bad = unhealthy.filter((r) => r.health === "down").map((r) => r.name);
+  const warn = unhealthy.filter((r) => r.health === "degraded").map((r) => r.name);
   const parts = [
     healthy ? `${healthy} ok` : "",
     degraded ? `${degraded} degraded` : "",
     down ? `${down} down` : "",
     deploying ? `${deploying} deploying` : "",
   ].filter(Boolean);
-  // Nothing reports a health (all unknown): say how many, quietly.
+  // Nothing reports a health (all unknown, or no health notion): say how many, quietly.
   const count = `${scoped.length} resource${scoped.length === 1 ? "" : "s"}`;
   const tone: ChipTone = down ? "bad" : degraded ? "warn" : parts.length ? "ok" : "muted";
   const short = down
@@ -97,18 +93,19 @@ export function cloudHealthSummary(
     down,
     deploying,
     unknown,
+    unrated: scoped.length - rated.length,
     total: scoped.length,
     unhealthy: [...bad, ...warn],
   };
 }
 
-/** Older providers report a status string only ("error", "stopped", "running" …). */
-function statusHealth(status: string | undefined): "down" | "degraded" | "deploying" | "ok" {
+/** An older daemon reports a status string only ("error", "stopped", "running" …). */
+function statusHealth(status: string | undefined): Exclude<CloudHealth, "unknown"> {
   const s = (status ?? "").toLowerCase();
   if (/(error|fail|unhealthy|crash)/.test(s)) return "down";
   if (/degraded/.test(s)) return "degraded";
   if (/(pending|creating|deploying|updating|progress|starting|provisioning|building)/.test(s)) return "deploying";
-  return "ok";
+  return "healthy";
 }
 
 /** A remaining-limit hint for the agent pill (setAgentLimitHint). */
