@@ -151,9 +151,16 @@ Following the design system's kit, in the app's type:
   what to do next ("… Check that the folder still exists, then scan again."). "Couldn't …", not
   "Could not" / "Cannot". Empty states: a Phantom pose, a short title, one sentence, one primary
   action.
-- **Keyboard:** every control is reachable and shows the 2 px focus ring. Page-wide shortcuts (the
-  map's arrows / Enter, the permission card's Enter = allow once) never take a key a focused
-  control uses itself (`lib/key-targets.ts`): Enter on a focused "Reject" presses Reject.
+- **Keyboard:** every control is reachable and shows the 2 px focus ring. Page-wide shortcuts never
+  take a key that belongs to something else: the map's arrows / Enter / Esc skip a key a focused
+  control uses itself, a key pressed in an open menu, popover or dialog, and a key already handled
+  (a Radix menu closing on Esc) — `lib/key-targets.ts`; the permission card's Enter (allow once) /
+  Esc (dismiss) answer only when nothing else can take the key — `lib/permission-keys.ts`. Enter on
+  a focused "Reject" presses Reject; Esc that closes a menu never dismisses a permission.
+- **Segmented** (`components/ui/segmented.tsx`, `label` required): `kind="radio"` for a setting or
+  filter (arrows move the choice), `kind="tabs"` for a view switcher (arrows move the focus, Enter
+  shows the view). One Tab stop; a mouse click chooses without taking the focus, so clicking
+  "Edit" or "Details" leaves the arrows to the map.
 - **Motion:** CSS motion stops under `prefers-reduced-motion` (styles.css); script motion (smooth
   scrolling, Web Animations, the map camera) asks `lib/motion.ts` first.
 - `ui/test/a11y-static.test.ts` keeps icon-only buttons labelled, clickable divs real controls and

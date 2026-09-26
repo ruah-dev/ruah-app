@@ -101,6 +101,7 @@ export function ExtensionsPage({ initialTab = "installed" }: { initialTab?: Exte
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-hairline px-4 max-md:px-3">
           <h1 className="heading min-w-0 truncate text-title text-foreground max-md:hidden">Extensions</h1>
           <Segmented
+            kind="tabs"
             label="Extensions view"
             value={tab}
             onChange={setTab}

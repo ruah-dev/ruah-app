@@ -25,7 +25,7 @@ import {
   type RuahTaskAction,
 } from "@/lib/integrations";
 import { PageHeader } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -353,6 +353,7 @@ export function TasksPage() {
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2 px-5 pt-4 max-md:px-3">
                 <Segmented
+                  label="Tasks shown"
                   value={scope}
                   onChange={setScope}
                   options={[

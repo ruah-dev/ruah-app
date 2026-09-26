@@ -12,7 +12,7 @@ import { usePalette, usePaletteNotice, useTheme, type ThemePref } from "@/lib/th
 import { Button } from "@/components/ui/button";
 import { Phantom } from "@/components/brand/Phantom";
 import { PhantomPose } from "@/components/brand/PhantomPose";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/utils";
 
 /** The theme in effect (html[data-theme]), following "system". */
@@ -113,7 +113,7 @@ export function AppearanceSettings() {
   return (
     <>
       <Row label="Theme" hint="Dark is lifted for long sessions; High contrast is pure black and white.">
-        <Segmented value={theme} onChange={(v: ThemePref) => setTheme(v)} options={THEME_OPTIONS} />
+        <Segmented label="Theme" value={theme} onChange={(v: ThemePref) => setTheme(v)} options={THEME_OPTIONS} />
       </Row>
       <div className="flex flex-col gap-3 py-3">
         <div>

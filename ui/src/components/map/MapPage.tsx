@@ -63,13 +63,29 @@ import { DrawerToggle, PageDrawer } from "@/components/shell/PageDrawer";
 import { MapSidebarSection } from "@/components/shell/SidebarSections";
 
 import { iconButton } from "@/components/ui/controls";
-import { Segmented } from "@/components/ui/segmented";
+import { Segmented as KitSegmented, type SegmentedOption } from "@/components/ui/segmented";
 
 export { iconButton };
 
-/** The segmented control lives in the kit now (components/ui/segmented.tsx); re-exported for
- * the pages that import it from here. */
-export { Segmented };
+/**
+ * @deprecated The segmented control lives in the kit (components/ui/segmented.tsx, `label`
+ * required). Kept only for the shell's Layout setting, which still imports it from here (the shell
+ * is another track's this wave): without a label, the options' own words name the group
+ * ("Standard or Advanced").
+ */
+export function Segmented<T extends string>({
+  label,
+  ...rest
+}: {
+  value: T;
+  options: readonly SegmentedOption<T>[];
+  onChange: (v: T) => void;
+  className?: string;
+  label?: string;
+}) {
+  const words = rest.options.map((o) => (typeof o.label === "string" ? o.label : "")).filter(Boolean);
+  return <KitSegmented {...rest} label={label ?? words.join(" or ")} />;
+}
 
 function StatusIndicators() {
   const { daemon } = useWorkspace();
@@ -125,7 +141,8 @@ function EditToggle() {
   const ws = useWorkspace();
   const wb = useWorkbench();
   return (
-    <Segmented
+    <KitSegmented
+      label="Map mode"
       value={wb.editing ? "edit" : "view"}
       onChange={(v) => wb.setEditMode(v === "edit")}
       options={[
@@ -625,7 +642,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-hairline px-3">
-        <Segmented value={view} options={options} onChange={wb.setPanelView} />
+        <KitSegmented kind="tabs" label="Panel view" value={view} options={options} onChange={wb.setPanelView} />
         {view === "agent" ? <ChatSwitcher compact className="min-w-0 shrink" /> : null}
         <span className="flex-1" />
         {view === "agent" ? <NewSessionButton daemon={ws.daemon} /> : null}

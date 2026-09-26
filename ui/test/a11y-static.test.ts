@@ -1,10 +1,12 @@
 // Accessibility rules that can be checked on the source (the live DOM audit in the polish report
 // covers names, contrast and keyboard reach on the rendered pages):
-// - an icon-only <button> carries an aria-label (a `title` alone is not announced reliably);
+// - an icon-only <button> / <Button> / <…Button> carries an aria-label (or the wrapper's `label`;
+//   a `title` alone is not announced reliably);
 // - a clickable <div>/<span> is a real control (role + tabIndex), a listbox option, or on a short,
 //   explained list;
 // - script motion goes through lib/motion.ts, so it stops under prefers-reduced-motion;
-// - the kit Segmented control moves with the arrow keys like a radio group;
+// - the kit Segmented control moves with the arrow keys (radio) or the focus (tabs), keeps one Tab
+//   stop, and every page uses the kit's (named) one;
 // - page-wide shortcuts (map, permission card) leave a focused control, an open menu / dialog and
 //   a key something else already handled alone.
 // Behaviour in a real DOM (the permission card and a Radix menu, focus after a click) is covered
@@ -13,7 +15,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { segmentedStep } from "@/components/ui/segmented";
+import { segmentedStep, segmentedTabStop } from "@/components/ui/segmented";
 import { controlOwnsKey, pageShortcutBlocked } from "@/lib/key-targets";
 import { permissionKeyAllowed } from "@/lib/permission-keys";
 
@@ -72,6 +74,37 @@ describe("accessible names", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("icon-only kit Buttons and icon-button wrappers are named too", () => {
+    // <Button size="icon" …><Icon /></Button> needs aria-label; wrappers (<ToolButton label=…>,
+    // <IconButton label=…>) turn their `label` into the aria-label.
+    const re = new RegExp(
+      String.raw`<(Button|[A-Z][A-Za-z]*Button)\b${ATTRS}>\s*(?:\{[^{}<]*\?\s*)?<([A-Z][A-Za-z0-9.]*)\b[^<>]*/>(?:\s*:\s*<[A-Z][^<>]*/>\s*\})?\s*</\1>`,
+      "g",
+    );
+    const offenders: string[] = [];
+    let checked = 0;
+    for (const { rel, text } of files) {
+      if (!rel.endsWith(".tsx")) continue;
+      for (const m of text.matchAll(re)) {
+        checked++;
+        const attrs = m[2] ?? "";
+        if (/\baria-label(ledby)?=/.test(attrs) || /\{\s*\.\.\./.test(attrs)) continue;
+        if (m[1] !== "Button" && /\blabel=/.test(attrs)) continue;
+        offenders.push(`${rel}:${lineOf(text, m.index ?? 0)} <${m[1]}><${m[3]}>`);
+      }
+    }
+    expect(checked).toBeGreaterThan(10);
+    expect(offenders).toEqual([]);
+  });
+
+  it("pages use the kit Segmented (its `label` is required), not the shell's unnamed fallback", () => {
+    const offenders = files
+      .filter(({ rel }) => rel !== "components/map/MapPage.tsx")
+      .filter(({ text }) => /import\s*\{[^}]*\bSegmented\b[^}]*\}\s*from\s*["']@\/components\/map\/MapPage["']/.test(text))
+      .map(({ rel }) => rel);
+    expect(offenders).toEqual([]);
+  });
+
   it("clickable divs and spans are real controls (role + tabIndex) or explained here", () => {
     const EXPLAINED = new Set([
       // Clicking the composer's padding focuses its textarea (which is itself focusable).
@@ -110,7 +143,7 @@ describe("reduced motion", () => {
   });
 });
 
-describe("Segmented keyboard (radio group)", () => {
+describe("Segmented keyboard (radio group / tab list)", () => {
   const none = [false, false, false];
   it("arrows move and wrap; Home / End jump", () => {
     expect(segmentedStep("ArrowRight", 0, none)).toBe(1);
@@ -128,6 +161,16 @@ describe("Segmented keyboard (radio group)", () => {
     expect(segmentedStep("ArrowRight", 0, [false, true, true])).toBe(0);
     expect(segmentedStep("Enter", 0, none)).toBeNull();
     expect(segmentedStep("ArrowRight", 0, [])).toBeNull();
+  });
+
+  it("always leaves one Tab stop: the chosen item, else the first enabled one", () => {
+    const values = ["a", "b", "c"];
+    expect(segmentedTabStop(values, none, "b")).toBe(1);
+    // A value that matches no option (a view that was removed) must not make the group unreachable.
+    expect(segmentedTabStop(values, none, "gone")).toBe(0);
+    // A chosen item that is disabled can't take focus: the first enabled one does.
+    expect(segmentedTabStop(values, [true, true, false], "a")).toBe(2);
+    expect(segmentedTabStop(values, [true, true, true], "a")).toBe(-1);
   });
 });
 

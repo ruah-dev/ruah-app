@@ -34,7 +34,7 @@ import {
 import { useWorkspace } from "@/lib/workspace";
 import { useWorkbench } from "@/lib/workbench";
 import { PageHeader, PageMenu } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -311,6 +311,8 @@ export function CloudPage() {
       <PageHeader title="Cloud">
         {sv.supported ? (
           <Segmented
+            kind="tabs"
+            label="Resources shown"
             className="shrink-0 whitespace-nowrap"
             value={view}
             onChange={(v) => {
@@ -448,6 +450,7 @@ export function CloudPage() {
           </div>
           {providersInData.length > 1 ? (
             <Segmented
+              label="Provider"
               value={provider}
               onChange={setProvider}
               options={[
@@ -458,6 +461,7 @@ export function CloudPage() {
           ) : null}
           {counts.total ? (
             <Segmented
+              label="Health"
               value={healthFilter}
               onChange={setHealthFilter}
               options={[
@@ -467,6 +471,7 @@ export function CloudPage() {
             />
           ) : null}
           <Segmented
+            label="Linked to the map"
             value={linkFilter}
             onChange={setLinkFilter}
             options={[

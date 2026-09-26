@@ -10,7 +10,7 @@ import { fetchScanOptions, setFeatureFlags, setScanOptions } from "@/lib/daemon"
 import { setViewerPref, useViewerPrefs } from "@/lib/preferences";
 import { useWorkspace } from "@/lib/workspace";
 import { Switch } from "@/components/ui/switch";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 
 function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -95,6 +95,7 @@ export function FeaturesSettings() {
         </Row>
         <Row label="Notifications" hint="When an agent finishes or asks for permission. Background: only for projects you are not looking at.">
           <Segmented
+            label="Notifications"
             value={activity.settings.notifications}
             onChange={(v: NotificationMode) => setFeatureFlags({ notifications: v })}
             options={[

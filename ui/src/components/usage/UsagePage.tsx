@@ -22,7 +22,7 @@ import {
 } from "@/lib/usage";
 import { useWorkspace } from "@/lib/workspace";
 import { PageHeader } from "@/components/shell/AppShell";
-import { Segmented } from "@/components/map/MapPage";
+import { Segmented } from "@/components/ui/segmented";
 import { AgentMark } from "@/components/agent/ComposerControls";
 import { Skeleton } from "@/components/ui/skeleton";
 import { iconButton, primaryButton, quietButton } from "@/components/ui/controls";
@@ -182,6 +182,7 @@ export function UsagePage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Usage">
         <Segmented
+          kind="tabs"
           label="Show"
           value={metric}
           options={METRIC_OPTIONS}
@@ -372,6 +373,7 @@ export function UsagePage() {
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-ui font-medium text-foreground">Breakdown</h2>
                   <Segmented
+                    label="Breakdown by"
                     value={breakdown}
                     onChange={setBreakdown}
                     options={[
