@@ -14,6 +14,7 @@ import { useWorkbench } from "@/lib/workbench";
 import { PANEL_DEFAULT, PANEL_MAX, PANEL_MIN, clampPanelWidth } from "@/lib/view-restore";
 import { SidePanel } from "@/components/map/MapPage";
 import { cn } from "@/lib/utils";
+import type { PreviewSlotProps } from "./slots";
 
 const KEY = "ruah.agentPanel.width";
 let width = PANEL_DEFAULT;
@@ -62,7 +63,7 @@ export function usePanelWidth(): number {
  * The right side: the agent panel, a registered live-preview pane (./slots.ts), or both as tabs
  * ("Agent | Preview"). One width for the column.
  */
-export function RightPanel({ agent, Preview }: { agent: boolean; Preview: ComponentType | null }) {
+export function RightPanel({ agent, Preview }: { agent: boolean; Preview: ComponentType<PreviewSlotProps> | null }) {
   const wb = useWorkbench();
   const w = usePanelWidth();
   const drag = useRef<{ x: number; w: number } | null>(null);
@@ -71,6 +72,11 @@ export function RightPanel({ agent, Preview }: { agent: boolean; Preview: Compon
   useEffect(() => setTab(Preview ? "preview" : "agent"), [Preview]);
   const both = agent && !!Preview;
   const shown = both ? tab : Preview && !agent ? "preview" : "agent";
+  // The preview drafted a prompt ("Ask agent to fix"): bring the agent's composer to front.
+  const showAgent = () => {
+    if (!wb.showPanel) wb.setShowPanel(true);
+    setTab("agent");
+  };
 
   // Never wider than half the window.
   useEffect(() => {
@@ -148,7 +154,7 @@ export function RightPanel({ agent, Preview }: { agent: boolean; Preview: Compon
       ) : null}
       {shown === "preview" && Preview ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <Preview />
+          <Preview onAskAgent={showAgent} />
         </div>
       ) : (
         <SidePanel onClose={() => wb.setShowPanel(false)} />
