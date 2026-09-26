@@ -429,6 +429,20 @@ describe("Kubernetes", () => {
     const missing = new k8s.KubernetesIntegration({ runner: kubectl(), settings: settings(), bin: () => undefined });
     expect(await missing.info()).toMatchObject({ status: "cli_missing", setupHint: expect.stringContaining("brew install kubectl") });
   });
+
+  test("kubectl without any context is not set up, not a cluster that is down (no localhost:8080 call)", async () => {
+    const refused = "The connection to the server localhost:8080 was refused - did you specify the right host or port?";
+    const runner = kubectl((a) => {
+      if (a[0] === "config" && a[1] === "get-contexts") return ok("");
+      if (a[0] === "config" && a[1] === "current-context") return fail("error: current-context is not set");
+      if (a[0] === "version" || a[0] === "get") return fail(refused);
+      return undefined;
+    });
+    const i = new k8s.KubernetesIntegration({ runner, settings: settings(), bin: () => "/fake/kubectl" });
+    const info = await i.info();
+    expect(info).toMatchObject({ status: "not_connected", detail: "no contexts in your kubeconfig", setupHint: expect.stringContaining("kubectl config use-context") });
+    expect(runner.calls.some((c) => c.args[0] === "version")).toBe(false);
+  });
 });
 
 // ---- Netlify -----------------------------------------------------------------------------
