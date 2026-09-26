@@ -215,9 +215,19 @@ export function daemonSnapshot(): DaemonState {
 // ---------------------------------------------------------------------------
 // URL resolution
 
+/**
+ * `?daemon=` as the page was opened with it. The app's router drops the query on the first
+ * navigation, so reading it again later would send reconnects (and terminal / preview sockets)
+ * to the page's own host instead of the daemon the page was opened for.
+ */
+let daemonParam: string | null | undefined;
+
 export function resolveDaemonUrls(): { wsUrl: string; httpOrigin: string } | null {
   if (typeof window === "undefined") return null;
-  const param = new URLSearchParams(window.location.search).get("daemon");
+  const current = new URLSearchParams(window.location.search).get("daemon");
+  if (current) daemonParam = current;
+  else if (daemonParam === undefined) daemonParam = null;
+  const param = daemonParam;
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = param || `${scheme}//${window.location.host}/ws`;
   try {
