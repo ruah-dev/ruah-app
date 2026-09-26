@@ -2687,3 +2687,84 @@ agent presets: PATH, `~/.local/bin`, their installers' dirs, `RUAH_*_BIN`); `git
   `APPLE_API_KEY`+`APPLE_API_KEY_ID`+`APPLE_API_ISSUER`, `APPLE_ID`+
   `APPLE_APP_SPECIFIC_PASSWORD`+`APPLE_TEAM_ID` or `APPLE_KEYCHAIN_PROFILE` are set. The
   keychain is never searched for an identity implicitly.
+
+## 20. CI, tagged releases and repository hygiene (2026-09-26)
+
+What GitHub runs for this repository and what a release publishes. Code:
+`.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dependabot.yml`,
+`test/repo-hygiene.test.ts`.
+
+### 20.1 CI (`ci.yml`)
+
+- Triggers: every `pull_request`, `push` to `main`, `workflow_dispatch`. A newer run on the
+  same pull request cancels the older one.
+- Matrix: `macos-15` (Apple silicon; required) and `ubuntu-24.04` (`continue-on-error`
+  until it has proven green: node-pty compiles from source there).
+- Steps, in order: checkout (`persist-credentials: false`) → pnpm from `package.json`
+  `packageManager` → Node from `.nvmrc` (pnpm store cached) → Bun 1.3.9 →
+  `pnpm install --frozen-lockfile` → `(cd ui && bun install --frozen-lockfile)` →
+  `pnpm typecheck` → `pnpm build` → `pnpm test` → `(cd ui && npx tsc --noEmit)` →
+  `(cd ui && bun run build)` → CLI smoke (`--version`, `help`,
+  `scan test/golden --dry-run`, on a temporary `RUAH_HOME`).
+
+### 20.2 Releases (`release.yml`)
+
+- Trigger: a pushed tag `v*`. The tag must equal `v` + `package.json` `version`, or the
+  run fails before building. `workflow_dispatch` is a dry run: same build, workflow
+  artifact only, no release.
+- Job `dmg` (`macos-15`, token `contents: read`, no dependency cache): the §20.1 gates,
+  then `pnpm dist --publish never` (§19.7), then `release/SHA256SUMS.txt`.
+- Job `publish` (only for tags; `ubuntu-24.04`; token `contents: write`; runs no project
+  code): downloads the artifact and creates the release as a **draft** titled
+  `Ruah v<version>` (a prerelease when the tag contains `-`), or uploads with `--clobber`
+  when the release exists. A maintainer publishes the draft.
+
+| Artifact | Contents |
+| --- | --- |
+| `Ruah-<version>-arm64.dmg` | the app (§19), ad-hoc signed unless the secrets below are set |
+| `SHA256SUMS.txt` | one line per `.dmg`: `<sha256>  <file name>` (`shasum -a 256 -c SHA256SUMS.txt`) |
+| workflow artifact `ruah-macos-arm64` | both files, kept 14 days (also for dry runs) |
+
+Optional repository secrets (none set = ad-hoc signing, no notarization):
+
+| Secret | Becomes (§19.7) |
+| --- | --- |
+| `MAC_CERT_P12_BASE64` | decoded to `$RUNNER_TEMP/developer-id.p12` → `CSC_LINK` (without it: `CSC_IDENTITY_AUTO_DISCOVERY=false`) |
+| `MAC_CERT_PASSWORD` | `CSC_KEY_PASSWORD` (build step only) |
+| `APPLE_API_KEY_P8` | written to `$RUNNER_TEMP/AuthKey.p8` → `APPLE_API_KEY` (only with the certificate) |
+| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | the same names (build step only) |
+
+The `.p12` and `.p8` files are removed at the end of the job, whatever its outcome.
+
+### 20.3 Workflow rules
+
+- Top-level `permissions: contents: read`; only `release.yml`'s `publish` job has
+  `contents: write`. No `pull_request_target`, no `write-all`.
+- Every `uses:` is pinned to a full 40-character commit SHA with the version in a comment;
+  Dependabot (`github-actions` ecosystem) bumps the pins.
+- Every checkout sets `persist-credentials: false`.
+
+### 20.4 Dependabot (`dependabot.yml`)
+
+Weekly (Monday), grouped minor + patch updates, a 3-day cooldown: `npm` at `/`
+(pnpm-lock.yaml; dev and runtime groups), `bun` at `/ui`, `github-actions` at `/`.
+Commit prefixes `chore(deps)`, `chore(deps-ui)`, `ci`.
+
+### 20.5 Repository hygiene (`test/repo-hygiene.test.ts`, part of `pnpm test`)
+
+Over `git ls-files` (skipped outside a git checkout; lockfiles excluded from text checks):
+
+- no `/Users/<name>` or `/home/<name>` except `me`, `you`, `dev`, `other`, `someone`,
+  `user`, `runner`, `x`;
+- no full-length token shapes: AWS access keys, GitHub (`ghp_…` 36 chars, `github_pat_…`),
+  Anthropic `sk-ant-…`, OpenAI `sk-…`, Slack, Google `AIza…`, DigitalOcean `do?_v1_…`,
+  Supabase `sbp_…`, Stripe live keys, npm tokens, PEM private keys;
+- no `.env` files (except `.env.example`), `.p12` / `.p8` / `.pem` / `.key` / `.cer` /
+  provisioning profiles, `.dmg` / `.zip` / `.asar` / `.app` / `.exe` / `.node`, nothing
+  under `dist/`, `dist-electron/`, `release/`, `viewer/`, `out/`, `node_modules/`,
+  `.output/`;
+- no file over 1 MiB;
+- the §20.3 workflow rules; `package.json` `repository`, `homepage`, `bugs`, `license`,
+  `packageManager` and `private: true`; the `.gitignore` entries for build output,
+  secrets and `/.ruah/`; README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG,
+  THIRD_PARTY_NOTICES, the pull request template and `dependabot.yml` exist.
