@@ -12,7 +12,7 @@ that element as context, edit your code, and update the map while you watch.
 It is a local-first macOS app. The daemon runs next to your code with your
 own agent and cloud logins; there is no Ruah server, account or telemetry.
 
-![The map of a multi-repo system, with an element's details](docs/screenshots/map.webp)
+![The map in the Standard layout: services, infrastructure as code and data in lanes; the selected Kubernetes overlay shows what it runs and deploys](docs/screenshots/map-iac.webp)
 
 ## Features
 
@@ -28,37 +28,57 @@ own agent and cloud logins; there is no Ruah server, account or telemetry.
   OpenCode. Switch agent or model instantly (warm agents, no restart), attach
   images, approve edits and commands from permission cards. Agents edit the map
   itself through the `ruah_*` MCP tools.
+- **Home: every project at a glance.** One card per project, sorted by what
+  needs you: a permission to answer (right from the card), a failed turn, cloud
+  trouble, a crashed preview, a turn that finished while you were away,
+  uncommitted or unpushed work. Filter by pinned projects or by group.
+- **New projects in a minute.** `⇧⌘N` (or `ruah app new`) creates a project
+  from an offline template (empty, Vite + React, Node API, static site, pnpm
+  monorepo, Terraform + GitHub Actions) with its map, `git init` and a first
+  commit; on request also a GitHub repository (`gh repo create`, private by
+  default), a place in a multi-repo system and a first prompt for the agent.
+  Nothing existing is ever overwritten.
 - **Several projects at once.** Agents keep working when you switch projects;
   an activity feed, unread badges and notifications tell you when one finishes
-  or needs you. `⌘K` jumps to any project, chat, element, cloud resource or
-  action; `ruah app resume` shows where you left off.
+  or needs you. Pinned projects keep the order you give them (`⌘1`–`⌘9`), and
+  groups (tags) keep clients apart from the day job. `⌘K` jumps to any
+  project, chat, element, cloud resource or action; `ruah app resume` shows
+  where you left off.
 - **Cloud, live.** DigitalOcean, AWS, Google Cloud, Azure, Cloudflare, Vercel,
   Supabase, Kubernetes, Railway, Fly.io, Netlify and Hetzner, read-only through
   their own CLIs: what runs where, which of it belongs to this project and why,
   and whether it is healthy.
 - **Terminal and live preview.** A real terminal on every page; Ruah finds how
   to run the project's dev server, shows the page next to the agent with hot
-  reload, and offers "Ask agent to fix" when it crashes.
+  reload, and offers "Ask agent to fix" when it crashes. The command you pick
+  is remembered on your Mac; it goes into the repo only if you save it there.
 - **Extensions.** Skills, MCP servers, Kiro powers, plugins and rules: add once,
   turn on per agent after seeing what they run; secrets stay in the Keychain.
 - **Issues and tasks.** Jira and GitHub issues on elements; ruah orchestration
-  tasks and workflows.
+  tasks and workflows (in a git repository).
 - **Usage and limits.** Tokens and estimated cost per agent over time, and each
   agent's plan limits (Claude, Cursor, Kiro, Grok, OpenCode) before you hit them.
+  Cursor's plan usage needs the Cursor app's saved login, which Ruah reads only
+  after you allow it.
 - **Export.** draw.io with a page per level, workflows and every technical spec.
-- **Looks.** The Ruah design system: Teal + Indigo by default, Indigo and
-  Sunrise palettes, dark, light and high-contrast themes, the Phantom mascots.
-  A labelled icon rail with a one-row command bar, or the Advanced sidebar
-  layout (`⌘\`).
+- **Looks.** The Ruah design system: Teal + Indigo by default, Indigo, Sunrise
+  and Classic teal palettes, dark, light and high-contrast themes, the Phantom
+  mascots. The Standard layout is a labelled icon rail with project tiles and a
+  one-row command bar; the Advanced layout is a sidebar with your projects and
+  the open project's chats (`⌘\` switches).
 
 | | |
 | --- | --- |
-| ![An agent asking before it edits a file](docs/screenshots/agent.webp) | ![The ⌘K launcher](docs/screenshots/launcher.webp) |
-| Ask about an element; approve the agent's edit (shown with the scripted `--mock` agent). | `⌘K`: elements, projects, chats, cloud resources and actions; Tab asks the agent. |
+| ![Home: five projects sorted by what needs you, one waiting for a permission](docs/screenshots/home.webp) | ![The ⌘K launcher with what needs you, recent chats and projects](docs/screenshots/launcher.webp) |
+| Home: answer a waiting permission, continue a chat, see what is uncommitted. | `⌘K`: projects, chats, elements, cloud resources and actions; Tab asks the agent. |
+| ![The new project wizard, choosing a starting point](docs/screenshots/new-project.webp) | ![Usage and limits cards with sample numbers](docs/screenshots/usage-limits.webp) |
+| `⇧⌘N`: name and location, a starting point, then git, GitHub and agent options. | Usage → Limits per agent, with Cursor's opt-in switch. **Sample numbers**, not a real account. |
 
-![Infrastructure as code on the map, light theme, Advanced layout](docs/screenshots/infra-light.webp)
+![The Advanced layout: projects and chats in the sidebar, a multi-repo map and an element's details](docs/screenshots/advanced.webp)
 
-*Screenshots use the fictional fixture repos in `test/fixtures/`.*
+*Screenshots: the fictional fixture repos in `test/fixtures/` and three
+projects made with `ruah app new`, in a scratch home, with the scripted
+`--mock` agent. The Usage page shows made-up sample data.*
 
 ## Install (macOS, Apple silicon)
 
@@ -106,7 +126,7 @@ pnpm install && (cd ui && bun install)
 pnpm app       # build the daemon and the viewer, open the desktop app
 pnpm dist      # release/Ruah-<version>-arm64.dmg (+ release/mac-arm64/Ruah.app)
 pnpm dist:app  # just the .app, faster
-ruah app serve # or: daemon + viewer in your browser (http://127.0.0.1:4177)
+pnpm ui:build && pnpm cli serve  # or: daemon + viewer in your browser (http://127.0.0.1:4177)
 ```
 
 ## CLI
@@ -119,42 +139,77 @@ every option.
 | Command | What it does |
 | --- | --- |
 | `ruah app [<repo>]` | open the desktop app (on a repo) |
-| `ruah app serve [<repo>]` | daemon + viewer in the browser (`--mock` for the scripted agent, `--agent <id>`) |
+| `ruah app serve [<repo>]` | daemon + viewer in the browser (the viewer from `./viewer` or `--viewer <dir>`; `--mock` for the scripted agent, `--agent <id>`) |
+| `ruah app new <name>` | a new project from a template (`--template <id>`, `--in <dir>`; `--gh private\|public` also creates the GitHub repo; `--templates` lists them) |
 | `ruah app scan <repo>` | write `<repo>/architecture.json` (`--no-infra`: code only; `--dry-run`) |
 | `ruah app infra <repo>` | print the Terraform / k8s / Helm / Ansible / compose / CI it finds; writes nothing |
-| `ruah app system init\|add\|status\|signals\|scan\|suggest …` | multi-repo systems: create, clone and add repos, status per repo, deterministic and agent-suggested cross-repo edges |
+| `ruah app system init\|add\|remove\|rename\|status\|signals\|scan\|suggest …` | multi-repo systems: create, clone and add repos, status per repo, deterministic and agent-suggested cross-repo edges (`rename` is refused while an agent works in the system) |
 | `ruah app export drawio <repo>` | draw.io file with pages per level, workflows and specs |
 | `ruah app cloud providers\|list\|status\|watch` | cloud resources and live health (exit 1 when something is down) |
 | `ruah app cloud scope …` | what belongs to this repo and why; edit `.ruah/cloud.json` |
 | `ruah app resume [<repo>]` · `ruah app activity` | where you left off; what agents did across projects |
-| `ruah app preview [<repo>]` | run the dev server and print its URL (`--detect` shows how) |
+| `ruah app preview [<repo>]` | run the dev server and print its URL (`--detect` shows how; `--remember` keeps the pick on this Mac, `--save-to-repo` writes `.ruah/preview.json`) |
 | `ruah app ext list\|featured\|add\|enable\|disable\|remove` | skills, MCP servers, powers, plugins and rules per agent |
 | `ruah app usage limits` | plan limits per coding agent |
-| `ruah app design check\|tokens` | WCAG contrast of every colour token; tokens per palette and theme |
+| `ruah app usage settings [--read-app-logins on\|off]` | whether Ruah may read the Cursor app's saved login for Cursor's plan usage (off by default; the same switch as in the app) |
+| `ruah app design palettes\|tokens\|check\|css` | palettes and themes, every colour token, WCAG contrast of every pair, the generated stylesheet |
 | `ruah app doctor` | which agents, git and cloud CLIs Ruah finds, and where it keeps data |
 | `ruah app mcp --daemon <url>` | the `ruah_*` map tools as a stdio MCP server |
 
-**Configuration.** `RUAH_HOME` (default `~/.ruah`) holds recent projects,
-chats, usage and settings; `RUAH_AGENT` (claude | cursor | grok | kiro |
-opencode | mock) picks the starting agent; `RUAH_PORT` the desktop app's
-daemon port (`ruah app serve` takes `--port`, default 4177).
-`~/.ruah/settings.json` turns features off: `"backgroundAgents": false`,
-`"notifications": "off"` (or `"always"`; default `"background"`); Settings →
-Features & behaviour does the same in the app. Other switches:
-`RUAH_CLOUD_WATCH=0` (no live cloud re-sync), `RUAH_PREVIEW=0` (no live
-preview), `RUAH_USAGE_READ_LOGINS=0` (do not read the Cursor app's login for
-its usage), `RUAH_MAX_BACKGROUND_TURNS` (default 3), `RUAH_PREVIEW_IDLE_MS`
-(stop a closed project's preview server after this long, default 600000),
-`RUAH_CLOUD_WATCH_MS` (cloud re-sync interval while the Cloud page is open,
-default 45000). For the desktop app: `RUAH_APP_DEV=1` (`ruah app` runs this
-checkout's Electron even with Ruah.app installed), `RUAH_APP_BUNDLE` (which
-Ruah.app `ruah app` opens), `RUAH_USER_DATA` (the Chromium profile; with
-`RUAH_HOME` set it defaults to `$RUAH_HOME/desktop`, logs to `$RUAH_HOME/logs`),
-`RUAH_DEVTOOLS=1` (developer tools in a packaged build), `RUAH_VIEWER` (serve a
-different viewer build). An instance started on a scratch `RUAH_HOME` asks
-before it opens a folder macOS hands it. Files Ruah may write into a project:
-`architecture.json` and `.ruah/` (issue links, cloud scope, preview settings,
-project extensions, system suggestions), made to be shared through git.
+### Configuration
+
+- **Data.** `RUAH_HOME` (default `~/.ruah`) holds recent projects, chats, the
+  usage log, settings and, per project, what belongs to this Mac only
+  (`projects/<id>/`: caches such as verify badges and eval results, the dev
+  server command you picked for the preview).
+- **Settings.** `$RUAH_HOME/settings.json`, the same switches as Settings →
+  Features & behaviour: `"backgroundAgents": false`, `"notifications": "off"`
+  (or `"always"`; default `"background"`), `"usage": { "readAppLogins": true }`
+  (default `false`: let Ruah read the Cursor app's saved login to show Cursor's
+  plan usage; also `ruah app usage settings --read-app-logins on`).
+- **Environment.** `RUAH_AGENT` (claude | cursor | grok | kiro | opencode |
+  acp | mock; unset: the saved default agent) picks the desktop app's starting
+  agent; `RUAH_PORT` the desktop app's daemon port (`ruah app serve` takes
+  `--port`, default 4177). Switches: `RUAH_USAGE_READ_LOGINS=0|1` (overrides the
+  saved choice about the Cursor login for that process, and locks the switch in
+  the app), `RUAH_CLAUDE_USAGE_PROBE=0` (do not start Claude Code briefly to read
+  its plan windows), `RUAH_CLOUD_WATCH=0` (no live cloud re-sync),
+  `RUAH_PREVIEW=0` (no live preview), `RUAH_EXTENSIONS=0` (no extensions),
+  `RUAH_MAX_BACKGROUND_TURNS` (default 3; 0 = none), `RUAH_PREVIEW_IDLE_MS`
+  (stop a closed project's preview server after this long, default 600000),
+  `RUAH_CLOUD_WATCH_MS` (cloud re-sync interval while the Cloud page is open,
+  default 45000), `RUAH_SUGGEST_TIMEOUT_MS` (how long "Suggest connections" may
+  run, default 10 minutes).
+- **Desktop app.** `RUAH_APP_DEV=1` (`ruah app` runs this checkout's Electron
+  even with Ruah.app installed), `RUAH_APP_BUNDLE` (which Ruah.app `ruah app`
+  opens), `RUAH_USER_DATA` (the Chromium profile; with `RUAH_HOME` set it
+  defaults to `$RUAH_HOME/desktop`, logs to `$RUAH_HOME/logs`),
+  `RUAH_DEVTOOLS=1` (developer tools in a packaged build), `RUAH_VIEWER` (serve
+  a different viewer build). An instance started on a scratch `RUAH_HOME` asks
+  before it opens a folder macOS hands it.
+
+### What Ruah writes into your repositories
+
+Only files meant to be committed and shared, and only when you do something
+that asks for them:
+
+| File | Written when |
+| --- | --- |
+| `architecture.json` | a scan: `ruah app scan`, Rescan, or opening a folder that has none (it is the map) |
+| `ruah.system.json` | creating or changing a multi-repo system |
+| `.ruah/cloud.json` | you change the project's cloud scope |
+| `.ruah/links.json` | you link an issue to an element |
+| `.ruah/extensions.json` | you add, enable or edit a project extension |
+| `.ruah/preview.json` | you choose "Save to the repo" for the preview command (off by default) |
+| `.ruah/verify.json` | you sync verify criteria |
+| `.ruah/suggestions.json`, `.ruah/system-scan.json` | a system's suggested connections and scans (in the system folder) |
+
+Whenever it writes into `.ruah/`, Ruah makes sure `.ruah/.gitignore` ignores
+`.cache/`, where earlier builds kept caches (Ruah moves those to
+`$RUAH_HOME` once, and leaves any file git tracks where it is). A new project
+gets the files of its template. An extension's "Also install into" writes that
+tool's own config (`.mcp.json`, `.cursor/…`, `.kiro/…`), recorded so that
+removing the extension undoes exactly those writes.
 
 ## How it is built
 
@@ -178,12 +233,18 @@ why), [`docs/DESIGN-NOTES.md`](docs/DESIGN-NOTES.md),
 
 ## Privacy and security
 
-- Your code, chats, maps and usage stay on your Mac (`~/.ruah`, your repos).
-  Ruah has no server and sends no telemetry. Network traffic comes from the
-  agents you use (to their vendors), the cloud and issue CLIs installed on your
-  Mac (Ruah asks them read-only questions: are you logged in, what runs where),
-  Jira if you connect it, and Cursor's usage page for its limits
-  (`RUAH_USAGE_READ_LOGINS=0` turns that off).
+- Your code, chats, maps and usage stay on your Mac (`$RUAH_HOME`, default
+  `~/.ruah`, and your repos). Ruah has no server and sends no telemetry.
+  Network traffic comes from the agents you use (to their vendors), the cloud
+  and issue CLIs installed on your Mac (Ruah asks them read-only questions: are
+  you logged in, what runs where), git and `gh` when you ask for them (cloning
+  a repo into a system, creating a GitHub repository for a new project, adding
+  an extension from a git URL), Jira if you connect it, and cursor.com for
+  Cursor's plan usage — only after you allow Ruah to read the Cursor app's
+  saved login (off by default; the token stays in memory and is never stored).
+- Ruah writes into your repositories only the files listed
+  [above](#what-ruah-writes-into-your-repositories), only when you act, and
+  keeps its caches in `$RUAH_HOME`.
 - The daemon listens on loopback only and rejects requests from other origins
   and rebound host names. Agents run with your permissions but never with
   "approve everything" flags unless you choose such a mode. Cloud access is
