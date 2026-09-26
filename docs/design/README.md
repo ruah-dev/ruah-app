@@ -97,8 +97,11 @@ borders, map edges, chart / agent / Phantom colours, and the categorical colours
 tint. 224 pairs × 4 palettes × 3 themes = 2688 checks, all passing.
 
 **Tints above 15 %** are not checked: semantic text sits on at most a 15 % tint of itself (the
-`soft` button is 10 %, 15 % on hover; badges 12 %). Semantic text on a tint over `surface-2` is not
-checked either — keep pills on background, card and popover.
+`soft` button is 10 %, 15 % on hover; badges 12 %). A *translucent* tint takes the colour of what
+is under it (a role pill fell to ~4.1:1 on `surface-3` and hovered rows), so pills and chips use the
+opaque `pill-<role>` utilities (styles.css): the 12 % tint is mixed over the page background, which
+makes the pair on screen exactly the checked one, on any surface
+(`ui/test/component-contrast.test.ts`).
 
 ## Scopes
 
@@ -112,7 +115,22 @@ checked either — keep pills on background, card and popover.
 Following the design system's kit, in the app's type:
 - **Button:** `default` (primary fill), `ai`, `soft` (primary on a 10 % tint, 15 % on hover),
   `outline`, `ghost`, `destructive`; 2 px focus ring in `--ring`.
-- **Badge:** `brand` `ai` `ok` `warn` `bad` `info` — pill, the role colour on its tint.
+- **Compact controls** (`controls.ts`): the one set of classes for header rows, cards and lists —
+  `quietButton` (secondary, no chrome), `solidButton` (secondary that must be found), `primaryButton`
+  (the page's one primary action), `aiButton` (hands work to an agent), `iconButton` (always with an
+  `aria-label`) and `fieldClass`. 28 px high, 8 px radius, `text-ui-sm`, 14 px icons. The kit
+  `Button` draws the same at `size="xs"` / `"icon-xs"`; `sm` / `default` are for dialogs and empty
+  states.
+- **Page header:** one row of controls (`PageHeader`): the title, filters as a `Segmented`, the one
+  primary action, an icon refresh; secondary actions go in a `⋯` menu.
+- **Segmented:** a radio group — one Tab stop, ← / → / Home / End move the choice.
+- **Badge:** `brand` `ai` `ok` `warn` `bad` `info` — pill, the role colour on its (opaque, `pill-*`)
+  tint; `neutral` for counts and metadata.
+- **Skeleton / SkeletonRows:** neutral `surface-3` placeholders in the shape of what loads (rows,
+  cards, the task table, chart bars), announced once as "Loading …"; a spinner only where the shape
+  is unknown.
+- **Dialog / AlertDialog:** Radix traps focus; on close, focus returns to the element that opened
+  the dialog (most open from state, not a `DialogTrigger`).
 - **Alert:** `info` `ai` `ok` `warn` `bad` — 3 px role-coloured edge on `surface-2`, title and icon
   in the role colour.
 - **Input / Textarea:** focus = ring-coloured border + soft 3 px ring.
@@ -120,6 +138,26 @@ Following the design system's kit, in the app's type:
 - Radii keep the app's scale (controls 8 px, cards 12 px — close to the design system's 10 / 16);
   the design system's radii are exposed as `--ds-r-xs…pill`. Shadows keep the app's `--elev-*`,
   tuned for the lifted surfaces.
+
+## Type scale, copy and accessibility
+
+- **One type scale** (styles.css `@theme --text-*`, `lib/utils.ts` `TYPE_SCALE` so `cn()` merges
+  them): `micro` 10.5 · `caption` 11 · `meta` 11.5 · `label` 12 · `ui-sm` 12.5 (controls) · `ui` 13
+  (rows) · `body` 13.5 (chat prose) · `title-sm` 14 · `title` 15 (page titles) · `headline` 16 ·
+  `display` 20. No arbitrary `text-[Npx]` between 10 and 22 px outside the shell
+  (`ui/test/type-scale.test.ts`).
+- **Copy:** short verbs, the same everywhere — "Open", "Sync", "Refresh", "Try again" (after an
+  error), "Ask agent", "Check again" (after installing / logging in). Errors say what happened and
+  what to do next ("… Check that the folder still exists, then scan again."). "Couldn't …", not
+  "Could not" / "Cannot". Empty states: a Phantom pose, a short title, one sentence, one primary
+  action.
+- **Keyboard:** every control is reachable and shows the 2 px focus ring. Page-wide shortcuts (the
+  map's arrows / Enter, the permission card's Enter = allow once) never take a key a focused
+  control uses itself (`lib/key-targets.ts`): Enter on a focused "Reject" presses Reject.
+- **Motion:** CSS motion stops under `prefers-reduced-motion` (styles.css); script motion (smooth
+  scrolling, Web Animations, the map camera) asks `lib/motion.ts` first.
+- `ui/test/a11y-static.test.ts` keeps icon-only buttons labelled, clickable divs real controls and
+  script motion behind `lib/motion.ts`.
 
 ## Typography
 
