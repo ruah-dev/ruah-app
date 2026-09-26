@@ -31,6 +31,8 @@ export function PermissionCard({
     if (!keyboard) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
+      // A key meant for a dialog or menu (the new project wizard's Enter / Esc) never answers.
+      if (e.defaultPrevented || target?.closest("[role=dialog], [role=menu], [role=alertdialog]")) return;
       if (
         target &&
         /input|textarea|select/i.test(target.tagName) &&

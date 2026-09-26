@@ -307,7 +307,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
             <ActionRow
               icon={FolderPlus}
               label="New project…"
-              hint="Empty map, optional git init"
+              hint="From a template, with git"
               shortcut="⌘N"
               onClick={actions.newProject}
               disabled={sample}

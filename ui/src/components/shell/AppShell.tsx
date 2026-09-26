@@ -15,6 +15,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Launcher, AllProjectsHost } from "@/components/launcher/Launcher";
 import { NewProjectDialog, OpenFolderDialog } from "@/components/projects/ProjectDialogs";
 import { TagsDialog } from "@/components/projects/TagsDialog";
+import { useFirstRunHints } from "@/components/projects/firstRun";
 import { SystemDialogs } from "@/components/system/SystemDialogs";
 import { ProjectMenu } from "@/components/projects/ProjectMenu";
 import { CommandLauncher } from "@/components/projects/CommandLauncher";
@@ -40,6 +41,7 @@ import { Rail } from "./Rail";
 import { TopBar, ActivityBell, AgentPill } from "./TopBar";
 import { RightPanel } from "./RightPanel";
 import { ResumeCard } from "./ResumeCard";
+import { NewProjectHints, useFirstPromptSender } from "./NewProjectHints";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useShellDialogs } from "./shellState";
 import { useSlots } from "./slots";
@@ -338,6 +340,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   useRecordChatVisits(daemon);
   useSwitchPaintProbe(daemon);
   useBuildReload();
+  useFirstPromptSender();
+  const firstRun = useFirstRunHints();
   const { saved, projectId } = useProjectView();
   const resume = useShellResume(projectId);
   const { dismissedFor, dismiss } = useResumeDismissal(projectId);
@@ -378,9 +382,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   // A cached target renders the real page at once; only a first visit shows the skeleton.
   const content = switching && !switching.preview ? <SwitchingContent name={switching.name} /> : children;
   const hideContent = terminal.open && terminal.maximized && !!daemon.project && daemon.source === "daemon";
+  // A project the wizard just created shows its first-run hints instead of "Where you left off".
+  const showHints = !isMobile && !!firstRun && firstRun.projectId === daemon.project?.id && !switching;
   const showResume =
     !isMobile &&
     !skipResume &&
+    !showHints &&
     shouldShowResumeCard({
       resume: resume.entry,
       projectId,
@@ -444,6 +451,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               {showResume && resume.entry ? (
                 <div className="pointer-events-none absolute bottom-5 left-5 z-30 flex max-w-full">
                   <ResumeCard resume={resume.entry} view={saved} onDismiss={() => dismiss(resume.entry?.lastViewedAt ?? null)} />
+                </div>
+              ) : null}
+              {showHints ? (
+                <div className="pointer-events-none absolute bottom-5 left-5 z-30 flex max-w-full">
+                  <NewProjectHints />
                 </div>
               ) : null}
             </div>
