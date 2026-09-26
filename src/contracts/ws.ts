@@ -144,6 +144,11 @@ export const ProjectInfoSchema = z.object({
   kind: ProjectKindSchema, // "system" = multi-repo (docs/MULTI-REPO.md)
   lastOpenedAt: z.string(), // ISO
   pinned: z.boolean().optional(),
+  // §20: the pinned projects' explicit order (0 = ⌘1), set on pin and by POST /api/projects/reorder
+  pinOrder: z.number().int().nonnegative().optional(),
+  pinnedAt: z.string().optional(), // ISO, when it was pinned
+  // §20: free-form groups (a client's name, "Job", "Freelance"); the first one is the project's group
+  tags: z.array(z.string()).optional(),
 });
 export type ProjectInfo = z.infer<typeof ProjectInfoSchema>;
 
@@ -366,6 +371,8 @@ export const ServerMessageSchema = z.union([
   }),
   // §18: the live preview of a project's dev server changed (every viewer; filter by status.projectId)
   z.object({ type: z.literal("preview"), status: PreviewStatusSchema }),
+  // §20: the recent list changed without a switch (pin, unpin, reorder, tags, forget) — every viewer
+  z.object({ type: z.literal("projects.changed"), recent: z.array(ProjectInfoSchema) }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 

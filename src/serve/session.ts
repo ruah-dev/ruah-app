@@ -420,6 +420,18 @@ export class SessionHub {
     return out;
   }
 
+  /** §20 overview: every permission request still waiting for an answer, in any project. */
+  pendingPermissions(): { projectId: string; chatId: string | null; turnId: string; requestId: string; title: string; options: PermissionOption[] }[] {
+    const out: { projectId: string; chatId: string | null; turnId: string; requestId: string; title: string; options: PermissionOption[] }[] = [];
+    for (const recording of this.turns.values()) {
+      if (recording.finalized) continue;
+      for (const [requestId, request] of recording.pending) {
+        out.push({ projectId: recording.projectId, chatId: recording.chatId, turnId: recording.record.turnId, requestId, title: request.toolCall.title, options: request.options });
+      }
+    }
+    return out;
+  }
+
   /** permission.response: routed to the bridge whose turn asked (any project), else the current bridge. */
   answerPermission(requestId: string, answer: { optionId: string } | { cancelled: true }): boolean {
     for (const recording of this.turns.values()) {

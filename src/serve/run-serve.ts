@@ -32,6 +32,7 @@ import { ActivityService, DEFAULT_MAX_BACKGROUND_TURNS } from "./activity.js";
 import { computeResume } from "../resume/resume.js";
 import { ExtensionsService } from "../extensions/service.js";
 import { DEFAULT_PREVIEW_IDLE_MS, PreviewManager } from "../preview/manager.js";
+import { ProjectOverviewService } from "../projects/overview.js";
 import { systemReposFor } from "../system/roots.js";
 
 export interface ServeFlags {
@@ -218,6 +219,21 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     for (const id of update.providers) cloudWatch?.noteSynced(id, !update.failed.includes(id));
     hub.broadcast({ type: "cloud.updated", ...update });
   });
+  // §20.5: the Home page's batched overview of every recent project.
+  let previewsRef: PreviewManager | undefined;
+  const overview = new ProjectOverviewService({
+    home,
+    projects: projectsStore,
+    chats,
+    log: activityLog,
+    current: () => hub.project(),
+    live: () => activity.liveCounts(),
+    permissions: () => hub.pendingPermissions(),
+    preview: (id) => {
+      const status = previewsRef?.status(id);
+      return status ? { state: status.state, url: status.url, exitCode: status.exitCode } : null;
+    },
+  });
   const projects = new ProjectService({
     projects: projectsStore,
     chats,
@@ -226,6 +242,10 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
     info,
     // Multi-repo systems (src/system/open.ts) unless a caller injects its own hook.
     openSystemProject: hooks.openSystemProject ?? makeOpenSystemProject(version),
+    // §20: the wizard's remembered folder, live pin / tag changes for every window, the Home overview.
+    newProjectParent: { get: () => settings.newProjectParent(), set: (dir) => settings.setNewProjectParent(dir) },
+    onListChanged: (recent) => hub.broadcast({ type: "projects.changed", recent }),
+    overview,
   });
   if (flags.repo !== undefined) {
     try {
@@ -271,6 +291,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
           onStatus: (status) => hub.broadcast({ type: "preview", status }),
           idleMs: envInt("RUAH_PREVIEW_IDLE_MS", DEFAULT_PREVIEW_IDLE_MS, 0),
         });
+  previewsRef = previews;
   process.once("exit", () => previews?.hangUpAll());
   const running = await startServer(null, hub, {
     host: flags.host,

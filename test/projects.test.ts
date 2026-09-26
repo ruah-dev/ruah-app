@@ -258,8 +258,12 @@ describe("ProjectService", () => {
     const work = tempDir("ruah-work-");
     const gitCalls: string[] = [];
     const { svc, host } = service(home, {
-      gitInit: async (dir) => {
-        gitCalls.push(dir);
+      create: {
+        resolveBin: (name) => `/fake/${name}`,
+        runner: async (_file, args, options) => {
+          if (args[0] === "init") gitCalls.push(options?.cwd ?? "");
+          return { code: 0, stdout: args[0] === "rev-parse" ? "abc1234\n" : "", stderr: "" };
+        },
       },
     });
     expect(() => validateProjectName("a/b")).toThrow(ProjectError);
@@ -287,9 +291,13 @@ describe("ProjectService", () => {
   it("really runs git init without a shell", async () => {
     const home = tempDir("ruah-home-");
     const work = tempDir("ruah-work-");
-    const { svc } = service(home);
+    const gitconfig = path.join(work, "gitconfig");
+    writeFileSync(gitconfig, "[user]\n\tname = Ruah Test\n\temail = test@example.invalid\n[commit]\n\tgpgsign = false\n");
+    const { svc } = service(home, { create: { env: { GIT_CONFIG_GLOBAL: gitconfig, GIT_CONFIG_NOSYSTEM: "1" } } });
     const result = await svc.create({ parentDir: work, name: "with git", git: true });
     expect(existsSync(path.join(result.project.root, ".git"))).toBe(true);
+    expect(result.created?.git).toMatchObject({ init: true, branch: "main" });
+    expect(result.created?.git?.commit).toMatch(/^[0-9a-f]{7,}$/);
   });
 });
 
