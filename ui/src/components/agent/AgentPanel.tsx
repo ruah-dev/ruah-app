@@ -1,6 +1,6 @@
 // Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
 // (MIT): a centered, readable message column with the composer docked at the bottom.
-import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { ImagePlus, MessageSquarePlus, RotateCcw } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
 import { PhantomAgent, PhantomPose } from "@/components/brand/PhantomPose";
@@ -11,8 +11,22 @@ import { cancel, resetSession, sendPrompt, type DaemonState } from "@/lib/daemon
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { scrollBehavior } from "@/lib/motion";
+import { setComposerPending } from "@/lib/build-reload";
+import {
+  adoptNewChatQueue,
+  clearQueue,
+  continuesQueue,
+  editQueuedPrompt,
+  enqueuePrompt,
+  queueKey,
+  removeQueuedPrompt,
+  setQueuePaused,
+  takeNextPrompt,
+  usePromptQueue,
+} from "@/lib/prompt-queue";
 import { Composer, imageBlockedReason, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
+import { QueuedPrompts } from "./QueuedPrompts";
 
 const suggestions = [
   "Explain what this does",
@@ -133,11 +147,51 @@ export function AgentPanel({
     el.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [focusTurnId]);
 
+  const qKey = queueKey(daemon.project?.id, daemon.activeChatId);
+  const queue = usePromptQueue(qKey);
+  const projectId = daemon.project?.id;
+  const chatId = daemon.activeChatId;
+  useEffect(() => {
+    if (chatId) adoptNewChatQueue(projectId, chatId);
+  }, [projectId, chatId]);
+
   const send = (text: string, attachments: AttachmentMeta[] = []) => {
-    if (running) return;
+    // Typed while the agent works: queue it for when the turn ends.
+    if (running) {
+      enqueuePrompt(qKey, { nodeId: node?.id ?? null, text, attachments });
+      return;
+    }
     stickRef.current = true;
     sendPrompt(node?.id ?? null, text, attachments);
   };
+
+  const sendNextQueued = () => {
+    const next = takeNextPrompt(qKey);
+    if (!next) return;
+    stickRef.current = true;
+    sendPrompt(next.nodeId, next.text, next.attachments);
+  };
+
+  // The turn ended: send the next queued prompt, unless it was stopped or failed (then the
+  // queue waits for "Send next"). sendPrompt adds the new turn at once, so this runs once per turn.
+  const agentIdle = daemon.agent?.state === "idle";
+  useEffect(() => {
+    if (running || !connected || !agentIdle || daemon.chatLoading) return;
+    if (queue.items.length === 0 || queue.paused) return;
+    if (!continuesQueue(latest?.stopReason)) {
+      setQueuePaused(qKey, true);
+      return;
+    }
+    sendNextQueued();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, connected, agentIdle, daemon.chatLoading, queue.items, queue.paused, qKey, latest?.stopReason]);
+
+  // Queued prompts live in memory only: an automatic reload for a new build waits for them.
+  const queuePendingId = useId();
+  useEffect(() => {
+    setComposerPending(queuePendingId, queue.items.length);
+    return () => setComposerPending(queuePendingId, 0);
+  }, [queuePendingId, queue.items.length]);
 
   // Drag & drop images anywhere on the chat (thread or composer). dragenter/leave fire for every
   // child, so count them; only file drags show the overlay.
@@ -288,6 +342,19 @@ export function AgentPanel({
       </div>
 
       <div className={cn("mx-auto w-full max-w-[46rem] shrink-0 px-3 pb-3", turns.length ? "pt-1" : "")}>
+        <QueuedPrompts
+          items={queue.items}
+          paused={queue.paused}
+          running={running}
+          pathFor={pathFor}
+          onEdit={(id, text) => editQueuedPrompt(qKey, id, text)}
+          onRemove={(id) => removeQueuedPrompt(qKey, id)}
+          onClear={() => clearQueue(qKey)}
+          onResume={() => {
+            setQueuePaused(qKey, false);
+            sendNextQueued();
+          }}
+        />
         <Composer
           // One composer per project: switching parks this project's unsent text and images
           // (they must never be sent to the next project's agent) and restores that one's.

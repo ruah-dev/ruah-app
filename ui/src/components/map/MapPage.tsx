@@ -694,7 +694,7 @@ export function SidePanel({ onClose, mobile = false }: { onClose?: () => void; m
             onDrill={() => node && wb.drill(node)}
             onSelectNode={wb.openNode}
             onOpenPath={wb.openPath}
-            onClearContext={wb.clearSelection}
+            onClearContext={view === "agent" ? wb.clearContext : wb.clearSelection}
             codePath={wb.codePath}
             codeRange={wb.codeRange}
             focusSignal={wb.askSignal}

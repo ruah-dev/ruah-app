@@ -2,4 +2,6 @@
 interface ImportMetaEnv {
   /** Unique per `vite build`; the daemon reports the served one as `viewerBuild` (/api/health). */
   readonly VITE_RUAH_BUILD_ID?: string;
+  /** Root package.json version, e.g. "0.0.1-alpha". */
+  readonly VITE_RUAH_VERSION?: string;
 }

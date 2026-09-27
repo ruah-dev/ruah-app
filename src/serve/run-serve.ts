@@ -34,6 +34,7 @@ import { ExtensionsService } from "../extensions/service.js";
 import { DEFAULT_PREVIEW_IDLE_MS, PreviewManager } from "../preview/manager.js";
 import { ProjectOverviewService } from "../projects/overview.js";
 import { systemReposFor } from "../system/roots.js";
+import { SelfUpdater, bundleOf, readBuildInfo } from "../desktop/self-update.js";
 
 export interface ServeFlags {
   /** Absent = launcher state. */
@@ -315,6 +316,18 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
         });
   previewsRef = previews;
   process.once("exit", () => previews?.hangUpAll());
+  // The installed app keeps itself on the newest commit of its checkout (src/desktop/self-update.ts).
+  const appPkg = readAppPackage();
+  const parentPidEnv = Number.parseInt(process.env.RUAH_PARENT_PID ?? "", 10);
+  const updater = new SelfUpdater({
+    info: readBuildInfo(appPkg),
+    bundle: process.versions.electron !== undefined ? bundleOf(process.execPath) : undefined,
+    home,
+    ...(typeof appPkg?.ruahFlavor === "string" && appPkg.ruahFlavor.length > 0 ? { flavor: appPkg.ruahFlavor } : {}),
+    ...(Number.isInteger(parentPidEnv) && parentPidEnv > 1 ? { appPid: parentPidEnv } : {}),
+    log: (line) => info(line),
+  });
+  updater.start();
   const running = await startServer(null, hub, {
     host: flags.host,
     port: flags.port,
@@ -338,6 +351,7 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
       },
     },
     ...(mapOps !== undefined ? { mapOps } : {}),
+    appUpdate: { updater, busy: () => hub.hasRunningTurns() },
     // Multi-repo systems management (§12): the library in src/system/* + the open system's store and the current agent.
     system: new SystemService({ host: hub, projects, version, home, chats }),
     integrations,
@@ -366,6 +380,9 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
 
   const shutdown = (): void => {
     cloudWatch?.stop();
+    updater.stop();
+    // Quitting with an update staged installs it (after the app has exited; no relaunch).
+    if (updater.ready) void updater.install(false).catch((cause: unknown) => info(`update install failed: ${String(cause)}`));
     void Promise.all([hub.shutdown(), (previews?.shutdownAll() ?? Promise.resolve()).then(() => terminals.shutdown())])
       .then(() => running.close())
       .then(() => resolveServe(0));
@@ -394,4 +411,14 @@ export async function runServe(flags: ServeFlags, version: string, hooks: ServeH
   return new Promise<number>((resolve) => {
     resolveServe = resolve;
   });
+}
+
+/** The package.json next to dist/ (the app's own, with `ruahBuild` in a packaged build). */
+function readAppPackage(): Record<string, unknown> | undefined {
+  try {
+    const raw: unknown = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    return raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
 }

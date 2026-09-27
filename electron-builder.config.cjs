@@ -27,9 +27,12 @@ const { existsSync } = require("node:fs");
 const path = require("node:path");
 const { macSigning } = require("./scripts/macos/signing.cjs");
 const { macFlavor } = require("./scripts/macos/flavor.cjs");
+const { buildStamp } = require("./scripts/macos/build-stamp.cjs");
 
 const signing = macSigning();
 const flavor = macFlavor();
+const stamp = buildStamp(__dirname);
+const extraMetadata = { ...(flavor.extraMetadata ?? {}), ...(stamp !== undefined ? { ruahBuild: stamp } : {}) };
 
 // Electron's Info.plist asks for camera, microphone and Bluetooth "for this app". Ruah
 // itself uses none of them, but agents and the integrated terminal run as its children:
@@ -44,7 +47,7 @@ const config = {
   copyright: "© 2026 Ruah",
   directories: { output: "release", buildResources: "electron/build" },
   artifactName: flavor.artifactName,
-  ...(flavor.extraMetadata !== undefined ? { extraMetadata: flavor.extraMetadata } : {}),
+  ...(Object.keys(extraMetadata).length > 0 ? { extraMetadata } : {}),
   files: [
     "package.json",
     "electron/**/*",

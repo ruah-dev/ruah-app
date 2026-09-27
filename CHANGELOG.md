@@ -12,6 +12,18 @@ Nothing has been tagged yet, so the first tagged release will contain both.
 
 ### Added
 
+**Updates and the composer**
+- The installed app keeps itself up to date from its checkout: each packaged
+  build records its commit, and the app checks the branch (`main`) every 10
+  minutes, builds a new commit in a clean worktree in the background and
+  restarts into it while you are away and nothing runs, or offers "Restart to
+  update"; it also installs when you quit. Only commits ship. Settings → About
+  shows the state. `pnpm app:update` (`ruah app app-update`) does it by hand.
+  Version `0.0.1-alpha`, shown in Settings → About.
+- Queued messages: the composer stays usable while the agent works. Messages
+  typed meanwhile stack above it (edit or remove them) and are sent one by one
+  when a turn finishes; after a stop or an error the queue waits for "Send next".
+
 **Projects** (CONTRACTS §20)
 - Home (`/`, `G H`): every project on one page, sorted by what needs you — a
   waiting permission (answer it from the card), a failed turn, cloud down, a

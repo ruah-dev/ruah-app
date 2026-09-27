@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { CLIENT_ID, setAgent, setDefaults, type DaemonState } from "@/lib/daemon";
+import { APP_VERSION, CLIENT_ID, setAgent, setDefaults, type DaemonState } from "@/lib/daemon";
 import type { AgentChoiceState } from "@/lib/contracts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWorkspace } from "@/lib/workspace";
@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { solidButton } from "@/components/ui/controls";
 import { useEnsure } from "@/lib/integrations";
 import { connectedServicesHint } from "@/lib/settings-hints";
+import { describeUpdate, fetchAppUpdate, postAppUpdate, useAppUpdateStatus, type AppUpdateStatus } from "@/lib/app-update";
+import { restartToUpdate } from "@/components/shell/useAppUpdate";
 
 function Group({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -329,6 +331,10 @@ export function SettingsPage() {
           </Group>
 
           <Group title="About">
+            <Row label="Version">
+              <span className="font-mono text-label text-foreground/90">Ruah {APP_VERSION}</span>
+            </Row>
+            <UpdatesRow origin={daemon.source === "daemon" ? daemon.httpOrigin : null} />
             <Row label="Viewer">
               <span className="font-mono text-label text-muted-foreground">
                 {CLIENT_ID.replace("architects-canvas", "ruah")}
@@ -366,4 +372,61 @@ export function SettingsPage() {
 function ConnectedServicesHint() {
   const s = useEnsure("integrations");
   return <>{connectedServicesHint(s.integrations.status === "ok" ? s.integrations.data : null)}</>;
+}
+
+/** What the updater is doing, in a sentence. */
+function updateHint(u: AppUpdateStatus | null): string {
+  if (u === null) return "Not available from this daemon.";
+  switch (u.phase) {
+    case "unsupported":
+      return u.reason ?? "Not available.";
+    case "current":
+      return `Up to date with ${u.ref ?? "main"}${u.current ? ` (${u.current.slice(0, 7)})` : ""}.`;
+    case "available":
+      return `New on ${u.ref ?? "main"}: ${describeUpdate(u)}.${u.auto ? " Building it shortly." : ""}`;
+    case "building":
+      return `Building ${describeUpdate(u)} — ${u.step ?? "working"}…`;
+    case "ready":
+      return `Ready: ${describeUpdate(u)}. Installs when you restart or quit Ruah.`;
+    case "failed":
+      return `The build failed: ${u.error ?? "unknown error"}${u.logFile ? ` (log: ${u.logFile})` : ""}`;
+    case "installing":
+      return "Installing — Ruah restarts in a moment.";
+  }
+}
+
+/** Settings → About: the installed app's updates (lib/app-update.ts). */
+function UpdatesRow({ origin }: { origin: string | null | undefined }) {
+  const status = useAppUpdateStatus();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (origin) void fetchAppUpdate(origin);
+  }, [origin]);
+  if (!origin) return null;
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await action();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const phase = status?.phase;
+  return (
+    <Row label="Updates" hint={updateHint(status)}>
+      {phase === "ready" ? (
+        <button type="button" className={solidButton} disabled={busy} onClick={() => void run(() => restartToUpdate(origin))}>
+          Restart to update
+        </button>
+      ) : phase === "failed" || (phase === "available" && status?.auto === false) ? (
+        <button type="button" className={solidButton} disabled={busy} onClick={() => void run(() => postAppUpdate(origin, "build"))}>
+          {phase === "failed" ? "Try again" : "Build update"}
+        </button>
+      ) : phase === "current" || phase === "available" ? (
+        <button type="button" className={solidButton} disabled={busy} onClick={() => void run(() => postAppUpdate(origin, "check"))}>
+          Check now
+        </button>
+      ) : null}
+    </Row>
+  );
 }

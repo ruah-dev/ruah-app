@@ -41,7 +41,8 @@ import { clearUnreadLocally, handleActivityMessage } from "./activity";
 import { pinOrderIds, pinnedOrder as reconcilePinnedOrder, sortProjectList } from "./rail";
 import type { AppFeatures, NotificationTarget, ResumeInfo, ViewState } from "./contracts";
 
-export const CLIENT_ID = "architects-canvas/0.1.0";
+export const APP_VERSION = import.meta.env.VITE_RUAH_VERSION ?? "dev";
+export const CLIENT_ID = `architects-canvas/${APP_VERSION}`;
 const FIRST_ATTEMPT_TIMEOUT_MS = 2500;
 const BACKOFF_MIN_MS = 500;
 const BACKOFF_MAX_MS = 8000;

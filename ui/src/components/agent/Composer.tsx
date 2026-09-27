@@ -4,7 +4,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { onComposerDraft, takeComposerDraft } from "@/lib/composer-draft";
 import { setComposerPending } from "@/lib/build-reload";
-import { ArrowUp, AtSign, Loader2, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, ListPlus, Loader2, Paperclip, Square, X } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
 import type { DiagramNode } from "@/data/graphs";
 import { kindStyles } from "@/components/explorer/kinds";
@@ -137,8 +137,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const connected = daemon.source === "daemon" && daemon.connection === "open";
   const switching = daemon.agentSwitch;
   const agentFace = useAgentExpression(daemon);
-  // Typing never waits for an agent to start: a prompt sent meanwhile is queued by the daemon.
-  const inputDisabled = !!reason || running;
+  // Typing never waits: a prompt sent while an agent starts is queued by the daemon, one sent
+  // while it works is queued by AgentPanel (lib/prompt-queue.ts) until the turn ends.
+  const inputDisabled = !!reason;
   const imageReason = imageBlockedReason(daemon);
   const attachDisabled = inputDisabled || !!imageReason;
   const items = attachments.items;
@@ -244,7 +245,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const placeholder = switching
     ? `${switching.name} is starting — type away, it sends when ready`
     : running
-      ? "The agent is working…"
+      ? "The agent is working — type to queue your next message"
       : reason
         ? connected
           ? "The agent is not ready"
@@ -385,6 +386,18 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             onMode={setAgentMode}
           />
           <span className="flex-1" />
+          {running && canSend ? (
+            <button
+              type="button"
+              aria-label="Queue message"
+              title="Queue (Enter) — sends when the agent finishes"
+              disabled={queued}
+              onClick={submit}
+              className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+            >
+              {queued ? <Loader2 className="size-4 animate-spin" /> : <ListPlus className="size-4" />}
+            </button>
+          ) : null}
           {running ? (
             <button
               type="button"

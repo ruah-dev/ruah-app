@@ -139,10 +139,11 @@ describe("signing", () => {
 });
 
 describe("flavors (RUAH_APP_FLAVOR)", () => {
-  test("default: Ruah, dev.ruah.app, no extra metadata", () => {
+  test("default: Ruah, dev.ruah.app, only the build stamp", () => {
     expect(macFlavor({})).toMatchObject({ flavor: "", appId: "dev.ruah.app", productName: "Ruah", artifactName: "Ruah-${version}-${arch}.${ext}" });
     expect(macFlavor({}).extraMetadata).toBeUndefined();
-    expect(config.extraMetadata).toBeUndefined();
+    // Only the build stamp (scripts/macos/build-stamp.cjs: which commit, for the app's updates).
+    expect(Object.keys(config.extraMetadata ?? {})).toEqual(["ruahBuild"]);
   });
 
   test("a flavor is a side-by-side app: its own bundle id (macOS routes folders by it), name and package metadata", () => {

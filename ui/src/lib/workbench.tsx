@@ -53,6 +53,8 @@ type Ctx = {
   selectNode: (id: string | null) => void;
   selectEdge: (edge: EdgeRef | null) => void;
   clearSelection: () => void;
+  /** The chip's X: clears the selection and stops using the open level as the agent's subject. */
+  clearContext: () => void;
   /** What the agent talks about: the selection, else the element whose level is open. */
   contextNode: DiagramNode | null;
   /** The element whose level is open (null at the top level and on workflows). */
@@ -277,7 +279,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     if (ref?.mode !== "architecture" || ref.parentId === null) return null;
     return app.diagrams.flatMap((d) => d.nodes).find((n) => n.id === ref.parentId) ?? null;
   }, [activeDiagram.id, app.diagrams]);
-  const contextNode = selectedNode ?? levelNode;
+  // The level the user X'd out of the agent's context; moving to another level brings it back.
+  const [dismissedLevelId, setDismissedLevelId] = useState<string | null>(null);
+  useEffect(() => setDismissedLevelId(null), [levelNode?.id]);
+  const contextNode = selectedNode ?? (levelNode && levelNode.id !== dismissedLevelId ? levelNode : null);
 
   // "N inside" chips: ask the daemon how much is below each stored leaf on the open level.
   useEffect(() => {
@@ -309,6 +314,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     const clearSelection = () => {
       setSelectedNodeId(null);
       setSelectedEdge(null);
+    };
+    const clearContext = () => {
+      clearSelection();
+      setDismissedLevelId(levelNode?.id ?? null);
     };
     const openDiagram = (diagramId: string, paneId = activePane.id) => {
       ws.navigate(paneId, diagramId);
@@ -372,6 +381,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         if (edge && editing) setPanelView("properties");
       },
       clearSelection,
+      clearContext,
       activePane,
       activeTab,
       activeDiagram,

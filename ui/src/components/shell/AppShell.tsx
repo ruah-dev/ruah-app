@@ -49,6 +49,7 @@ import { useSlots } from "./slots";
 import { useProjectView } from "./useProjectView";
 import { useShellResume } from "./useShellResume";
 import { useBuildReload } from "./useBuildReload";
+import { useAppUpdate } from "./useAppUpdate";
 import { RAIL_ATTR, toggleLayout } from "./layout";
 
 export { PageHeader, PageMenu } from "./PageHeader";
@@ -349,6 +350,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useRecordChatVisits(daemon);
   useSwitchPaintProbe(daemon);
   useBuildReload();
+  useAppUpdate();
   useFirstPromptSender();
   const firstRun = useFirstRunHints();
   const { saved, projectId } = useProjectView();

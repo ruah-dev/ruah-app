@@ -86,6 +86,10 @@ Usage:
                                    shell's PATH (what the desktop app uses), which variables
                                    the app takes from your shell profile, where it keeps its
                                    data and which Ruah.app \`ruah app\` opens
+  ruah app app-update [--app <path>] [--ref main] [--no-install]
+                                   build the checkout's branch (a clean worktree, only commits) and
+                                   install it into the desktop app, restarting it; the installed app
+                                   then keeps itself up to date by itself
   ruah app mcp --daemon <url>       stdio MCP server with the ruah_* map tools of a running
                                    daemon (token in RUAH_MCP_TOKEN or --token; started by
                                    the daemon for ACP agents)
@@ -353,6 +357,7 @@ export const SUBCOMMANDS: Readonly<Record<string, Handler>> = {
   ext: async (rest) => (await import("./extensions/cli.js")).runExt(rest),
   extensions: async (rest) => (await import("./extensions/cli.js")).runExt(rest),
   preview: async (rest) => (await import("./preview/cli.js")).runPreview(rest, pkg.version),
+  "app-update": async (rest) => (await import("./desktop/run-app-update.js")).runAppUpdate(rest),
 };
 
 /**

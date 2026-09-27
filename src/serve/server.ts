@@ -23,6 +23,7 @@ import type { AttachmentStore } from "../projects/attachment-store.js";
 import { handleAttachmentsRequest } from "./attachments-http.js";
 import { handleMapOpsRequest } from "./map-ops-http.js";
 import { handleActivityRequest, type ActivityHttpDeps } from "./activity-http.js";
+import { handleAppUpdateRequest, type AppUpdateHttpDeps } from "./app-update-http.js";
 import type { MapOpsService } from "./map-ops.js";
 import { hostnameOf, isLoopbackHostName, type TerminalGateway } from "../terminal/gateway.js";
 import { isIP } from "node:net";
@@ -56,6 +57,8 @@ export interface ServeOptions {
   system?: SystemService;
   /** CONTRACTS §13 /api/activity*, /api/projects/:id/{resume,view}; answered 503 when absent. */
   activity?: ActivityHttpDeps;
+  /** /api/app-update* (the installed app's updates, src/desktop/self-update.ts); answered 503 when absent. */
+  appUpdate?: AppUpdateHttpDeps;
   /** CONTRACTS §17 /api/extensions/* (skills, MCP servers, powers, plugins, rules); answered 503 when absent. */
   extensions?: ExtensionsService;
   /** CONTRACTS §18 /api/preview* (live preview of the project's dev server); answered 503 when absent. */
@@ -153,6 +156,7 @@ export function startServer(
       )
     )
       return;
+    if (handleAppUpdateRequest(req, res, url, options.appUpdate, (origin) => originAllowed(origin, options.allowOrigins))) return;
     // Before projects-http, which answers every other /api/projects/* path.
     if (handleActivityRequest(req, res, url, options.activity, (origin) => originAllowed(origin, options.allowOrigins))) return;
     if (handleProjectsRequest(req, res, url, options.projects, (origin) => originAllowed(origin, options.allowOrigins))) return;
