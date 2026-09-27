@@ -13,6 +13,9 @@ import type { ChatInfo, ProjectInfo, TurnRecord } from "../contracts/ws.js";
 import type { CreateProjectBody, CreateReport, NewProjectCheck, NewProjectDefaults, ProjectsList, RecentChat, ToolStatus } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { createArchitectureStore, type ArchitectureStore } from "../serve/architecture-store.js";
+import { PRODUCT_FILE } from "../contracts/product.js";
+import { createProductStore } from "../serve/product-store.js";
+import { touchResolverFor } from "../serve/product-touches.js";
 import type { ProjectRuntime } from "../serve/session.js";
 import { scanRepo } from "../scan/index.js";
 import { atomicWriteFileSync, expandHome, projectIdFor } from "./fs-util.js";
@@ -366,8 +369,19 @@ export class ProjectService {
       off();
     }
     name ??= store.current()?.name ?? path.basename(root);
+    // §23: product.json next to the map (a system's next to ruah.system.json); absent is fine.
+    const product = createProductStore(path.join(root, PRODUCT_FILE), {
+      watch: this.deps.watch !== false,
+      touchResolver: () => touchResolverFor(store),
+    });
+    let productError: string | undefined;
+    const offProduct = product.onError((error) => {
+      productError = error.message;
+    });
+    await product.load();
+    offProduct();
     const project = this.deps.projects.touch({ id, name, root, kind });
-    this.deps.host.setProject({ info: project, store, loadError });
+    this.deps.host.setProject({ info: project, store, loadError, product, productError });
     const ms = Math.round(performance.now() - started);
     this.deps.info?.(`opened ${kind} ${name} (${root}) in ${ms} ms${scanned ? " (scanned)" : ""}`);
     return { project, ms, scanned };

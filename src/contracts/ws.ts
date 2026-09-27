@@ -4,6 +4,7 @@ import type { Architecture } from "./architecture.js";
 import { ArchitectureSchema } from "./architecture.js";
 import { CloudResourceSchema, CloudScopeSummarySchema, ProviderErrorSchema } from "./integrations.js";
 import { MapActorSchema, MapChangeSchema } from "./map.js";
+import { ProductFileSchema } from "./product.js";
 
 // CONTRACTS.md §2.1 — field for field. Open unions use z.string() with the
 // known literals documented; receivers ignore unknown type/kind values.
@@ -277,6 +278,8 @@ export const ClientMessageSchema = z.union([
     modes: z.record(z.string(), z.string().nullable()).optional(),
   }),
   z.object({ type: z.literal("architecture.save"), architecture: ArchitectureSchema }),
+  // §23: write product.json (personas, screens, journeys); creates it when absent
+  z.object({ type: z.literal("product.save"), product: ProductFileSchema }),
   // §5.2 chats
   z.object({ type: z.literal("chat.new") }),
   z.object({ type: z.literal("chat.open"), chatId: z.string() }),
@@ -314,6 +317,17 @@ export const ServerMessageSchema = z.union([
     changes: z.array(MapChangeSchema).optional(), // §1.7: what an agent op or an undo changed
   }),
   z.object({ type: z.literal("architecture.error"), path: z.string(), message: z.string() }),
+  // §23: the open project's product.json; product null = no file yet. warnings = links into the code that no longer resolve
+  z.object({
+    type: z.literal("product"),
+    reason: z.enum(["initial", "changed", "saved", "recheck"]),
+    revision: z.number(),
+    path: z.string(),
+    product: ProductFileSchema.nullable(),
+    warnings: z.array(z.string()),
+    by: MapActorSchema.optional(),
+  }),
+  z.object({ type: z.literal("product.error"), path: z.string(), message: z.string() }),
   z.object({
     type: z.literal("agent.status"),
     state: AgentStateSchema,

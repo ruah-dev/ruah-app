@@ -75,6 +75,74 @@ export interface Architecture {
   workflows: Workflow[];
 }
 
+// product.json (CONTRACTS.md §23, docs/JOURNEYS.md): personas, screens, customer journeys
+export interface Evidence {
+  quote: string;
+  source?: string;
+  date?: string; // ISO 8601 date
+  kind?: "opinion" | "thematic" | "stated_preference" | "past_behavior" | "past_behavior_pattern" | "commitment" | "observed_behavior" | "launch_data" | (string & {}); // weakest → strongest (0–7)
+  stance?: "supports" | "contradicts" | (string & {}); // absent = supports
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  description?: string;
+  goals?: string[];
+}
+
+export interface Screen {
+  id: string;
+  name: string;
+  route?: string; // "/home", "/accounts/:id"
+  path?: string; // file that renders it
+  node?: string; // the frontend map element it belongs to
+  source?: "scan" | "user" | "agent" | (string & {});
+  shot?: string;
+}
+
+export interface JourneyStep {
+  id: string;
+  screen?: string;
+  action: string;
+  sees?: string;
+  why?: string;
+  signal?: string;
+  touches?: string[]; // map element ids, expanded ids, architecture workflow ids
+  evidence?: Evidence[];
+  question?: string;
+  origin?: "user" | "agent" | (string & {});
+}
+
+export interface Branch {
+  from: string; // step id
+  when: string;
+  to?: string; // step id in this journey (exactly one of to / journey)
+  journey?: string; // alternate journey
+  rejoin?: string; // with journey: step id where it comes back
+}
+
+export interface Journey {
+  id: string;
+  name: string;
+  persona?: string;
+  goal: string;
+  why?: string;
+  priority?: "core" | "secondary" | "edge" | (string & {});
+  steps: JourneyStep[];
+  branches?: Branch[];
+  signal?: string;
+  origin?: "user" | "agent" | (string & {});
+  reviewedAt?: string;
+}
+
+export interface ProductFile {
+  version: 1;
+  personas: Persona[];
+  screens: Screen[];
+  journeys: Journey[];
+}
+
 // viewer <-> daemon WebSocket messages (CONTRACTS.md §2.1)
 // ---------- viewer -> daemon ----------
 export type ClientMessage =
@@ -103,6 +171,7 @@ export type ClientMessage =
       modes?: Record<string, string | null>;
     } // Settings → Agents: saved defaults (§5.7); null clears
   | { type: "architecture.save"; architecture: Architecture } // Phase 3: daemon validates + writes the file
+  | { type: "product.save"; product: ProductFile } // §23: daemon validates + writes product.json (creates it)
   // §5.2 chats (turns always belong to the active chat; new/open cancel a running turn first)
   | { type: "chat.new" }
   | { type: "chat.open"; chatId: string }
@@ -130,6 +199,16 @@ export type ServerMessage =
       changes?: MapChange[]; // §1.7: what an agent op / undo changed
     } // root = absolute repo dir on the daemon host
   | { type: "architecture.error"; path: string; message: string } // file invalid; previous revision stays live
+  | {
+      type: "product";
+      reason: "initial" | "changed" | "saved" | "recheck";
+      revision: number;
+      path: string;
+      product: ProductFile | null; // null = no product.json yet
+      warnings: string[]; // links into the code that no longer resolve
+      by?: MapActor;
+    } // §23
+  | { type: "product.error"; path: string; message: string } // §23: file invalid; previous revision stays live
   | {
       type: "agent.status";
       state: AgentState;

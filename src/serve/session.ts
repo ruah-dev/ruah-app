@@ -48,6 +48,7 @@ import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { buildContextPack, buildPromptBlocks } from "../context/pack.js";
 import { resolveNodeScope } from "../expand/context.js";
 import type { ArchitectureStore } from "./architecture-store.js";
+import type { ProductStore } from "./product-store.js";
 import type { UsageSink } from "../usage/index.js";
 import { BridgePool, DEFAULT_MAX_LIVE_BRIDGES, type BridgeStatus, type PooledBridge } from "./bridge-pool.js";
 import { appendStreamEvent, type ChatStore } from "../projects/chat-store.js";
@@ -83,6 +84,10 @@ export interface ProjectRuntime {
   store: ArchitectureStore;
   /** Why the architecture file did not load (sent as architecture.error). */
   loadError?: string | undefined;
+  /** §23: product.json next to the map (absent: callers that do not open one, e.g. tests). */
+  product?: ProductStore;
+  /** Why product.json did not load (sent as product.error). */
+  productError?: string | undefined;
 }
 
 export interface SessionHubOptions {
@@ -270,6 +275,11 @@ export class SessionHub {
     return this.open?.store ?? null;
   }
 
+  /** §23: the open project's product.json store; null in the launcher state. */
+  get product(): ProductStore | null {
+    return this.open?.product ?? null;
+  }
+
   project(): ProjectInfo | null {
     return this.open?.info ?? null;
   }
@@ -310,6 +320,7 @@ export class SessionHub {
     if (previous !== null) {
       for (const unsubscribe of previous.unsubscribe) unsubscribe();
       previous.store.close();
+      previous.product?.close();
       this.lastChat.set(previous.info.id, this.activeChatId);
       this.options.activity?.markViewed(previous.info.id);
     }
@@ -337,6 +348,11 @@ export class SessionHub {
       const arch = this.architectureMessage("initial");
       if (arch !== undefined) this.broadcast(arch);
       else if (next.loadError !== undefined) this.broadcast({ type: "architecture.error", path: next.store.path, message: next.loadError });
+      const product = this.productMessage("initial");
+      if (product !== undefined) this.broadcast(product);
+      if (next.product !== undefined && next.productError !== undefined) {
+        this.broadcast({ type: "product.error", path: next.product.path, message: next.productError });
+      }
     }
     this.broadcastChats();
     this.broadcastHistory();
@@ -510,6 +526,29 @@ export class SessionHub {
         this.broadcast({ type: "architecture.error", path: error.path, message: error.message });
       }),
     ];
+    const product = runtime.product;
+    if (product !== undefined) {
+      unsubscribe.push(
+        // Links from journeys into the code are re-checked whenever the map changes.
+        store.onChange(() => product.recheck()),
+        product.onChange((event) => {
+          if (this.open?.product !== product) return;
+          this.broadcast({
+            type: "product",
+            reason: event.reason,
+            revision: event.revision,
+            path: product.path,
+            product: event.product,
+            warnings: event.warnings,
+            ...(event.by !== undefined ? { by: event.by } : {}),
+          });
+        }),
+        product.onError((error) => {
+          if (this.open?.product !== product) return;
+          this.broadcast({ type: "product.error", path: error.path, message: error.message });
+        }),
+      );
+    }
     return { ...runtime, unsubscribe };
   }
 
@@ -1585,11 +1624,19 @@ export class SessionHub {
     return { type: "architecture", reason, revision: store.revision, root: store.root, path: store.path, architecture: arch };
   }
 
-  /** After hello: project, architecture, agent.status, chats, active chat history. */
+  productMessage(reason: "initial" | "changed" | "saved" | "recheck"): ServerMessage | undefined {
+    const product = this.product;
+    if (product === null) return undefined;
+    return { type: "product", reason, revision: product.revision, path: product.path, product: product.current(), warnings: product.warnings() };
+  }
+
+  /** After hello: project, architecture, product, agent.status, chats, active chat history. */
   sendHello(socket: WebSocket): void {
     this.send(socket, { type: "project", project: this.project() });
     const arch = this.architectureMessage("initial");
     if (arch !== undefined) this.send(socket, arch);
+    const product = this.productMessage("initial");
+    if (product !== undefined) this.send(socket, product);
     this.send(socket, this.agentStatusMessage());
     const chats = this.chatsMessage();
     if (chats !== undefined) this.send(socket, chats);
@@ -1916,6 +1963,15 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
         return;
       }
       store.save(message.architecture, { by: { kind: "user" } }).catch((err: Error) => hub.error(socket, "save_rejected", `save failed: ${err.message}`));
+      return;
+    }
+    case "product.save": {
+      const product = hub.product;
+      if (product === null) {
+        hub.error(socket, "save_rejected", `save failed: ${NO_PROJECT_MESSAGE}`);
+        return;
+      }
+      product.save(message.product, { by: { kind: "user" } }).catch((err: Error) => hub.error(socket, "save_rejected", `save failed: ${err.message}`));
       return;
     }
     case "chat.new": {

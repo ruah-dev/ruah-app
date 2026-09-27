@@ -3202,3 +3202,61 @@ secret shapes:
   clone (`--replace-text` for contents, `--replace-message` for commit messages,
   `--path-rename` / `--invert-paths` for names) → scan the rewritten clone without
   `--expect-hits` (must exit 0).
+
+---
+
+## 23. Product layer: personas, screens and journeys (`product.json`, 2026-09-27)
+
+The customer side of the map: who uses the app, the journeys they take, the screens and actions of each step, why each step is designed that way, and the code that serves it. Design and later phases: `docs/JOURNEYS.md`. This section is phase J1 (contract, store, WebSocket). Code: `src/contracts/product.ts` (zod + `validateProduct`), `src/serve/product-store.ts`, `src/serve/product-touches.ts`; viewer types in `ui/src/lib/contracts.ts`.
+
+The file lives at `<repo>/product.json` (a system: next to `ruah.system.json`) and is meant to be committed. A missing file is a normal state: `product: null`, no error; the first `product.save` creates it.
+
+### 23.1 Types
+
+```ts
+interface ProductFile { version: 1; personas: Persona[]; screens: Screen[]; journeys: Journey[] }
+interface Persona { id; name /* ≤ 80 */; description? /* ≤ 400 */; goals?: string[] /* ≤ 10 × 200 */ }
+interface Screen  { id; name; route?; path? /* repo-relative */; node? /* map element */; source?: "scan" | "user" | "agent"; shot? }
+interface Journey {
+  id; name; persona?; goal /* ≤ 200 */; why? /* ≤ 2,000 */; priority?: "core" | "secondary" | "edge";
+  steps: JourneyStep[] /* ≥ 1, the main line */; branches?: Branch[]; signal?; origin?: "user" | "agent"; reviewedAt?;
+}
+interface JourneyStep {
+  id; screen?; action /* ≤ 200 */; sees?; why? /* ≤ 1,000 */; signal?;
+  touches?: string[] /* ≤ 20: element ids, expanded ids (§1.6), architecture workflow ids */;
+  evidence?: Evidence[] /* ≤ 20 */; question? /* ≤ 400 */; origin?: "user" | "agent";
+}
+interface Branch { from /* step */; when; to? /* step, same journey */; journey? /* alternate journey */; rejoin? /* step, with journey */ }
+interface Evidence {
+  quote /* ≤ 600 */; source?; date?;
+  kind?: "opinion" | "thematic" | "stated_preference" | "past_behavior" | "past_behavior_pattern" | "commitment" | "observed_behavior" | "launch_data";
+  stance?: "supports" | "contradicts";   // the step's why; absent = supports
+}
+```
+
+Evidence strength (0–7) is derived from `kind` in that order (`evidenceStrength()`), never stored.
+
+### 23.2 Validation
+
+Errors (the file is rejected; the daemon keeps the last good version and sends `product.error`):
+1. Ids must match the §1 id pattern (optionally `<repoId>:`-namespaced); persona, screen and journey ids are unique, step ids are unique inside their journey.
+2. `journey.persona`, `step.screen`, `branch.from`, `branch.to`, `branch.journey`, `branch.rejoin` must exist.
+3. A journey has ≥ 1 step; a branch has exactly one of `to` / `journey`; `branch.journey` is not its own journey; `rejoin` needs `journey`.
+4. Length caps above; `screen.path` stays inside the repo.
+
+Warnings (never rejections: code moves, the product file must survive a refactor):
+5. A `touches` entry that no longer resolves: not a stored element or workflow id, and not locatable by the expander (§1.6) → `journey <j>: step <s>: broken link: <ref>`.
+6. A `screen.path` that does not exist on disk.
+
+Warnings are recomputed on every load and save, and whenever the architecture changes (`reason: "recheck"`, sent only when they differ).
+
+### 23.3 WebSocket additions
+
+```ts
+// viewer → daemon
+{ type: "product.save"; product: ProductFile }            // validates + writes atomically; failure → error{save_rejected}
+// daemon → viewer (after hello, on project switch, and on every change)
+{ type: "product"; reason: "initial" | "changed" | "saved" | "recheck"; revision: number; path: string;
+  product: ProductFile | null; warnings: string[]; by?: MapActor }
+{ type: "product.error"; path: string; message: string }  // invalid file; the previous revision stays live
+```
