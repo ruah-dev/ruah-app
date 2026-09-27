@@ -1,11 +1,11 @@
-// The one-row top bar (44px): project switcher, git branch, the search / command field (opens the
+// The one-row top bar (44px): project switcher, git branch (switcher: ./BranchSwitcher.tsx), the search / command field (opens the
 // ⌘K launcher), the status chips (cloud health, registered items: ./StatusChips.tsx), the
 // cross-project activity bell, the terminal toggle and the agent pill (toggles the right agent
 // panel) with the agent's remaining limit beside it (./slots.ts setAgentLimitHint).
 import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { Bell, CheckCheck, Gauge, GitBranch, MonitorPlay, Search } from "lucide-react";
+import { Bell, CheckCheck, Gauge, MonitorPlay, Search } from "lucide-react";
 import type { ActivityEvent, ResumeInfo } from "@/lib/contracts";
 import { useActivity } from "@/lib/activity";
 import { attentionCount, eventTone, feedEvents, pendingPermissions, type FeedTone } from "@/lib/activity-feed";
@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { setShellDialog, useShellDialogs } from "./shellState";
 import { useSlots, type LimitHint } from "./slots";
 import { StatusArea } from "./StatusChips";
+import { BranchSwitcher } from "./BranchSwitcher";
 
 const dotTone: Record<FeedTone, string> = {
   ok: "bg-ok",
@@ -36,39 +37,9 @@ const dotTone: Record<FeedTone, string> = {
   muted: "bg-faint",
 };
 
+/** The branch chip; a click opens the branch switcher (./BranchSwitcher.tsx, CONTRACTS §24). */
 export function BranchChip({ resume }: { resume: ResumeInfo | null }) {
-  const git = resume?.git;
-  if (!git || !git.available) return null;
-  const branch = git.branch ?? (git.head ? git.head.slice(0, 7) : "detached");
-  const lines = [
-    git.branch ? `On ${git.branch}${git.upstream ? ` · tracking ${git.upstream}` : ""}` : `Detached at ${git.head?.slice(0, 7) ?? "?"}`,
-    git.ahead ? `${git.ahead} commit${git.ahead === 1 ? "" : "s"} to push` : "",
-    git.behind ? `${git.behind} commit${git.behind === 1 ? "" : "s"} to pull` : "",
-    git.dirty ? `${git.dirty} uncommitted file${git.dirty === 1 ? "" : "s"}${git.dirtyPaths.length ? `: ${git.dirtyPaths.join(", ")}${git.dirty > git.dirtyPaths.length ? ", …" : ""}` : ""}` : "Working tree clean",
-    git.lastCommit ? `Last commit: ${git.lastCommit.subject} (${relativeTime(git.lastCommit.at)})` : "",
-  ].filter(Boolean);
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          aria-label={lines.join(". ")}
-          className="flex h-6 max-w-56 min-w-0 shrink items-center gap-1.5 rounded-full bg-surface-2 px-2 font-mono text-[11.5px] text-muted-foreground max-lg:hidden"
-        >
-          <GitBranch className="size-3 shrink-0" />
-          <span className="min-w-0 truncate">{branch}</span>
-          {git.ahead ? <span className="shrink-0">↑{git.ahead}</span> : null}
-          {git.behind ? <span className="shrink-0">↓{git.behind}</span> : null}
-          {git.dirty ? <span className="shrink-0 text-warn">●{git.dirty}</span> : null}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-96">
-        {lines.map((l) => (
-          <p key={l}>{l}</p>
-        ))}
-      </TooltipContent>
-    </Tooltip>
-  );
+  return <BranchSwitcher resume={resume} />;
 }
 
 export function CommandField() {

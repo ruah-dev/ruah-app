@@ -1,6 +1,8 @@
 import type { ArchIndex, ArchEdgeRef } from "./graph.js";
 import { collapse } from "./graph.js";
 import type { ArchNode } from "../contracts/architecture.js";
+import type { ProductFile } from "../contracts/product.js";
+import { JOURNEY_INSTRUCTION, journeyBlock, journeyLines } from "./journeys.js";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -67,12 +69,48 @@ function infraLines(infra: NonNullable<ArchNode["infra"]>): string[] {
 export const MAP_TOOLS_SENTENCE =
   " You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.";
 
+/** Appended with the map tools sentence when the project has journeys tooling (CONTRACTS §23.6). */
+export const PRODUCT_TOOLS_SENTENCE =
+  " Its customer journeys are in product.json: read them with ruah_get_product or ruah_journeys_for and change them only with ruah_product_apply; do not invent a step's why.";
+
+export interface PackOptions {
+  mapTools?: boolean;
+  /** §23.6: the project's product.json; adds `journeys:` lines (undefined: no product side at all). */
+  product?: ProductFile | null;
+  /** §23.6: the prompt was sent from this journey step: adds the `[ruah journey]` block. */
+  journeyStep?: { journey: string; step: string };
+}
+
+function toolsSentence(options: PackOptions): string {
+  if (options.mapTools !== true) return "";
+  return `${MAP_TOOLS_SENTENCE}${options.product !== undefined ? PRODUCT_TOOLS_SENTENCE : ""}`;
+}
+
+/** A prompt sent from a journey step with no map element selected (CONTRACTS §23.6). */
+export function buildJourneyPack(
+  product: ProductFile,
+  journeyStep: { journey: string; step: string },
+  arch: import("../contracts/architecture.js").Architecture | null,
+  root: string,
+  userText?: string,
+  options: PackOptions = {},
+): string {
+  const lines = journeyBlock(product, journeyStep.journey, journeyStep.step, arch);
+  lines.push("");
+  lines.push(`${JOURNEY_INSTRUCTION} The repository is at ${root}.${toolsSentence({ ...options, product })}`);
+  if (userText !== undefined) {
+    lines.push("");
+    lines.push(userText);
+  }
+  return lines.join("\n");
+}
+
 export function buildContextPack(
   index: ArchIndex,
   nodeId: string,
   root: string,
   userText?: string,
-  options: { mapTools?: boolean } = {},
+  options: PackOptions = {},
 ): string {
   const node = index.byId(nodeId);
   if (node === undefined) throw new Error(`unknown node: ${nodeId}`);
@@ -155,9 +193,15 @@ export function buildContextPack(
     }
   }
 
+  lines.push(...journeyLines(options.product, node.id, index.arch));
+
   lines.push("[/ruah context]");
+  const journey = options.journeyStep !== undefined && options.product !== undefined && options.product !== null
+    ? journeyBlock(options.product, options.journeyStep.journey, options.journeyStep.step, index.arch)
+    : undefined;
+  if (journey !== undefined) lines.push(...journey);
   lines.push("");
-  lines.push(`${INSTRUCTION_PREFIX}${root}${INSTRUCTION_SUFFIX}${options.mapTools === true ? MAP_TOOLS_SENTENCE : ""}`);
+  lines.push(`${INSTRUCTION_PREFIX}${root}${INSTRUCTION_SUFFIX}${journey !== undefined ? ` ${JOURNEY_INSTRUCTION}` : ""}${toolsSentence(options)}`);
   if (userText !== undefined) {
     lines.push("");
     lines.push(userText);

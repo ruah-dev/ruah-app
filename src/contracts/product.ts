@@ -119,6 +119,8 @@ export type ProductValidationResult =
 export interface ProductValidationContext {
   /** Repo root for the on-disk `screen.path` check; null skips it. */
   root?: string | null;
+  /** Overrides the on-disk check (multi-repo systems: paths are "<repoId>/<path>"). */
+  pathExists?: (rel: string) => boolean;
   /**
    * Does a `touches` entry still resolve (stored element, architecture workflow,
    * expandable file or symbol)? Absent: touches are not checked.
@@ -189,9 +191,10 @@ export function validateProduct(input: unknown, context: ProductValidationContex
 
   // Warnings: links into the code (§23.2 rules 5–6).
   const root = context.root ?? null;
-  if (root !== null) {
+  const exists = context.pathExists ?? (root !== null ? (rel: string) => fs.existsSync(path.join(root, normalizeRel(rel))) : undefined);
+  if (exists !== undefined) {
     for (const screen of product.screens) {
-      if (screen.path !== undefined && relOk(screen.path) && !fs.existsSync(path.join(root, normalizeRel(screen.path)))) {
+      if (screen.path !== undefined && relOk(screen.path) && !exists(screen.path)) {
         warnings.push(`screen ${screen.id}: path does not exist on disk: ${screen.path}`);
       }
     }

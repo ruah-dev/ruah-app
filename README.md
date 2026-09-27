@@ -20,6 +20,16 @@ own agent and cloud logins; there is no Ruah server, account or telemetry.
   services, modules, datastores and the edges between them. Drill in down to
   files and symbols; hand edits survive re-scans. Multi-repo systems
   (`ruah.system.json`) become one map with evidence-backed cross-repo edges.
+- **Journeys: the product side.** Personas, the app's screens (read from its
+  routes) and customer journeys: each step's screen, what the customer does,
+  why it is designed that way, how you know it works, the customer evidence
+  behind it and the code that serves it. Line and Flow map views, a Business
+  overlay on the map, Product health (broken links, code changed since review,
+  weak evidence, open questions), screenshots from the live preview, and
+  shareable storyboards. Agents read and edit journeys, and are told never to
+  invent the why.
+- **Switch branches from the top bar.** The map and journeys follow the branch,
+  and Ruah tells you what changed ("+3 elements, −1").
 - **Infrastructure as code on the map.** Terraform, Kubernetes, Kustomize,
   Helm, Ansible, Dockerfiles, docker compose and CI pipelines show how it all
   runs and ships.

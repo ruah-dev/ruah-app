@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { MapActor } from "../contracts/map.js";
+import type { MapActor, MapChange } from "../contracts/map.js";
 import { type ProductFile, validateProduct } from "../contracts/product.js";
 
 // CONTRACTS §23: the open project's product.json (personas, screens, journeys), the
@@ -18,6 +18,8 @@ export interface ProductStoreEvent {
   product: ProductFile | null;
   warnings: string[];
   by?: MapActor;
+  /** Agent ops and undos: what changed (CONTRACTS §23.5). */
+  changes?: MapChange[];
 }
 
 export interface ProductStoreError {
@@ -32,7 +34,7 @@ export interface ProductStore {
   current(): ProductFile | null;
   warnings(): string[];
   load(): Promise<void>;
-  save(product: ProductFile, meta?: { by?: MapActor }): Promise<void>;
+  save(product: ProductFile, meta?: { by?: MapActor; changes?: MapChange[] }): Promise<void>;
   /** Re-runs the warning checks (the architecture changed); notifies only when they differ. */
   recheck(): void;
   close(): void;
@@ -47,6 +49,8 @@ export interface ProductStoreOptions {
    * the product file). Returns undefined while no architecture is loaded: not checked.
    */
   touchResolver?: () => ((ref: string) => boolean) | undefined;
+  /** Multi-repo systems: whether a "<repoId>/<path>" screen path exists (default: under the store's folder). */
+  pathExists?: (rel: string) => boolean;
 }
 
 const WATCH_DEBOUNCE_MS = 250;
@@ -73,12 +77,19 @@ export function createProductStore(productPath: string, options: ProductStoreOpt
 
   const context = () => {
     const resolveTouch = options.touchResolver?.();
-    return { root, ...(resolveTouch !== undefined ? { resolveTouch } : {}) };
+    return { root, ...(resolveTouch !== undefined ? { resolveTouch } : {}), ...(options.pathExists !== undefined ? { pathExists: options.pathExists } : {}) };
   };
 
-  function emit(reason: ProductChangeReason, by?: MapActor): void {
+  function emit(reason: ProductChangeReason, by?: MapActor, changes?: MapChange[]): void {
     revision += 1;
-    const event: ProductStoreEvent = { reason, revision, product: current, warnings, ...(by !== undefined ? { by } : {}) };
+    const event: ProductStoreEvent = {
+      reason,
+      revision,
+      product: current,
+      warnings,
+      ...(by !== undefined ? { by } : {}),
+      ...(changes !== undefined ? { changes } : {}),
+    };
     for (const listener of listeners) listener(event);
   }
 
@@ -156,7 +167,7 @@ export function createProductStore(productPath: string, options: ProductStoreOpt
         initial = false;
         current = result.value;
         warnings = result.warnings;
-        emit("saved", meta.by);
+        emit("saved", meta.by, meta.changes);
         resolveSave();
       }),
     recheck: () => {

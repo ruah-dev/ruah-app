@@ -33,6 +33,18 @@ contextBridge.exposeInMainWorld("ruah", {
   version,
   /** §18.6: <webview> is enabled (locked down in main.cjs) for previews that refuse iframes. */
   previewWebview: true,
+  /**
+   * §23.8: a screenshot of the live preview for a journey screen: the preview's rectangle of this
+   * window (iframes), or the preview <webview>'s own contents. Resolves to a JPEG data URI or null.
+   */
+  capturePreview: (req) => {
+    if (req === null || typeof req !== "object") return Promise.resolve(null);
+    const rect = req.rect;
+    return ipcRenderer.invoke("ruah:capture-preview", {
+      ...(typeof req.webviewId === "number" ? { webviewId: req.webviewId } : {}),
+      ...(rect !== null && typeof rect === "object" ? { rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : {}),
+    });
+  },
   /** Native folder picker; resolves to the chosen absolute path or null. */
   pickFolder: (opts) =>
     ipcRenderer.invoke("ruah:pick-folder", opts !== null && typeof opts === "object" && typeof opts.title === "string" ? { title: opts.title } : {}),

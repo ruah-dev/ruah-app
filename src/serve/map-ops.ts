@@ -13,6 +13,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import type { Architecture } from "../contracts/architecture.js";
 import type { ArchOp, ArchOpsResponse, MapChange } from "../contracts/map.js";
+import type { ProductFile } from "../contracts/product.js";
+import type { ProductOp, ProductOpsResponse, ProductRead } from "../contracts/product-ops.js";
+import { applyProductOps, ProductOpError, revertProductTurn } from "../product/ops.js";
+import type { ProductStore } from "./product-store.js";
 import type { AgentMapTools, StdioMcpServerSpec } from "../acp/bridge.js";
 import { applyOps, OpError, revertTurn } from "../mcp/ops.js";
 import { MAP_SERVER_INSTRUCTIONS, MAP_SERVER_NAME, sdkToolNames, type MapBackend } from "../mcp/tools.js";
@@ -23,6 +27,8 @@ import type { ArchitectureStore } from "./architecture-store.js";
 /** What the service needs from the SessionHub. */
 export interface MapOpsHost {
   readonly store: ArchitectureStore | null;
+  /** §23: the open project's product.json store (absent: product tools unavailable). */
+  readonly product?: ProductStore | null;
   agentId(): string;
   activeTurnId(): string | undefined;
   /** Adds the changes to the running turn's record (stored with the chat). */
@@ -48,8 +54,10 @@ export class MapOpsError extends Error {
 interface TurnSnapshot {
   root: string;
   agentId: string;
-  before: Architecture;
-  after: Architecture;
+  /** Map changes of the turn (absent: it changed only journeys). */
+  arch?: { before: Architecture; after: Architecture };
+  /** §23: product.json changes of the turn. */
+  product?: { before: ProductFile | null; after: ProductFile | null };
   changes: MapChange[];
 }
 
@@ -134,6 +142,8 @@ export class MapOpsService {
     return {
       read: async () => this.read(ctx),
       apply: (ops) => this.apply(ctx, ops),
+      readProduct: async () => this.readProduct(ctx),
+      applyProduct: (ops) => this.applyProduct(ctx, ops),
     };
   }
 
@@ -197,18 +207,74 @@ export class MapOpsService {
       throw new MapOpsError(422, `the map could not be saved: ${(err as Error).message}`);
     }
     if (turnId !== undefined) {
-      const snap = this.turns.get(turnId);
+      const snap = this.snapshotFor(turnId, store.root, ctx.agentId);
       const after = store.current() ?? outcome.architecture;
-      if (snap === undefined) {
-        this.turns.set(turnId, { root: store.root, agentId: ctx.agentId, before: current, after, changes: [...outcome.changes] });
-        this.trimTurns();
-      } else {
-        snap.after = after;
-        snap.changes.push(...outcome.changes);
-      }
+      if (snap.arch === undefined) snap.arch = { before: current, after };
+      else snap.arch.after = after;
+      snap.changes.push(...outcome.changes);
       host?.recordMapChanges?.(turnId, outcome.changes);
     }
     return { ok: true, revision: store.revision, results: outcome.results, changes: outcome.changes, warnings: outcome.warnings };
+  }
+
+  private snapshotFor(turnId: string, root: string, agentId: string): TurnSnapshot {
+    let snap = this.turns.get(turnId);
+    if (snap === undefined) {
+      snap = { root, agentId, changes: [] };
+      this.turns.set(turnId, snap);
+      this.trimTurns();
+    }
+    return snap;
+  }
+
+  // ---------- product.json (§23.5) ----------
+
+  private productStoreFor(ctx: AgentMapContext): ProductStore {
+    const store = this.storeFor(ctx);
+    const product = this.host()?.product ?? null;
+    if (product === null || product.root !== store.root) throw new MapOpsError(503, "journeys are not available for this project");
+    return product;
+  }
+
+  readProduct(ctx: AgentMapContext): ProductRead {
+    const product = this.productStoreFor(ctx);
+    return { revision: product.revision, product: product.current(), warnings: product.warnings() };
+  }
+
+  /** Applies product ops atomically for the agent: one validation, one save, one broadcast. */
+  async applyProduct(ctx: AgentMapContext, ops: readonly ProductOp[]): Promise<ProductOpsResponse> {
+    if (ops.length === 0) throw new MapOpsError(400, "no ops");
+    const productStore = this.productStoreFor(ctx);
+    const current = productStore.current();
+    let outcome;
+    try {
+      outcome = applyProductOps(current, ops, { origin: "agent" });
+    } catch (err) {
+      if (err instanceof ProductOpError) throw new MapOpsError(422, err.message);
+      throw err;
+    }
+    if (outcome.changes.length === 0) {
+      return { ok: true, revision: productStore.revision, results: outcome.results, changes: [], warnings: productStore.warnings() };
+    }
+    const host = this.host();
+    const turnId = host !== undefined && host.agentId() === ctx.agentId ? host.activeTurnId() : undefined;
+    try {
+      await productStore.save(outcome.product, {
+        by: { kind: "agent", agentId: ctx.agentId, ...(turnId !== undefined ? { turnId } : {}) },
+        changes: outcome.changes,
+      });
+    } catch (err) {
+      throw new MapOpsError(422, `product.json could not be saved: ${(err as Error).message}`);
+    }
+    if (turnId !== undefined) {
+      const snap = this.snapshotFor(turnId, productStore.root, ctx.agentId);
+      const after = productStore.current();
+      if (snap.product === undefined) snap.product = { before: current, after };
+      else snap.product.after = after;
+      snap.changes.push(...outcome.changes);
+      host?.recordMapChanges?.(turnId, outcome.changes);
+    }
+    return { ok: true, revision: productStore.revision, results: outcome.results, changes: outcome.changes, warnings: productStore.warnings() };
   }
 
   private trimTurns(): void {
@@ -234,17 +300,33 @@ export class MapOpsService {
   async undoTurn(turnId: string): Promise<{ changes: MapChange[]; skipped: string[] }> {
     const snap = this.turns.get(turnId);
     if (snap === undefined) throw new MapOpsError(404, "nothing to undo for this turn (map changes can be undone until Ruah restarts)");
-    const store = this.host()?.store ?? null;
+    const host = this.host();
+    const store = host?.store ?? null;
     if (store === null || store.root !== snap.root) throw new MapOpsError(409, "open the project this turn belongs to first");
-    const current = store.current();
-    if (current === null) throw new MapOpsError(503, "the architecture is not loaded");
-    const { architecture, changes, skipped } = revertTurn(current, snap.before, snap.after);
+    const productStore = host?.product ?? null;
+    const by = { kind: "user", turnId, undo: true };
+    let archPlan: ReturnType<typeof revertTurn> | undefined;
+    if (snap.arch !== undefined) {
+      const current = store.current();
+      if (current === null) throw new MapOpsError(503, "the architecture is not loaded");
+      archPlan = revertTurn(current, snap.arch.before, snap.arch.after);
+    }
+    let productPlan: ReturnType<typeof revertProductTurn> | undefined;
+    if (snap.product !== undefined) {
+      if (productStore === null) throw new MapOpsError(503, "journeys are not available for this project");
+      productPlan = revertProductTurn(productStore.current(), snap.product.before, snap.product.after);
+    }
+    const changes = [...(archPlan?.changes ?? []), ...(productPlan?.changes ?? [])];
+    const skipped = [...(archPlan?.skipped ?? []), ...(productPlan?.skipped ?? [])];
     this.turns.delete(turnId);
     if (changes.length === 0) {
       throw new MapOpsError(409, skipped.length > 0 ? `nothing undone: you changed ${skipped.slice(0, 3).join(", ")} since` : "nothing left to undo");
     }
     try {
-      await store.save(architecture, { by: { kind: "user", turnId, undo: true }, changes });
+      if (archPlan !== undefined && archPlan.changes.length > 0) await store.save(archPlan.architecture, { by, changes: archPlan.changes });
+      if (productPlan !== undefined && productPlan.changes.length > 0 && productStore !== null) {
+        await productStore.save(productPlan.product, { by, changes: productPlan.changes });
+      }
     } catch (err) {
       this.turns.set(turnId, snap);
       throw new MapOpsError(422, `undo failed: ${(err as Error).message}`);

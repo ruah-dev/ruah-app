@@ -1,0 +1,13 @@
+{
+  "name": "bank-api",
+  "private": true,
+  "description": "Accounts and transfers API.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0"
+  }
+}

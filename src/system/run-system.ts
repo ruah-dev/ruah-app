@@ -24,6 +24,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import type { ArchEdge, Architecture } from "../contracts/architecture.js";
+import { PRODUCT_FILE } from "../contracts/product.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { ruahHome } from "../usage/log.js";
 import { projectIdFor } from "../projects/fs-util.js";
@@ -35,6 +36,7 @@ import {
   initSystem,
   readArchitectureFile,
   rebuildSystem,
+  writeSystemProduct,
   removeRepo,
   renameRepo,
   rescanRepo,
@@ -287,6 +289,8 @@ function scan(argv: string[], version: string): number {
     const tmp = `${outFile}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, json);
     fs.renameSync(tmp, outFile);
+    // rebuildSystem writes product.json next to the default output; here it goes next to --out.
+    for (const w of writeSystemProduct(sys.dir, result, path.join(path.dirname(outFile), PRODUCT_FILE))) err(`warning: ${w}`);
   }
   for (const r of result.repos) err(`  ${r.id}: ${r.type}, ${r.nodes} nodes from ${r.source}`);
   err(`wrote ${outFile}: ${line}`);

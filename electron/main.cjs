@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Notification, dialog, globalShortcut, ipcMain, screen, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, dialog, globalShortcut, ipcMain, screen, session, shell, webContents } = require("electron");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const fs = require("node:fs");
@@ -537,6 +537,37 @@ function openInBrowser(url) {
 const LAUNCHER_ACCELERATOR = "Alt+Space";
 let launcherShortcutOn = false;
 
+// §23.8: a screenshot of the live preview, for a journey screen. Only the window's own viewer may
+// ask; a webview must be one this viewer hosts. JPEG, at most 1440 px wide, as a data URI.
+const CAPTURE_MAX_WIDTH = 1440;
+
+function registerPreviewCapture() {
+  ipcMain.handle("ruah:capture-preview", async (event, req) => {
+    if (win === null || win.isDestroyed() || event.sender !== win.webContents) return null;
+    let image;
+    try {
+      if (req !== null && typeof req === "object" && Number.isInteger(req.webviewId)) {
+        const guest = webContents.fromId(req.webviewId);
+        if (!guest || guest.getType() !== "webview" || guest.hostWebContents !== event.sender) return null;
+        image = await guest.capturePage();
+      } else if (req !== null && typeof req === "object" && req.rect !== null && typeof req.rect === "object") {
+        const n = (v) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
+        const rect = { x: n(req.rect.x), y: n(req.rect.y), width: n(req.rect.width), height: n(req.rect.height) };
+        if (rect.width < 8 || rect.height < 8) return null;
+        image = await event.sender.capturePage(rect);
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+    if (!image || image.isEmpty()) return null;
+    const size = image.getSize();
+    if (size.width > CAPTURE_MAX_WIDTH) image = image.resize({ width: CAPTURE_MAX_WIDTH, quality: "good" });
+    return `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}`;
+  });
+}
+
 function registerLauncherShortcut() {
   ipcMain.handle("ruah:launcher-shortcut", (_event, on) => {
     const want = on === true;
@@ -635,6 +666,7 @@ async function main() {
   registerIpc();
   registerNotifications();
   registerLauncherShortcut();
+  registerPreviewCapture();
   registerPreviewGuards();
   installMenu();
   // A folder from `open -a Ruah <dir>` at launch arrives as open-file, possibly before this point.

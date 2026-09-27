@@ -3260,3 +3260,167 @@ Warnings are recomputed on every load and save, and whenever the architecture ch
   product: ProductFile | null; warnings: string[]; by?: MapActor }
 { type: "product.error"; path: string; message: string }  // invalid file; the previous revision stays live
 ```
+
+### 23.4 Screens from code
+
+Every scan that writes an `architecture.json` also lists the UI routes of each **frontend** package as screens (`source: "scan"`) and merges them into `product.json` next to it: `ruah app scan` (next to `--out`), the first open of a repo, `POST /api/rescan` (through the open product store, `by: { kind: "scan" }`), new projects, and systems (§12: `ruah app system scan`, open / reload / rescan; a repo rescan also refreshes that repo's own file). Code: `src/scan/detectors/screens.ts`, `src/product/screens-merge.ts`.
+
+Detector (file conventions and regexes, no parser; ≤ 200 screens per repo, sorted by route then path):
+
+| Framework (dependency) | Screens from | Rules |
+| --- | --- | --- |
+| Next.js app router (`next`) | `[src/]app/**/page.{tsx,jsx,ts,js,mdx,md}` | `(group)` dropped; `[id]` → `:id`, `[...slug]` → `*slug`, `[[...slug]]` → `*slug?`; `@slot`, `_private`, `(.)intercepting` and `api/**` skipped |
+| Next.js pages router | `[src/]pages/**` | `_app`, `_document`, `_error` (any `_` file) and `api/**` skipped; `index` → parent |
+| TanStack Router / Start | `routeTree.gen.ts` (`FileRoutesByTo`, else `FileRoutesByFullPath`, else older `fullPath`), else `src/routes/**` / `app/routes/**` | `$id` → `:id`, `$` → `*`, `{-$id}` → `:id?`; `__root`, `_pathless` layouts and `-ignored` files skipped; `.` and `/` both separate segments; `index` / `route` → parent |
+| React Router / Remix (`react-router[-dom]`, `@remix-run/*`, `@react-router/dev`) | `createBrowserRouter` / `createHashRouter` / `createMemoryRouter` / `useRoutes` / `RouteObject[]` objects, `<Route>` JSX, `app/routes.ts` (`index` / `route` / `layout` / `prefix`), Remix flat routes `app/routes/*` | nested paths joined; a route with children is a layout (its index child is the screen); `path: "*"` and `<Navigate>` redirects skipped; resource routes (no default export) skipped; the screen's `path` is the component's file when the import resolves, else the router file |
+| Expo Router (`expo-router`) | `[src/]app/**/*.{tsx,jsx,ts,js}` | `(tabs)` groups dropped; `_layout`, `+not-found`, `+html`, `*+api` skipped |
+| SvelteKit (`@sveltejs/kit`) | `src/routes/**/+page.svelte` | groups dropped; `[id]` / `[id=matcher]` → `:id` |
+| Nuxt (`nuxt`) | `[app/]pages/**/*.vue` | `[id]` → `:id`; a parent page with `<NuxtPage>` beside its folder skipped |
+
+Angular, Vue Router and plain SPAs have no detector: their screens are added by hand or by the agent.
+
+Screen fields: `route`; `path` (repo-relative); `node` = the owning package's element id; `name` from the route (`/transfer/new` → "Transfer / new", `/` → "Home"), replaced by a title the screen's own file states (`export const metadata = { title }`, `<title>`, Remix `meta`, Nuxt `useHead` / `definePageMeta`); `id` = the route's slug (`/transfer/new` → `transfer-new`, `/accounts/:id` → `accounts-id`, `/` → `home`, or the component name when `/home` also exists), `-2`, `-3`… on clashes, prefixed `<nodeId>.` when two packages of the repo have screens (`web.home`, `admin.home`). A system namespaces each repo's screens like its map: `<repoId>:<id>`, node `<repoId>:<node>`, path `<repoId>/<path>`.
+
+Merge rules:
+1. `source: "scan"` screens are replaced. A new screen at the same `node` + `route` as a previously scanned one keeps that id and its `shot`.
+2. Screens with any other `source` are never touched; a scanned screen whose `node` + `route` one of them already has is dropped, and one whose id is taken gets a suffix.
+3. A scanned screen no longer found is dropped, unless a journey step references it: it stays unchanged and the scan warns `screen <route> no longer found in <node>`.
+4. Personas and journeys are never written by a scan. With no `product.json` and no screens, no file is created; the first scan that finds screens creates it with empty `personas` / `journeys`. An existing file that does not validate is never overwritten (warning, screens not updated); an unchanged result is not rewritten.
+
+### 23.5 Agent tools for journeys
+
+MCP server `ruah` (same transports, token and loopback rules as §1.7). Code: `src/contracts/product-ops.ts` (zod), `src/product/ops.ts` (`applyProductOps`, `revertProductTurn`), `src/product/read.ts`, `src/mcp/tools.ts`, `src/serve/map-ops.ts`.
+
+| Tool | Arguments | Effect |
+| --- | --- | --- |
+| `ruah_get_product` | `journey?` | text: personas, screens, journeys with steps (`n. id · screen · action · touches`), missing whys, open questions, warnings |
+| `ruah_get_journey` | `id` (id or name) | JSON: the journey, each step's screen, evidence with `strength` 0–7, touches resolved (`element` / `workflow` / `broken` / `expanded`), journeys that branch into it |
+| `ruah_journeys_for` | `element` | the journey steps that touch an element (directly, inside it, through a workflow, through its screens) |
+| `ruah_product_apply` | `ops: ProductOp[]` (1–200) | all or nothing: one validation, one save, one `product` broadcast `{by:{kind:"agent",agentId,turnId}, changes}` |
+
+`ProductOp`: `add_persona | update_persona {id, patch} | remove_persona | add_screen | update_screen {id, patch} | remove_screen | add_journey {name, goal, persona?, why?, priority?, signal?, steps[]} | update_journey {id, patch} | remove_journey | add_step {journey, after?: step|null, step} | update_step {journey, id, patch} | remove_step | move_step {journey, id, after: step|null} | add_evidence {journey, step, evidence} | add_branch {journey, branch} | remove_branch {journey, from, when}`. Personas, screens and journeys are referenced by id, case-insensitive id or unique exact name; steps by id or 1-based position. New entities carry `origin: "agent"` (steps too), ids are slugs of the name (steps: of the action). Removing a screen / persona / journey / step drops the references to it. A scanned screen an agent edits becomes `source: "agent"`. Failing ops answer `op N of M (op): …; nothing was changed`.
+
+HTTP for the stdio server: `GET /api/product` → `{ revision, product, warnings }`, `POST /api/product/ops` `{ ops }` → `{ ok, revision, results, changes, warnings }` (same guards as `/api/arch`). `arch.undo` of a turn now also restores its product changes: per persona / screen / journey three-way (a later edit wins and is reported as skipped), dangling references dropped.
+
+The system prompt / MCP instructions add: *read and edit journeys only with these tools; keep a step's touches in sync when changing its code; never invent a why or evidence — leave it empty and ask in `question`.*
+
+### 23.6 Journeys in the context pack
+
+`buildContextPack(index, nodeId, root, text, { mapTools, product?, journeyStep? })`:
+
+- After `workflows:`, when journey steps touch the element (or anything inside it, a workflow it is in, or a screen of it): `journeys:` lines, one per journey (max 6) — `- {journey} ({persona}, {priority}): step {i} of {n} "{action}"`, then `why:` (step's, else journey's; ≤ 300), `signal:`, `question:` when present.
+- `prompt.journeyStep = { journey, step }` (viewer → daemon; unknown → `error{bad_message}`) adds a `[ruah journey]` block after `[/ruah context]`: journey header, goal, why, signal, every step (`THIS` marks the current one; 20 around it at most), its branches, the step's sees / why (`(not written yet)`) / signal / open question / evidence (≤ 5) / touches (≤ 12), then `[/ruah journey]`. A journey prompt without `nodeId` is the block alone (`buildJourneyPack`). The instruction paragraph gains: *keep the change consistent with that step's why and signal; say so when the request works against them.*
+- With the map tools on and a product present, the tools sentence adds the product tools. Without a product the pack is byte-identical to before.
+
+### 23.7 Sharing (storyboard, markdown, draw.io)
+
+Journeys leave Ruah in three formats. Code: `src/product/storyboard.ts` (`renderStoryboard(product, architecture | null, journeyId?, { screenshots?, title?, warnings?, date? })`, `renderAllStoryboards`), `src/product/markdown.ts` (`journeyMarkdown(product, architecture | null, journeyId?, { warnings?, title? })`), `src/export/drawio.ts` (`toDrawio(arch, { product, productWarnings })`, `journeysToDrawio(product, architecture | null, { journeyId?, warnings? })`), `src/product/lanes.ts` (`laneOf(ref, architecture | null)`), `src/product/export.ts`, `src/product/run-journeys.ts`.
+
+- **html**: one self-contained page (inline CSS, no scripts, a CSP meta tag that allows only inline styles and `data:` images, so it opens offline and makes no requests; light and dark via `prefers-color-scheme`, phone widths, print). Header: persona, goal, why, signal, priority. Each step is a card: number, screen name + route, screenshot, action, `sees`, `why` (or "Why not written yet"), `signal`, evidence quotes with source, date and strength (`evidenceStrength()`, contradicting evidence flagged), the open question highlighted, and the code path collapsed in `<details>` (touches resolved against the map: name, type, path, lane; unresolved and broken ones as raw ids). Branches follow the step they leave from ("When Insufficient funds → Top up, back at step 3"). Without a journey id: every journey in one file behind an index grouped by persona (`core` first), with anchors. Footer "Made with Ruah · <date>". All product text is escaped; screenshots are accepted only as base64 image data URIs.
+- **md**: a PR-ready block: `## Journey: <name>`, persona / priority / goal / why / signal, a numbered step list (screen, action, why, signal, open question, touches as inline code with their lane, evidence as blockquotes), then `### Branches`. `<` and other markdown-significant characters in product text are backslash-escaped.
+- **drawio**: a "Journey: <name>" page per journey, swimlanes top to bottom **Customer · Screen · Frontend · Backend · Data & external**, steps as columns, touches placed by `laneOf` (rule in `src/product/lanes.ts`: element type → lane, route symbols → Backend, hooks → Frontend, modules inherit their parent's lane, workflows → Backend, unresolved ids by their text), solid arrows between consecutive steps, dashed arrows labelled with `when` for branches (a `to` branch loops under the cards; a `journey` branch goes to a card linking to that journey's page, and back to `rejoin`). `ruah app export drawio` and `GET /api/export/drawio` add these pages after the workflow pages whenever the project has a `product.json` with journeys; otherwise their output is unchanged.
+
+Screenshots (html only): `screen.shot` when it is a path inside the project folder, else `.ruah/shots/<screenId>.{webp,png,jpg,jpeg}`; image types only, ≤ 8 MB each, 48 MB in all; symlinks may not leave the folder.
+
+HTTP (same rules as `GET /api/export/drawio`: GET or HEAD, the open project; `ui/src/lib/export.ts` can call it the same way):
+
+```
+GET /api/product/export?format=html|md|drawio&journey=<id or name>&shots=0
+  format   default html
+  journey  absent = every journey in one file
+  shots=0  html without screenshots
+200  attachment: <id>.storyboard.html | <id>.md | <id>.drawio, or <project>-journeys.{html,md,drawio}
+     content-type text/html | text/markdown | application/vnd.jgraph.mxfile (charset=utf-8),
+     cache-control no-store, x-content-type-options nosniff,
+     content-security-policy "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+400 {error} unknown format · 404 {error} no product.json / unknown journey · 405 other methods · 409 no project open
+```
+
+CLI (no daemon; reads `<root>/product.json` and `<root>/architecture.json`, a system folder included; exit 0 ok, 1 invalid `product.json` or write failure, 2 usage errors and unknown journeys):
+
+```
+ruah app journeys [--root <dir>] [list] [--json]   # id, name, persona, priority, steps, gaps
+ruah app journeys [--root <dir>] show <id>          # ruah_get_product text for one journey
+ruah app journeys [--root <dir>] export <id>|--all [--format html|md|drawio | --html | --md | --drawio]
+                                                    [--out <file>|-] [--no-shots]
+```
+
+Gaps in `list`: missing why (a `core` journey's own `why` plus each of its steps without one), open questions (steps with `question`), broken links (§23.2 rule 5, computed with the same resolver as the daemon: stored elements, workflows and expandable files/symbols of the working tree).
+
+### 23.8 Screenshots of screens
+
+The desktop app photographs the live preview for a screen: `window.ruah.capturePreview({ rect } | { webviewId })` → IPC `ruah:capture-preview` → `webContents.capturePage` (the viewer's own window for iframes; the preview `<webview>` it hosts otherwise) → JPEG ≤ 1440 px wide as a data URI. The viewer posts it:
+
+- `POST /api/product/shot { screen, image: data:image/(jpeg|png|webp);base64,… }` (Origin checked; ≤ 12 MB) → writes `<root>/.ruah/shots/<screen>.<ext>` (atomic; other formats of that screen removed), sets `screen.shot`, saves `product.json` → `{ ok, shot }`.
+- `GET /api/product/shot?path=<shot>` serves it — only image files under `.ruah/shots/` or `product/shots/` of the open project, symlinks resolved; a cross-site request gets 403.
+
+Screenshots stay local by default (`.ruah/` is Ruah's per-project folder; they can show real data). Storyboard exports embed them unless `shots=0` / `--no-shots`.
+
+### 23.9 Health, drift, Home and the business overlay
+
+- **Health** (viewer, `ui/src/lib/journeys.ts` `productGaps`): broken links (§23.2 warnings), drift, weak or contradicting evidence (core journeys whose strongest evidence is ≤ 2, or evidence with `stance: "contradicts"`), open questions, missing whys (core journeys and their steps), no signal, no evidence, agent drafts to review, never reviewed, screens in no journey.
+- **Drift**: `GET /api/product/drift` → `{ journeys: [{ journey, reviewedAt, commit: {sha, date, subject} | null, uncommitted, paths }] }` — reviewed journeys with a commit since `reviewedAt` (git `log -1 --since`) or uncommitted changes (`status --porcelain`) in the files behind them: touched elements' paths, expanded file ids, their screens' files. Read-only git, no shell, 4 s timeout; cached 20 s per product / architecture revision; systems resolve `<repoId>/<path>` to each repo. The viewer's "Mark reviewed" sets `reviewedAt`.
+- **Home**: `ProjectOverview.product = { journeys, questions, gaps, broken } | null` (from `product.json` + `architecture.json`, cached by mtime); the card's foot says "3 journeys, 2 to review".
+- **Business overlay** (Map, per viewer): each element on the level gets a "N journeys · M core" badge; elements no journey uses fade (desaturated, 80 %). Coverage counts a journey for the element a step touches, every element it sits in, a touched workflow's elements and its screens' element; drilled-in files and symbols count the steps that touch them.
+- **Element inspector**: a Journeys section lists the journeys (and steps) an element serves, linking to `/journeys?journey=…&step=…`.
+
+## 24. Git branches (2026-09-27)
+
+The open project's branches, and switching between them from the top bar so the map follows the branch (branches can carry more or less architecture). Code: `src/git/branches.ts` (git), `src/git/project-switch.ts` (stores, scan, diff), `src/serve/git-http.ts`, viewer `ui/src/lib/git-branches.ts` + `ui/src/components/shell/BranchSwitcher.tsx`.
+
+Endpoints (viewer endpoints on the daemon's own origin, like §20: both run git, so a cross-site page is refused with 403 — Origin check, and `Sec-Fetch-Site: cross-site|same-site` without an Origin; bodies JSON ≤ 64 KiB). 409 when no project is open; 400 `"switch branches per repo from the system view"` for a system (§12) — per-repo switching is not offered yet; 400 `"not a git repository"`; 503 when git is not installed. Errors are `{ error, code }`.
+
+```ts
+GET /api/git/branches → {
+  projectId: string;
+  current: string | null;          // null = detached HEAD
+  head: string;                    // short sha ("" in an empty repo)
+  detached: boolean;
+  dirty: { staged: number; unstaged: number; untracked: number };
+  local: { name; upstream?; ahead?; behind?; upstreamGone?; lastCommit: { sha; subject; date }; current: boolean;
+           worktree?: string }[];  // worktree: checked out in another worktree (git refuses to switch to it here)
+  remote: { name: "origin/x"; remote; branch; hasLocal: boolean; lastCommit }[];  // origin/HEAD left out
+  truncated: boolean;              // > 200 refs of a kind: the 200 most recently committed are listed
+}
+POST /api/git/switch { name: string; create?: boolean; from?: string } → {
+  ok: true; branch: string; previous: string | null; created: boolean;
+  carried: number;                 // tracked files with uncommitted changes git carried over
+  architecture: "tracked" | "generated" | "rescanned";
+  architectureError?: string;      // the branch's architecture.json is invalid: the last good map stays
+  diff: ArchitectureDiff;
+}
+```
+
+Switching: `name` is a local branch (`git switch <name>`), a remote-tracking branch (`origin/x`: the local `x` when it exists, else `git switch --track origin/x`) or a branch only one remote has (`--track <remote>/<name>`; on several remotes 409 `ambiguous`). `create: true` runs `git switch -c <name> [<from>]` (`from`: any commit-ish, default HEAD). Git runs through `execFile` (no shell), `GIT_TERMINAL_PROMPT=0`, `LC_ALL=C`, 5 s timeout for reads and 60 s for the switch; never `--force`, `--discard-changes` or a stash.
+
+Refusals:
+
+| Status | code | When |
+| --- | --- | --- |
+| 409 | `turn-running` | an agent turn (foreground, background or queued) runs in this project |
+| 409 | `in-progress` | a merge, rebase, cherry-pick or revert is in progress (`MERGE_HEAD`, `rebase-merge`, `rebase-apply`, `CHERRY_PICK_HEAD`, `REVERT_HEAD` in `git rev-parse --git-dir`, so linked worktrees work) |
+| 409 | `local-changes` | git would overwrite local changes: `"Commit or stash your changes first: <files>"` (git's file list) |
+| 409 | `untracked-overwritten` | untracked files the branch tracks would be overwritten |
+| 409 | `worktree` / `exists` / `busy` / `unmerged` | branch checked out in another worktree / `create` of an existing name / a switch already running / unresolved conflicts |
+| 400 | `bad-name` | `create` with a name `git check-ref-format --branch` refuses; any name starting with `-` or containing `@{` |
+| 404 | `not-found` | no such branch (or `from` commit) |
+
+Changes git can carry over are carried (that is what `git switch` does) and counted in `carried`.
+
+The map afterwards: when the new HEAD tracks `architecture.json`, the stores reload it (`store.load()` and `product.load()` right away instead of waiting for the watchers; a branch without `product.json` gives `product: null`). When it does not: no file on disk → scanned like a first open (`architecture: "generated"`, scan + validate + atomic write); an untracked file carried over → rescanned with hand edits kept (`"rescanned"`). A generated file still untouched is removed before switching to a branch that tracks one (otherwise git refuses: the untracked copy would be overwritten), and put back when the switch fails.
+
+`diff = diffArchitectures(before, after)`: elements by `id` (`x` / `y` ignored; key order and absent vs `undefined` are not changes), edges by `(from, to, label)`, workflows by `id`:
+
+```ts
+{ added: { id; name; type }[]; removed: { id; name; type }[]; changed: { id; name; fields: string[] }[];
+  edges: { added: { from; to; label? }[]; removed: { from; to; label? }[] };
+  workflows: { added: { id; name }[]; removed: { id; name }[] } }
+```
+
+WebSocket (daemon → every viewer), after a successful switch (also after a switch whose scan failed):
+
+```ts
+{ type: "git.changed"; projectId: string; branch: string | null }
+```
+
+Viewer: the top bar's branch chip (hidden below `lg`) opens a popover with its former tooltip details, a filter, local branches (current marked, ↑ahead ↓behind, last commit time), remote-only branches and "Create branch from <current>…" (name checked as you type); switching is disabled while an agent works in the project. The result is a toast `"<branch>: +3 elements, −1, 2 changed"` (or the refusal's message); `git.changed` refetches the chip (`/api/projects/:id/resume`). ⌘K has "Switch branch…".

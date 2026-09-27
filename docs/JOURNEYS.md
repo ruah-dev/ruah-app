@@ -1,6 +1,6 @@
 # JOURNEYS.md — the product side of the map
 
-Status: J1 (contract, store, WebSocket) built 2026-09-27, see CONTRACTS.md §23; J2–J6 planned. Written 2026-09-27 against `main` at `43ec301`.
+Status: J1–J6 built 2026-09-27 (contract, screens from code, agent tools and context, the Journeys page with Line and Flow map views, business overlay, health and drift, screenshots, customer notes, sharing), see CONTRACTS.md §23; branch switching §24. Written 2026-09-27 against `main` at `43ec301`.
 
 Ruah maps what a system **is** (services, modules, files, symbols, infrastructure, cloud). This plan adds what a customer **does** with it and **why it is built that way**: personas, the journeys they take through the app, the screens and actions of each step, the reason behind each step, and the code path that serves it. One tool for the product owner and the engineer: the why and the how stay linked, and Ruah says when they drift apart.
 
@@ -204,6 +204,8 @@ A screen's `name` comes from the route (`/transfer/new` → "Transfer / new"), t
 - `user` / `agent` screens are never touched by a scan.
 - `product.json` is created by the first scan that finds screens, with empty `personas` / `journeys`. The scan never writes journeys.
 
+As built (CONTRACTS.md §23.4): a router entry with children is a layout, not a screen (its index child is); React Router `*` catch-alls and `<Navigate>` redirects are skipped; ids keep route params (`/transfer/:id/done` → `transfer-id-done`), and a rescan keeps the id (and `shot`) of the screen at the same node + route; an invalid `product.json` is never overwritten by a scan.
+
 ## 4. Agents
 
 ### 4.1 Tools (MCP server `ruah`, same transports and token rules as §1.7)
@@ -319,6 +321,8 @@ A panel in Journeys mode and a count on the project's Home card, in the same "wh
 - **Markdown**: a journey as a PR-ready block (`ruah app journeys export pay-rent --md`).
 - CLI: `ruah app journeys` lists journeys with gap counts; `ruah app journeys show <id>`.
 
+As built (CONTRACTS.md §23.7): `ruah app journeys [--root <dir>] export <id>|--all --format html|md|drawio` (`--md` / `--html` / `--drawio` as shorthands, `--out -` for stdout), and `GET /api/product/export?format=…&journey=…` for the viewer. `--all` (or no `journey`) puts every journey in one file: the storyboard gets an index grouped by persona. Local screenshots (`.ruah/shots`) are embedded in the storyboard unless `--no-shots` / `shots=0`. The architecture draw.io export (`ruah app export drawio`, the viewer's Export) also carries the journey pages whenever `product.json` has journeys. The lane rule the draw.io pages use lives in `src/product/lanes.ts` (`laneOf`) for the viewer to mirror.
+
 ## 9. Phases
 
 Each phase ships on its own and is useful on its own.
@@ -331,6 +335,14 @@ Each phase ships on its own and is useful on its own.
 | J4 | Journeys mode | lanes canvas, step inspector, sidebar, authoring (§5.1, §5.3) | "Pay rent" on the fixture reads left to right with the right code in the right rows, in all three themes |
 | J5 | Business overlay and gaps | §5.2 overlay + element Journeys section; §5.4 panel + Home count | renaming `TransferForm` in the fixture shows one broken link and one drifted journey |
 | J6 | Screenshots, evidence, sharing | §6, §7, §8 | a storyboard of the fixture journey opens in a browser with no Ruah running |
+
+## 9a. As built (2026-09-27)
+
+- **Journeys is its own page** (`/journeys`, `G J`, in the rail under Map) rather than a third mode of the Map's panes: left the journeys / personas / screens, centre Line or Flow map, right the journey or step (or Health). The Map got the Business toggle and the element inspector a Journeys section.
+- **Flow map** is its own SVG (journey colours, hover to isolate), laid out by the longest path over the main-line arrows; arrows back to an earlier screen run over the boxes.
+- **Ask agent** on a journey or step sets a "Journey · …" chip over the composer; prompts carry `journeyStep` until it is cleared.
+- **Customer notes** is a composed prompt: the agent files verbatim quotes with `add_evidence` and turns contradictions into questions; it never writes the why.
+- Answering a step's open question moves the answer into its why.
 
 ## 10. Decisions (confirmed 2026-09-27)
 

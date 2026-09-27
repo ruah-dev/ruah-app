@@ -177,6 +177,8 @@ export function homeCard(
     (status !== "running" && live.running > 0 ? 5 : 0) +
     (status !== "changes" && (dirty > 0 || ahead > 0) ? 1 : 0);
   const cloudFoot = cloud ? (cloud.down || cloud.degraded ? "" : `cloud ${cloud.healthy} ok`) : "";
+  const product = o.product ?? null;
+  const productFoot = product && product.journeys > 0 ? `${plural(product.journeys, "journey")}${product.gaps > 0 ? `, ${product.gaps} to review` : ""}` : "";
   return {
     id: o.project.id,
     overview: o,
@@ -185,7 +187,7 @@ export function homeCard(
     pill: status === "changes" && dirty === 0 ? "Unpushed" : pill.label,
     headline,
     leftOff: leftOffLine(o, now),
-    foot: [gitFoot(o.git), cloudFoot].filter(Boolean).join(" · "),
+    foot: [gitFoot(o.git), cloudFoot, productFoot].filter(Boolean).join(" · "),
     score,
     attention: score >= SCORE["cloud-degraded"],
   };

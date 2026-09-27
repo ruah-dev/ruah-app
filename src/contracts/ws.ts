@@ -110,6 +110,7 @@ export type StreamEvent = z.infer<typeof StreamEventSchema>;
 export const ErrorCodeSchema = z.enum([
   "bad_message",
   "save_rejected", // architecture.save failed validation or could not be written
+  "product_save_rejected", // §23: product.save failed validation or could not be written
   "unknown_node",
   "busy",
   "no_turn",
@@ -256,6 +257,8 @@ export const ClientMessageSchema = z.union([
     turnId: z.string(),
     /** Element the question is about; omitted = plain chat on the project, no context pack. */
     nodeId: z.string().optional(),
+    /** §23.6: sent from a customer journey step: the pack carries the journey (with or without nodeId). */
+    journeyStep: z.object({ journey: z.string().max(64), step: z.string().max(64) }).optional(),
     text: z.string(),
     attachments: z.array(AttachmentRefSchema).max(MAX_PROMPT_ATTACHMENTS, `at most ${MAX_PROMPT_ATTACHMENTS} images per prompt`).optional(),
   }),
@@ -326,6 +329,7 @@ export const ServerMessageSchema = z.union([
     product: ProductFileSchema.nullable(),
     warnings: z.array(z.string()),
     by: MapActorSchema.optional(),
+    changes: z.array(MapChangeSchema).optional(), // agent ops and undos
   }),
   z.object({ type: z.literal("product.error"), path: z.string(), message: z.string() }),
   z.object({
@@ -404,6 +408,8 @@ export const ServerMessageSchema = z.union([
   z.object({ type: z.literal("preview"), status: PreviewStatusSchema }),
   // §20: the recent list changed without a switch (pin, unpin, reorder, tags, forget) — every viewer
   z.object({ type: z.literal("projects.changed"), recent: z.array(ProjectInfoSchema) }),
+  // §24: Ruah switched the open project's branch (every viewer refreshes its git info); null = detached
+  z.object({ type: z.literal("git.changed"), projectId: z.string(), branch: z.string().nullable() }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 

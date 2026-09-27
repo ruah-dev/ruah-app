@@ -1,15 +1,18 @@
 // GET /api/projects/:id/resume (§13.4) for the open project: the top bar's branch chip reads the
-// latest answer (refreshed when the project's activity changes or the window regains focus), the
+// latest answer (refreshed when the project's activity changes, Ruah switched its branch (§24
+// `git.changed`) or the window regains focus), the
 // "Where you left off" card reads the answer from when the project was entered.
 import { useEffect, useState } from "react";
 import type { ResumeInfo } from "@/lib/contracts";
 import { useProjectActivity } from "@/lib/activity";
 import { useResume } from "@/lib/view-state";
+import { useGitChangedTick } from "@/lib/git-branches";
 
 const FOCUS_REFRESH_MS = 15_000;
 
 export function useShellResume(projectId: string | null): { latest: ResumeInfo | null; entry: ResumeInfo | null } {
   const activity = useProjectActivity(projectId);
+  const gitTick = useGitChangedTick(projectId);
   const [focusTick, setFocusTick] = useState(0);
   useEffect(() => {
     let last = Date.now();
@@ -21,7 +24,7 @@ export function useShellResume(projectId: string | null): { latest: ResumeInfo |
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
-  const refreshKey = `${activity?.lastEventAt ?? ""}|${activity?.running ?? 0}|${focusTick}`;
+  const refreshKey = `${activity?.lastEventAt ?? ""}|${activity?.running ?? 0}|${focusTick}|${gitTick}`;
   const { resume } = useResume(projectId, refreshKey);
   const latest = resume && resume.project.id === projectId ? resume : null;
 

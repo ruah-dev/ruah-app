@@ -8,7 +8,9 @@
 import { z } from "zod/v4";
 import type { Architecture } from "../contracts/architecture.js";
 import type { ArchOp, ArchOpsResponse } from "../contracts/map.js";
-import { KNOWN_TYPES } from "./ops.js";
+import type { ProductOp, ProductOpsResponse, ProductRead } from "../contracts/product-ops.js";
+import { describeJourney, journeysForElement, summarizeProduct } from "../product/read.js";
+import { KNOWN_TYPES, resolveElement } from "./ops.js";
 import { describeElement, findElements, summarizeArchitecture } from "./read.js";
 
 export const MAP_SERVER_NAME = "ruah";
@@ -17,12 +19,19 @@ export const MAP_SERVER_NAME = "ruah";
 export const MAP_TOOLS_HINT =
   "You can read and edit this project's architecture map with the ruah_* tools; keep it in sync when you add or change services, modules, datastores or links.";
 
-export const MAP_SERVER_INSTRUCTIONS = `${MAP_TOOLS_HINT} The user watches the map update live while you work. Read first (ruah_get_architecture, ruah_find_elements, ruah_get_element), then edit (ruah_add_element, ruah_update_element, ruah_remove_element, ruah_connect, ruah_disconnect, ruah_add_workflow, ruah_update_workflow, or ruah_apply for several changes at once). Elements are referenced by id or by their exact name. Only these tools change the map: never edit architecture.json by hand.`;
+/** CONTRACTS §23.5 / JOURNEYS.md §4.2: the product side (personas, screens, customer journeys). */
+export const PRODUCT_TOOLS_HINT =
+  "You can read and edit this project's customer journeys with ruah_get_product and ruah_product_apply. When you change a screen or the code behind a journey step, keep its touches in sync. Do not invent a step's why or evidence: when the reason is not written in the code, the docs or this conversation, leave why empty and put your question in question.";
+
+export const MAP_SERVER_INSTRUCTIONS = `${MAP_TOOLS_HINT} The user watches the map update live while you work. Read first (ruah_get_architecture, ruah_find_elements, ruah_get_element), then edit (ruah_add_element, ruah_update_element, ruah_remove_element, ruah_connect, ruah_disconnect, ruah_add_workflow, ruah_update_workflow, or ruah_apply for several changes at once). Elements are referenced by id or by their exact name. Only these tools change the map: never edit architecture.json by hand. ${PRODUCT_TOOLS_HINT} Journeys live in product.json: read them with ruah_get_product, ruah_get_journey and ruah_journeys_for; change them only with ruah_product_apply, never by editing product.json.`;
 
 /** What a tool needs from the daemon. */
 export interface MapBackend {
   read(): Promise<{ architecture: Architecture; revision: number }>;
   apply(ops: ArchOp[]): Promise<ArchOpsResponse>;
+  /** §23.5: product.json of the open project (absent: product tools answer "not available"). */
+  readProduct?(): Promise<ProductRead>;
+  applyProduct?(ops: ProductOp[]): Promise<ProductOpsResponse>;
 }
 
 export interface ToolResult {
@@ -88,6 +97,95 @@ const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_layout_hint"), id: ref("Element"), x: z.number(), y: z.number() }),
 ]);
 
+// §23.5 product ops (mirrors src/contracts/product-ops.ts; the daemon validates again with that schema)
+const evidenceShape = z.object({
+  quote: z.string().min(1).describe("The customer's words or the data point, verbatim (≤ 600 chars). Never paraphrase or invent."),
+  source: z.string().optional().describe("Where it comes from: \"Interview — customer 4\", \"Support ticket #412\", \"Amplitude: step 3 drop-off 18 %\""),
+  date: z.string().optional().describe("ISO 8601 date"),
+  kind: z
+    .string()
+    .optional()
+    .describe("opinion | thematic | stated_preference | past_behavior | past_behavior_pattern | commitment | observed_behavior | launch_data (weakest → strongest)"),
+  stance: z.string().optional().describe("supports | contradicts (the step's why); default supports"),
+});
+const stepShape = z.object({
+  id: z.string().optional().describe("Optional step id; default: from the action"),
+  screen: z.string().optional().describe("Screen id or name"),
+  action: z.string().min(1).describe("What the user does, e.g. \"Taps Transfer under the balance\" (≤ 200)"),
+  sees: z.string().optional().describe("What they expect to see after (≤ 200)"),
+  why: z.string().optional().describe("Design rationale. Only when it is written in the code, docs or conversation; otherwise leave it out and ask in question"),
+  signal: z.string().optional().describe("How success is measured, e.g. \"≥ 70 % of transfers start here\""),
+  touches: z.array(z.string()).optional().describe("Map element ids, expanded ids (<elementId>/<path>, <fileId>#<Symbol>) or workflow ids serving this step, ≤ 20"),
+  evidence: z.array(evidenceShape).optional(),
+  question: z.string().optional().describe("Open product question for the user (≤ 400)"),
+});
+const stepPatchShape = z.object({
+  screen: z.string().nullable().optional(),
+  action: z.string().optional(),
+  sees: z.string().nullable().optional(),
+  why: z.string().nullable().optional(),
+  signal: z.string().nullable().optional(),
+  touches: z.array(z.string()).nullable().optional().describe("Replaces the list; null clears it"),
+  question: z.string().nullable().optional(),
+});
+const productOpSchema = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("add_persona"), id: z.string().optional(), name: z.string(), description: z.string().optional(), goals: z.array(z.string()).optional() }),
+  z.object({
+    op: z.literal("update_persona"),
+    id: z.string(),
+    patch: z.object({ name: z.string().optional(), description: z.string().nullable().optional(), goals: z.array(z.string()).nullable().optional() }),
+  }),
+  z.object({ op: z.literal("remove_persona"), id: z.string() }),
+  z.object({ op: z.literal("add_screen"), id: z.string().optional(), name: z.string(), route: z.string().optional(), path: z.string().optional(), node: z.string().optional() }),
+  z.object({
+    op: z.literal("update_screen"),
+    id: z.string(),
+    patch: z.object({ name: z.string().optional(), route: z.string().nullable().optional(), path: z.string().nullable().optional(), node: z.string().nullable().optional() }),
+  }),
+  z.object({ op: z.literal("remove_screen"), id: z.string() }),
+  z.object({
+    op: z.literal("add_journey"),
+    id: z.string().optional(),
+    name: z.string(),
+    persona: z.string().optional(),
+    goal: z.string().describe("The user's goal in their words"),
+    why: z.string().optional(),
+    priority: z.string().optional().describe("core | secondary | edge"),
+    signal: z.string().optional(),
+    steps: z.array(stepShape).min(1),
+  }),
+  z.object({
+    op: z.literal("update_journey"),
+    id: z.string(),
+    patch: z.object({
+      name: z.string().optional(),
+      persona: z.string().nullable().optional(),
+      goal: z.string().optional(),
+      why: z.string().nullable().optional(),
+      priority: z.string().nullable().optional(),
+      signal: z.string().nullable().optional(),
+    }),
+  }),
+  z.object({ op: z.literal("remove_journey"), id: z.string() }),
+  z.object({ op: z.literal("add_step"), journey: z.string(), after: z.string().nullable().optional().describe("Step to insert behind; null = first; omit = last"), step: stepShape }),
+  z.object({ op: z.literal("update_step"), journey: z.string(), id: z.string().describe("Step id or 1-based position"), patch: stepPatchShape }),
+  z.object({ op: z.literal("remove_step"), journey: z.string(), id: z.string() }),
+  z.object({ op: z.literal("move_step"), journey: z.string(), id: z.string(), after: z.string().nullable() }),
+  z.object({ op: z.literal("add_evidence"), journey: z.string(), step: z.string(), evidence: evidenceShape }),
+  z.object({
+    op: z.literal("add_branch"),
+    journey: z.string(),
+    branch: z.object({
+      from: z.string(),
+      when: z.string(),
+      to: z.string().optional().describe("A step of the same journey (loops, skips); exactly one of to / journey"),
+      journey: z.string().optional().describe("An alternate journey"),
+      rejoin: z.string().optional().describe("With journey: the step where the alternate path comes back"),
+    }),
+  }),
+  z.object({ op: z.literal("remove_branch"), journey: z.string(), from: z.string(), when: z.string() }),
+]);
+
 type Shape = Record<string, z.ZodType>;
 
 export interface MapToolDef {
@@ -96,6 +194,18 @@ export interface MapToolDef {
   shape: Shape;
   readOnly: boolean;
   run(args: Record<string, unknown>, backend: MapBackend): Promise<string>;
+}
+
+function productBackend(backend: MapBackend): Required<Pick<MapBackend, "readProduct" | "applyProduct">> {
+  if (backend.readProduct === undefined || backend.applyProduct === undefined) throw new MapToolError("journeys are not available in this Ruah version");
+  return { readProduct: backend.readProduct.bind(backend), applyProduct: backend.applyProduct.bind(backend) };
+}
+
+async function writeProduct(backend: MapBackend, ops: ProductOp[]): Promise<string> {
+  const res = await productBackend(backend).applyProduct(ops);
+  const lines = res.results.map((r) => `- ${r.message}`);
+  if (res.warnings.length > 0) lines.push(`warnings: ${res.warnings.slice(0, 8).join("; ")}`);
+  return `${lines.join("\n")}\n(product.json saved, revision ${res.revision})`;
 }
 
 async function write(backend: MapBackend, ops: ArchOp[]): Promise<string> {
@@ -217,7 +327,50 @@ export const MAP_TOOLS: readonly MapToolDef[] = [
     readOnly: false,
     run: (args, backend) => write(backend, args.ops as ArchOp[]),
   },
+  {
+    name: "ruah_get_product",
+    description:
+      "Read the product side of the project (product.json): personas, screens (routes and the files that render them) and customer journeys with their steps (screen, action, why, signal, touched code, open questions), plus broken links into the code. Pass `journey` (id or name) for one journey only.",
+    shape: { journey: z.string().optional().describe("Journey id or name; omit for everything") },
+    readOnly: true,
+    async run(args, backend) {
+      const { product, warnings } = await productBackend(backend).readProduct();
+      return summarizeProduct(product, warnings, args.journey as string | undefined);
+    },
+  },
+  {
+    name: "ruah_get_journey",
+    description: "One journey as JSON: persona, goal, why, every step with its screen, evidence (with strength 0–7) and each touched element resolved on the map (or marked broken), branches, and which journeys branch into it.",
+    shape: { id: z.string().describe("Journey id or name") },
+    readOnly: true,
+    async run(args, backend) {
+      const [{ product, warnings }, { architecture }] = await Promise.all([productBackend(backend).readProduct(), backend.read().catch(() => ({ architecture: null }))]);
+      return describeJourney(product, architecture, String(args.id), warnings);
+    },
+  },
+  {
+    name: "ruah_journeys_for",
+    description: "Which customer journey steps depend on a map element (directly, through something inside it, or through its screens). Check this before changing an element so you keep the journeys' why and signal in mind.",
+    shape: { element: ref("Element") },
+    readOnly: true,
+    async run(args, backend) {
+      const [{ product }, { architecture }] = await Promise.all([productBackend(backend).readProduct(), backend.read()]);
+      const element = resolveElement(architecture, String(args.element));
+      return journeysForElement(product, architecture, element.id, element.name);
+    },
+  },
+  {
+    name: "ruah_product_apply",
+    description:
+      "Change personas, screens and customer journeys (product.json), atomically. Ops: add_persona, update_persona {id, patch}, remove_persona, add_screen, update_screen {id, patch}, remove_screen, add_journey {name, goal, persona?, steps[]}, update_journey {id, patch}, remove_journey, add_step {journey, after?, step}, update_step {journey, id, patch}, remove_step, move_step {journey, id, after}, add_evidence {journey, step, evidence}, add_branch {journey, branch}, remove_branch {journey, from, when}. Personas, screens and journeys are referenced by id or exact name, steps by id or 1-based position. Leave why empty unless the reason is written down somewhere; ask in question instead.",
+    shape: { ops: z.array(productOpSchema).min(1).max(200) },
+    readOnly: false,
+    run: (args, backend) => writeProduct(backend, args.ops as ProductOp[]),
+  },
 ];
+
+/** Tools that can remove things (MCP destructiveHint). */
+export const DESTRUCTIVE_TOOLS = new Set(["ruah_remove_element", "ruah_apply", "ruah_product_apply"]);
 
 /** Runs a tool; errors become a tool result with isError so the agent can correct itself. */
 export async function callMapTool(name: string, args: unknown, backend: MapBackend): Promise<ToolResult> {
@@ -244,7 +397,7 @@ export function mapToolList(): { name: string; description: string; inputSchema:
       name: t.name,
       description: t.description,
       inputSchema: schema,
-      annotations: { readOnlyHint: t.readOnly, destructiveHint: t.name === "ruah_remove_element" || t.name === "ruah_apply", idempotentHint: t.readOnly },
+      annotations: { readOnlyHint: t.readOnly, destructiveHint: DESTRUCTIVE_TOOLS.has(t.name), idempotentHint: t.readOnly },
     };
   });
 }

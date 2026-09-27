@@ -20,7 +20,9 @@ import { homedir } from "node:os";
 import type { CreateReport, GithubVisibility, NewProjectCheck, ParentSource, ToolStatus } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { cliMessage, CliError, defaultRunner, parseJson, redact, resolveBin, type Runner } from "../integrations/exec.js";
-import { scanRepo } from "../scan/index.js";
+import { PRODUCT_FILE } from "../contracts/product.js";
+import { writeScannedProduct } from "../product/screens-merge.js";
+import { scanRepoWithScreens } from "../scan/index.js";
 import { addRepos } from "../system/manage.js";
 import { SYSTEM_FILE } from "../system/config.js";
 import { atomicWriteFileSync, expandHome } from "./fs-util.js";
@@ -326,10 +328,12 @@ export async function createProjectFolder(input: CreateProjectInput, deps: Creat
     // 2. The map: scanned from the files, or empty for the "Empty" template (you draw it).
     const archPath = path.join(target, ARCHITECTURE_FILE);
     if (template.scan) {
-      const arch = scanRepo(target, { version: deps.version, now, infra: true });
+      const { architecture: arch, screens } = scanRepoWithScreens(target, { version: deps.version, now, infra: true });
       const result = validateArchitecture({ ...arch, name }, target);
       if (!result.ok) throw new Error(`scan result failed validation: ${result.errors[0] ?? "unknown"}`);
       atomicWriteFileSync(archPath, `${JSON.stringify(result.value, null, 2)}\n`);
+      // CONTRACTS §23.4: screens the template's routes declare (none: no product.json).
+      if (writeScannedProduct(path.join(target, PRODUCT_FILE), screens).written) files += 1;
       scanned = { nodes: result.value.nodes.length, edges: result.value.edges.length };
     } else {
       atomicWriteFileSync(archPath, `${JSON.stringify(emptyArchitecture(name), null, 2)}\n`);

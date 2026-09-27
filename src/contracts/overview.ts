@@ -63,6 +63,8 @@ export const ProjectOverviewSchema = z.object({
   preview: z
     .object({ state: z.enum(["stopped", "starting", "running", "crashed"]), url: z.string().nullable(), exitCode: z.number().nullable() })
     .nullable(), // null: no preview this daemon run
+  /** §23.9: product.json summary; null = none. Absent from older daemons. */
+  product: z.object({ journeys: z.number(), questions: z.number(), gaps: z.number(), broken: z.number() }).nullable().optional(),
 });
 export type ProjectOverview = z.infer<typeof ProjectOverviewSchema>;
 

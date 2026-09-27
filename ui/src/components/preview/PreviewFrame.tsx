@@ -135,12 +135,14 @@ export function PreviewFrame({ url, device, reloadKey, framing, title, onNavigat
   );
 
   return (
-    <div ref={ref} className={cn("relative min-h-0 flex-1 overflow-hidden", deviceWidth !== null && "bg-surface-0")}>
+    <div ref={ref} data-preview-page={deviceWidth === null ? "" : undefined} className={cn("relative min-h-0 flex-1 overflow-hidden", deviceWidth !== null && "bg-surface-0")}>
       {deviceWidth === null ? (
         page
       ) : (
         <div className="absolute inset-x-0 top-0 flex justify-center pt-4">
           <div
+            // §23.8: what "Capture for a journey screen" photographs.
+            data-preview-page=""
             className="overflow-hidden rounded-[14px] border border-hairline bg-white shadow-elevated"
             style={{
               width: deviceWidth,

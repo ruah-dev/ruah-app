@@ -8,6 +8,7 @@
 import { createInterface } from "node:readline";
 import type { Architecture } from "../contracts/architecture.js";
 import type { ArchOp, ArchOpsResponse } from "../contracts/map.js";
+import type { ProductOp, ProductOpsResponse, ProductRead } from "../contracts/product-ops.js";
 import { callMapTool, MAP_SERVER_INSTRUCTIONS, MAP_SERVER_NAME, mapToolList, MapToolError, type MapBackend } from "./tools.js";
 
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -34,6 +35,8 @@ export function httpMapBackend(daemonUrl: string, token: string, fetchImpl: type
   return {
     read: () => call<{ architecture: Architecture; revision: number }>("/api/arch"),
     apply: (ops: ArchOp[]) => call<ArchOpsResponse>("/api/arch/ops", { ops }),
+    readProduct: () => call<ProductRead>("/api/product"),
+    applyProduct: (ops: ProductOp[]) => call<ProductOpsResponse>("/api/product/ops", { ops }),
   };
 }
 

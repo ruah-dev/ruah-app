@@ -1,0 +1,11 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ledger-db
+  ledger-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ledger

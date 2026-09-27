@@ -2,13 +2,16 @@
 //
 // Scans, merges hand edits from the existing output file (see merge.ts),
 // validates against CONTRACTS.md §1.2, then writes the file (or prints it with
-// --dry-run) and a one-line summary on stderr.
+// --dry-run) and a one-line summary on stderr. The screens found in frontend
+// packages go into product.json next to the output file (CONTRACTS §23.4).
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Architecture } from "../contracts/architecture.js";
+import { PRODUCT_FILE } from "../contracts/product.js";
 import { validateArchitecture } from "../contracts/validate.js";
+import { writeScannedProduct } from "../product/screens-merge.js";
 import { describeArchitecture } from "./describe.js";
-import { scanRepo, summarize } from "./index.js";
+import { scanRepoWithScreens, summarize } from "./index.js";
 
 export interface RunScanOptions {
   repo: string;
@@ -38,7 +41,8 @@ export async function runScan(opts: RunScanOptions, version: string): Promise<nu
   }
   const out = path.resolve(opts.out ?? path.join(root, "architecture.json"));
   const started = Date.now();
-  let arch = scanRepo(root, { version, now: new Date(), previous: readPrevious(out, root), infra: opts.infra !== false });
+  const scanned = scanRepoWithScreens(root, { version, now: new Date(), previous: readPrevious(out, root), infra: opts.infra !== false });
+  let arch = scanned.architecture;
   if (opts.describe) {
     const d = await describeArchitecture(arch, root);
     arch = d.architecture;
@@ -53,7 +57,8 @@ export async function runScan(opts: RunScanOptions, version: string): Promise<nu
   const json = `${JSON.stringify(arch, null, 2)}\n`;
   const s = summarize(arch);
   const ms = Date.now() - started;
-  const line = `${s.nodes} nodes (${s.topLevel} top-level), ${s.edges} edges, ${s.layers.length} layers [${s.layers.join(", ")}] in ${ms} ms`;
+  const screens = scanned.screens.length;
+  const line = `${s.nodes} nodes (${s.topLevel} top-level), ${s.edges} edges, ${s.layers.length} layers [${s.layers.join(", ")}], ${screens} screen${screens === 1 ? "" : "s"} in ${ms} ms`;
   if (opts.dryRun) {
     process.stdout.write(json);
     process.stderr.write(`ruah app scan: dry run, ${line}\n`);
@@ -64,5 +69,8 @@ export async function runScan(opts: RunScanOptions, version: string): Promise<nu
   fs.writeFileSync(tmp, json);
   fs.renameSync(tmp, out);
   process.stderr.write(`ruah app scan: wrote ${out}: ${line}\n`);
+  const product = writeScannedProduct(path.join(path.dirname(out), PRODUCT_FILE), scanned.screens);
+  for (const w of product.warnings) process.stderr.write(`ruah app scan: warning: ${w}\n`);
+  if (product.written) process.stderr.write(`ruah app scan: wrote ${product.file}: ${product.screens} screens\n`);
   return 0;
 }

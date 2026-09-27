@@ -13,11 +13,12 @@ import type { ChatInfo, ProjectInfo, TurnRecord } from "../contracts/ws.js";
 import type { CreateProjectBody, CreateReport, NewProjectCheck, NewProjectDefaults, ProjectsList, RecentChat, ToolStatus } from "../contracts/projects.js";
 import { validateArchitecture } from "../contracts/validate.js";
 import { createArchitectureStore, type ArchitectureStore } from "../serve/architecture-store.js";
-import { PRODUCT_FILE } from "../contracts/product.js";
+import { PRODUCT_FILE, type Screen } from "../contracts/product.js";
 import { createProductStore } from "../serve/product-store.js";
 import { touchResolverFor } from "../serve/product-touches.js";
 import type { ProjectRuntime } from "../serve/session.js";
-import { scanRepo } from "../scan/index.js";
+import { scanRepoWithScreens } from "../scan/index.js";
+import { writeScannedProduct } from "../product/screens-merge.js";
 import { atomicWriteFileSync, expandHome, projectIdFor } from "./fs-util.js";
 import type { ProjectsStore } from "./projects-store.js";
 import { toChatInfo, type ChatStore } from "./chat-store.js";
@@ -373,6 +374,14 @@ export class ProjectService {
     const product = createProductStore(path.join(root, PRODUCT_FILE), {
       watch: this.deps.watch !== false,
       touchResolver: () => touchResolverFor(store),
+      ...(store.resolvePath !== undefined
+        ? {
+            pathExists: (rel: string) => {
+              const hit = store.resolvePath?.(rel) ?? null;
+              return hit !== null && fs.existsSync(hit.abs);
+            },
+          }
+        : {}),
     });
     let productError: string | undefined;
     const offProduct = product.onError((error) => {
@@ -387,16 +396,22 @@ export class ProjectService {
     return { project, ms, scanned };
   }
 
-  /** First open of a repo: `ruah app scan` in-process, written atomically. */
+  /** First open of a repo: `ruah app scan` in-process, written atomically; screens into product.json (§23.4). */
   private scanInto(root: string, archPath: string, options: ProjectScanOptions): void {
     let arch: Architecture;
+    let screens: Screen[];
     try {
-      arch = scanRepo(root, { version: this.deps.version, now: new Date(), infra: options.infra });
+      ({ architecture: arch, screens } = scanRepoWithScreens(root, { version: this.deps.version, now: new Date(), infra: options.infra }));
     } catch (err) {
       throw new ProjectError(500, `scan failed: ${(err as Error).message}`);
     }
     const result = validateArchitecture(arch, root);
     if (!result.ok) throw new ProjectError(422, `scan result failed validation: ${result.errors[0] ?? "unknown"}`);
     atomicWriteFileSync(archPath, `${JSON.stringify(arch, null, 2)}\n`);
+    try {
+      for (const w of writeScannedProduct(path.join(root, PRODUCT_FILE), screens).warnings) this.deps.info?.(`scan: ${w}`);
+    } catch (err) {
+      this.deps.info?.(`scan: product.json not written: ${(err as Error).message}`);
+    }
   }
 }

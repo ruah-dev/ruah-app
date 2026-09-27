@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { primaryButton } from "@/components/ui/controls";
 import { PreviewFrame, openInBrowser } from "./PreviewFrame";
+import { CaptureButton } from "@/components/journeys/CaptureButton";
 import { CustomCommandDialog, PreviewCommandMenu } from "./PreviewCommandMenu";
 import { CrashPanel, LookingPanel, NoProjectPanel, NothingFoundPanel, PickPanel, ReadyPanel, StartingPanel } from "./PreviewPanels";
 
@@ -371,6 +372,7 @@ export function PreviewPane({ variant = "panel", onAskAgent, onShowLogs, classNa
             <ToolButton label="Open in browser" onClick={() => navUrl && openInBrowser(navUrl)} disabled={!running || !navUrl}>
               <ExternalLink className="size-3.5" />
             </ToolButton>
+            <CaptureButton url={navUrl} disabled={!running || !navUrl} />
           </div>
           <div className="order-2 ms-auto flex shrink-0 items-center gap-1 @2xl:order-3 @2xl:ms-0">
             <span className="mx-0.5 hidden h-4 w-px bg-hairline @2xl:block" aria-hidden />

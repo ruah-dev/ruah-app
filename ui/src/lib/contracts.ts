@@ -153,6 +153,7 @@ export type ClientMessage =
       type: "prompt";
       turnId: string;
       nodeId?: string; // omitted = plain chat on the project, no element context
+      journeyStep?: { journey: string; step: string }; // §23.6: asked from a customer journey step
       text: string;
       attachments?: AttachmentRef[]; // ≤ 8 images uploaded via POST /api/attachments (§5.6)
     } // turnId: viewer-generated UUID
@@ -207,6 +208,7 @@ export type ServerMessage =
       product: ProductFile | null; // null = no product.json yet
       warnings: string[]; // links into the code that no longer resolve
       by?: MapActor;
+      changes?: MapChange[]; // agent ops and undos
     } // §23
   | { type: "product.error"; path: string; message: string } // §23: file invalid; previous revision stays live
   | {
@@ -281,7 +283,9 @@ export type ServerMessage =
   // §18: the live preview of a project's dev server changed (every viewer; filter by projectId)
   | { type: "preview"; status: PreviewStatus }
   // §20: the recent list changed without a switch (pin, unpin, reorder, tags, forget) — every viewer
-  | { type: "projects.changed"; recent: ProjectInfo[] };
+  | { type: "projects.changed"; recent: ProjectInfo[] }
+  // §24: Ruah switched the open project's branch (refresh git info); null = detached
+  | { type: "git.changed"; projectId: string; branch: string | null };
 
 export type AgentState = "starting" | "idle" | "busy" | "error" | "stopped";
 export type StopReason =
@@ -392,6 +396,7 @@ export interface PermissionOption {
 export type ErrorCode =
   | "bad_message" // frame failed validation
   | "save_rejected" // architecture.save failed validation or could not be written
+  | "product_save_rejected" // §23: product.save failed validation or could not be written
   | "unknown_node" // prompt.nodeId not in current architecture
   | "busy" // a turn is active; prompt rejected
   | "no_turn" // cancel/permission.response for an unknown turn or request
@@ -697,6 +702,8 @@ export interface ProjectOverview {
   git: GitState;
   cloud: OverviewCloud | null;
   preview: { state: "stopped" | "starting" | "running" | "crashed"; url: string | null; exitCode: number | null } | null;
+  /** §23.9: product.json summary (null = none; absent from older daemons). */
+  product?: { journeys: number; questions: number; gaps: number; broken: number } | null;
 }
 
 export interface ProjectsOverview {
@@ -730,6 +737,8 @@ export interface RuahDesktopBridge {
   previewWebview?: boolean;
   /** §19.4: application-menu commands ("settings"); subscribing replaces the preload's default (routing to /settings). Returns an unsubscribe function. */
   onMenuCommand?(callback: (command: string) => void): () => void;
+  /** §23.8: screenshot of the live preview (a rectangle of this window, or the preview webview); a JPEG data URI or null. Older builds lack it. */
+  capturePreview?(req: { rect?: { x: number; y: number; width: number; height: number }; webviewId?: number }): Promise<string | null>;
 }
 
 export interface NotificationTarget {

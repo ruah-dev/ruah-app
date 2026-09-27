@@ -48,7 +48,12 @@ Usage:
                                             review proposals (accepted = source "suggested")
   ruah app export drawio <repo> [--out <file>]
                                    write the architecture as a draw.io file (pages per
-                                   drill level + workflow + Specifications; --out - = stdout)
+                                   drill level + workflow + journey + Specifications; --out - = stdout)
+  ruah app journeys [--root <dir>] [list|show <id>|export <id>|--all] [--json]
+                                   customer journeys of product.json: list with gaps (missing
+                                   why, open questions, broken links), show one, or export a
+                                   storyboard / markdown / draw.io swimlanes
+                                   (--format html|md|drawio, --out <file>|-; \`ruah app journeys help\`)
   ruah app cloud <cmd> [options]    cloud resources + live status without the app (no daemon):
     providers                      each provider: connected / not logged in / not installed + fix
     list | status | watch          resources · health summary (exit 1 when down) · live changes
@@ -347,6 +352,7 @@ export const SUBCOMMANDS: Readonly<Record<string, Handler>> = {
   infra: (rest) => infra(rest),
   system: async (rest) => (await import("./system/run-system.js")).runSystem(rest, pkg.version),
   export: async (rest) => (await import("./export/run-export.js")).runExport(rest, pkg.version),
+  journeys: async (rest) => (await import("./product/run-journeys.js")).runJourneys(rest, pkg.version),
   mcp: (rest) => mcp(rest),
   doctor: async (rest) => (await import("./desktop/doctor.js")).runDoctor(rest, pkg.version, dirname(dirname(fileURLToPath(import.meta.url)))),
   cloud: async (rest) => (await import("./integrations/cloud-cli.js")).runCloud(rest),

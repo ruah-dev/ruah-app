@@ -134,3 +134,12 @@ describe("filters and tags", () => {
     expect(homeSummary([])).toBe("No projects yet");
   });
 });
+
+describe("home card: journeys (§23.9)", () => {
+  it("adds the journeys and what needs review to the foot", () => {
+    const card = homeCard(overview("p", { product: { journeys: 3, questions: 1, gaps: 2, broken: 0 } }), { now: NOW });
+    expect(card.foot).toContain("3 journeys, 2 to review");
+    const none = homeCard(overview("q", { product: null }), { now: NOW });
+    expect(none.foot).not.toContain("journey");
+  });
+});

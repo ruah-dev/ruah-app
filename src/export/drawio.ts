@@ -14,6 +14,12 @@ import { createHash } from "node:crypto";
 import type { ArchEdge, ArchNode, Architecture, Workflow } from "../contracts/architecture.js";
 import type { CloudResource, WorkItem } from "../contracts/integrations.js";
 import { layoutArchitecture } from "../scan/layout.js";
+import { kindOf, tokenOf, type Token } from "./kinds.js";
+import type { Journey, ProductFile } from "../contracts/product.js";
+import { describeTouch, LANES, type CodeLane, type Lane, type TouchInfo } from "../product/lanes.js";
+import { branchTarget, brokenRefs, personaOf, requireJourney, screenOf, stepNumber, strengthLabel } from "../product/share.js";
+
+export { kindOf } from "./kinds.js";
 
 export interface DrawioOptions {
   /** Cloud resources with `linkedNodeId` applied (src/integrations/linking.ts). */
@@ -26,6 +32,13 @@ export interface DrawioOptions {
   rootName?: string;
   /** `agent` attribute of <mxfile>, e.g. "ruah 0.1.0". */
   agent?: string;
+  /**
+   * product.json (CONTRACTS §23.7): adds a "Journey: <name>" page per journey after the
+   * workflow pages. Absent or null: the output is exactly the architecture export.
+   */
+  product?: ProductFile | null;
+  /** The product store's warnings (broken links are flagged on the journey pages). */
+  productWarnings?: readonly string[];
 }
 
 // ---- geometry (matches the viewer: ui/src/lib/architecture.ts) ------------------
@@ -41,8 +54,6 @@ const FLOW_WRAP = Number.POSITIVE_INFINITY; // workflows read left → right on 
 const FILES_LIMIT = 12;
 
 // ---- palette (ui/src/styles.css --node-*, readable on draw.io's white canvas) --------
-
-type Token = "service" | "frontend" | "data" | "queue" | "gateway" | "external" | "file" | "step";
 
 export const PALETTE: Record<Token, { stroke: string; fill: string; label: string }> = {
   service: { stroke: "#00bea8", fill: "#e0f7f4", label: "service / compute" },
@@ -62,41 +73,8 @@ const EDGE = "#5b6b88";
 const SUGGESTED = "#9773e4";
 const DEPLOY = "#8c8578";
 
-// Kind → token, as ui/src/components/explorer/kinds.ts; aliases as ui/src/lib/architecture.ts kindFor.
-const KIND_TOKEN: Record<string, Token> = {
-  service: "service", function: "service", container: "service", cluster: "service", worker: "service",
-  database: "data", cache: "data", storage: "data", warehouse: "data", search: "data", approval: "data",
-  queue: "queue", topic: "queue", stream: "queue", webhook: "queue", scheduler: "queue", decision: "queue", event: "queue",
-  gateway: "gateway", loadbalancer: "gateway", cdn: "gateway", dns: "gateway", firewall: "gateway",
-  auth: "step", secret: "step", monitoring: "step", analytics: "step", config: "step", ml: "step", step: "step",
-  frontend: "frontend", mobile: "frontend", user: "frontend", actor: "frontend",
-  external: "external", timer: "external",
-  module: "file", file: "file", api: "file",
-};
-const TYPE_ALIASES: Record<string, string> = {
-  datastore: "database", db: "database", sql: "database", bucket: "storage", blob: "storage", "object-store": "storage",
-  bus: "queue", broker: "queue", "third-party": "external", thirdparty: "external", saas: "external", vendor: "external",
-  web: "frontend", ui: "frontend", client: "frontend", spa: "frontend", site: "frontend",
-  proxy: "gateway", ingress: "gateway", edge: "gateway", "load-balancer": "loadbalancer",
-  lambda: "function", serverless: "function", job: "worker", daemon: "service", server: "service", backend: "service",
-  microservice: "service", package: "module", library: "module", lib: "module", entry: "module", app: "module",
-  component: "module", person: "actor", role: "actor",
-  // §11 infrastructure-as-code types
-  cloud: "cluster", pipeline: "worker", registry: "storage",
-};
 const FLOW_KINDS = new Set(["step", "decision", "event", "timer", "approval"]);
 const CYLINDER_KINDS = new Set(["database", "cache", "warehouse"]);
-
-export function kindOf(type: string): string {
-  const t = type.toLowerCase();
-  const alias = TYPE_ALIASES[t];
-  if (alias !== undefined) return alias;
-  return KIND_TOKEN[t] !== undefined ? t : "module";
-}
-
-function tokenOf(type: string): Token {
-  return KIND_TOKEN[kindOf(type)] ?? "file";
-}
 
 // ---- escaping ---------------------------------------------------------------------
 
@@ -941,6 +919,196 @@ function specificationsPage(model: Model, opts: DrawioOptions): Page {
   return page;
 }
 
+// ---- journey pages (CONTRACTS §23.7, docs/JOURNEYS.md §5.1 / §8) ---------------------------
+//
+// One page per journey of product.json, as swimlanes top to bottom: Customer (step
+// cards), Screen, Frontend, Backend, Data & external. Steps are columns left → right;
+// each touches entry sits in the lane src/product/lanes.ts laneOf gives it. Solid
+// arrows join consecutive steps; branches are dashed arrows labelled with `when`
+// (to another step, or to a card for the alternate journey that links to its page).
+
+const J_HEAD_W = 40; // swimlane header (rotated label)
+const J_COL_W = 260;
+const J_CARD_W = 220;
+const J_STEP_H = 96;
+const J_CARD_H = 56;
+const J_BRANCH_H = 44;
+const J_GAP = 12;
+const J_PAD = 16;
+const LANE_FILL: Record<Lane, string> = {
+  customer: "#f7f3fe",
+  screen: "#faf9f6",
+  frontend: PALETTE.frontend.fill,
+  backend: PALETTE.service.fill,
+  data: PALETTE.data.fill,
+};
+const LANE_STROKE: Record<Lane, string> = {
+  customer: PALETTE.step.stroke,
+  screen: FRAME_STROKE,
+  frontend: PALETTE.frontend.stroke,
+  backend: PALETTE.service.stroke,
+  data: PALETTE.data.stroke,
+};
+const BROKEN = "#dc5850";
+
+function cardStyle(fill: string, stroke: string, extra: Record<string, string | number> = {}): string {
+  return style({
+    rounded: 1, arcSize: 12, html: 1, whiteSpace: "wrap", fillColor: fill, strokeColor: stroke, strokeWidth: 1.25, fontColor: TEXT,
+    fontSize: 11, align: "left", verticalAlign: "top", spacingLeft: 10, spacingRight: 8, spacingTop: 6, overflow: "hidden", ...extra,
+  });
+}
+
+function touchStyle(info: TouchInfo, broken: boolean): string {
+  if (broken || info.kind === "unknown") return cardStyle("#ffffff", BROKEN, { dashed: 1, dashPattern: "4 3", verticalAlign: "middle", spacingTop: 0 });
+  if (info.kind === "element" && info.type !== undefined) return nodeStyle(info.type);
+  const token: Token = info.lane === "frontend" ? "frontend" : info.lane === "data" ? "data" : "service";
+  return cardStyle(PALETTE[token].fill, PALETTE[token].stroke, { verticalAlign: "middle", spacingTop: 0 });
+}
+
+const BRANCH_EDGE = style({
+  edgeStyle: "orthogonalEdgeStyle", rounded: 1, html: 1, dashed: 1, dashPattern: "6 4", endArrow: "block", endFill: 1, endSize: 6,
+  strokeColor: SUGGESTED, strokeWidth: 1.25, fontColor: TEXT, fontSize: 10, labelBackgroundColor: "#ffffff",
+});
+const FLOW_EDGE = style({
+  edgeStyle: "orthogonalEdgeStyle", rounded: 1, html: 1, endArrow: "block", endFill: 1, endSize: 6, strokeColor: EDGE, strokeWidth: 1.5,
+  exitX: 1, exitY: 0.5, exitDx: 0, exitDy: 0, entryX: 0, entryY: 0.5, entryDx: 0, entryDy: 0,
+});
+
+interface JourneyPageContext {
+  product: ProductFile;
+  arch: Architecture | null;
+  warnings: readonly string[];
+  /** journey id → page id, for branch cards that open the alternate journey. */
+  pages: ReadonlyMap<string, string>;
+  /** Links in the title block (e.g. back to the Overview). */
+  links: { text: string; page: string }[];
+}
+
+function journeyPage(ctx: JourneyPageContext, journey: Journey, pageId: string, name: string): Page {
+  const page = new Page(pageId, name);
+  const { product, arch } = ctx;
+  const broken = brokenRefs(ctx.warnings, journey.id);
+  const steps = journey.steps;
+  const touches = steps.map((s) => (s.touches ?? []).map((ref) => describeTouch(ref, arch)));
+  const outBranches = steps.map((s) => (journey.branches ?? []).filter((b) => b.from === s.id && b.journey !== undefined));
+  const perLane = (lane: CodeLane): number => Math.max(1, ...touches.map((list) => list.filter((t) => t.lane === lane).length));
+  const branchRows = Math.max(0, ...outBranches.map((l) => l.length));
+  const heights: Record<Lane, number> = {
+    customer: 0, // below: depends on the branch rows and loop arrows
+    screen: J_PAD * 2 + J_CARD_H,
+    frontend: J_PAD * 2 + perLane("frontend") * (J_CARD_H + J_GAP) - J_GAP,
+    backend: J_PAD * 2 + perLane("backend") * (J_CARD_H + J_GAP) - J_GAP,
+    data: J_PAD * 2 + perLane("data") * (J_CARD_H + J_GAP) - J_GAP,
+  };
+  // Room under the step cards for loop arrows (`to` branches) and journey branch cards.
+  const loops = (journey.branches ?? []).filter((b) => b.to !== undefined).length;
+  heights.customer = J_PAD * 2 + J_STEP_H + (branchRows > 0 ? J_GAP + branchRows * (J_BRANCH_H + J_GAP) : 0) + (loops > 0 ? 20 + loops * 10 : 0);
+  const width = J_HEAD_W + Math.max(1, steps.length) * J_COL_W + J_PAD;
+  const laneX = ORIGIN - GROUP_PAD;
+  const laneY = new Map<Lane, number>();
+  let y = TITLE_H + 8;
+  for (const lane of LANES) {
+    laneY.set(lane.id, y);
+    page.vertex(`lane-${lane.id}`, "1", html(lane.label), style({
+      shape: "swimlane", html: 1, horizontal: 0, startSize: J_HEAD_W, container: 1, collapsible: 0, recursiveResize: 0,
+      fillColor: LANE_FILL[lane.id], swimlaneFillColor: "#ffffff", strokeColor: LANE_STROKE[lane.id], fontColor: TEXT, fontSize: 12, fontStyle: 1,
+    }), { x: laneX, y, w: width, h: heights[lane.id] }, { object: { ruahLane: lane.id } });
+    y += heights[lane.id];
+  }
+  const colX = (i: number): number => J_HEAD_W + J_PAD + i * J_COL_W; // relative to a lane
+  const absX = (i: number): number => laneX + colX(i);
+  const customerY = laneY.get("customer") ?? 0;
+
+  steps.forEach((step, i) => {
+    const screen = screenOf(product, step.screen);
+    const why = step.why !== undefined ? truncate(step.why.replace(/\s+/g, " "), 110) : "why not written yet";
+    const label =
+      `<b>${html(`${i + 1}. ${truncate(step.action, 80)}`)}</b>` +
+      (step.sees !== undefined ? `<br><font style="font-size:10px" color="${MUTED}">${html(`sees: ${truncate(step.sees, 70)}`)}</font>` : "") +
+      `<br><font style="font-size:10px" color="${MUTED}"><i>${html(why)}</i></font>` +
+      (step.question !== undefined ? `<br><font style="font-size:10px" color="#b06f00">${html(`? ${truncate(step.question, 70)}`)}</font>` : "");
+    page.vertex(`step-${i}`, "lane-customer", label, cardStyle("#ffffff", step.origin === "agent" ? SUGGESTED : PALETTE.step.stroke, { strokeWidth: 1.5 }),
+      { x: colX(i), y: J_PAD, w: J_CARD_W, h: J_STEP_H }, {
+        object: {
+          ruahStep: step.id,
+          action: step.action,
+          sees: step.sees ?? "",
+          why: step.why ?? "",
+          signal: step.signal ?? "",
+          question: step.question ?? "",
+          evidence: (step.evidence ?? []).map((ev) => `“${ev.quote}”${ev.source !== undefined ? ` — ${ev.source}` : ""}${ev.date !== undefined ? `, ${ev.date}` : ""} (${strengthLabel(ev)})`).join("\n"),
+          touches: (step.touches ?? []).join("\n"),
+          tooltip: tooltipHtml([`${i + 1}. ${step.action}`, ...(step.why !== undefined ? [`why: ${step.why}`] : ["why: not written yet"]), ...(step.signal !== undefined ? [`signal: ${step.signal}`] : []), ...(step.question !== undefined ? [`question: ${step.question}`] : [])]),
+        },
+      });
+    if (screen !== undefined || step.screen !== undefined) {
+      const sLabel = `<b>${html(truncate(screen?.name ?? step.screen ?? "", 40))}</b>${screen?.route !== undefined ? `<br><font style="font-size:10px" color="${MUTED}">${html(truncate(screen.route, 50))}</font>` : ""}`;
+      page.vertex(`screen-${i}`, "lane-screen", sLabel, cardStyle("#ffffff", FRAME_STROKE, { verticalAlign: "middle", spacingTop: 0 }),
+        { x: colX(i), y: J_PAD, w: J_CARD_W, h: J_CARD_H }, {
+          object: { ruahScreen: step.screen ?? "", route: screen?.route ?? "", path: screen?.path ?? "", tooltip: tooltipHtml([screen?.name ?? step.screen ?? "", ...(screen?.route !== undefined ? [`route: ${screen.route}`] : []), ...(screen?.path !== undefined ? [`path: ${screen.path}`] : [])]) },
+        });
+    }
+    const rows: Record<CodeLane, number> = { frontend: 0, backend: 0, data: 0 };
+    (touches[i] ?? []).forEach((info, k) => {
+      const row = rows[info.lane];
+      rows[info.lane] += 1;
+      const isBroken = broken.has(info.ref);
+      const meta = isBroken ? "broken link" : info.kind === "unknown" ? "unresolved" : [info.type, info.path].filter((x): x is string => x !== undefined && x !== "").join(" · ");
+      const tLabel = `<b>${html(truncate(info.kind === "unknown" || isBroken ? info.ref : info.name, 44))}</b>${meta !== "" ? `<br><font style="font-size:10px" color="${isBroken || info.kind === "unknown" ? BROKEN : MUTED}">${html(truncate(meta, 56))}</font>` : ""}`;
+      page.vertex(`touch-${i}-${k}`, `lane-${info.lane}`, tLabel, touchStyle(info, isBroken),
+        { x: colX(i), y: J_PAD + row * (J_CARD_H + J_GAP), w: J_CARD_W, h: J_CARD_H }, {
+          object: { ruahId: info.ref, type: info.type ?? "", path: info.path ?? "", status: isBroken ? "broken" : info.kind, tooltip: tooltipHtml([info.ref, `lane: ${LANES.find((l) => l.id === info.lane)?.label ?? info.lane}`, ...(meta !== "" ? [meta] : [])]) },
+        });
+    });
+    if (i > 0) page.edge(`flow-${i}`, "1", "", FLOW_EDGE, { source: `step-${i - 1}`, target: `step-${i}` });
+  });
+
+  // Branches: loops / skips inside the journey run under the step cards; alternate journeys get a card.
+  let loop = 0;
+  (journey.branches ?? []).forEach((b, bi) => {
+    const from = steps.findIndex((s) => s.id === b.from);
+    if (from === -1) return;
+    if (b.to !== undefined) {
+      const to = steps.findIndex((s) => s.id === b.to);
+      if (to === -1) return;
+      const lowY = customerY + J_PAD + J_STEP_H + (branchRows > 0 ? J_GAP + branchRows * (J_BRANCH_H + J_GAP) : 0) + 10 + loop * 10;
+      loop += 1;
+      const sx = absX(from) + J_CARD_W * 0.35;
+      const tx = absX(to) + J_CARD_W * 0.65;
+      page.edge(`branch-${bi}`, "1", html(b.when), `${BRANCH_EDGE}exitX=0.35;exitY=1;exitDx=0;exitDy=0;entryX=0.65;entryY=1;entryDx=0;entryDy=0;`,
+        { source: `step-${from}`, target: `step-${to}`, via: [[sx, lowY], [tx, lowY]] }, { when: b.when, tooltip: tooltipHtml([`When ${b.when}`, branchTarget(product, journey, b)]) });
+      return;
+    }
+    const row = (outBranches[from] ?? []).indexOf(b);
+    const other = product.journeys.find((j) => j.id === b.journey);
+    const target = ctx.pages.get(b.journey ?? "");
+    page.vertex(`branch-${bi}`, "lane-customer", `<b>${html(`↪ ${truncate(other?.name ?? b.journey ?? "", 40)}`)}</b>${b.rejoin !== undefined ? `<br><font style="font-size:10px" color="${MUTED}">${html(`back at step ${stepNumber(journey, b.rejoin) ?? b.rejoin}`)}</font>` : ""}`,
+      cardStyle("#ffffff", SUGGESTED, { dashed: 1, dashPattern: "6 4", verticalAlign: "middle", spacingTop: 0 }),
+      { x: colX(from) + 24, y: J_PAD + J_STEP_H + J_GAP + Math.max(0, row) * (J_BRANCH_H + J_GAP), w: J_CARD_W - 24, h: J_BRANCH_H },
+      { object: { ruahJourney: b.journey ?? "", when: b.when, link: target !== undefined ? `data:page/id,${target}` : undefined, tooltip: tooltipHtml([`When ${b.when}`, branchTarget(product, journey, b)]) } });
+    page.edge(`branch-${bi}-in`, "1", html(b.when), `${BRANCH_EDGE}exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;`,
+      { source: `step-${from}`, target: `branch-${bi}` });
+    if (b.rejoin !== undefined) {
+      const back = steps.findIndex((s) => s.id === b.rejoin);
+      if (back !== -1) page.edge(`branch-${bi}-out`, "1", "", `${BRANCH_EDGE}exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;`, { source: `branch-${bi}`, target: `step-${back}` });
+    }
+  });
+
+  const persona = personaOf(product, journey);
+  titleBlock(page, "title", `Journey: ${journey.name}`, [
+    [persona?.name ?? journey.persona ?? "", journey.priority ?? "", `${steps.length} step${steps.length === 1 ? "" : "s"}`, `id ${journey.id}`].filter((s) => s !== "").join(" · "),
+    `goal: ${truncate(journey.goal, 200)}${journey.signal !== undefined ? ` · signal: ${truncate(journey.signal, 120)}` : ""}`,
+    journey.why !== undefined ? `why: ${truncate(journey.why.replace(/\s+/g, " "), 240)}` : "",
+  ], width, ctx.links);
+  return page;
+}
+
+/** Journey pages for `product` (file order), with unique names against `names`. */
+function journeyPages(ctx: Omit<JourneyPageContext, "pages">, journeys: readonly Journey[], names: Set<string>): Page[] {
+  const pages = new Map(journeys.map((j) => [j.id, safeId("journey-", j.id)]));
+  return journeys.map((j) => journeyPage({ ...ctx, pages }, j, pages.get(j.id) ?? safeId("journey-", j.id), uniqueName(`Journey: ${j.name}`, names)));
+}
+
 // ---- entry point ---------------------------------------------------------------------------
 
 function uniqueName(name: string, used: Set<string>): string {
@@ -969,6 +1137,10 @@ export function toDrawio(input: Architecture, opts: DrawioOptions = {}): string 
   for (const wf of [...arch.workflows].sort((a, b) => byString(a.id, b.id))) {
     pages.push(workflowPage(model, wf, uniqueName(`Workflow: ${wf.name}`, names)));
   }
+  if (opts.product !== undefined && opts.product !== null && opts.product.journeys.length > 0) {
+    const links = [{ text: "← Overview", page: OVERVIEW_ID }, { text: "Specifications →", page: SPECS_ID }];
+    pages.push(...journeyPages({ product: opts.product, arch, warnings: opts.productWarnings ?? [], links }, opts.product.journeys, names));
+  }
   pages.push(specificationsPage(model, opts));
   const head = `<mxfile${attrs({
     host: "ruah",
@@ -978,6 +1150,28 @@ export function toDrawio(input: Architecture, opts: DrawioOptions = {}): string 
     type: "device",
     compressed: "false",
   })}>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${head}${pages.map((p) => p.xml()).join("")}</mxfile>\n`;
+}
+
+export interface JourneysDrawioOptions {
+  /** One journey (id or name); absent = every journey. Unknown ids throw. */
+  journeyId?: string;
+  /** The product store's warnings (broken links are flagged). */
+  warnings?: readonly string[];
+  /** `agent` attribute of <mxfile>. */
+  agent?: string;
+}
+
+/**
+ * Journey pages only (no architecture pages): `ruah app journeys export --format drawio`
+ * and GET /api/product/export?format=drawio. `architecture` places touches in lanes and
+ * names them; null works too (lanes then come from the ids alone, see src/product/lanes.ts).
+ */
+export function journeysToDrawio(product: ProductFile, architecture: Architecture | null, opts: JourneysDrawioOptions = {}): string {
+  const journeys = opts.journeyId !== undefined ? [requireJourney(product, opts.journeyId)] : product.journeys;
+  const pages = journeyPages({ product, arch: architecture, warnings: opts.warnings ?? [], links: [] }, journeys, new Set<string>());
+  if (pages.length === 0) pages.push(new Page("journeys", "Journeys"));
+  const head = `<mxfile${attrs({ host: "ruah", agent: opts.agent ?? "ruah", version: "24.7.17", type: "device", compressed: "false" })}>\n`;
   return `<?xml version="1.0" encoding="UTF-8"?>\n${head}${pages.map((p) => p.xml()).join("")}</mxfile>\n`;
 }
 

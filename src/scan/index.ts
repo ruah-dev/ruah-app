@@ -11,17 +11,19 @@
 // Output is deterministic: sorted inputs, stable ids, no timestamps unless
 // `opts.now` is given.
 import type { Architecture, ArchEdge, ArchNode, Workflow } from "../contracts/architecture.js";
+import type { Screen } from "../contracts/product.js";
 import { detectCompose, externalsFromDeps, infraFromDeps, type InfraKind } from "./detectors/compose.js";
-import { classify, isTestFile } from "./detectors/entrypoints.js";
+import { classify, isTestFile, type Classification } from "./detectors/entrypoints.js";
 import { SOURCE_EXT } from "./detectors/imports.js";
 import { readManifest } from "./detectors/manifests.js";
-import { detectWorkspaces } from "./detectors/workspaces.js";
+import { detectScreens } from "./detectors/screens.js";
+import { detectWorkspaces, type WorkspaceResult } from "./detectors/workspaces.js";
 import { buildInfraGraph, detectInfra } from "./iac/index.js";
 import { layoutArchitecture } from "./layout.js";
 import { mergeWithExisting } from "./merge.js";
 import { buildModuleTree, IdAllocator, rankByInDegree, slug, sourceRoot } from "./modules.js";
 import type { Language, PackageInfo, ScanContext } from "./types.js";
-import { listFiles } from "./walk.js";
+import { listFiles, type FileList } from "./walk.js";
 
 export interface ScanOptions {
   name?: string; // display name (default: root directory name)
@@ -80,7 +82,91 @@ function normName(n: string): string {
 
 const TOOLING_RE = /(^|[-_])(scripts?|tools?|tooling|config|configs|eslint|lint|oxlint|plugin|prettier|tsconfig)([-_]|$)/;
 
+/** A package of the repo with the map element id the scan gives it (package ids are allocated first). */
+interface OwnedPackage {
+  pkg: PackageInfo;
+  id: string;
+  files: string[]; // the package's own files (nested workspace packages excluded)
+  cls: Classification;
+}
+
+function filesUnder(fl: FileList, dir: string, exclude: string[]): string[] {
+  const prefix = dir === "" ? "" : `${dir}/`;
+  return fl.files.filter((f) => f.startsWith(prefix) && !exclude.some((x) => x !== dir && (f === x || f.startsWith(`${x}/`))));
+}
+
+// Monorepo: one package per workspace dir; single package: the repo root. Takes the package
+// ids from `ids` before anything else, so a fresh allocator reproduces scanRepo's ids.
+function ownedPackages(ctx: ScanContext, ws: WorkspaceResult, ids: IdAllocator): OwnedPackage[] {
+  const { root, fl } = ctx;
+  if (ws.dirs.length > 0) {
+    const pkgs = ws.dirs.map(
+      (dir): PackageInfo =>
+        readManifest(ctx, dir) ?? {
+          dir,
+          manifest: null,
+          name: basename(dir),
+          language: guessLanguage(filesUnder(fl, dir, [])),
+          deps: [],
+          entryHints: [],
+          scripts: {},
+        },
+    );
+    const baseCount = new Map<string, number>();
+    for (const p of pkgs) baseCount.set(basename(p.dir), (baseCount.get(basename(p.dir)) ?? 0) + 1);
+    const pkgIds = pkgs.map((p) => ids.take(slug((baseCount.get(basename(p.dir)) ?? 0) > 1 ? p.dir : basename(p.dir))));
+    return pkgs.map((pkg, i) => {
+      const files = filesUnder(fl, pkg.dir, ws.dirs);
+      return { pkg, id: pkgIds[i] ?? "", files, cls: classify(pkg, files) };
+    });
+  }
+  const repoName = basename(root.replace(/[\\/]+$/, ""));
+  const pkg: PackageInfo = readManifest(ctx, "") ?? {
+    dir: "",
+    manifest: null,
+    name: repoName,
+    language: guessLanguage(fl.files),
+    deps: [],
+    entryHints: [],
+    scripts: {},
+  };
+  const id = ids.take(slug(pkg.name === "" ? repoName : pkg.name));
+  return [{ pkg, id, files: fl.files, cls: classify(pkg, fl.files) }];
+}
+
+function screensOf(ctx: ScanContext, packages: OwnedPackage[]): Screen[] {
+  return detectScreens(
+    ctx,
+    packages.filter((p) => p.cls.type === "frontend").map((p) => ({ id: p.id, dir: p.pkg.dir, files: p.files, deps: p.pkg.deps })),
+  );
+}
+
+/**
+ * The screens of a repo (docs/JOURNEYS.md §3.1) without the rest of the scan: `node` ids
+ * are the ones scanRepo gives the owning packages. `fl` reuses a file listing already made.
+ */
+export function scanScreens(root: string, opts: { useGit?: boolean; fl?: FileList } = {}): Screen[] {
+  const fl = opts.fl ?? listFiles(root, opts.useGit === false ? { useGit: false } : {});
+  const ctx: ScanContext = { root, fl };
+  return screensOf(ctx, ownedPackages(ctx, detectWorkspaces(ctx), new IdAllocator()));
+}
+
+export interface ScanResult {
+  architecture: Architecture;
+  /** product.json screens found in the frontend packages (source "scan"); merged by src/product/screens-merge.ts. */
+  screens: Screen[];
+}
+
 export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
+  return scan(root, opts, false).architecture;
+}
+
+/** scanRepo plus the repo's screens (one walk of the tree for both). */
+export function scanRepoWithScreens(root: string, opts: ScanOptions = {}): ScanResult {
+  return scan(root, opts, true);
+}
+
+function scan(root: string, opts: ScanOptions, withScreens: boolean): ScanResult {
   const fl = listFiles(root, opts.useGit === false ? { useGit: false } : {});
   const ctx: ScanContext = { root, fl };
   const ids = new IdAllocator();
@@ -98,13 +184,7 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
   // Packages the infra pass attaches edges to: [package, node id].
   const owners: { pkg: PackageInfo; id: string }[] = [];
   const ws = detectWorkspaces(ctx);
-
-  const filesUnder = (dir: string, exclude: string[]): string[] => {
-    const prefix = dir === "" ? "" : `${dir}/`;
-    return fl.files.filter(
-      (f) => f.startsWith(prefix) && !exclude.some((x) => x !== dir && (f === x || f.startsWith(`${x}/`))),
-    );
-  };
+  const packages = ownedPackages(ctx, ws, ids);
 
   const packageFiles = (
     pkg: PackageInfo,
@@ -123,28 +203,10 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
 
   if (ws.dirs.length > 0) {
     // ---- Monorepo ----
-    const pkgs = ws.dirs.map(
-      (dir): PackageInfo =>
-        readManifest(ctx, dir) ?? {
-          dir,
-          manifest: null,
-          name: basename(dir),
-          language: guessLanguage(filesUnder(dir, [])),
-          deps: [],
-          entryHints: [],
-          scripts: {},
-        },
-    );
-    const baseCount = new Map<string, number>();
-    for (const p of pkgs) baseCount.set(basename(p.dir), (baseCount.get(basename(p.dir)) ?? 0) + 1);
-    const pkgIds = pkgs.map((p) => ids.take(slug((baseCount.get(basename(p.dir)) ?? 0) > 1 ? p.dir : basename(p.dir))));
     const byName = new Map<string, string>();
-    pkgs.forEach((p, i) => byName.set(normName(p.name), pkgIds[i] ?? ""));
+    for (const p of packages) byName.set(normName(p.pkg.name), p.id);
 
-    pkgs.forEach((pkg, i) => {
-      const id = pkgIds[i] ?? "";
-      const files = filesUnder(pkg.dir, ws.dirs);
-      const cls = classify(pkg, files);
+    for (const { pkg, id, files, cls } of packages) {
       const segs = pkg.dir.split("/");
       const layer =
         segs.length >= 2
@@ -180,32 +242,20 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
       nodes.push(...tree.nodes);
       for (const e of tree.edges) addEdge(e);
       owners.push({ pkg, id });
-    });
+    }
 
     // Workspace dependency edges.
-    pkgs.forEach((pkg, i) => {
-      const from = pkgIds[i] ?? "";
+    for (const { pkg, id: from } of packages) {
       for (const d of pkg.deps) {
         const to = byName.get(normName(d.name));
         if (to === undefined || to === from) continue;
         addEdge({ from, to, label: d.dev ? "dev dependency" : "depends on", kind: "sync" });
       }
-    });
+    }
   } else {
     // ---- Single package ----
-    const repoName = basename(root.replace(/[\\/]+$/, ""));
-    const pkg: PackageInfo = readManifest(ctx, "") ?? {
-      dir: "",
-      manifest: null,
-      name: repoName,
-      language: guessLanguage(fl.files),
-      deps: [],
-      entryHints: [],
-      scripts: {},
-    };
-    const cls = classify(pkg, fl.files);
+    const { pkg, id: entryId, cls } = packages[0] as OwnedPackage;
     const srcRoot = sourceRoot(ctx, pkg);
-    const entryId = ids.take(slug(pkg.name === "" ? repoName : pkg.name));
     const tree = buildModuleTree(ctx, {
       pkg,
       pkgType: cls.type,
@@ -345,7 +395,7 @@ export function scanRepo(root: string, opts: ScanOptions = {}): Architecture {
   // Provenance: every scanned edge is marked, so re-scans replace only these.
   arch = { ...arch, edges: arch.edges.map((e) => ({ ...e, source: "scan" })) };
   if (opts.previous !== undefined && opts.previous !== null) arch = mergeWithExisting(arch, opts.previous, root);
-  return layoutArchitecture(arch);
+  return { architecture: layoutArchitecture(arch), screens: withScreens ? screensOf(ctx, packages) : [] };
 }
 
 function infraEdge(from: string, to: string, kind: InfraKind | undefined, fallback: string): ArchEdge {

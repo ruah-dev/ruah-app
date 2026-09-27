@@ -21,6 +21,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Plug,
+  Route,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import {
 export type NavPath =
   | "/"
   | "/map"
+  | "/journeys"
   | "/agent"
   | "/chats"
   | "/tasks"
@@ -53,6 +55,8 @@ export const NAV: readonly NavItemDef[] = [
   // §20.5: Home = every project sorted by what needs you; the open project's dashboard is one click away.
   { to: "/", label: "Home", icon: Home, key: "h", rail: null },
   { to: "/map", label: "Map", icon: MapIcon, key: "m", rail: "top" },
+  // §23: the product side — personas, customer journeys, screens, and the code behind each step.
+  { to: "/journeys", label: "Journeys", icon: Route, key: "j", rail: "top" },
   { to: "/agent", label: "Agent", icon: MessageSquare, key: "a", rail: "top" },
   { to: "/cloud", label: "Cloud", icon: Cloud, key: "l", rail: "top" },
   { to: "/tasks", label: "Tasks", icon: ListChecks, key: "t", rail: "top" },

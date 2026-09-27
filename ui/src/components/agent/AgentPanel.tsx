@@ -1,7 +1,7 @@
 // Visual patterns adapted from t3code apps/web/src/components/ChatView / chat/MessagesTimeline.tsx
 // (MIT): a centered, readable message column with the composer docked at the bottom.
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
-import { ImagePlus, MessageSquarePlus, RotateCcw } from "lucide-react";
+import { ImagePlus, MessageSquarePlus, RotateCcw, Route, X } from "lucide-react";
 import type { AttachmentMeta } from "@/lib/contracts";
 import { PhantomAgent, PhantomPose } from "@/components/brand/PhantomPose";
 import type { DiagramNode } from "@/data/graphs";
@@ -24,6 +24,7 @@ import {
   takeNextPrompt,
   usePromptQueue,
 } from "@/lib/prompt-queue";
+import { clearJourneyContext, journeyContext, useJourneyContext } from "@/lib/journey-context";
 import { Composer, imageBlockedReason, type ComposerHandle } from "./Composer";
 import { TurnView } from "./TurnView";
 import { QueuedPrompts } from "./QueuedPrompts";
@@ -162,14 +163,21 @@ export function AgentPanel({
       return;
     }
     stickRef.current = true;
-    sendPrompt(node?.id ?? null, text, attachments);
+    sendPrompt(node?.id ?? null, text, attachments, journeyExtra());
+  };
+
+  // §23.6: a question asked from a customer journey step carries that step until the chip is cleared.
+  const journey = useJourneyContext(daemon.project?.id);
+  const journeyExtra = () => {
+    const j = journeyContext(daemon.project?.id);
+    return j !== null ? { journeyStep: { journey: j.journey, step: j.step } } : {};
   };
 
   const sendNextQueued = () => {
     const next = takeNextPrompt(qKey);
     if (!next) return;
     stickRef.current = true;
-    sendPrompt(next.nodeId, next.text, next.attachments);
+    sendPrompt(next.nodeId, next.text, next.attachments, journeyExtra());
   };
 
   // The turn ended: send the next queued prompt, unless it was stopped or failed (then the
@@ -355,6 +363,23 @@ export function AgentPanel({
             sendNextQueued();
           }}
         />
+        {journey ? (
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <span className="pill-ai inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-meta" title="The agent gets this journey step with your question: its why, signal and the code behind it">
+              <Route className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">Journey · {journey.label}</span>
+            </span>
+            <button
+              type="button"
+              aria-label="Stop asking about this journey step"
+              title="Stop asking about this journey step"
+              onClick={clearJourneyContext}
+              className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
+        ) : null}
         <Composer
           // One composer per project: switching parks this project's unsent text and images
           // (they must never be sent to the next project's agent) and restores that one's.

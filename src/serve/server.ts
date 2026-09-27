@@ -2,6 +2,7 @@
 // check from CONTRACTS.md §2.2 rule 10, HTTP endpoints (§2.3), and static SPA
 // serving from --viewer. No framework; `ws` for the WebSocket server.
 import * as http from "node:http";
+import * as path from "node:path";
 import { WebSocketServer } from "ws";
 import type { ArchitectureStore } from "./architecture-store.js";
 import { serveStatic, viewerBuildId } from "./static.js";
@@ -15,7 +16,9 @@ import { handleIntegrationsRequest } from "../integrations/http.js";
 import type { IntegrationsApi } from "../integrations/index.js";
 import { handleEnginesRequest } from "../engines/http.js";
 import type { EnginesService } from "../engines/index.js";
-import { scanRepo, summarize } from "../scan/index.js";
+import { scanRepoWithScreens, summarize } from "../scan/index.js";
+import { PRODUCT_FILE, type Screen } from "../contracts/product.js";
+import { planScannedProduct, writeScannedProduct } from "../product/screens-merge.js";
 import { handleProjectsRequest, sendJson } from "./projects-http.js";
 import { handleExportRequest } from "../export/http.js";
 import type { ProjectService } from "../projects/service.js";
@@ -32,6 +35,9 @@ import { handleExtensionsRequest } from "../extensions/http.js";
 import { ownOrigin } from "./local-mutation.js";
 import type { ExtensionsService } from "../extensions/service.js";
 import { handlePreviewRequest, type PreviewHttpDeps } from "../preview/http.js";
+import { handleGitRequest } from "./git-http.js";
+import { handleProductShotRequest } from "./product-shots-http.js";
+import { handleProductDriftRequest } from "./product-drift-http.js";
 
 export interface ServeOptions {
   host: string;
@@ -173,8 +179,13 @@ export function startServer(
     )
       return;
     if (handlePreviewRequest(req, res, url, options.preview, (origin) => originAllowed(origin, options.allowOrigins))) return;
-    // GET /api/export/drawio (409 when no project is open).
-    if (handleExportRequest(req, res, url, { store: () => hub.store, integrations: options.integrations, version: () => hub.version() })) return;
+    // §24 branches of the open project (409 when none is open).
+    if (handleGitRequest(req, res, url, hub, (origin) => originAllowed(origin, options.allowOrigins), { scanInfra: (id) => options.projects?.scanOptions(id).infra ?? true })) return;
+    // §23.8 screenshots of the app's screens (the desktop app captures them from the preview).
+    if (handleProductShotRequest(req, res, url, hub, (origin) => originAllowed(origin, options.allowOrigins))) return;
+    if (handleProductDriftRequest(req, res, url, hub, (origin) => originAllowed(origin, options.allowOrigins))) return;
+    // GET /api/export/drawio and GET /api/product/export (§23.7) (409 when no project is open).
+    if (handleExportRequest(req, res, url, { store: () => hub.store, product: () => hub.product, integrations: options.integrations, version: () => hub.version() })) return;
 
     // Everything below needs an open project.
     const needsProject =
@@ -214,18 +225,20 @@ export function startServer(
       }
       const started = Date.now();
       let arch;
+      let screens: Screen[];
       try {
         // Per-project scan options (CONTRACTS §11): IaC on unless the project turned it off.
         const projectId = hub.project()?.id;
         const infra = projectId !== undefined && options.projects !== undefined ? options.projects.scanOptions(projectId).infra : true;
-        arch = scanRepo(store.root, { version: hub.version(), now: new Date(), previous: store.current(), infra });
+        ({ architecture: arch, screens } = scanRepoWithScreens(store.root, { version: hub.version(), now: new Date(), previous: store.current(), infra }));
       } catch (err) {
         sendJson(res, 500, { error: `scan failed: ${(err as Error).message}` });
         return;
       }
       // store.save validates, writes atomically and broadcasts reason "saved".
       store.save(arch, { by: { kind: "scan" } }).then(
-        () => {
+        async () => {
+          await saveScannedScreens(hub, store, screens);
           const s = summarize(arch);
           sendJson(res, 200, { ok: true, nodes: s.nodes, edges: s.edges, layers: s.layers, ms: Date.now() - started });
         },
@@ -300,4 +313,24 @@ export function startServer(
       });
     });
   });
+}
+
+/**
+ * CONTRACTS §23.4: a rescan's screens into product.json. Through the open product store
+ * when there is one (validated, broadcast as `product` reason "saved" by the scan), else
+ * written next to the architecture file. Best effort: never fails the rescan (an invalid
+ * product.json is left alone; the product store reports it).
+ */
+async function saveScannedScreens(hub: SessionHub, store: ArchitectureStore, screens: Screen[]): Promise<void> {
+  try {
+    const product = hub.product;
+    if (product === null) {
+      writeScannedProduct(path.join(store.root, PRODUCT_FILE), screens);
+      return;
+    }
+    const plan = planScannedProduct(product.path, screens);
+    if (plan.product !== null && !plan.unchanged) await product.save(plan.product, { by: { kind: "scan" } });
+  } catch {
+    // best effort, see above
+  }
 }

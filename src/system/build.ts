@@ -19,7 +19,9 @@ import type { ArchEdge, ArchNode, Architecture, Workflow } from "../contracts/ar
 import { validateArchitecture } from "../contracts/validate.js";
 import { EXTERNAL_KINDS, INFRA_KINDS } from "../scan/detectors/compose.js";
 import { readmeLine } from "../scan/detectors/manifests.js";
-import { orderLayers, scanRepo } from "../scan/index.js";
+import type { Screen } from "../contracts/product.js";
+import { namespaceScreens } from "../product/screens-merge.js";
+import { orderLayers, scanRepo, scanScreens } from "../scan/index.js";
 import { layoutArchitecture } from "../scan/layout.js";
 import { slug } from "../scan/modules.js";
 import { listFiles, type FileList } from "../scan/walk.js";
@@ -60,6 +62,8 @@ export interface SystemBuildResult {
   architecture: Architecture;
   repos: RepoReport[];
   signals: CrossSignal[];
+  /** Each repo's screens (CONTRACTS §23.4), namespaced like the map: `<repoId>:<id>`, `<repoId>/<path>`. */
+  screens: Screen[];
 }
 
 const PLAIN_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -429,5 +433,11 @@ export function buildSystemArchitecture(system: LoadedSystem | string, opts: Bui
     workflows,
   };
   if (opts.previous !== undefined && opts.previous !== null) arch = mergeSystemWithExisting(arch, opts.previous);
-  return { architecture: layoutArchitecture(arch), repos: reports, signals: sig.signals };
+  const screens: Screen[] = [];
+  for (const l of loaded) {
+    const fl = fileLists.get(l.repo.id);
+    if (l.arch === null || fl === undefined) continue;
+    screens.push(...namespaceScreens(l.repo.id, scanScreens(l.repo.root, { fl })));
+  }
+  return { architecture: layoutArchitecture(arch), repos: reports, signals: sig.signals, screens };
 }

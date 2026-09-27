@@ -340,7 +340,7 @@ describe("SessionHub: product messages", () => {
     bad.journeys[0]!.persona = "nobody";
     socket.receive({ type: "product.save", product: bad });
     await new Promise((r) => setTimeout(r, 20));
-    expect(socket.sent.at(-1)).toMatchObject({ type: "error", code: "save_rejected" });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "error", code: "product_save_rejected" });
     hub.setProject(null);
   });
 });

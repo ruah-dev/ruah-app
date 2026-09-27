@@ -16,6 +16,7 @@ import { ArrowLeft,
   Pin,
   Plus,
   RefreshCw,
+  Route as RouteIcon,
   ScanSearch,
   Sparkles,
   X,
@@ -33,7 +34,9 @@ import {
 } from "@/lib/architecture";
 import type { ArchNode } from "@/lib/contracts";
 import { asExpanded, invalidateExpansions, requestExpansion } from "@/lib/expand";
-import { daemonActions, dismissError, rescan } from "@/lib/daemon";
+import { daemonActions, dismissError, rescan, useDaemonSelector } from "@/lib/daemon";
+import { journeyCoverage, levelCoverage } from "@/lib/journeys";
+import { setBusinessOverlay, useBusinessOverlay } from "@/lib/business-overlay";
 import { downloadDrawio } from "@/lib/export";
 import { toast } from "sonner";
 import { isCloudDiagramId } from "@/lib/integrations";
@@ -135,6 +138,33 @@ function EditToggle() {
         },
       ]}
     />
+  );
+}
+
+/** JOURNEYS.md §5.2: tint the map by the customer journeys each element serves. */
+function BusinessToggle() {
+  const on = useBusinessOverlay();
+  const hasProduct = useDaemonSelector((s) => (s.product?.journeys.length ?? 0) > 0);
+  if (!hasProduct && !on) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-pressed={on}
+          aria-label="Business overlay"
+          onClick={() => setBusinessOverlay(!on)}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-ui-sm transition-colors",
+            on ? "bg-primary/12 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          )}
+        >
+          <RouteIcon className="size-3.5" aria-hidden />
+          <span className="max-lg:hidden">Business</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{on ? "Hide" : "Show"} which customer journeys each element serves</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -426,9 +456,18 @@ function Canvas({ diagram, showTray, active = true }: { diagram: Diagram; showTr
         .map((n) => ({ id: n.id, label: n.name, where: n.path ?? index.byId.get(n.parent ?? "")?.name ?? "top level" })),
     [ws.mapArchitecture, index],
   );
+  // §5.2 business overlay: journeys per element on this level (architecture levels only).
+  const businessOn = useBusinessOverlay();
+  const product = useDaemonSelector((s) => s.product);
+  const stored = useMemo(() => (businessOn ? journeyCoverage(product, ws.mapArchitecture) : null), [businessOn, product, ws.mapArchitecture]);
+  const business = useMemo(
+    () => (stored !== null && diagram.mode === "architecture" && !derived ? levelCoverage(product, ws.mapArchitecture, diagram.nodes.map((n) => n.id), stored) : null),
+    [stored, diagram, derived, product, ws.mapArchitecture],
+  );
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <EditorCanvas
+        business={business}
         active={active}
         depth={depth}
         onGoUp={wb.goUp}
@@ -595,6 +634,7 @@ function PaneView({ pane, first, last }: { pane: Pane; first: boolean; last: boo
         {last ? (
           <>
             <StatusIndicators />
+            <BusinessToggle />
             <EditToggle />
           </>
         ) : null}

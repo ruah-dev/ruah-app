@@ -13,6 +13,7 @@ import {
   Download,
   FolderOpen,
   FolderPlus,
+  GitBranch,
   History,
   Hash,
   Home,
@@ -57,6 +58,7 @@ import { providerLabel, syncCloud } from "@/lib/integrations";
 import { flattenRanked, moveActive, rankLauncher, type LauncherItem } from "@/lib/launcher";
 import { useMruChats } from "@/lib/mru";
 import { openSystemDialog } from "@/lib/system";
+import { requestBranchSwitcher } from "@/lib/git-branches";
 import { useTheme, type ThemePref } from "@/lib/theme";
 import { prettyPath, relativeTime } from "@/lib/time";
 import { useWorkspace } from "@/lib/workspace";
@@ -430,6 +432,14 @@ function LauncherBody() {
     }, { kbd: "⌘J" });
     more("open-folder", "Open folder…", FolderOpen, () => void actions.pickFolder(), { kbd: "⌘O", keywords: ["project", "repo"] });
     more("new-project", "New project…", FolderPlus, actions.newProject, { kbd: "⇧⌘N" });
+    // §24: opens the top bar's branch switcher (hidden below lg: then say where it is).
+    if (connected && current && current.kind !== "system") more("switch-branch", "Switch branch…", GitBranch, () => {
+      close();
+      // After the launcher gave focus back (a popover opened earlier would close on that).
+      setTimeout(() => {
+        if (!requestBranchSwitcher()) toast("Widen the window to switch branches from the top bar's branch chip");
+      }, 150);
+    }, { sub: "the map follows the branch", keywords: ["git", "checkout", "branch", "create branch"] });
     if (connected) more("new-system", "New system…", Layers, () => {
       close();
       openSystemDialog({ kind: "new" });

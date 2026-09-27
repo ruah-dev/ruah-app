@@ -93,6 +93,8 @@ type Props = {
   /** ⌘Z / ⇧⌘Z while the map has the keyboard: take back / redo the last map edit. */
   onUndo?: (() => void) | undefined;
   onRedo?: (() => void) | undefined;
+  /** JOURNEYS.md §5.2 business overlay: journeys per element id (absent / null = overlay off). */
+  business?: ReadonlyMap<string, { journeys: number; core: number }> | null | undefined;
 };
 
 const GRID = 8;
@@ -133,6 +135,7 @@ export function EditorCanvas({
   deleteKey = true,
   onUndo,
   onRedo,
+  business,
 }: Props) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const worldRef = useRef<HTMLDivElement | null>(null);
@@ -989,6 +992,7 @@ export function EditorCanvas({
               working={workingId === node.id ? workingFace : null}
               verifyBadge={verifyNodes[node.id]?.badge}
               verifyDetail={verifyNodes[node.id]?.detail}
+              business={business ? (business.get(node.id) ?? null) : undefined}
               h={handlers}
             />
           ))}

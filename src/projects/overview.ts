@@ -9,6 +9,7 @@
 // cached 30 s per project; the whole static part is cached a few seconds. Live
 // parts (running / waiting counts, pending permissions, preview states) come
 // from the daemon on every call.
+import { productSummary } from "../product/summary.js";
 import * as fs from "node:fs";
 import type { ActivityEvent, PermissionOption, ProjectInfo } from "../contracts/ws.js";
 import type { OverviewCloud, ProjectOverview, ProjectsOverview } from "../contracts/overview.js";
@@ -219,6 +220,7 @@ export class ProjectOverviewService {
       unread,
       git,
       cloud: this.cloud(project.root),
+      product: productSummary(project.root),
     };
   }
 

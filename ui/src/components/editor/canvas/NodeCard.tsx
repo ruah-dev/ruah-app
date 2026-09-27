@@ -55,8 +55,23 @@ type Props = {
   /** Latest verify badge for this node (pass / fail / unverifiable). */
   verifyBadge?: VerifyBadge | undefined;
   verifyDetail?: string | undefined;
+  /** JOURNEYS.md §5.2 business overlay: undefined = off; null = on, and no journey uses this element. */
+  business?: { journeys: number; core: number } | null | undefined;
   h: NodeHandlers;
 };
+
+/** "3 journeys · 2 core" badge of the business overlay. */
+function BusinessBadge({ value, compact }: { value: { journeys: number; core: number }; compact?: boolean }) {
+  const label = `${value.journeys} journey${value.journeys === 1 ? "" : "s"}${value.core > 0 ? ` · ${value.core} core` : ""}`;
+  if (compact) {
+    return <span className={cn("block size-2.5 rounded-full", value.core > 0 ? "bg-primary" : "bg-info")} title={label} aria-label={label} />;
+  }
+  return (
+    <span className={cn("inline-flex h-4 items-center rounded px-1 text-caption leading-none font-medium", value.core > 0 ? "pill-primary" : "pill-info")} title={`Used by ${label}`}>
+      {label}
+    </span>
+  );
+}
 
 /** The small ghost floating at the corner of the element a running turn works on. */
 function WorkingGhost({ face, compact }: { face: "thinking" | "warning"; compact: boolean }) {
@@ -243,7 +258,7 @@ function AiMark({ compact }: { compact?: boolean }) {
   );
 }
 
-function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, working, verifyBadge, verifyDetail, h }: Props) {
+function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, working, verifyBadge, verifyDetail, business, h }: Props) {
   const flash = useMapFlash(node.id);
   const style = styleFor(node);
   const Icon = style.icon;
@@ -252,7 +267,9 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
   const hgt = node.h ?? NODE_H;
   // Dimmed (not near the selection): 80 %, the lowest at which muted text on a card still passes
   // 4.5:1 in the light and dark themes (60 % did not: 2.9:1 in light).
-  const opacity = tone === "dimmed" ? "opacity-80" : "opacity-100";
+  // Business overlay: an element no journey uses fades (colour off, 80 %: still readable).
+  const opacity = tone === "dimmed" || business === null ? "opacity-80" : "opacity-100";
+  const faded = business === null ? "saturate-0" : "";
   const ring =
     tone === "current"
       ? "border-warn! ring-4 ring-warn/35"
@@ -279,7 +296,7 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
     return (
       <div
         {...common}
-        className={cn("absolute rounded-lg border-2", style.tint, selected ? "border-primary" : style.border, ring, opacity)}
+        className={cn("absolute rounded-lg border-2", style.tint, selected ? "border-primary" : style.border, ring, opacity, faded)}
       >
         <span aria-hidden className={cn("absolute inset-y-0 left-0 w-2 rounded-s-md", style.bar)} />
         {selected || tone === "current" || tone === "match" ? (
@@ -311,9 +328,15 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
           border,
           ring,
           opacity,
+          faded,
         )}
       >
         <span aria-hidden className={cn("absolute inset-y-2 left-0 w-[5px] rounded-e-pill", style.bar)} />
+        {business ? (
+          <span className="absolute top-1 left-1" style={{ transform: "scale(var(--inv-k, 1))", transformOrigin: "0 0" }}>
+            <BusinessBadge value={business} compact />
+          </span>
+        ) : null}
         {text.title !== text.full ? (
           // "Kubernetes: prod" → "prod" over "Kubernetes": two short lines instead of the full
           // name broken mid-word ("Kubernete / s: prod").
@@ -365,9 +388,15 @@ function NodeCardImpl({ node, lod, selected, tone, editable, renaming, linking, 
         border,
         ring,
         opacity,
+        faded,
       )}
     >
       <span aria-hidden className={cn("absolute inset-y-3 left-0 w-[3px] rounded-e-pill opacity-80", style.bar)} />
+      {business ? (
+        <span className="absolute -top-2.5 left-2 rounded bg-card">
+          <BusinessBadge value={business} />
+        </span>
+      ) : null}
       <span className="flex min-w-0 items-center gap-2">
         <span className={cn("grid size-6 shrink-0 place-items-center rounded-md", style.tint)}>
           <Icon className={cn("size-3.5", style.color)} />

@@ -45,7 +45,7 @@ import { ClientMessageSchema } from "../contracts/ws.js";
 import type { AcpBridge, BridgeEvent } from "../acp/bridge.js";
 import { BusyError } from "../acp/bridge.js";
 import type { ContentBlock } from "@agentclientprotocol/sdk";
-import { buildContextPack, buildPromptBlocks } from "../context/pack.js";
+import { buildContextPack, buildJourneyPack, buildPromptBlocks } from "../context/pack.js";
 import { resolveNodeScope } from "../expand/context.js";
 import type { ArchitectureStore } from "./architecture-store.js";
 import type { ProductStore } from "./product-store.js";
@@ -541,6 +541,7 @@ export class SessionHub {
             product: event.product,
             warnings: event.warnings,
             ...(event.by !== undefined ? { by: event.by } : {}),
+            ...(event.changes !== undefined ? { changes: event.changes } : {}),
           });
         }),
         product.onError((error) => {
@@ -1174,12 +1175,29 @@ export class SessionHub {
     }
     const images = this.loadAttachments(socket, message, open.info.id);
     if (images === undefined) return;
+    // §23.6: journeys the element serves, and the journey a prompt was sent from.
+    const product = open.product !== undefined ? open.product.current() : undefined;
+    const journeyStep = message.journeyStep;
+    if (journeyStep !== undefined) {
+      const journey = product?.journeys.find((j) => j.id === journeyStep.journey);
+      if (journey === undefined || !journey.steps.some((s) => s.id === journeyStep.step)) {
+        this.error(socket, "bad_message", `unknown journey step: ${journeyStep.journey}/${journeyStep.step}`, { turnId: message.turnId });
+        return;
+      }
+    }
+    const packOptions = {
+      mapTools: this.options.mapOps !== undefined && this.currentAgentId !== MOCK_AGENT_ID,
+      ...(product !== undefined ? { product } : {}),
+      ...(journeyStep !== undefined ? { journeyStep } : {}),
+    };
     let pack = "";
     let textBlocks: ContentBlock[] = [{ type: "text", text: message.text }];
+    if (scope === undefined && journeyStep !== undefined && product !== undefined && product !== null) {
+      pack = buildJourneyPack(product, journeyStep, arch, open.store.root, message.text, packOptions);
+      textBlocks = [{ type: "text", text: pack }];
+    }
     if (scope !== undefined && nodeId !== undefined) {
-      pack = buildContextPack(scope.index, nodeId, open.store.root, message.text, {
-        mapTools: this.options.mapOps !== undefined && this.currentAgentId !== MOCK_AGENT_ID,
-      });
+      pack = buildContextPack(scope.index, nodeId, open.store.root, message.text, packOptions);
       const resolvePath = open.store.resolvePath?.bind(open.store);
       textBlocks = buildPromptBlocks(pack, scope.node.files ?? [], open.store.root, this.options.links, resolvePath) as ContentBlock[];
     }
@@ -1968,10 +1986,10 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     case "product.save": {
       const product = hub.product;
       if (product === null) {
-        hub.error(socket, "save_rejected", `save failed: ${NO_PROJECT_MESSAGE}`);
+        hub.error(socket, "product_save_rejected", `save failed: ${NO_PROJECT_MESSAGE}`);
         return;
       }
-      product.save(message.product, { by: { kind: "user" } }).catch((err: Error) => hub.error(socket, "save_rejected", `save failed: ${err.message}`));
+      product.save(message.product, { by: { kind: "user" } }).catch((err: Error) => hub.error(socket, "product_save_rejected", `save failed: ${err.message}`));
       return;
     }
     case "chat.new": {

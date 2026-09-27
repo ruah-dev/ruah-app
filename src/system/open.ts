@@ -13,7 +13,7 @@ import { createArchitectureStore, type ArchitectureStore } from "../serve/archit
 import { ProjectError, type OpenSystemProject } from "../projects/service.js";
 import type { SystemBuildResult } from "./build.js";
 import { loadSystem, resolveSystemPath, type LoadedSystem } from "./config.js";
-import { rebuildSystem, rescanRepo, SystemManageError } from "./manage.js";
+import { rebuildSystem, rescanRepo, SystemManageError, writeSystemProduct } from "./manage.js";
 import { registerSystemRoots } from "./roots.js";
 
 export interface SystemHandle {
@@ -82,6 +82,8 @@ export function makeOpenSystemProject(version: string, options: { watch?: boolea
           sys = next;
           registerSystemRoots(sys.dir, sys.repos.map((r) => r.root), sys.repos.map((r) => r.id));
           await store.save(result.architecture, { by: { kind: "scan" } });
+          // §23.4: screens into product.json; the open product store's watcher picks it up.
+          writeSystemProduct(sys.dir, result);
           return result;
         };
         const p = queue.then(run, run);

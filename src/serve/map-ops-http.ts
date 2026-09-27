@@ -7,6 +7,7 @@
 // check alone would not do: the MCP process is not a browser and sends none.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ArchOpsRequestSchema } from "../contracts/map.js";
+import { ProductOpsRequestSchema } from "../contracts/product-ops.js";
 import { MapOpsError, type MapOpsService } from "./map-ops.js";
 import { sendJson } from "./projects-http.js";
 
@@ -43,9 +44,12 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-/** Handles /api/arch and /api/arch/ops; false for any other path. */
+const PATHS = new Set(["/api/arch", "/api/arch/ops", "/api/product", "/api/product/ops"]);
+
+/** Handles /api/arch, /api/arch/ops, /api/product and /api/product/ops (§23.5); false for any other path. */
 export function handleMapOpsRequest(req: IncomingMessage, res: ServerResponse, url: URL, service: MapOpsService | undefined): boolean {
-  if (url.pathname !== "/api/arch" && url.pathname !== "/api/arch/ops") return false;
+  if (!PATHS.has(url.pathname)) return false;
+  const product = url.pathname.startsWith("/api/product");
   if (service === undefined) {
     sendJson(res, 503, { error: "map tools are not available" });
     return true;
@@ -68,13 +72,13 @@ export function handleMapOpsRequest(req: IncomingMessage, res: ServerResponse, u
     if (err instanceof MapOpsError) sendJson(res, err.status, { error: err.message });
     else sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
   };
-  if (url.pathname === "/api/arch") {
+  if (url.pathname === "/api/arch" || url.pathname === "/api/product") {
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "GET only" });
       return true;
     }
     try {
-      sendJson(res, 200, service.read(ctx));
+      sendJson(res, 200, product ? service.readProduct(ctx) : service.read(ctx));
     } catch (err) {
       fail(err);
     }
@@ -92,12 +96,13 @@ export function handleMapOpsRequest(req: IncomingMessage, res: ServerResponse, u
       } catch {
         throw new MapOpsError(400, "body is not valid JSON");
       }
-      const parsed = ArchOpsRequestSchema.safeParse(body);
+      const parsed = product ? ProductOpsRequestSchema.safeParse(body) : ArchOpsRequestSchema.safeParse(body);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
         throw new MapOpsError(400, `invalid ops: ${issue !== undefined ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}`);
       }
-      sendJson(res, 200, await service.apply(ctx, parsed.data.ops));
+      const ops = parsed.data.ops;
+      sendJson(res, 200, product ? await service.applyProduct(ctx, ops as never) : await service.apply(ctx, ops as never));
     })
     .catch(fail);
   return true;

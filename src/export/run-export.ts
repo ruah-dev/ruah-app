@@ -1,7 +1,8 @@
 // `ruah app export drawio <repo> [--out <file>]` — writes the architecture as
 // a draw.io file. Reads <repo>/architecture.json (or the given .json file),
 // <repo>/.ruah/links.json and the cached cloud sync in ~/.ruah (RUAH_HOME);
-// never touches the network. `--out -` prints to stdout.
+// never touches the network. `--out -` prints to stdout. With a <repo>/product.json,
+// a page per customer journey is added (CONTRACTS §23.7).
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
@@ -49,7 +50,17 @@ export async function runExport(argv: readonly string[], version: string): Promi
   }
   const arch = result.value;
   const extras = extrasFromDisk(root, arch, ruahHome());
-  const xml = toDrawio(arch, { ...extras, rootName: path.basename(root), agent: `ruah ${version}` });
+  // CONTRACTS §23.7: a page per journey when the repo has a product.json.
+  const { loadProduct } = await import("../product/run-journeys.js");
+  const loaded = await loadProduct(root);
+  const notes = [...(extras.notes ?? []), ...(loaded.errors.length > 0 ? [`product.json is invalid, journeys not included: ${loaded.errors[0] ?? ""}`] : [])];
+  const xml = toDrawio(arch, {
+    ...extras,
+    notes,
+    rootName: path.basename(root),
+    agent: `ruah ${version}`,
+    ...(loaded.product !== null ? { product: loaded.product, productWarnings: loaded.warnings } : {}),
+  });
   const out = parsed.values.out;
   if (out === "-") {
     // Wait for the flush: the CLI calls process.exit() next, and pipes are asynchronous on macOS.
@@ -62,6 +73,7 @@ export async function runExport(argv: readonly string[], version: string): Promi
   fs.writeFileSync(tmp, xml);
   fs.renameSync(tmp, dest);
   const pages = (xml.match(/<diagram /g) ?? []).length;
-  process.stderr.write(`ruah app export: wrote ${dest} (${pages} pages, ${arch.nodes.length} elements, ${arch.edges.length} links)\n`);
+  const journeys = loaded.product?.journeys.length ?? 0;
+  process.stderr.write(`ruah app export: wrote ${dest} (${pages} pages, ${arch.nodes.length} elements, ${arch.edges.length} links${journeys > 0 ? `, ${journeys} journey${journeys === 1 ? "" : "s"}` : ""})\n`);
   return 0;
 }

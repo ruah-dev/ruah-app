@@ -6,11 +6,13 @@ import { ElementCloudSection } from "@/components/cloud/CloudDetails";
 import { ElementTasksSection } from "@/components/orchestration/ElementTasksSection";
 import { IssuesSection } from "@/components/work/IssuesSection";
 import { NodeEnginesPanel } from "@/components/engines/NodeEnginesPanel";
+import { ElementJourneysSection } from "@/components/journeys/ElementJourneysSection";
 
 export function ElementIntegrations({ node }: { node: DiagramNode }) {
   if (isCloudNodeId(node.id)) return null;
   return (
     <>
+      <ElementJourneysSection node={node} />
       <IssuesSection node={node} />
       <ElementCloudSection node={node} />
       <ElementTasksSection node={node} />

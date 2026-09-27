@@ -16,6 +16,7 @@ import type {
   ModeState,
   NewProjectCheck,
   NewProjectDefaults,
+  ProductFile,
   ProjectsOverview,
   AgentChoiceState,
   ChatInfo,
@@ -170,6 +171,18 @@ export interface DaemonState {
   modelsByAgent: Record<string, ModelState>;
   /** Last permission-mode list seen per agent. */
   modesByAgent: Record<string, ModeState>;
+
+  // §23 product.json (personas, screens, journeys)
+  /** What the UI renders: the local edit draft when there is one, else the daemon's revision; null = no product.json yet. */
+  product: ProductFile | null;
+  /** A `product` frame arrived for the open project (false: older daemon, or still loading). */
+  productLoaded: boolean;
+  productRevision: number;
+  /** Links from journeys into the code that no longer resolve (and screen files that are gone). */
+  productWarnings: string[];
+  /** product.json is invalid on disk, or a save was rejected. */
+  productError: string | null;
+  productSave: SaveState;
 }
 
 const INITIAL: DaemonState = {
@@ -201,6 +214,12 @@ const INITIAL: DaemonState = {
   chatLoading: false,
   modelsByAgent: {},
   modesByAgent: {},
+  product: null,
+  productLoaded: false,
+  productRevision: 0,
+  productWarnings: [],
+  productError: null,
+  productSave: "idle",
 };
 
 let state: DaemonState = INITIAL;
@@ -270,6 +289,22 @@ let draft: Architecture | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let savesInFlight = 0;
 let needsResend = false;
+
+// §23: product.json edits — optimistic draft + debounced product.save (no undo stack: journeys are
+// edited field by field in forms, and agent changes have their own per-turn undo).
+let serverProduct: ProductFile | null = null;
+let productDraft: ProductFile | null = null;
+let productSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let productSavesInFlight = 0;
+
+function resetProduct(): Partial<DaemonState> {
+  serverProduct = null;
+  productDraft = null;
+  productSavesInFlight = 0;
+  if (productSaveTimer !== undefined) clearTimeout(productSaveTimer);
+  productSaveTimer = undefined;
+  return { product: null, productLoaded: false, productRevision: 0, productWarnings: [], productError: null, productSave: "idle" };
+}
 
 // User-edit undo (Cmd+Z / Shift+Cmd+Z, the "Undo" of a delete toast): the map before each of
 // this viewer's edits, newest last. Only edits since the last change from elsewhere (an agent,
@@ -682,7 +717,7 @@ function handleProject(project: ProjectInfo | null) {
     savesInFlight = 0;
     if (saveTimer !== undefined) clearTimeout(saveTimer);
     saveTimer = undefined;
-    Object.assign(patch, { ...clearUndo(), lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
+    Object.assign(patch, { ...clearUndo(), ...resetProduct(), lastError: null, save: "idle", root: project?.root ?? state.root } satisfies Partial<DaemonState>);
   } else if (nextId !== prevId || leavingSample) {
     // Another project (or the sample): drop everything that belonged to the previous one.
     serverArchitecture = null;
@@ -693,6 +728,7 @@ function handleProject(project: ProjectInfo | null) {
     saveTimer = undefined;
     Object.assign(patch, {
       ...clearUndo(),
+      ...resetProduct(),
       architecture: null,
       revision: 0,
       root: project?.root ?? null,
@@ -831,6 +867,26 @@ function handle(msg: ServerMessage) {
     }
     case "architecture.error":
       set({ archError: msg.message });
+      return;
+    case "product": {
+      // §23. A previewed switch: frames of the project being left are stale.
+      if (state.projectSwitch?.preview && !sameRoot(state.projectSwitch.root, msg.path.replace(/[\\/]product\.json$/, ""))) return;
+      noteTurnMapChanges(msg.by, msg.changes);
+      serverProduct = msg.product;
+      if (msg.reason === "saved" && msg.by?.kind === "user" && productSavesInFlight > 0) productSavesInFlight -= 1;
+      if (productDraft && !productEditsPending()) productDraft = null;
+      set({
+        product: productDraft ?? msg.product,
+        productLoaded: true,
+        productRevision: msg.revision,
+        productWarnings: msg.warnings,
+        productError: null,
+        productSave: productEditsPending() ? state.productSave : "idle",
+      });
+      return;
+    }
+    case "product.error":
+      set({ productError: msg.message, productLoaded: true });
       return;
     case "agent.status": {
       const prev = state.agent;
@@ -1003,6 +1059,12 @@ function handle(msg: ServerMessage) {
         }));
         return;
       }
+      if (msg.code === "product_save_rejected") {
+        productSavesInFlight = Math.max(0, productSavesInFlight - 1);
+        if (!productEditsPending()) productDraft = null;
+        set({ productError: msg.message, productSave: "error", product: productDraft ?? serverProduct });
+        return;
+      }
       if (msg.code === "save_rejected" || msg.message.startsWith("save failed")) {
         // Daemon rejected the edit (validation): drop the draft, show why.
         savesInFlight = Math.max(0, savesInFlight - 1);
@@ -1052,7 +1114,12 @@ function currentAgentName(): string {
 }
 
 /** nodeId null = a plain question on the project, sent without an element's context. */
-export function sendPrompt(nodeId: string | null, text: string, attachments: AttachmentMeta[] = []): string {
+export function sendPrompt(
+  nodeId: string | null,
+  text: string,
+  attachments: AttachmentMeta[] = [],
+  extra: { journeyStep?: { journey: string; step: string } } = {},
+): string {
   // Sent while the agent starts: the daemon queues it (§2.2 rule 3); say so right away.
   const starting = !!state.agentSwitch || state.agent?.state === "starting";
   const turn: Turn = {
@@ -1074,6 +1141,7 @@ export function sendPrompt(nodeId: string | null, text: string, attachments: Att
       type: "prompt",
       turnId: turn.id,
       ...(nodeId !== null ? { nodeId } : {}),
+      ...(extra.journeyStep !== undefined ? { journeyStep: extra.journeyStep } : {}),
       text,
       ...(attachments.length
         ? { attachments: attachments.map(({ id, name }) => ({ id, name })) }
@@ -1755,6 +1823,45 @@ export function redoEdit(): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// §23 product.json editing: optimistic draft + debounced product.save
+
+function productEditsPending(): boolean {
+  return productSaveTimer !== undefined || productSavesInFlight > 0;
+}
+
+function flushProductSave() {
+  productSaveTimer = undefined;
+  if (!productDraft) return;
+  if (send({ type: "product.save", product: productDraft })) {
+    productSavesInFlight += 1;
+    set({ productSave: "saving" });
+  } else {
+    set({ productSave: "error", productError: "Not connected to Ruah; the change was not saved." });
+  }
+}
+
+export function canEditProduct(s: DaemonState = state) {
+  return s.source === "daemon" && s.connection === "open" && !s.projectSwitch && s.project !== null && s.productLoaded;
+}
+
+/**
+ * Applies a product edit (saved to product.json after a short debounce; the file is created on
+ * the first one). `fn` gets a copy it may mutate; return false to cancel. True when something changed.
+ */
+export function editProduct(fn: (product: ProductFile) => void | boolean): boolean {
+  if (!canEditProduct()) return false;
+  const base = productDraft ?? state.product ?? { version: 1 as const, personas: [], screens: [], journeys: [] };
+  const next = structuredClone(base);
+  if (fn(next) === false) return false;
+  if (JSON.stringify(next) === JSON.stringify(base)) return false;
+  productDraft = next;
+  if (productSaveTimer !== undefined) clearTimeout(productSaveTimer);
+  productSaveTimer = setTimeout(flushProductSave, SAVE_DEBOUNCE_MS);
+  set({ product: next, productSave: "pending", productError: state.productSave === "error" ? null : state.productError });
+  return true;
+}
+
 export function reportLocalError(message: string) {
   set({ lastError: { code: "edit", message } });
 }
@@ -1979,6 +2086,7 @@ export const daemonActions = {
   setDefaults,
   resetSession,
   editArchitecture,
+  editProduct,
   undoEdit,
   redoEdit,
   fetchFile,

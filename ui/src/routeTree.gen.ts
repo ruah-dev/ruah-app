@@ -16,6 +16,7 @@ import { Route as ChatsRouteImport } from './routes/chats'
 import { Route as CloudRouteImport } from './routes/cloud'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
+import { Route as JourneysRouteImport } from './routes/journeys'
 import { Route as LimitsRouteImport } from './routes/limits'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as PreviewRouteImport } from './routes/preview'
@@ -58,6 +59,11 @@ const IntegrationsRoute = IntegrationsRouteImport.update({
   path: '/integrations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JourneysRoute = JourneysRouteImport.update({
+  id: '/journeys',
+  path: '/journeys',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LimitsRoute = LimitsRouteImport.update({
   id: '/limits',
   path: '/limits',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/cloud': typeof CloudRoute
   '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
+  '/journeys': typeof JourneysRoute
   '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/preview': typeof PreviewRoute
@@ -112,6 +119,7 @@ export interface FileRoutesByTo {
   '/cloud': typeof CloudRoute
   '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
+  '/journeys': typeof JourneysRoute
   '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/preview': typeof PreviewRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   '/cloud': typeof CloudRoute
   '/extensions': typeof ExtensionsRoute
   '/integrations': typeof IntegrationsRoute
+  '/journeys': typeof JourneysRoute
   '/limits': typeof LimitsRoute
   '/map': typeof MapRoute
   '/preview': typeof PreviewRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/extensions'
     | '/integrations'
+    | '/journeys'
     | '/limits'
     | '/map'
     | '/preview'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/extensions'
     | '/integrations'
+    | '/journeys'
     | '/limits'
     | '/map'
     | '/preview'
@@ -175,6 +186,7 @@ export interface FileRouteTypes {
     | '/cloud'
     | '/extensions'
     | '/integrations'
+    | '/journeys'
     | '/limits'
     | '/map'
     | '/preview'
@@ -191,6 +203,7 @@ export interface RootRouteChildren {
   CloudRoute: typeof CloudRoute
   ExtensionsRoute: typeof ExtensionsRoute
   IntegrationsRoute: typeof IntegrationsRoute
+  JourneysRoute: typeof JourneysRoute
   LimitsRoute: typeof LimitsRoute
   MapRoute: typeof MapRoute
   PreviewRoute: typeof PreviewRoute
@@ -250,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/journeys': {
+      id: '/journeys'
+      path: '/journeys'
+      fullPath: '/journeys'
+      preLoaderRoute: typeof JourneysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/limits': {
       id: '/limits'
       path: '/limits'
@@ -303,6 +323,7 @@ const rootRouteChildren: RootRouteChildren = {
   CloudRoute: CloudRoute,
   ExtensionsRoute: ExtensionsRoute,
   IntegrationsRoute: IntegrationsRoute,
+  JourneysRoute: JourneysRoute,
   LimitsRoute: LimitsRoute,
   MapRoute: MapRoute,
   PreviewRoute: PreviewRoute,

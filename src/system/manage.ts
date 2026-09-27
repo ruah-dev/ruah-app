@@ -20,7 +20,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ArchEdge, ArchNode, Architecture } from "../contracts/architecture.js";
 import { validateArchitecture } from "../contracts/validate.js";
-import { scanRepo } from "../scan/index.js";
+import { PRODUCT_FILE } from "../contracts/product.js";
+import { writeScannedProduct } from "../product/screens-merge.js";
+import { scanRepoWithScreens } from "../scan/index.js";
 import { projectIdFor } from "../projects/fs-util.js";
 import { ensureRuahGitignore } from "../projects/repo-files.js";
 import {
@@ -459,13 +461,17 @@ export interface RebuildOptions {
   useGit?: boolean;
   /** The map to merge hand edits from (default: the system architecture.json on disk). */
   previous?: Architecture | null;
-  /** Write architecture.json (default true). The daemon saves through its store instead. */
+  /**
+   * Write architecture.json and the screens into product.json next to ruah.system.json
+   * (default true). The daemon saves through its stores instead.
+   */
   write?: boolean;
 }
 
 /**
  * Rebuilds the system map (buildSystemArchitecture, hand edits merged),
- * writes it to `<dir>/architecture.json` (unless `write: false`) and records
+ * writes it to `<dir>/architecture.json` and the repos' screens to
+ * `<dir>/product.json` (CONTRACTS §23.4; unless `write: false`) and records
  * per-repo scan facts in `.ruah/system-scan.json` (for status: last scan time,
  * node count, source).
  */
@@ -483,7 +489,10 @@ export function rebuildSystem(target: string | LoadedSystem, opts: RebuildOption
   });
   const checked = validateArchitecture(result.architecture, null);
   if (!checked.ok) throw new SystemManageError("invalid", `system architecture failed validation: ${checked.errors[0] ?? ""}`);
-  if (opts.write !== false) atomicWrite(out, `${JSON.stringify(result.architecture, null, 2)}\n`);
+  if (opts.write !== false) {
+    atomicWrite(out, `${JSON.stringify(result.architecture, null, 2)}\n`);
+    writeSystemProduct(sys.dir, result);
+  }
   const stamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
   const state: ScanState = { version: 1, builtAt: stamp, repos: {} };
   for (const r of result.repos) {
@@ -519,7 +528,7 @@ export function rescanRepo(target: string, id: string, opts: RebuildOptions = {}
   let wrote = false;
   const previous = readArchitectureFile(own);
   if (previous !== null) {
-    const arch = scanRepo(repo.root, {
+    const { architecture: arch, screens } = scanRepoWithScreens(repo.root, {
       ...(opts.version !== undefined ? { version: opts.version } : {}),
       now: opts.now ?? new Date(),
       previous,
@@ -528,9 +537,27 @@ export function rescanRepo(target: string, id: string, opts: RebuildOptions = {}
     if (validateArchitecture(arch, repo.root).ok) {
       atomicWrite(own, `${JSON.stringify(arch, null, 2)}\n`);
       wrote = true;
+      // Like `ruah app scan`: the repo's own product.json follows its own map (§23.4).
+      try {
+        writeScannedProduct(path.join(repo.root, PRODUCT_FILE), screens);
+      } catch {
+        // best effort; the system rebuild below still runs
+      }
     }
   }
   return { ...rebuildSystem(sys, opts), wroteRepoArchitecture: wrote };
+}
+
+/**
+ * The system's product.json (next to ruah.system.json): every repo's screens, namespaced
+ * (SystemBuildResult.screens), merged by the §23.4 rules. Returns its warnings; never throws.
+ */
+export function writeSystemProduct(systemDir: string, result: Pick<SystemBuildResult, "screens">, file?: string): string[] {
+  try {
+    return writeScannedProduct(file ?? path.join(systemDir, PRODUCT_FILE), result.screens).warnings;
+  } catch (err) {
+    return [`product.json not written: ${(err as Error).message}`];
+  }
 }
 
 export { SystemFileError };

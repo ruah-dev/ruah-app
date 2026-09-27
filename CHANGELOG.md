@@ -12,6 +12,40 @@ Nothing has been tagged yet, so the first tagged release will contain both.
 
 ### Added
 
+**Journeys: the product side of the map** (CONTRACTS §23, docs/JOURNEYS.md)
+- `product.json` next to the map: personas, the app's screens and customer
+  journeys. Each step has a screen, what the customer does and sees, why it is
+  designed that way, a success signal, customer evidence (graded from opinion to
+  launch data, supporting or contradicting), an open question and the code it
+  touches. Journeys are a main line plus branches (loops, or alternate journeys
+  that rejoin). Broken links into the code are warnings, never a broken file.
+- Screens come from the app's routes on every scan (Next.js, TanStack Router,
+  React Router / Remix, Expo Router, SvelteKit, Nuxt; multi-repo systems too).
+- The Journeys page (`G J`): Line view (steps over Frontend / Backend / Data
+  lanes) and Flow map (every journey across the screens), an editor for journeys
+  and steps, and Product health: broken links, code changed since a journey was
+  reviewed, weak or contradicting evidence, open questions, missing whys and
+  signals, agent drafts, screens in no journey.
+- Agents read and edit journeys (`ruah_get_product`, `ruah_get_journey`,
+  `ruah_journeys_for`, `ruah_product_apply`), are told never to invent a why,
+  and get the journeys an element serves in the context pack; "Ask agent" on a
+  step sends the whole journey. A turn's journey changes undo with its map changes.
+- Customer notes: paste an interview; the agent files verbatim quotes as evidence
+  and flags contradictions as questions.
+- Map: a Business overlay (journeys per element, unused ones faded) and a Journeys
+  section in the element inspector. Home cards say "3 journeys, 2 to review".
+- The live preview's camera button attaches a screenshot to a screen (desktop app;
+  kept in `.ruah/shots`).
+- Sharing: a self-contained storyboard (HTML), Markdown, draw.io journey pages,
+  and `ruah app journeys list | show | export`.
+
+**Git branches** (CONTRACTS §24)
+- The branch chip in the top bar switches branches: local and remote-only ones,
+  "Create branch from …", ahead/behind and last commit. The map and journeys
+  reload for the branch, and a toast says how it differs ("+3 elements, −1").
+  Never forces, never stashes; refused while an agent works, during a merge or
+  rebase, or when git would overwrite local changes.
+
 **Updates and the composer**
 - The installed app keeps itself up to date from its checkout: each packaged
   build records its commit, and the app checks the branch (`main`) every 10

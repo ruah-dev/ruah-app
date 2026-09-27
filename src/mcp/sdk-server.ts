@@ -3,7 +3,7 @@
 // handlers call the daemon's MapOpsService directly. A fresh server per
 // query(): an McpServer instance connects to one transport at a time.
 import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
-import { callMapTool, MAP_SERVER_INSTRUCTIONS, MAP_SERVER_NAME, MAP_TOOLS, type MapBackend } from "./tools.js";
+import { callMapTool, DESTRUCTIVE_TOOLS, MAP_SERVER_INSTRUCTIONS, MAP_SERVER_NAME, MAP_TOOLS, type MapBackend } from "./tools.js";
 
 export function createMapSdkServer(backend: MapBackend, version: string): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
@@ -14,7 +14,7 @@ export function createMapSdkServer(backend: MapBackend, version: string): McpSdk
     alwaysLoad: true,
     tools: MAP_TOOLS.map((def) =>
       tool(def.name, def.description, def.shape, (args) => callMapTool(def.name, args, backend), {
-        annotations: { readOnlyHint: def.readOnly, destructiveHint: def.name === "ruah_remove_element" || def.name === "ruah_apply" },
+        annotations: { readOnlyHint: def.readOnly, destructiveHint: DESTRUCTIVE_TOOLS.has(def.name) },
       }),
     ),
   });
