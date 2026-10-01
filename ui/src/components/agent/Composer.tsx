@@ -15,6 +15,7 @@ import {
   setAgent,
   setAgentMode,
   setAgentModel,
+  setEffort,
   setModel,
   type DaemonState,
 } from "@/lib/daemon";
@@ -39,7 +40,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { AgentModelPicker, ModePicker } from "./ComposerControls";
+import { AgentModelPicker, EffortPicker, ModePicker } from "./ComposerControls";
 
 const MAX_HEIGHT = 220;
 
@@ -379,6 +380,11 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             onModel={(id) => setModel(id)}
             onAgent={(id) => requestAgent(id)}
             onAgentModel={(id, modelId) => requestAgent(id, modelId)}
+          />
+          <EffortPicker
+            models={connected && !switching ? daemon.agent?.models : undefined}
+            disabled={!!reason}
+            onEffort={(effort) => setEffort(effort)}
           />
           <ModePicker
             modes={connected && !switching ? daemon.agent?.modes : undefined}

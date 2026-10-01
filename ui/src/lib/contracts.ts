@@ -162,6 +162,7 @@ export type ClientMessage =
   | { type: "cancel"; turnId: string }
   | { type: "session.reset" } // Phase 3: new ACP session (drops agent memory)
   | { type: "mode.set"; modeId: string } // Phase 3: session/set_mode
+  | { type: "effort.set"; effort: string } // reasoning effort (one of the current model's efforts)
   | { type: "model.set"; modelId: string } // switch the agent's model (one of agent.status.models.available)
   | { type: "agent.set"; agentId: string } // switch coding agent (one of agent.status.agents.available); instant when warm
   | { type: "agent.prewarm"; agentIds?: string[] } // start agents in the background (default: all installed but the current) (§5.7)
@@ -299,7 +300,10 @@ export interface ModeState {
 /** Same shape as ModeState: the models the agent offers and the active one. */
 export interface ModelState {
   currentModelId: string;
-  available: { id: string; name: string; description?: string }[];
+  /** efforts: the reasoning effort levels the model takes (absent: no choice). */
+  available: { id: string; name: string; description?: string; efforts?: string[] }[];
+  /** The chosen effort; absent = the agent's own default. */
+  currentEffort?: string;
 }
 
 /** The coding agents the daemon can run (Claude Code, Cursor Agent, …) and the active one. */

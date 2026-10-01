@@ -71,6 +71,13 @@ const TRUNCATION_SUFFIX = " …[truncated]";
 
 const CLAUDE_SETTING_SOURCES = ["user", "project", "local"] as const satisfies ReadonlyArray<SettingSource>;
 
+/** The SDK's effort levels, lowest first (Options.effort, applyFlagSettings effortLevel). */
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+type EffortLevel = (typeof EFFORT_LEVELS)[number];
+function isEffortLevel(value: string): value is EffortLevel {
+  return (EFFORT_LEVELS as readonly string[]).includes(value);
+}
+
 // Names/descriptions match @agentclientprotocol/claude-agent-acp so the viewer
 // shows the same labels whichever bridge is running.
 const AVAILABLE_MODES: ModeState["available"] = [
@@ -552,6 +559,8 @@ export class ClaudeSdkBridge implements AcpBridge {
   private modelId: string | undefined;
   /** supportedModels() of the latest query. */
   private modelInfos: ModelInfo[] = [];
+  /** Explicitly chosen reasoning effort; undefined = the CLI's default (settings effortLevel). */
+  private effort: EffortLevel | undefined;
   /** `model` from the settings files the CLI loads (display only; the CLI applies it itself). */
   private settingsModel: string | undefined;
 
@@ -706,6 +715,21 @@ export class ClaudeSdkBridge implements AcpBridge {
     const session = this.session;
     if (session !== undefined && !session.closed) await session.query.setModel(id);
     this.modelId = id;
+    const models = this.models();
+    this.emit({ type: "status", state: this.state, sessionId: this.sessionId, ...(models !== undefined ? { models } : {}) });
+  }
+
+  /**
+   * Sets the reasoning effort: live on the running query (applyFlagSettings, from the next model
+   * request) and for every later query (Options.effort).
+   */
+  async setEffort(effort: string): Promise<void> {
+    const level = effort.trim();
+    if (!isEffortLevel(level)) throw new Error(`unknown effort: ${effort}`);
+    await this.waitForOpening();
+    const session = this.session;
+    if (session !== undefined && !session.closed) await session.query.applyFlagSettings({ effortLevel: level });
+    this.effort = level;
     const models = this.models();
     this.emit({ type: "status", state: this.state, sessionId: this.sessionId, ...(models !== undefined ? { models } : {}) });
   }
@@ -874,6 +898,7 @@ export class ClaudeSdkBridge implements AcpBridge {
       // "default" is the CLI's own default; leaving it out lets ANTHROPIC_MODEL /
       // settings.json pick it, exactly as a fresh CLI would.
       ...(this.modelId !== undefined && this.modelId !== DEFAULT_MODEL_ID ? { model: this.modelId } : {}),
+      ...(this.effort !== undefined ? { effort: this.effort } : {}),
       ...(this.onStderr !== undefined ? { stderr: this.onStderr } : {}),
       ...(resume ? { resume: this.sessionId } : { sessionId: this.sessionId }),
     };
@@ -1289,7 +1314,13 @@ export class ClaudeSdkBridge implements AcpBridge {
     const available: ModelState["available"] = this.modelInfos.map((info) => {
       const description = info.description.trim();
       const name = modelDisplayName(info.value, info.displayName, description);
-      return description.length > 0 ? { id: info.value, name, description } : { id: info.value, name };
+      const efforts = info.supportsEffort === true ? (info.supportedEffortLevels ?? []).filter(isEffortLevel) : [];
+      return {
+        id: info.value,
+        name,
+        ...(description.length > 0 ? { description } : {}),
+        ...(efforts.length > 0 ? { efforts: EFFORT_LEVELS.filter((level) => efforts.includes(level)) } : {}),
+      };
     });
     const chosen = this.modelId ?? this.settingsModel ?? DEFAULT_MODEL_ID;
     const row = this.modelInfos.find((info) => info.value === chosen) ?? this.modelInfos.find((info) => info.resolvedModel === chosen);
@@ -1297,7 +1328,7 @@ export class ClaudeSdkBridge implements AcpBridge {
     if (!available.some((model) => model.id === currentModelId)) {
       available.push({ id: currentModelId, name: currentModelId === DEFAULT_MODEL_ID ? "Default" : currentModelId });
     }
-    return { currentModelId, available };
+    return { currentModelId, available, ...(this.effort !== undefined ? { currentEffort: this.effort } : {}) };
   }
 
   /**

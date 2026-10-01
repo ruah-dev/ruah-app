@@ -45,3 +45,4 @@ logs/
 # Coding-agent worktrees and local settings
 .claude/worktrees/
 .claude/settings.local.json
+.claude/.tmp/

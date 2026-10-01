@@ -20,10 +20,15 @@ export const ModeStateSchema = z.object({
 });
 export type ModeState = z.infer<typeof ModeStateSchema>;
 
-// Same shape as ModeState: the models the agent offers and the active one.
+// Same shape as ModeState: the models the agent offers and the active one. `efforts`: the
+// reasoning effort levels a model takes (Claude: low … max); `currentEffort`: the one chosen
+// (absent = the agent's own default).
 export const ModelStateSchema = z.object({
   currentModelId: z.string(),
-  available: z.array(z.object({ id: z.string(), name: z.string(), description: z.string().optional() })),
+  available: z.array(
+    z.object({ id: z.string(), name: z.string(), description: z.string().optional(), efforts: z.array(z.string()).optional() }),
+  ),
+  currentEffort: z.string().optional(),
 });
 export type ModelState = z.infer<typeof ModelStateSchema>;
 
@@ -270,6 +275,8 @@ export const ClientMessageSchema = z.union([
   z.object({ type: z.literal("session.reset") }),
   z.object({ type: z.literal("mode.set"), modeId: z.string() }),
   z.object({ type: z.literal("model.set"), modelId: z.string() }),
+  // Reasoning effort for the current agent (one of the current model's `efforts`).
+  z.object({ type: z.literal("effort.set"), effort: z.string().min(1).max(32) }),
   z.object({ type: z.literal("agent.set"), agentId: z.string() }),
   // Start agents in the background (default: every installed agent but the current one) so agent.set is instant.
   z.object({ type: z.literal("agent.prewarm"), agentIds: z.array(z.string()).max(16).optional() }),

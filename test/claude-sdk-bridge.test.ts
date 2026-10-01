@@ -30,7 +30,14 @@ import { ClaudeSdkBridge } from "../src/acp/claude-sdk-bridge.js";
 const ROOT = "/tmp/ruah-fake-repo";
 const SESSION = "11111111-2222-4333-8444-555555555555";
 const MODELS: ModelInfo[] = [
-  { value: "default", displayName: "Default (recommended)", description: "Opus 5.5 · Most capable", resolvedModel: "claude-opus-5-5" },
+  {
+    value: "default",
+    displayName: "Default (recommended)",
+    description: "Opus 5.5 · Most capable",
+    resolvedModel: "claude-opus-5-5",
+    supportsEffort: true,
+    supportedEffortLevels: ["max", "low", "medium", "high", "xhigh"],
+  },
   { value: "sonnet", displayName: "Sonnet", description: "Sonnet 5 · Everyday tasks", resolvedModel: "claude-sonnet-5" },
   { value: "haiku", displayName: "Haiku", description: "", resolvedModel: "claude-haiku-4-5" },
 ];
@@ -39,6 +46,7 @@ class FakeQuery implements AsyncIterator<SDKMessage> {
   readonly received: SDKUserMessage[] = [];
   readonly modes: PermissionMode[] = [];
   readonly models: Array<string | undefined> = [];
+  readonly flagSettings: Array<Record<string, unknown>> = [];
   interrupts = 0;
   closed = false;
   onUserMessage: ((message: SDKUserMessage) => void) | undefined;
@@ -110,6 +118,11 @@ class FakeQuery implements AsyncIterator<SDKMessage> {
 
   setModel(model?: string): Promise<void> {
     this.models.push(model);
+    return Promise.resolve();
+  }
+
+  applyFlagSettings(settings: Record<string, unknown>): Promise<void> {
+    this.flagSettings.push(settings);
     return Promise.resolve();
   }
 
@@ -457,6 +470,25 @@ describe("ClaudeSdkBridge", () => {
     await bridge.setModel("default");
     await bridge.reset();
     expect(current().options.model).toBeUndefined();
+  });
+
+  it("offers the model's effort levels (lowest first), sets them live and keeps them for new queries", async () => {
+    const { bridge, events, current } = setup();
+    await bridge.start();
+    expect(events.at(-1)).toMatchObject({ models: { available: [{ id: "default", efforts: ["low", "medium", "high", "xhigh", "max"] }, {}, {}] } });
+    const idle = events.at(-1);
+    expect(idle?.type === "status" ? idle.models?.available[2]?.efforts : "missing").toBeUndefined();
+    expect(idle?.type === "status" ? idle.models?.currentEffort : "missing").toBeUndefined();
+    const first = current();
+    expect(first.options.effort).toBeUndefined();
+
+    await bridge.setEffort("xhigh");
+    expect(first.flagSettings).toEqual([{ effortLevel: "xhigh" }]);
+    expect(events.at(-1)).toMatchObject({ type: "status", models: { currentEffort: "xhigh" } });
+    await expect(bridge.setEffort("ludicrous")).rejects.toThrow(/unknown effort/);
+
+    await bridge.reset();
+    expect(current().options.effort).toBe("xhigh");
   });
 
   it("shows the settings.json model as current, and an explicit default overrides it on new queries", async () => {

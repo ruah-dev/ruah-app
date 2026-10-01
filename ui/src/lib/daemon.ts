@@ -1219,6 +1219,16 @@ export function sendModel(modelId: string): boolean {
 
 export const setModel = sendModel;
 
+/** Reasoning effort for the current agent. Optimistic, like sendModel. */
+export function setEffort(effort: string): boolean {
+  if (!send({ type: "effort.set", effort })) return false;
+  const models = state.agent?.models;
+  if (state.agent && models && models.currentEffort !== effort) {
+    set({ agent: { ...state.agent, models: { ...models, currentEffort: effort } } });
+  }
+  return true;
+}
+
 /** Switch coding agent. The daemon stops any running turn; a pre-warmed agent (warm "ready") is
  * swapped in at once, any other one starts — until it reports idle the UI shows a quiet
  * "Starting …" state (state.agentSwitch) and the composer keeps working (prompts are queued). */
@@ -2081,6 +2091,7 @@ export const daemonActions = {
   setFocus,
   setAgentMode,
   setModel,
+  setEffort,
   setAgent,
   prewarmAgents,
   setDefaults,

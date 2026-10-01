@@ -216,6 +216,8 @@ export class SessionHub {
   /** This daemon session's model / mode choice per (project root, agent): wins over the saved default. */
   private readonly sessionModels = new Map<string, string>();
   private readonly sessionModes = new Map<string, string>();
+  /** Reasoning effort chosen in this session, per project + agent (like sessionModels). */
+  private readonly sessionEfforts = new Map<string, string>();
   /** Models / modes last reported per agent (shown for agents that are not current). */
   private readonly knownModels = new Map<string, ModelState>();
   private readonly knownModes = new Map<string, ModeState>();
@@ -700,6 +702,10 @@ export class SessionHub {
   }
 
   /** The mode a new session should use: session choice, else saved default, else the built-in edit-without-asking mode. */
+  private desiredEffort(entry: PooledBridge): string | undefined {
+    return this.sessionEfforts.get(this.key(entry.root, entry.agentId)) ?? this.options.settings?.get().efforts?.[entry.agentId];
+  }
+
   private desiredMode(entry: PooledBridge, modes: ModeState | undefined): string | undefined {
     return (
       this.sessionModes.get(this.key(entry.root, entry.agentId)) ??
@@ -738,12 +744,17 @@ export class SessionHub {
     const mode = this.desiredMode(entry, modes);
     const setModel = model !== undefined && models !== undefined && models.currentModelId !== model && models.available.some((m) => m.id === model);
     const setMode = mode !== undefined && modes !== undefined && modes.currentModeId !== mode && modes.available.some((m) => m.id === mode);
-    if (!setModel && !setMode) return;
+    const effort = this.desiredEffort(entry);
+    const setEffort = effort !== undefined && entry.bridge.setEffort !== undefined && models !== undefined && models.currentEffort !== effort;
+    if (!setModel && !setMode && !setEffort) return;
     const run = (async () => {
       // Out of the bridge's status emit.
       await new Promise<void>((resolve) => setImmediate(resolve));
       if (setModel) {
         await entry.bridge.setModel(model).catch((err: unknown) => this.options.debug(`${entry.agentId}: model ${model} not applied: ${String(err)}`));
+      }
+      if (setEffort) {
+        await entry.bridge.setEffort?.(effort).catch((err: unknown) => this.options.debug(`${entry.agentId}: effort ${effort} not applied: ${String(err)}`));
       }
       if (setMode) {
         await entry.bridge.setMode(mode).catch((err: unknown) => this.options.debug(`${entry.agentId}: mode ${mode} not applied: ${String(err)}`));
@@ -779,6 +790,29 @@ export class SessionHub {
     );
   }
 
+  /** effort.set: like model.set, for the reasoning effort (agents that offer one). */
+  setEffort(effort: string, socket?: WebSocket): void {
+    const entry = this.entry;
+    if (entry === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", NO_PROJECT_MESSAGE);
+      return;
+    }
+    const apply = entry.bridge.setEffort?.bind(entry.bridge);
+    if (apply === undefined) {
+      if (socket !== undefined) this.error(socket, "bad_message", `${entry.agentId} has no reasoning effort setting`);
+      return;
+    }
+    void apply(effort).then(
+      () => {
+        this.sessionEfforts.set(this.key(entry.root, entry.agentId), effort);
+        this.saveDefaults({ efforts: { [entry.agentId]: effort } }, entry.agentId);
+      },
+      (err: unknown) => {
+        if (socket !== undefined) this.error(socket, "internal", `effort change failed: ${(err as Error).message}`);
+      },
+    );
+  }
+
   /** mode.set: like model.set, for the permission mode. */
   setMode(modeId: string, socket?: WebSocket): void {
     const entry = this.entry;
@@ -797,7 +831,7 @@ export class SessionHub {
     );
   }
 
-  private saveDefaults(patch: { models?: Record<string, string>; modes?: Record<string, string> }, agentId: string): void {
+  private saveDefaults(patch: { models?: Record<string, string>; modes?: Record<string, string>; efforts?: Record<string, string> }, agentId: string): void {
     const settings = this.options.settings;
     if (settings === undefined || agentId === MOCK_AGENT_ID) return;
     const before = JSON.stringify(settings.get());
@@ -1960,6 +1994,10 @@ export function handleClientMessage(hub: SessionHub, socket: WebSocket, message:
     }
     case "model.set": {
       hub.setModel(message.modelId, socket);
+      return;
+    }
+    case "effort.set": {
+      hub.setEffort(message.effort, socket);
       return;
     }
     case "agent.set": {

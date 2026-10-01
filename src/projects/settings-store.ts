@@ -18,6 +18,8 @@ export interface SavedAgentSettings {
   models: Record<string, string>;
   /** Permission mode id per agent id. */
   modes: Record<string, string>;
+  /** Reasoning effort per agent id (absent: none saved). */
+  efforts?: Record<string, string>;
 }
 
 /** null removes the entry. */
@@ -25,9 +27,15 @@ export interface AgentSettingsPatch {
   defaultAgentId?: string;
   models?: Record<string, string | null>;
   modes?: Record<string, string | null>;
+  efforts?: Record<string, string | null>;
 }
 
 const MAX_ID_LENGTH = 200;
+
+/** `efforts` only when something is saved, so older settings files round-trip unchanged. */
+function withEfforts(efforts: Record<string, string>): { efforts?: Record<string, string> } {
+  return Object.keys(efforts).length > 0 ? { efforts } : {};
+}
 const NOTIFICATION_MODES: readonly NotificationMode[] = ["background", "always", "off"];
 export const DEFAULT_FEATURES: AppFeatures = {
   backgroundAgents: true,
@@ -106,7 +114,7 @@ export class SettingsStore {
 
   get(): SavedAgentSettings {
     const { settings } = this.load();
-    return { ...settings, models: { ...settings.models }, modes: { ...settings.modes } };
+    return { ...settings, models: { ...settings.models }, modes: { ...settings.modes }, ...withEfforts({ ...(settings.efforts ?? {}) }) };
   }
 
   update(patch: AgentSettingsPatch): SavedAgentSettings {
@@ -116,6 +124,7 @@ export class SettingsStore {
       ...(patch.defaultAgentId !== undefined && patch.defaultAgentId.length > 0 ? { defaultAgentId: patch.defaultAgentId } : {}),
       models: applyPatch(settings.models, patch.models),
       modes: applyPatch(settings.modes, patch.modes),
+      ...withEfforts(applyPatch(settings.efforts ?? {}, patch.efforts)),
     };
     const unchanged = JSON.stringify(next) === JSON.stringify(settings);
     this.cache = { settings: next, extra };
@@ -238,11 +247,12 @@ export class SettingsStore {
       }
     }
     const record = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-    const { defaultAgentId, models, modes, version: _version, ...extra } = record;
+    const { defaultAgentId, models, modes, efforts, version: _version, ...extra } = record;
     const settings: SavedAgentSettings = {
       ...(typeof defaultAgentId === "string" && defaultAgentId.length > 0 ? { defaultAgentId } : {}),
       models: stringRecord(models),
       modes: stringRecord(modes),
+      ...withEfforts(stringRecord(efforts)),
     };
     const previous = this.cache;
     this.cache = { settings, extra };

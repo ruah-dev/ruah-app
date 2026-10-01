@@ -151,6 +151,8 @@ export interface AcpBridge {
   cancel(turnId: string): Promise<void>;                                        // no-op if turnId is not the active turn
   answerPermission(requestId: string, answer: { optionId: string } | { cancelled: true }): boolean; // false = unknown requestId
   setMode(modeId: string): Promise<void>;
+  /** Reasoning effort (one of the current model's `efforts`); agents without it leave it out. */
+  setEffort?(effort: string): Promise<void>;
   setModel(modelId: string): Promise<void>;                                     // allowed mid-turn; applies to the next model request
   reset(): Promise<void>;                                                       // new ACP session, same process
   stop(): Promise<void>;                                                        // terminate the agent process

@@ -3,6 +3,7 @@
 // the composer's bottom row, one combined agent + model dropdown grouped by agent.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  Brain,
   Check,
   ChevronDown,
   Hand,
@@ -366,6 +367,63 @@ export function modeLabel(mode: { id: string; name: string }) {
 }
 
 /** Permission mode (ACP session modes; sends mode.set). Hidden when the agent offers none. */
+/** Reasoning effort levels, lowest first, as the picker names them. */
+export const EFFORT_META: Record<string, { name: string; description: string }> = {
+  low: { name: "Low", description: "Quick answers, least thinking" },
+  medium: { name: "Medium", description: "Some thinking" },
+  high: { name: "High", description: "Deep reasoning — Claude's usual default" },
+  xhigh: { name: "Extra high", description: "Deeper than high" },
+  max: { name: "Max", description: "As much thinking as it takes; slowest, uses the most of your plan" },
+};
+
+/** The efforts the current model takes (none: the picker hides). */
+export function modelEfforts(models: ModelState | undefined): string[] {
+  const current = models?.available.find((m) => m.id === models.currentModelId);
+  return current?.efforts ?? [];
+}
+
+export function EffortPicker({
+  models,
+  disabled,
+  onEffort,
+}: {
+  models: ModelState | undefined;
+  disabled: boolean;
+  onEffort: (effort: string) => void;
+}) {
+  const efforts = modelEfforts(models);
+  if (efforts.length === 0) return null;
+  const current = models?.currentEffort;
+  const label = current ? (EFFORT_META[current]?.name ?? current) : "Default";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={disabled}
+        className={cn(controlClass, "max-w-[9rem]")}
+        aria-label={`Reasoning effort: ${label}`}
+        title="Reasoning effort — how hard the model thinks"
+      >
+        <Brain className="size-3.5 shrink-0" />
+        <span className="truncate">{label}</span>
+        <ChevronDown className="size-3 shrink-0 opacity-60" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top" sideOffset={6} className="w-72 p-1">
+        {efforts.map((effort) => {
+          const active = effort === current;
+          const meta = EFFORT_META[effort];
+          return (
+            <DropdownMenuItem key={effort} className={itemClass} onSelect={() => !active && onEffort(effort)}>
+              <Brain className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <OptionText name={meta?.name ?? effort} description={meta?.description} />
+              <Check className={cn("mt-0.5 size-3.5 shrink-0 text-ai", !active && "invisible")} />
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ModePicker({
   modes,
   disabled,
